@@ -1,0 +1,60 @@
+import type { NearbyPlace } from "@/types/property"
+
+export const nearbyPlaces: NearbyPlace[] = [
+  {
+    name: "Đại học Sư phạm Kỹ thuật TP.HCM",
+    category: "Trường học",
+    distance: "800m",
+    travel: "10 phút đi bộ",
+    x: "30%",
+    y: "24%",
+  },
+  {
+    name: "Vincom Plaza Thủ Đức",
+    category: "Mua sắm",
+    distance: "1,5 km",
+    travel: "5 phút đi xe",
+    x: "76%",
+    y: "32%",
+  },
+  {
+    name: "Co.opmart",
+    category: "Mua sắm",
+    distance: "1,2 km",
+    travel: "4 phút đi xe",
+    x: "68%",
+    y: "67%",
+  },
+  {
+    name: "Circle K",
+    category: "Ăn uống",
+    distance: "350m",
+    travel: "5 phút đi bộ",
+    x: "48%",
+    y: "27%",
+  },
+  {
+    name: "Trạm xe buýt Võ Văn Ngân",
+    category: "Giao thông",
+    distance: "200m",
+    travel: "3 phút đi bộ",
+    x: "39%",
+    y: "62%",
+  },
+  {
+    name: "Nhà thuốc Long Châu",
+    category: "Y tế",
+    distance: "450m",
+    travel: "6 phút đi bộ",
+    x: "57%",
+    y: "74%",
+  },
+  {
+    name: "Gym Fit24",
+    category: "Ăn uống",
+    distance: "700m",
+    travel: "9 phút đi bộ",
+    x: "20%",
+    y: "62%",
+  },
+]
