@@ -1,0 +1,10 @@
+{
+  "description": "Offers an interactive map-based platform to search and filter guesthouse listings with real-time previews for seamless booking decisions.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
