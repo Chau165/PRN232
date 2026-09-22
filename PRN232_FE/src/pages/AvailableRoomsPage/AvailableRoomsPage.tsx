@@ -38,6 +38,13 @@ export default function AvailableRoomsPage() {
           room={selectedRoom}
           onClose={() => setSelectedRoom(null)}
           onLoginRequired={() => setLoginRequired(true)}
+          onDeposit={() => {
+            if (window.localStorage.getItem("troviet-auth") === "true") {
+              window.location.assign(`${routes.deposit}?room=${selectedRoom.code}`)
+            } else {
+              setLoginRequired(true)
+            }
+          }}
         />
       )}
       {loginRequired && (

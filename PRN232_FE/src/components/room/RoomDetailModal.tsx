@@ -4,12 +4,14 @@ type RoomDetailModalProps = {
   room: Room
   onClose: () => void
   onLoginRequired: () => void
+  onDeposit: () => void
 }
 
 export default function RoomDetailModal({
   room,
   onClose,
   onLoginRequired,
+  onDeposit,
 }: RoomDetailModalProps) {
   return (
     <div className="fixed inset-0 z-[60] flex justify-end bg-slate-950/40">
@@ -112,7 +114,7 @@ export default function RoomDetailModal({
               Đặt lịch xem
             </button>
             <button
-              onClick={onLoginRequired}
+              onClick={onDeposit}
               className="rounded-lg bg-[#087775] py-3.5 text-[13px] font-bold text-white shadow-sm"
             >
               Đặt cọc giữ phòng

@@ -23,4 +23,6 @@ export const routes = {
   managementUsers: "/management/users",
   login: "/login",
   register: "/register",
+  deposit: "/deposit",
+  paymentSuccess: "/payment-success",
 } as const

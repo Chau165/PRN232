@@ -23,6 +23,8 @@ import ManagementUsersPage from "@/pages/ManagementUsersPage/ManagementUsersPage
 import LoginPage from "@/pages/LoginPage/LoginPage"
 import PropertyDetailPage from "@/pages/PropertyDetailPage/PropertyDetailPage"
 import RegisterPage from "@/pages/RegisterPage/RegisterPage"
+import DepositPage from "@/pages/DepositPage/DepositPage"
+import PaymentSuccessPage from "@/pages/PaymentSuccessPage/PaymentSuccessPage"
 import { routes } from "@/constants/routes"
 import { requireMockAuth } from "@/utils/authMock"
 import {
@@ -119,4 +121,6 @@ export const router = createBrowserRouter([
   },
   { path: routes.login, Component: LoginPage },
   { path: routes.register, Component: RegisterPage },
+  { path: routes.deposit, Component: DepositPage, loader: requireMockAuth },
+  { path: routes.paymentSuccess, Component: PaymentSuccessPage, loader: requireMockAuth },
 ])
