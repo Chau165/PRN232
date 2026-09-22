@@ -50,6 +50,12 @@ export type Invoice = {
   status: InvoiceStatus
 }
 
+export type InvoiceComplaintForm = {
+  invoiceId: string
+  feeType: string
+  content: string
+}
+
 export type Payment = {
   id: string
   invoiceId: string

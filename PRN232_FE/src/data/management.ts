@@ -4,6 +4,7 @@ import type {
   ManagedBooking,
   ManagedContract,
   ManagedInvoice,
+  ManagedInvoiceComplaint,
   ManagedMaintenanceRequest,
   ManagedProperty,
   ManagedRoom,
@@ -329,6 +330,33 @@ export const managedInvoices: ManagedInvoice[] = [
     total: "4.590.000đ",
     due: "05/09/2026",
     status: "PAID",
+  },
+]
+
+export const managedInvoiceComplaints: ManagedInvoiceComplaint[] = [
+  {
+    id: "KN-2026-0001",
+    invoiceId: "INV-09-2026-A203",
+    propertyId: "sunrise-residence",
+    propertyName: "Sunrise Residence",
+    roomCode: "A203",
+    tenantName: "Ngọc Anh",
+    feeType: "Điện",
+    content: "Chỉ số điện trên hóa đơn chưa khớp với chỉ số công tơ tại phòng.",
+    createdAt: "22/09/2026",
+    status: "MỚI",
+  },
+  {
+    id: "KN-2026-0002",
+    invoiceId: "INV-09-2026-H201",
+    propertyId: "happy-home",
+    propertyName: "Happy Home",
+    roomCode: "H201",
+    tenantName: "Minh Khang",
+    feeType: "Nước",
+    content: "Nhờ kiểm tra lại số nước sử dụng trong kỳ 09/2026.",
+    createdAt: "21/09/2026",
+    status: "ĐANG XỬ LÝ",
   },
 ]
 

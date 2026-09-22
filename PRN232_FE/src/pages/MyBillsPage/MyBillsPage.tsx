@@ -1,16 +1,19 @@
 import { useState } from "react"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
 import InvoiceDetailDrawer from "@/components/customer/InvoiceDetailDrawer"
+import InvoiceComplaintModal from "@/components/customer/InvoiceComplaintModal"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
-import { invoices, payments } from "@/data/customer"
+import { currentRoom, invoices, payments, profile } from "@/data/customer"
 import type { Invoice } from "@/types/customer"
+import { createInvoiceComplaint } from "@/utils/invoiceComplaints"
 
 type BillTab = "unpaid" | "paid" | "all"
 
 export default function MyBillsPage() {
   const [tab, setTab] = useState<BillTab>("unpaid")
   const [selected, setSelected] = useState<Invoice | null>(null)
+  const [complaintInvoice, setComplaintInvoice] = useState<Invoice | null>(null)
   const [toast, setToast] = useState("")
   const filtered = invoices.filter(
     (invoice) =>
@@ -129,6 +132,24 @@ export default function MyBillsPage() {
           onPay={() => {
             setSelected(null)
             setToast("Thanh toán mock đã được ghi nhận")
+          }}
+          onComplain={() => setComplaintInvoice(selected)}
+        />
+      )}
+      {complaintInvoice && (
+        <InvoiceComplaintModal
+          invoice={complaintInvoice}
+          onClose={() => setComplaintInvoice(null)}
+          onSubmit={(form) => {
+            createInvoiceComplaint({
+              ...form,
+              propertyId: "sunrise-residence",
+              propertyName: currentRoom.propertyName,
+              roomCode: currentRoom.roomCode,
+              tenantName: profile.fullName,
+            })
+            setComplaintInvoice(null)
+            setToast("Khiếu nại của bạn đã được gửi")
           }}
         />
       )}

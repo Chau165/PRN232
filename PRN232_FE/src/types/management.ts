@@ -100,6 +100,21 @@ export type ManagedInvoice = {
   status: "DRAFT" | "UNPAID" | "PAID" | "OVERDUE"
 }
 
+export type InvoiceComplaintStatus = "MỚI" | "ĐANG XỬ LÝ" | "ĐÃ XỬ LÝ"
+
+export type ManagedInvoiceComplaint = {
+  id: string
+  invoiceId: string
+  propertyId: string
+  propertyName: string
+  roomCode: string
+  tenantName: string
+  feeType: string
+  content: string
+  createdAt: string
+  status: InvoiceComplaintStatus
+}
+
 export type Equipment = {
   id: string
   name: string

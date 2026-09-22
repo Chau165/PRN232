@@ -6,12 +6,14 @@ type InvoiceDetailDrawerProps = {
   invoice: Invoice
   onClose: () => void
   onPay?: () => void
+  onComplain?: () => void
 }
 
 export default function InvoiceDetailDrawer({
   invoice,
   onClose,
   onPay,
+  onComplain,
 }: InvoiceDetailDrawerProps) {
   return (
     <PortalDrawer title={invoice.title} eyebrow={invoice.id} onClose={onClose}>
@@ -39,13 +41,25 @@ export default function InvoiceDetailDrawer({
           </strong>
         </div>
       </div>
-      {invoice.status === "CHƯA THANH TOÁN" && onPay && (
-        <button
-          onClick={onPay}
-          className="mt-6 w-full rounded-lg bg-[#087775] py-3 text-[13px] font-bold text-white shadow-sm hover:bg-[#066a68]"
-        >
-          Thanh toán
-        </button>
+      {invoice.status === "CHƯA THANH TOÁN" && (
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {onComplain && (
+            <button
+              onClick={onComplain}
+              className="rounded-lg border border-[#087775] bg-white py-3 text-[13px] font-bold text-[#087775] hover:bg-[#f1f8f7]"
+            >
+              Khiếu nại
+            </button>
+          )}
+          {onPay && (
+            <button
+              onClick={onPay}
+              className="rounded-lg bg-[#087775] py-3 text-[13px] font-bold text-white shadow-sm hover:bg-[#066a68]"
+            >
+              Thanh toán
+            </button>
+          )}
+        </div>
       )}
     </PortalDrawer>
   )
