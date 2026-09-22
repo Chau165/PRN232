@@ -21,7 +21,7 @@ export default function ProfilePage() {
       <section className="max-w-2xl rounded-2xl bg-white p-7 shadow-[0_5px_24px_rgba(16,65,67,.08)]">
         <div className="flex flex-col items-start gap-5 border-b border-slate-100 pb-6 sm:flex-row sm:items-center">
           <span className="grid h-20 w-20 place-items-center rounded-full bg-[#dff0ed] text-2xl font-bold text-[#087775]">
-            NA
+          {user.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}
           </span>
           <div>
             <h2 className="font-display text-[24px] font-bold text-slate-900">

@@ -1,6 +1,7 @@
 import { redirect } from "react-router"
 import { routes } from "@/constants/routes"
 import type { CurrentUser, ManagementRole } from "@/types/user"
+import { getStoredCurrentUser } from "@/utils/authMock"
 
 export type ManagementPermission = "viewAreas" | "viewReports" | "manageManagers" | "manageUsers" | "createProperty" | "deleteProperty" | "assignManager"
 
@@ -28,6 +29,8 @@ export const mockManagementUsers: Record<ManagementRole, CurrentUser> = {
 export function getCurrentUser(): CurrentUser {
   const role = window.localStorage.getItem(ROLE_STORAGE_KEY)
   if (role === "ADMIN" || role === "MANAGER") return mockManagementUsers[role]
+  const storedUser = getStoredCurrentUser()
+  if (storedUser) return storedUser
   return {
     id: "customer-1",
     name: "Ngọc Anh",

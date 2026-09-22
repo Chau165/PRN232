@@ -4,7 +4,7 @@ import PasswordInput from "@/components/auth/PasswordInput"
 import { routes } from "@/constants/routes"
 import {
   authenticateMockUser,
-  mockAccounts,
+  getAccounts,
   startMockSession,
 } from "@/utils/authMock"
 
@@ -101,7 +101,7 @@ export default function LoginPage() {
             Tài khoản demo
           </p>
           <div className="mt-2 space-y-1.5 text-[11px] text-slate-600">
-            {mockAccounts.map((account) => (
+            {getAccounts().map((account) => (
               <p key={account.email}>
                 <span className="font-semibold text-slate-700">
                   {account.user.role}:

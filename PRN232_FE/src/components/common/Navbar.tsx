@@ -127,7 +127,7 @@ export default function Navbar() {
                       : "NA"
                     : "NA"}
                 </span>
-                {managementUser ? currentUser.name : "Ngọc Anh"}{" "}
+                {currentUser.name}{" "}
                 <Icon name="chevron" size={13} />
               </button>
               {profileOpen && (

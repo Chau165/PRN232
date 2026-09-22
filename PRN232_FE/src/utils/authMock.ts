@@ -45,8 +45,26 @@ export const mockAccounts: MockAccount[] = [
   },
 ]
 
+const registeredAccountsKey = "troviet-registered-accounts"
+const currentUserKey = "troviet-current-user"
+
+export function getAccounts() {
+  try {
+    const stored = window.localStorage.getItem(registeredAccountsKey)
+    return stored ? [...mockAccounts, ...JSON.parse(stored) as MockAccount[]] : mockAccounts
+  } catch {
+    return mockAccounts
+  }
+}
+
+export function registerMockAccount(account: MockAccount) {
+  const stored = window.localStorage.getItem(registeredAccountsKey)
+  const accounts = stored ? JSON.parse(stored) as MockAccount[] : []
+  window.localStorage.setItem(registeredAccountsKey, JSON.stringify([...accounts, account]))
+}
+
 export function authenticateMockUser(email: string, password: string) {
-  return mockAccounts.find(
+  return getAccounts().find(
     (account) =>
       account.email.toLowerCase() === email.trim().toLowerCase() &&
       account.password === password,
@@ -55,6 +73,7 @@ export function authenticateMockUser(email: string, password: string) {
 
 export function startMockSession(user: CurrentUser) {
   window.localStorage.setItem("troviet-auth", "true")
+  window.localStorage.setItem(currentUserKey, JSON.stringify(user))
   if (user.role === "ADMIN" || user.role === "MANAGER") {
     window.localStorage.setItem("troviet-role", user.role)
   } else {
@@ -65,6 +84,16 @@ export function startMockSession(user: CurrentUser) {
 export function endMockSession() {
   window.localStorage.removeItem("troviet-auth")
   window.localStorage.removeItem("troviet-role")
+  window.localStorage.removeItem(currentUserKey)
+}
+
+export function getStoredCurrentUser() {
+  try {
+    const stored = window.localStorage.getItem(currentUserKey)
+    return stored ? JSON.parse(stored) as CurrentUser : undefined
+  } catch {
+    return undefined
+  }
 }
 
 export function requireMockAuth() {
