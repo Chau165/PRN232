@@ -37,6 +37,11 @@ const items: SidebarItem[] = [
     icon: "calendar" as IconName,
   },
   {
+    label: "Lịch xem phòng",
+    href: routes.managementViewings,
+    icon: "calendar" as IconName,
+  },
+  {
     label: "Hợp đồng",
     href: routes.managementContracts,
     icon: "file" as IconName,

@@ -20,6 +20,7 @@ import ManagementReportsPage from "@/pages/ManagementReportsPage/ManagementRepor
 import ManagementRoomsPage from "@/pages/ManagementRoomsPage/ManagementRoomsPage"
 import ManagementTenantsPage from "@/pages/ManagementTenantsPage/ManagementTenantsPage"
 import ManagementUsersPage from "@/pages/ManagementUsersPage/ManagementUsersPage"
+import ManagementViewingsPage from "@/pages/ManagementViewingsPage/ManagementViewingsPage"
 import LoginPage from "@/pages/LoginPage/LoginPage"
 import PropertyDetailPage from "@/pages/PropertyDetailPage/PropertyDetailPage"
 import RegisterPage from "@/pages/RegisterPage/RegisterPage"
@@ -84,6 +85,7 @@ export const router = createBrowserRouter([
     Component: ManagementBookingsPage,
     loader: requireManagementRole,
   },
+  { path: routes.managementViewings, Component: ManagementViewingsPage, loader: requireManagementRole },
   {
     path: routes.managementContracts,
     Component: ManagementContractsPage,

@@ -14,6 +14,7 @@ export const routes = {
   managementRooms: "/management/rooms",
   managementTenants: "/management/tenants",
   managementBookings: "/management/bookings",
+  managementViewings: "/management/viewings",
   managementContracts: "/management/contracts",
   managementInvoices: "/management/invoices",
   managementEquipment: "/management/equipment",
