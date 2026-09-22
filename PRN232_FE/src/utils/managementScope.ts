@@ -3,7 +3,6 @@ import {
   equipment,
   managedBookings,
   managedContracts,
-  managedInvoices,
   managedMaintenance,
   managementProperties,
   managementRooms,
@@ -12,6 +11,7 @@ import {
 import { getAccessiblePropertyIds } from "@/utils/managementAuth"
 import type { CurrentUser } from "@/types/user"
 import { getCreatedContracts } from "@/utils/managementContracts"
+import { getManagedInvoices } from "@/utils/managedInvoices"
 
 export function getManagementScope(user: CurrentUser) {
   const createdContracts = getCreatedContracts()
@@ -38,7 +38,7 @@ export function getManagementScope(user: CurrentUser) {
     contracts: [...createdContracts, ...managedContracts].filter((contract) =>
       propertyIds.includes(contract.propertyId),
     ),
-    invoices: managedInvoices.filter((invoice) =>
+    invoices: getManagedInvoices().filter((invoice) =>
       propertyIds.includes(invoice.propertyId),
     ),
     equipment: equipment.filter((item) =>

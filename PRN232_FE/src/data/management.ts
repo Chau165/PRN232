@@ -153,6 +153,15 @@ export const managementRooms: ManagedRoom[] = [
   },
 ]
 
+export const previousUtilityReadings: Record<
+  string,
+  { electricity: number; water: number }
+> = {
+  "room-a203": { electricity: 1248, water: 76 },
+  "room-h201": { electricity: 892, water: 43 },
+  "room-g101": { electricity: 1560, water: 98 },
+}
+
 export const tenants: Tenant[] = [
   {
     id: "tenant-1",

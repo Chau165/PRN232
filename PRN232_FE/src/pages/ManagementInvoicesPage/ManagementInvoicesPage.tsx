@@ -2,6 +2,7 @@ import { useState } from "react"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementDetailDrawer from "@/components/management/ManagementDetailDrawer"
 import ManagementPage from "@/components/management/ManagementPage"
+import CreateInvoiceModal from "@/components/management/CreateInvoiceModal"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
 import { getCurrentUser } from "@/utils/managementAuth"
@@ -10,6 +11,7 @@ import {
   getInvoiceComplaints,
   updateInvoiceComplaintStatus,
 } from "@/utils/invoiceComplaints"
+import { createManagedInvoice } from "@/utils/managedInvoices"
 import type {
   InvoiceComplaintStatus,
   ManagedInvoice,
@@ -51,16 +53,59 @@ const complaintStatuses: Array<{
 ]
 
 export default function ManagementInvoicesPage() {
-  const { invoices, propertyIds } = getManagementScope(getCurrentUser())
+  const { invoices, properties, propertyIds, rooms } = getManagementScope(
+    getCurrentUser(),
+  )
   const complaints = getInvoiceComplaints().filter((complaint) =>
     propertyIds.includes(complaint.propertyId),
   )
+  const occupiedRooms = rooms
+    .filter((room) => room.status === "Đang thuê" && room.tenantName)
+    .map((room) => ({
+      ...room,
+      propertyName:
+        properties.find((property) => property.id === room.propertyId)?.name ?? "",
+    }))
   const [section, setSection] = useState<InvoiceSection>("invoices")
+  const [creatingInvoice, setCreatingInvoice] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState<ManagedInvoice | null>(null)
   const [selectedComplaint, setSelectedComplaint] =
     useState<ManagedInvoiceComplaint | null>(null)
   const [, setComplaintsVersion] = useState(0)
   const [toast, setToast] = useState("")
+  const invoiceLineItems = selectedInvoice
+    ? [
+        { label: "Tiền phòng", amount: selectedInvoice.roomRent },
+        {
+          label:
+            selectedInvoice.electricityUsage !== undefined
+              ? `Điện (${selectedInvoice.electricityUsage} kWh × ${selectedInvoice.electricityRate?.toLocaleString("vi-VN")}đ)`
+              : "Điện",
+          amount: selectedInvoice.electricity,
+        },
+        {
+          label:
+            selectedInvoice.waterUsage !== undefined
+              ? `Nước (${selectedInvoice.waterUsage} m³ × ${selectedInvoice.waterRate?.toLocaleString("vi-VN")}đ)`
+              : "Nước",
+          amount: selectedInvoice.water,
+        },
+        { label: "Internet", amount: selectedInvoice.internet },
+        ...(selectedInvoice.parkingFee
+          ? [{ label: "Gửi xe", amount: selectedInvoice.parkingFee }]
+          : []),
+        ...(selectedInvoice.trashFee
+          ? [{ label: "Đổ rác", amount: selectedInvoice.trashFee }]
+          : []),
+        ...(selectedInvoice.additionalFees ?? []).map((fee) => ({
+          label: fee.name,
+          amount: fee.amount,
+        })),
+        ...(!selectedInvoice.parkingFee && !selectedInvoice.trashFee
+          ? [{ label: "Phí khác", amount: selectedInvoice.otherFees }]
+          : []),
+      ]
+    : []
 
   function changeComplaintStatus(status: InvoiceComplaintStatus) {
     if (!selectedComplaint || selectedComplaint.status === status) return
@@ -78,7 +123,7 @@ export default function ManagementInvoicesPage() {
   return (
     <ManagementPage
       title="Hóa đơn"
-      description="Tạo và theo dõi hóa đơn theo phòng, có hỗ trợ nhập chỉ số điện nước mock."
+      description="Tạo và theo dõi hóa đơn theo phòng, tự tính điện nước và các phí dịch vụ."
     >
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div
@@ -113,9 +158,7 @@ export default function ManagementInvoicesPage() {
         </div>
         {section === "invoices" && (
           <button
-            onClick={() =>
-              setToast("Form tạo hóa đơn và nhập chỉ số mock sẽ được mở")
-            }
+            onClick={() => setCreatingInvoice(true)}
             className="rounded-lg bg-[#087775] px-4 py-2.5 text-[13px] font-bold text-white"
           >
             + Tạo hóa đơn
@@ -244,6 +287,17 @@ export default function ManagementInvoicesPage() {
           )}
         </ManagementDataTable>
       )}
+      {creatingInvoice && (
+        <CreateInvoiceModal
+          rooms={occupiedRooms}
+          onClose={() => setCreatingInvoice(false)}
+          onSubmit={(input) => {
+            const invoice = createManagedInvoice(input)
+            setCreatingInvoice(false)
+            setToast(`Đã tạo hóa đơn ${invoice.id} thành công`)
+          }}
+        />
+      )}
       {selectedInvoice && (
         <ManagementDetailDrawer
           title={`Hóa đơn ${selectedInvoice.period}`}
@@ -251,16 +305,10 @@ export default function ManagementInvoicesPage() {
           onClose={() => setSelectedInvoice(null)}
         >
           <div className="divide-y divide-slate-100 rounded-xl bg-slate-50 px-5 text-[14px]">
-            {[
-              ["Tiền phòng", selectedInvoice.roomRent],
-              ["Điện", selectedInvoice.electricity],
-              ["Nước", selectedInvoice.water],
-              ["Internet", selectedInvoice.internet],
-              ["Phí khác", selectedInvoice.otherFees],
-            ].map(([label, amount]) => (
-              <div key={label} className="flex justify-between py-3.5">
-                <span className="text-slate-500">{label}</span>
-                <strong>{amount}</strong>
+            {invoiceLineItems.map((item) => (
+              <div key={item.label} className="flex justify-between py-3.5">
+                <span className="text-slate-500">{item.label}</span>
+                <strong>{item.amount}</strong>
               </div>
             ))}
             <div className="flex justify-between py-4">

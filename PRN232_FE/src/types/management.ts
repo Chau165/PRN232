@@ -98,6 +98,18 @@ export type ManagedInvoice = {
   total: string
   due: string
   status: "DRAFT" | "UNPAID" | "PAID" | "OVERDUE"
+  electricityUsage?: number
+  electricityRate?: number
+  waterUsage?: number
+  waterRate?: number
+  parkingFee?: string
+  trashFee?: string
+  additionalFees?: InvoiceAdditionalFee[]
+}
+
+export type InvoiceAdditionalFee = {
+  name: string
+  amount: string
 }
 
 export type InvoiceComplaintStatus = "MỚI" | "ĐANG XỬ LÝ" | "ĐÃ XỬ LÝ"
