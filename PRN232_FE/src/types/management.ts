@@ -52,6 +52,10 @@ export type Tenant = {
 export type ManagedBooking = {
   id: string
   customerName: string
+  customerId?: string
+  customerPhone?: string
+  companions?: { name: string; phone?: string }[]
+  moveInDate?: string
   propertyId: string
   propertyName: string
   roomCode: string
@@ -64,6 +68,9 @@ export type ManagedBooking = {
 
 export type ManagedContract = {
   id: string
+  bookingId?: string
+  tenantPhone?: string
+  companions?: { name: string; phone?: string }[]
   tenantId: string
   tenantName: string
   propertyId: string

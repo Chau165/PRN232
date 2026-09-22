@@ -1,4 +1,6 @@
 import { useState } from "react"
+import { Link } from "react-router"
+import { routes } from "@/constants/routes"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementDetailDrawer from "@/components/management/ManagementDetailDrawer"
 import ManagementPage from "@/components/management/ManagementPage"
@@ -65,7 +67,7 @@ export default function ManagementBookingsPage() {
               <StatusBadge tone={bookingTone(booking.status)}>
                 {booking.status}
               </StatusBadge>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setSelected(booking)}
                   className="rounded-lg bg-slate-100 px-3 py-2 text-[12px] font-bold text-slate-600"
@@ -79,6 +81,14 @@ export default function ManagementBookingsPage() {
                   >
                     Duyệt
                   </button>
+                )}
+                {booking.status === "Confirmed" && (
+                  <Link
+                    to={`${routes.managementCreateContract}?booking=${encodeURIComponent(booking.id)}`}
+                    className="rounded-lg bg-[#087775] px-3 py-2 text-[12px] font-bold text-white hover:bg-[#066a68]"
+                  >
+                    Tạo hợp đồng
+                  </Link>
                 )}
               </div>
             </div>

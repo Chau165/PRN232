@@ -16,6 +16,7 @@ export const routes = {
   managementBookings: "/management/bookings",
   managementViewings: "/management/viewings",
   managementContracts: "/management/contracts",
+  managementCreateContract: "/management/contracts/new",
   managementInvoices: "/management/invoices",
   managementEquipment: "/management/equipment",
   managementMaintenance: "/management/maintenance",

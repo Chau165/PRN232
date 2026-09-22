@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useLocation } from "react-router"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementDetailDrawer from "@/components/management/ManagementDetailDrawer"
 import ManagementPage from "@/components/management/ManagementPage"
@@ -10,8 +11,13 @@ import type { ManagedContract } from "@/types/management"
 
 export default function ManagementContractsPage() {
   const { contracts } = getManagementScope(getCurrentUser())
+  const location = useLocation()
   const [selected, setSelected] = useState<ManagedContract | null>(null)
-  const [toast, setToast] = useState("")
+  const [toast, setToast] = useState(() =>
+    contracts.some((contract) => contract.id === location.state?.createdContractId)
+      ? "Đã tạo hợp đồng thành công"
+      : "",
+  )
   return (
     <ManagementPage
       title="Hợp đồng"
@@ -86,6 +92,16 @@ export default function ManagementContractsPage() {
             <p>
               Khách thuê: <strong>{selected.tenantName}</strong>
             </p>
+            {selected.tenantPhone && <p className="mt-3">Số điện thoại: <strong>{selected.tenantPhone}</strong></p>}
+            {selected.bookingId && <p className="mt-3">Booking: <strong>{selected.bookingId}</strong></p>}
+            {selected.companions && (
+              <div className="mt-3">
+                <p className="font-semibold">Người ở cùng</p>
+                {selected.companions.length ? selected.companions.map((person, index) => (
+                  <p key={index} className="mt-1">{person.name} · {person.phone || "Không cung cấp số điện thoại"}</p>
+                )) : <p className="mt-1 text-slate-500">Không có người ở cùng.</p>}
+              </div>
+            )}
             <p className="mt-3">
               Khu trọ: <strong>{selected.propertyName}</strong>
             </p>

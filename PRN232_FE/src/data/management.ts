@@ -192,6 +192,10 @@ export const managedBookings: ManagedBooking[] = [
   {
     id: "BK-2026-0018",
     customerName: "Ngọc Anh",
+    customerId: "tenant-1",
+    customerPhone: "0909 123 456",
+    moveInDate: "2026-08-01",
+    companions: [{ name: "Nguyễn Mai Anh" }],
     propertyId: "sunrise-residence",
     propertyName: "Sunrise Residence",
     roomCode: "A203",
@@ -204,6 +208,10 @@ export const managedBookings: ManagedBooking[] = [
   {
     id: "BK-2026-0021",
     customerName: "Minh Khang",
+    customerId: "tenant-2",
+    customerPhone: "0912 555 678",
+    moveInDate: "2026-10-01",
+    companions: [],
     propertyId: "happy-home",
     propertyName: "Happy Home",
     roomCode: "H202",
@@ -216,6 +224,10 @@ export const managedBookings: ManagedBooking[] = [
   {
     id: "BK-2026-0025",
     customerName: "Phương Linh",
+    customerId: "customer-phuong-linh",
+    customerPhone: "0938 123 456",
+    moveInDate: "2026-10-05",
+    companions: [{ name: "Trần Thu Hà", phone: "0987 654 321" }],
     propertyId: "green-house",
     propertyName: "Green House",
     roomCode: "G201",
