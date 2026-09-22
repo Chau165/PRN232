@@ -14,10 +14,12 @@ import {
   sunrisePhotos,
 } from "@/data/propertyDetails"
 import { routes } from "@/constants/routes"
+import ViewingScheduleModal from "@/components/room/ViewingScheduleModal"
 
 export default function PropertyDetailPage() {
   const [galleryOpen, setGalleryOpen] = useState(false)
   const [loginRequired, setLoginRequired] = useState(false)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
   const property = properties[0]
 
   return (
@@ -70,7 +72,10 @@ export default function PropertyDetailPage() {
                 Xem phòng trống
               </a>
               <button
-                onClick={() => setLoginRequired(true)}
+                onClick={() => {
+                  if (window.localStorage.getItem("troviet-auth") === "true") setScheduleOpen(true)
+                  else setLoginRequired(true)
+                }}
                 className="rounded-lg bg-teal-50 px-2 py-3 text-[13px] font-bold text-[#087775] hover:bg-teal-100"
               >
                 Đặt lịch xem
@@ -164,6 +169,7 @@ export default function PropertyDetailPage() {
       {loginRequired && (
         <LoginRequiredModal onClose={() => setLoginRequired(false)} />
       )}
+      {scheduleOpen && <ViewingScheduleModal onClose={() => setScheduleOpen(false)} />}
       <Footer />
     </main>
   )

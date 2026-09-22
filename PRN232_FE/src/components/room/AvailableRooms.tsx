@@ -3,11 +3,13 @@ import type { Room } from "@/types/room"
 type AvailableRoomsProps = {
   onOpenRoom: (room: Room) => void
   onLoginRequired: () => void
+  onSchedule: (room: Room) => void
 }
 
 export default function AvailableRooms({
   onOpenRoom,
   onLoginRequired,
+  onSchedule,
   rooms,
 }: AvailableRoomsProps & { rooms: Room[] }) {
   return (
@@ -66,7 +68,7 @@ export default function AvailableRooms({
                 Xem phòng
               </button>
               <button
-                onClick={onLoginRequired}
+                onClick={() => onSchedule(room)}
                 className="mt-2 text-[12px] font-semibold text-[#087775] hover:underline"
               >
                 Đặt lịch xem

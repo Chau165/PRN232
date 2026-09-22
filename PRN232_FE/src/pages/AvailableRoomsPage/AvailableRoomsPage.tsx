@@ -7,10 +7,13 @@ import RoomDetailModal from "@/components/room/RoomDetailModal"
 import { routes } from "@/constants/routes"
 import { rooms } from "@/data/rooms"
 import type { Room } from "@/types/room"
+import ViewingScheduleModal from "@/components/room/ViewingScheduleModal"
 
 export default function AvailableRoomsPage() {
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null)
+  const [scheduleRoom, setScheduleRoom] = useState<Room | null>(null)
   const [loginRequired, setLoginRequired] = useState(false)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
 
   return (
     <main className="min-h-screen bg-[#fcfdfd] text-slate-800">
@@ -31,6 +34,14 @@ export default function AvailableRoomsPage() {
           rooms={rooms}
           onOpenRoom={setSelectedRoom}
           onLoginRequired={() => setLoginRequired(true)}
+          onSchedule={(room) => {
+            if (window.localStorage.getItem("troviet-auth") === "true") {
+              setScheduleRoom(room)
+              setScheduleOpen(true)
+            } else {
+              setLoginRequired(true)
+            }
+          }}
         />
       </div>
       {selectedRoom && (
@@ -45,11 +56,16 @@ export default function AvailableRoomsPage() {
               setLoginRequired(true)
             }
           }}
+          onSchedule={() => {
+            if (window.localStorage.getItem("troviet-auth") === "true") setScheduleOpen(true)
+            else setLoginRequired(true)
+          }}
         />
       )}
       {loginRequired && (
         <LoginRequiredModal onClose={() => setLoginRequired(false)} />
       )}
+      {scheduleOpen && <ViewingScheduleModal roomCode={scheduleRoom?.code} onClose={() => { setScheduleOpen(false); setScheduleRoom(null) }} />}
       <Footer />
     </main>
   )
