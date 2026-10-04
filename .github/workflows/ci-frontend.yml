@@ -1,0 +1,40 @@
+name: CI - Frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "PRN232_FE/**"
+      - ".github/workflows/ci-frontend.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "PRN232_FE/**"
+      - ".github/workflows/ci-frontend.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: PRN232_FE
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "10.34.3"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
