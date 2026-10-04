@@ -1,0 +1,21 @@
+# Chạy local bằng Docker cho đồng bộ môi trường giữa các thành viên.
+# Không có service Postgres ở đây vì database dùng Supabase (cloud) —
+# chỉ container hoá API, trỏ connection string ra Supabase qua biến môi trường.
+#
+# Cách dùng: copy .env.example -> .env, điền giá trị thật, rồi `docker compose up --build`.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - PORT=8080
+      - ConnectionStrings__DefaultConnection=${CONNECTIONSTRINGS__DEFAULTCONNECTION}
+      - Jwt__Key=${JWT__KEY}
+      - Jwt__Issuer=${JWT__ISSUER}
+      - Jwt__Audience=${JWT__AUDIENCE}
+      - Cors__AllowedOrigins__0=${CORS__ALLOWEDORIGINS__0}

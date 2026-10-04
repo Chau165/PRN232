@@ -1,0 +1,20 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+
+## Rider / VS / VS Code
+.vs/
+.vscode/
+.idea/
+*.DotSettings.user
+
+## Secrets - KHÔNG BAO GIỜ commit connection string / JWT key thật
+## (dùng `dotnet user-secrets` cho local dev, xem README)
+**/secrets.json
+.env
+
+## OS
+.DS_Store
+Thumbs.db
