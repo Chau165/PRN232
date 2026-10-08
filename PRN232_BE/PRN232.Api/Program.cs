@@ -1,8 +1,11 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.Routing;
 using PRN232.Infrastructure.Data;
 using PRN232.Application.Interfaces;
 using PRN232.Infrastructure.Repositories;
@@ -72,7 +75,11 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddScoped<IRoleRepository, RoleRepository>();
 builder.Services.AddScoped<IRoleService, RoleService>();
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    options.Conventions.Add(new RouteTokenTransformerConvention(
+        new SlugifyParameterTransformer()));
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -122,3 +129,22 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+internal sealed class SlugifyParameterTransformer : IOutboundParameterTransformer
+{
+    public string? TransformOutbound(object? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        return Regex.Replace(
+                value.ToString()!,
+                "([a-z])([A-Z])",
+                "$1-$2",
+                RegexOptions.CultureInvariant,
+                TimeSpan.FromMilliseconds(100))
+            .ToLowerInvariant();
+    }
+}
