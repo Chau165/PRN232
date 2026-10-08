@@ -74,6 +74,9 @@ builder.Services.AddRateLimiter(options =>
 // ---- DI: mỗi module thêm repository + service của mình vào đây theo đúng mẫu Roles ----
 builder.Services.AddScoped<IRoleRepository, RoleRepository>();
 builder.Services.AddScoped<IRoleService, RoleService>();
+builder.Services.AddScoped<IMaintenanceRepository, MaintenanceRepository>();
+builder.Services.AddScoped<IMaintenanceService, MaintenanceService>();
+builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.AddControllers(options =>
 {
