@@ -5,11 +5,11 @@ namespace PRN232.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class HealthController : ControllerBase
+public class HealthChecksController : ControllerBase
 {
     private readonly AppDbContext _context;
 
-    public HealthController(AppDbContext context)
+    public HealthChecksController(AppDbContext context)
     {
         _context = context;
     }
@@ -17,7 +17,7 @@ public class HealthController : ControllerBase
     [HttpGet]
     public IActionResult Get() => Ok(new { status = "ok", time = DateTime.UtcNow });
 
-    [HttpGet("db")]
+    [HttpGet("database")]
     public async Task<IActionResult> GetDb()
     {
         var canConnect = await _context.Database.CanConnectAsync();

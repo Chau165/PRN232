@@ -7,7 +7,7 @@ COPY PRN232.Domain/PRN232.Domain.csproj PRN232.Domain/
 COPY PRN232.Application/PRN232.Application.csproj PRN232.Application/
 COPY PRN232.Infrastructure/PRN232.Infrastructure.csproj PRN232.Infrastructure/
 COPY PRN232.Api/PRN232.Api.csproj PRN232.Api/
-RUN dotnet restore "PRN232_BE.sln"
+RUN dotnet restore "PRN232.Api/PRN232.Api.csproj"
 
 COPY . .
 RUN dotnet publish "PRN232.Api/PRN232.Api.csproj" -c Release -o /app/publish --no-restore

@@ -10,6 +10,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PRN232.Infrastructure", "PR
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PRN232.Api", "PRN232.Api\PRN232.Api.csproj", "{5370B532-2BFA-4757-BB2D-9AD0B9759E1A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PRN232.Application.Tests", "PRN232.Application.Tests\PRN232.Application.Tests.csproj", "{A6F0E7E8-0B3B-4BD7-B647-4ABAA37D41DD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -35,5 +37,9 @@ Global
 		{5370B532-2BFA-4757-BB2D-9AD0B9759E1A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5370B532-2BFA-4757-BB2D-9AD0B9759E1A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5370B532-2BFA-4757-BB2D-9AD0B9759E1A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A6F0E7E8-0B3B-4BD7-B647-4ABAA37D41DD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A6F0E7E8-0B3B-4BD7-B647-4ABAA37D41DD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A6F0E7E8-0B3B-4BD7-B647-4ABAA37D41DD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A6F0E7E8-0B3B-4BD7-B647-4ABAA37D41DD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
