@@ -10,6 +10,8 @@ using PRN232.Infrastructure.Data;
 using PRN232.Application.Interfaces;
 using PRN232.Infrastructure.Repositories;
 using PRN232.Application.Services;
+using PRN232.Application.Settings;
+using PRN232.Infrastructure.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,9 +32,16 @@ builder.Services.AddCors(options =>
     });
 });
 
-// ---- JWT Authentication skeleton ----
-var jwtSettings = builder.Configuration.GetSection("Jwt");
-var jwtKey = jwtSettings["Key"] ?? "CHANGE_ME_DEV_ONLY_32_CHARACTERS_MIN";
+// ---- JWT: bind 1 lần thành JwtSettings (POCO, dùng chung cho middleware validate
+// token ở dưới và JwtTokenGenerator lúc issue token trong AuthController) ----
+var jwtSettings = new JwtSettings
+{
+    Key = builder.Configuration["Jwt:Key"] ?? "CHANGE_ME_DEV_ONLY_32_CHARACTERS_MIN",
+    Issuer = builder.Configuration["Jwt:Issuer"] ?? "PRN232_BE",
+    Audience = builder.Configuration["Jwt:Audience"] ?? "PRN232_FE",
+    ExpiryMinutes = builder.Configuration.GetValue<int?>("Jwt:ExpiryMinutes") ?? 120,
+};
+builder.Services.AddSingleton(jwtSettings);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -41,15 +50,20 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
+    // Tắt auto-remap claim type (mặc định .NET đổi "sub" -> ClaimTypes.NameIdentifier
+    // dạng URI dài, "role" -> ClaimTypes.Role...) để claim trong token giữ nguyên tên
+    // ngắn lúc JwtTokenGenerator tạo ra, đọc ở Controller (User.FindFirst("sub")) cho
+    // khớp, khỏi nhầm.
+    options.MapInboundClaims = false;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        ValidIssuer = jwtSettings["Issuer"],
-        ValidAudience = jwtSettings["Audience"],
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+        ValidIssuer = jwtSettings.Issuer,
+        ValidAudience = jwtSettings.Audience,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Key)),
     };
 });
 builder.Services.AddAuthorization();
@@ -77,6 +91,25 @@ builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IMaintenanceRepository, MaintenanceRepository>();
 builder.Services.AddScoped<IMaintenanceService, MaintenanceService>();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
+builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IIdentityDocumentRepository, IdentityDocumentRepository>();
+builder.Services.AddScoped<IIdentityDocumentService, IdentityDocumentService>();
+builder.Services.AddScoped<IAmenityRepository, AmenityRepository>();
+builder.Services.AddScoped<IAmenityService, AmenityService>();
+builder.Services.AddScoped<IServiceRepository, ServiceRepository>();
+builder.Services.AddScoped<IServiceService, ServiceCatalogService>();
+builder.Services.AddScoped<IPropertyRepository, PropertyRepository>();
+builder.Services.AddScoped<IPropertyService, PropertyService>();
+builder.Services.AddScoped<IRoomTypeRepository, RoomTypeRepository>();
+builder.Services.AddScoped<IRoomTypeService, RoomTypeService>();
+builder.Services.AddScoped<IRoomRepository, RoomRepository>();
+builder.Services.AddScoped<IRoomService, RoomService>();
+builder.Services.AddScoped<IEquipmentRepository, EquipmentRepository>();
+builder.Services.AddScoped<IEquipmentService, EquipmentService>();
 
 builder.Services.AddControllers(options =>
 {

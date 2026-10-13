@@ -41,6 +41,9 @@ public class AppDbContext : DbContext
         // chắc, tránh lỗi "requires a primary key to be defined" lúc add migration ----
         modelBuilder.Entity<Roles>().HasKey(x => x.RoleId);
         modelBuilder.Entity<Users>().HasKey(x => x.UserId);
+
+        // ---- Auth: email là định danh đăng nhập, phải unique ----
+        modelBuilder.Entity<Users>().HasIndex(x => x.Email).IsUnique();
         modelBuilder.Entity<Property>().HasKey(x => x.PropertyId);
         modelBuilder.Entity<RoomTypes>().HasKey(x => x.RoomTypeId);
         modelBuilder.Entity<Service>().HasKey(x => x.ServiceId);

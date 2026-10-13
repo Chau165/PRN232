@@ -453,6 +453,7 @@ namespace PRN232.Infrastructure.Migrations
                     b.HasKey("RoleId");
 
                     b.ToTable("Roles");
+
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.RoomAmenities", b =>
@@ -615,6 +616,9 @@ namespace PRN232.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("UserId");
+
+                    b.HasIndex("Email")
+                        .IsUnique();
 
                     b.HasIndex("RoleId");
 
