@@ -265,7 +265,6 @@ namespace PRN232.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("OldStatus")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<int>("RequestId")
@@ -278,6 +277,59 @@ namespace PRN232.Infrastructure.Migrations
                     b.HasIndex("RequestId");
 
                     b.ToTable("MaintenanceLogs");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.MaintenanceReportImages", b =>
+                {
+                    b.Property<int>("ImageId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ImageId"));
+
+                    b.Property<string>("ImageUrl")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("ReportId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ImageId");
+
+                    b.HasIndex("ReportId");
+
+                    b.ToTable("MaintenanceReportImages");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.MaintenanceReports", b =>
+                {
+                    b.Property<int>("ReportId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ReportId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("ReportedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RequestId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ReportId");
+
+                    b.HasIndex("ReportedBy");
+
+                    b.HasIndex("RequestId")
+                        .IsUnique();
+
+                    b.ToTable("MaintenanceReports");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.MaintenanceRequests", b =>
@@ -453,7 +505,6 @@ namespace PRN232.Infrastructure.Migrations
                     b.HasKey("RoleId");
 
                     b.ToTable("Roles");
-
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.RoomAmenities", b =>
@@ -779,6 +830,36 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("Request");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.MaintenanceReportImages", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.MaintenanceReports", "Report")
+                        .WithMany("Images")
+                        .HasForeignKey("ReportId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Report");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.MaintenanceReports", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Users", "Reporter")
+                        .WithMany("MaintenanceReportsReported")
+                        .HasForeignKey("ReportedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.MaintenanceRequests", "Request")
+                        .WithOne("Report")
+                        .HasForeignKey("PRN232.Domain.Entities.MaintenanceReports", "RequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Reporter");
+
+                    b.Navigation("Request");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.MaintenanceRequests", b =>
                 {
                     b.HasOne("PRN232.Domain.Entities.Users", "AssignedToUser")
@@ -989,9 +1070,16 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("Payments");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.MaintenanceReports", b =>
+                {
+                    b.Navigation("Images");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.MaintenanceRequests", b =>
                 {
                     b.Navigation("MaintenanceLogs");
+
+                    b.Navigation("Report");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Property", b =>
@@ -1042,6 +1130,8 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("IdentityDocumentsReviewed");
 
                     b.Navigation("MaintenanceLogsChanged");
+
+                    b.Navigation("MaintenanceReportsReported");
 
                     b.Navigation("MaintenanceRequestsAssigned");
 

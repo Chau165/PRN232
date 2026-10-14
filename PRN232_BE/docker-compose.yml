@@ -19,3 +19,6 @@ services:
       - Jwt__Issuer=${JWT__ISSUER}
       - Jwt__Audience=${JWT__AUDIENCE}
       - Cors__AllowedOrigins__0=${CORS__ALLOWEDORIGINS__0}
+      - Supabase__Url=${Supabase__Url}
+      - Supabase__ServiceRoleKey=${Supabase__ServiceRoleKey}
+      - Supabase__MaintenanceReportBucket=${Supabase__MaintenanceReportBucket:-maintenance-reports}

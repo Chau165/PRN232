@@ -13,4 +13,5 @@ public class MaintenanceRequests
     public Equipments? Equipment { get; set; }
     public Users? AssignedToUser { get; set; }
     public ICollection<MaintenanceLogs> MaintenanceLogs { get; set; } = new List<MaintenanceLogs>();
+    public MaintenanceReports? Report { get; set; }
 }

@@ -40,9 +40,46 @@ public class MaintenanceRepositoryTests
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
 
-        var results = await new MaintenanceRepository(context).GetAllAsync(10, null, null);
+        var results = await new MaintenanceRepository(context).GetAllAsync(10, null, null, null);
 
         var request = Assert.Single(results);
         Assert.Equal((1, 10, "Customer A"), (request.RequestId, request.CustomerId, request.CustomerName));
+    }
+
+    [Fact]
+    public async Task GetAllAsync_filters_manager_requests_by_assigned_user()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using var context = new AppDbContext(options);
+        context.Users.AddRange(
+            new Users { UserId = 10, RoleId = 1, FullName = "Manager A", IsActive = true },
+            new Users { UserId = 20, RoleId = 1, FullName = "Manager B", IsActive = true },
+            new Users { UserId = 30, RoleId = 2, FullName = "Customer", IsActive = true });
+        context.Properties.AddRange(
+            new Property { PropertyId = 1, OwnerId = 10 },
+            new Property { PropertyId = 2, OwnerId = 20 });
+        context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio" });
+        context.Rooms.AddRange(
+            new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A-1" },
+            new Rooms { RoomId = 2, PropertyId = 2, RoomTypeId = 1, RoomCode = "B-1" });
+        context.Contracts.AddRange(
+            new Contracts { ContractId = 1, CustomerId = 30, RoomId = 1 },
+            new Contracts { ContractId = 2, CustomerId = 30, RoomId = 2 });
+        context.MaintenanceRequests.AddRange(
+            new MaintenanceRequests { RequestId = 1, ContractId = 1, AssignedTo = 10, Description = "A", Status = "Approved" },
+            new MaintenanceRequests { RequestId = 2, ContractId = 2, AssignedTo = 20, Description = "B", Status = "Approved" });
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var repository = new MaintenanceRepository(context);
+        var requestsWithBypassAttempt = await repository.GetAllAsync(null, 10, null, 20);
+        Assert.Empty(requestsWithBypassAttempt);
+
+        var results = await repository.GetAllAsync(null, 10, null, null);
+
+        var request = Assert.Single(results);
+        Assert.Equal(1, request.RequestId);
     }
 }

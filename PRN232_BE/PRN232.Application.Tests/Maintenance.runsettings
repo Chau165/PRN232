@@ -1,0 +1,13 @@
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <Include>[PRN232.Api]PRN232.Api.Controllers.MaintenanceRequestsController*,[PRN232.Api]PRN232.Api.Security.CurrentUserService*,[PRN232.Api]PRN232.Api.Security.AuthorizeCheckOperationFilter*,[PRN232.Application]PRN232.Application.Services.Maintenance*,[PRN232.Infrastructure]PRN232.Infrastructure.Repositories.MaintenanceRepository*,[PRN232.Infrastructure]PRN232.Infrastructure.Storage.SupabaseMaintenanceReportImageStorage*</Include>
+          <ExcludeByAttribute>GeneratedCodeAttribute</ExcludeByAttribute>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

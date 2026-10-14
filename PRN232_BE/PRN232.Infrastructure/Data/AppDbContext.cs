@@ -26,6 +26,8 @@ public class AppDbContext : DbContext
     public DbSet<Payments> Payments => Set<Payments>();
     public DbSet<MaintenanceRequests> MaintenanceRequests => Set<MaintenanceRequests>();
     public DbSet<MaintenanceLogs> MaintenanceLogs => Set<MaintenanceLogs>();
+    public DbSet<MaintenanceReports> MaintenanceReports => Set<MaintenanceReports>();
+    public DbSet<MaintenanceReportImages> MaintenanceReportImages => Set<MaintenanceReportImages>();
     public DbSet<Notifications> Notifications => Set<Notifications>();
     public DbSet<IdentityDocuments> IdentityDocuments => Set<IdentityDocuments>();
 
@@ -59,6 +61,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Payments>().HasKey(x => x.PaymentId);
         modelBuilder.Entity<MaintenanceRequests>().HasKey(x => x.RequestId);
         modelBuilder.Entity<MaintenanceLogs>().HasKey(x => x.LogId);
+        modelBuilder.Entity<MaintenanceReports>().HasKey(x => x.ReportId);
+        modelBuilder.Entity<MaintenanceReportImages>().HasKey(x => x.ImageId);
         modelBuilder.Entity<Notifications>().HasKey(x => x.NotificationId);
         modelBuilder.Entity<IdentityDocuments>().HasKey(x => x.IdentityDocumentId);
 
@@ -99,6 +103,25 @@ public class AppDbContext : DbContext
             .WithMany(u => u.MaintenanceLogsChanged)
             .HasForeignKey(l => l.ChangedBy)
             .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<MaintenanceReports>()
+            .HasOne(report => report.Request)
+            .WithOne(request => request.Report)
+            .HasForeignKey<MaintenanceReports>(report => report.RequestId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<MaintenanceReports>()
+            .HasIndex(report => report.RequestId)
+            .IsUnique();
+        modelBuilder.Entity<MaintenanceReports>()
+            .HasOne(report => report.Reporter)
+            .WithMany(user => user.MaintenanceReportsReported)
+            .HasForeignKey(report => report.ReportedBy)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<MaintenanceReportImages>()
+            .HasOne(image => image.Report)
+            .WithMany(report => report.Images)
+            .HasForeignKey(image => image.ReportId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // ---- Bookings <-> Contracts: 1:1 optional (hợp đồng có thể không xuất phát từ booking) ----
         modelBuilder.Entity<Contracts>()

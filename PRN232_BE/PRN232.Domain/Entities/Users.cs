@@ -18,6 +18,7 @@ public class Users
     public ICollection<Payments> Payments { get; set; } = new List<Payments>();
     public ICollection<MaintenanceRequests> MaintenanceRequestsAssigned { get; set; } = new List<MaintenanceRequests>();
     public ICollection<MaintenanceLogs> MaintenanceLogsChanged { get; set; } = new List<MaintenanceLogs>();
+    public ICollection<MaintenanceReports> MaintenanceReportsReported { get; set; } = new List<MaintenanceReports>();
     public ICollection<Notifications> Notifications { get; set; } = new List<Notifications>();
     public ICollection<IdentityDocuments> IdentityDocumentsOwned { get; set; } = new List<IdentityDocuments>();
     public ICollection<IdentityDocuments> IdentityDocumentsReviewed { get; set; } = new List<IdentityDocuments>();
