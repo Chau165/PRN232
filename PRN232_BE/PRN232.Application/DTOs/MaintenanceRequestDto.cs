@@ -38,6 +38,7 @@ public record MaintenanceRequestStateDto(
 public record MaintenanceContractDto(
     int ContractId,
     int RoomId,
+    string? RoomCode,
     int CustomerId,
     DateOnly StartDate,
     DateOnly EndDate,

@@ -21,12 +21,34 @@ public class MaintenanceTransactionTests
             await RejectInsertAsync(context, "MaintenanceLogs");
             await Assert.ThrowsAsync<DbUpdateException>(() => new MaintenanceRepository(context).AddWithInitialLogAsync(
                 new MaintenanceRequests { ContractId = 1, Description = "Broken", Status = "Pending" },
-                new MaintenanceLogs { NewStatus = "Pending", ChangedBy = 10, ChangedAt = DateTime.UtcNow }));
+                new MaintenanceLogs { NewStatus = "Pending", ChangedBy = 10, ChangedAt = DateTime.UtcNow },
+                _ => []));
         }
         using var verification = factory.Services.CreateScope();
         var stored = verification.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Equal(4, await stored.MaintenanceRequests.CountAsync());
         Assert.Empty(await stored.MaintenanceLogs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Creation_rolls_back_request_and_log_when_notification_cannot_be_saved()
+    {
+        using var factory = new MaintenanceApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await RejectInsertAsync(context, "Notifications");
+            await Assert.ThrowsAsync<DbUpdateException>(() => new MaintenanceRepository(context).AddWithInitialLogAsync(
+                new MaintenanceRequests { ContractId = 1, Description = "Broken", Status = "Pending" },
+                new MaintenanceLogs { NewStatus = "Pending", ChangedBy = 10, ChangedAt = DateTime.UtcNow },
+                _ => [new Notifications { UserId = 9, Title = "new request", Type = "Maintenance" }]));
+        }
+        using var verification = factory.Services.CreateScope();
+        var stored = verification.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(4, await stored.MaintenanceRequests.CountAsync());
+        Assert.Empty(await stored.MaintenanceLogs.ToListAsync());
+        Assert.Empty(await stored.Notifications.ToListAsync());
     }
 
     [Fact]
@@ -50,6 +72,28 @@ public class MaintenanceTransactionTests
     }
 
     [Fact]
+    public async Task Assignment_rolls_back_status_and_log_when_notification_cannot_be_saved()
+    {
+        using var factory = new MaintenanceApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await RejectInsertAsync(context, "Notifications");
+            await Assert.ThrowsAsync<DbUpdateException>(() => new MaintenanceRepository(context)
+                .UpdateStatusAndAddLogAsync(3, "Pending", "Approved", 7, 9, DateTime.UtcNow,
+                    [new Notifications { UserId = 10, Title = "approved", Type = "Maintenance" }]));
+        }
+        using var verification = factory.Services.CreateScope();
+        var stored = verification.ServiceProvider.GetRequiredService<AppDbContext>();
+        var request = await stored.MaintenanceRequests.FindAsync(3);
+        Assert.Equal("Pending", request!.Status);
+        Assert.Null(request.AssignedTo);
+        Assert.Empty(await stored.MaintenanceLogs.ToListAsync());
+        Assert.Empty(await stored.Notifications.ToListAsync());
+    }
+
+    [Fact]
     public async Task Completion_rolls_back_status_report_images_and_log_on_database_failure()
     {
         using var factory = new MaintenanceApiFactory();
@@ -67,6 +111,27 @@ public class MaintenanceTransactionTests
         Assert.Empty(await stored.MaintenanceReports.Where(r => r.RequestId == 1).ToListAsync());
         Assert.Equal(1, await stored.MaintenanceReportImages.CountAsync());
         Assert.Empty(await stored.MaintenanceLogs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Completion_rolls_back_report_and_log_when_notification_cannot_be_saved()
+    {
+        using var factory = new MaintenanceApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await RejectInsertAsync(context, "Notifications");
+            await Assert.ThrowsAsync<DbUpdateException>(() => new MaintenanceRepository(context)
+                .CompleteWithReportAsync(1, Report(), 7, DateTime.UtcNow,
+                    [new Notifications { UserId = 10, Title = "completed", Type = "Maintenance" }]));
+        }
+        using var verification = factory.Services.CreateScope();
+        var stored = verification.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal("Approved", (await stored.MaintenanceRequests.FindAsync(1))!.Status);
+        Assert.Empty(await stored.MaintenanceReports.Where(report => report.RequestId == 1).ToListAsync());
+        Assert.Empty(await stored.MaintenanceLogs.ToListAsync());
+        Assert.Empty(await stored.Notifications.ToListAsync());
     }
 
     [Fact]
@@ -123,6 +188,7 @@ public class MaintenanceTransactionTests
         {
             "MaintenanceLogs" => "CREATE TRIGGER reject_insert BEFORE INSERT ON \"MaintenanceLogs\" BEGIN SELECT RAISE(ABORT, 'test injected failure'); END",
             "MaintenanceReportImages" => "CREATE TRIGGER reject_insert BEFORE INSERT ON \"MaintenanceReportImages\" BEGIN SELECT RAISE(ABORT, 'test injected failure'); END",
+            "Notifications" => "CREATE TRIGGER reject_insert BEFORE INSERT ON \"Notifications\" BEGIN SELECT RAISE(ABORT, 'test injected failure'); END",
             _ => throw new ArgumentException("Unsupported fault injection table.", nameof(table))
         };
         return context.Database.ExecuteSqlRawAsync(sql);

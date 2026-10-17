@@ -1,0 +1,65 @@
+## git status --short
+
+M PRN232_BE/PRN232.Api/Program.cs
+M PRN232_BE/PRN232.Application.Tests/MaintenanceFlowApiTests.cs
+M PRN232_BE/PRN232.Application.Tests/MaintenanceServiceTests.cs
+M PRN232_BE/PRN232.Application.Tests/MaintenanceTransactionTests.cs
+M PRN232_BE/PRN232.Application/Interfaces/IMaintenanceRepository.cs
+M PRN232_BE/PRN232.Application/Services/MaintenanceService.cs
+M PRN232_BE/PRN232.Infrastructure/Repositories/MaintenanceRepository.cs
+?? PRN232_BE/PRN232.Api/Controllers/NotificationsController.cs
+?? PRN232_BE/PRN232.Application/DTOs/NotificationDto.cs
+?? PRN232_BE/PRN232.Application/Interfaces/INotificationRepository.cs
+?? PRN232_BE/PRN232.Application/Interfaces/INotificationService.cs
+?? PRN232_BE/PRN232.Application/Services/NotificationService.cs
+?? PRN232_BE/PRN232.Application/Services/NotificationTypes.cs
+?? PRN232_BE/PRN232.Infrastructure/Repositories/NotificationRepository.cs
+?? PRN232_BE/outputs/
+?? PRN232_BE/PRN232.Api/Controllers/NotificationsController.cs
+?? PRN232_BE/PRN232.Application/DTOs/NotificationDto.cs
+?? PRN232_BE/PRN232.Application/Interfaces/INotificationRepository.cs
+?? PRN232_BE/PRN232.Application/Interfaces/INotificationService.cs
+?? PRN232_BE/PRN232.Application/Services/NotificationService.cs
+?? PRN232_BE/PRN232.Application/Services/NotificationTypes.cs
+?? PRN232_BE/PRN232.Infrastructure/Repositories/NotificationRepository.cs
+?? PRN232_BE/outputs/
+
+## CREATED
+
+- PRN232_BE/PRN232.Api/Controllers/NotificationsController.cs
+- PRN232_BE/PRN232.Application/DTOs/NotificationDto.cs
+- PRN232_BE/PRN232.Application/Interfaces/INotificationRepository.cs
+- PRN232_BE/PRN232.Application/Interfaces/INotificationService.cs
+- PRN232_BE/PRN232.Application/Services/NotificationService.cs
+- PRN232_BE/PRN232.Application/Services/NotificationTypes.cs
+- PRN232_BE/PRN232.Infrastructure/Repositories/NotificationRepository.cs
+- PRN232_BE/outputs/Notification-Maintenance-Implementation-Report.md
+- PRN232_BE/outputs/Notification-Maintenance-Diff.patch
+- PRN232_BE/outputs/Notification-Maintenance-Changed-Files.txt
+
+## MODIFIED
+
+- PRN232_BE/PRN232.Api/Program.cs
+- PRN232_BE/PRN232.Application.Tests/MaintenanceFlowApiTests.cs
+- PRN232_BE/PRN232.Application.Tests/MaintenanceServiceTests.cs
+- PRN232_BE/PRN232.Application.Tests/MaintenanceTransactionTests.cs
+- PRN232_BE/PRN232.Application/Interfaces/IMaintenanceRepository.cs
+- PRN232_BE/PRN232.Application/Services/MaintenanceService.cs
+- PRN232_BE/PRN232.Infrastructure/Repositories/MaintenanceRepository.cs
+
+## DELETED
+
+- None
+
+## git diff --stat (tracked files only)
+
+ PRN232_BE/PRN232.Api/Program.cs                    |   2 +
+ .../MaintenanceFlowApiTests.cs                     | 156 +++++++++++++++++++--
+ .../MaintenanceServiceTests.cs                     |  46 +++++--
+ .../MaintenanceTransactionTests.cs                 |  65 ++++++++++
+ .../Interfaces/IMaintenanceRepository.cs           |  16 ++-
+ .../Services/MaintenanceService.cs                 |  28 +++-
+ .../Repositories/MaintenanceRepository.cs          |  37 +++++-
+ 7 files changed, 317 insertions(+), 33 deletions(-)
+
+The generated diff patch includes tracked changes and created `.cs` files. It excludes the patch, this index, and the implementation report.

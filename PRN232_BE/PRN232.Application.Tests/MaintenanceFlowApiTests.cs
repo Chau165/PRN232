@@ -29,6 +29,8 @@ public class MaintenanceFlowApiTests
     [InlineData("POST", "/api/maintenance-requests")]
     [InlineData("PATCH", "/api/maintenance-requests/1")]
     [InlineData("POST", "/api/maintenance-requests/1/reports")]
+    [InlineData("GET", "/api/notifications")]
+    [InlineData("PATCH", "/api/notifications/1")]
     public async Task Anonymous_writes_and_reports_require_authentication(string method, string path)
     {
         using var factory = new MaintenanceApiFactory();
@@ -222,35 +224,93 @@ public class MaintenanceFlowApiTests
     {
         using var factory = new MaintenanceApiFactory();
         using var client = factory.CreateClient();
-        await LoginAsync(client, "customer@example.test");
+        using (var seedScope = factory.Services.CreateScope())
+        {
+            var context = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            context.MaintenanceRequests.Add(new MaintenanceRequests
+            {
+                RequestId = 24, ContractId = 2, Description = "Other room request", Status = "Pending"
+            });
+            await context.SaveChangesAsync();
+        }
+        var customerToken = await LoginAsync(client, "customer@example.test");
         var created = await client.PostAsJsonAsync("/api/maintenance-requests", new { contractId = 1, description = "Leaking faucet" });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         var id = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("requestId").GetInt32();
-        await LoginAsync(client, "admin@example.test");
+        Assert.Equal(25, id);
+        Assert.Empty((await client.GetFromJsonAsync<JsonElement>("/api/notifications")).EnumerateArray());
+        using (var createScope = factory.Services.CreateScope())
+        {
+            var context = createScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.Equal(2, await context.Notifications.CountAsync(n => n.Type == "Maintenance"));
+            Assert.Equal(1, await context.Notifications.CountAsync(n => n.UserId == 9));
+            Assert.Equal(1, await context.Notifications.CountAsync(n => n.UserId == 12));
+            Assert.Equal(0, await context.Notifications.CountAsync(n => n.UserId == 10 || n.UserId == 13));
+        }
+        var adminToken = await LoginAsync(client, "admin@example.test");
+        var createdNotifications = await client.GetFromJsonAsync<JsonElement>("/api/notifications");
+        Assert.Equal("Có yêu cầu bảo trì mới #25 - Phòng A101", createdNotifications[0].GetProperty("title").GetString());
+        Assert.Equal("Maintenance", createdNotifications[0].GetProperty("type").GetString());
+        Assert.False(createdNotifications[0].GetProperty("isRead").GetBoolean());
+        Assert.False(createdNotifications[0].TryGetProperty("createdAt", out _));
+        Assert.Equal(HttpStatusCode.MethodNotAllowed,
+            (await client.PostAsJsonAsync("/api/notifications", new { userId = 10, title = "spoof", type = "Maintenance" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync(
+            $"/api/notifications/{createdNotifications[0].GetProperty("notificationId").GetInt32()}", new { isRead = true })).StatusCode);
         var assigned = await client.PatchAsJsonAsync($"/api/maintenance-requests/{id}", new { assignedTo = 7, status = "Completed", changedBy = 999 });
         Assert.Equal(HttpStatusCode.OK, assigned.StatusCode);
         var assignment = await assigned.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Approved", assignment.GetProperty("status").GetString());
         Assert.Equal(7, assignment.GetProperty("assignedTo").GetInt32());
-        await LoginAsync(client, "manager@example.test");
+        using (var assignmentScope = factory.Services.CreateScope())
+        {
+            var context = assignmentScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var log = await context.MaintenanceLogs.SingleAsync(item => item.RequestId == id && item.NewStatus == "Approved");
+            Assert.Equal(9, log.ChangedBy);
+            Assert.Equal(1, await context.Notifications.CountAsync(n => n.UserId == 10 && n.Title == "Yêu cầu bảo trì #25 - Phòng A101 đã được duyệt"));
+            Assert.Equal(1, await context.Notifications.CountAsync(n => n.UserId == 7 && n.Title == "Bạn được giao yêu cầu bảo trì #25 - Phòng A101"));
+            Assert.Equal(0, await context.Notifications.CountAsync(n => n.UserId == 8 || n.UserId == 20));
+        }
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", customerToken);
+        var customerApproval = await client.GetFromJsonAsync<JsonElement>("/api/notifications");
+        Assert.Equal("Yêu cầu bảo trì #25 - Phòng A101 đã được duyệt", customerApproval[0].GetProperty("title").GetString());
+        var managerToken = await LoginAsync(client, "manager@example.test");
+        var managerNotifications = await client.GetFromJsonAsync<JsonElement>("/api/notifications");
+        Assert.Equal("Bạn được giao yêu cầu bảo trì #25 - Phòng A101", managerNotifications[0].GetProperty("title").GetString());
         using var form = ReportForm();
         foreach (var name in new[] { "ReportedBy", "ChangedBy", "ManagerId" }) form.Add(new StringContent("999"), name);
         form.Add(new StringContent("Pending"), "Status");
         var completion = await client.PostAsync($"/api/maintenance-requests/{id}/reports", form);
         Assert.Equal(HttpStatusCode.Created, completion.StatusCode);
+        Assert.Single((await client.GetFromJsonAsync<JsonElement>("/api/notifications")).EnumerateArray());
         var report = await completion.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(7, report.GetProperty("reportedBy").GetInt32());
         Assert.Equal(id, report.GetProperty("requestId").GetInt32());
         using var duplicate = ReportForm();
         Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync($"/api/maintenance-requests/{id}/reports", duplicate)).StatusCode);
         Assert.Equal(1, factory.Storage.UploadCount);
-        await LoginAsync(client, "admin@example.test");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+        var adminNotifications = await client.GetFromJsonAsync<JsonElement>("/api/notifications");
+        Assert.Contains(adminNotifications.EnumerateArray(), item => item.GetProperty("title").GetString() == "Yêu cầu bảo trì #25 - Phòng A101 đã được hoàn tất");
+        using (var completionScope = factory.Services.CreateScope())
+        {
+            var context = completionScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.Equal(1, await context.Notifications.CountAsync(n => n.UserId == 9 && n.Title == "Yêu cầu bảo trì #25 - Phòng A101 đã được hoàn tất"));
+            Assert.Equal(0, await context.Notifications.CountAsync(n =>
+                (n.UserId == 8 || n.UserId == 12 || n.UserId == 13) && n.Title == "Yêu cầu bảo trì #25 - Phòng A101 đã được hoàn tất"));
+        }
         var reviewed = await client.GetFromJsonAsync<JsonElement>($"/api/maintenance-requests/{id}/reports");
         Assert.Equal("Repaired and tested", reviewed.GetProperty("description").GetString());
         Assert.Equal("Manager A", reviewed.GetProperty("reportedByName").GetString());
         Assert.Equal(7, reviewed.GetProperty("reportedBy").GetInt32());
         Assert.True(reviewed.GetProperty("createdAt").GetDateTime() > DateTime.UtcNow.AddMinutes(-5));
         Assert.StartsWith("https://storage.test/", reviewed.GetProperty("images")[0].GetProperty("imageUrl").GetString());
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", customerToken);
+        var customerNotifications = await client.GetFromJsonAsync<JsonElement>("/api/notifications");
+        Assert.Equal(new[] { "Yêu cầu bảo trì #25 - Phòng A101 đã hoàn tất", "Yêu cầu bảo trì #25 - Phòng A101 đã được duyệt" },
+            customerNotifications.EnumerateArray().Select(item => item.GetProperty("title").GetString()));
+        Assert.DoesNotContain(customerNotifications.EnumerateArray(), item => item.GetProperty("title").GetString() == "Có yêu cầu bảo trì mới #25 - Phòng A101");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
         var logs = await client.GetFromJsonAsync<JsonElement>($"/api/maintenance-requests/{id}/logs");
         Assert.Equal(new[] { "Pending", "Approved", "Completed" }, logs.EnumerateArray().Select(l => l.GetProperty("newStatus").GetString()));
         Assert.Equal(new[] { 10, 9, 7 }, logs.EnumerateArray().Select(l => l.GetProperty("changedBy").GetInt32()));
@@ -258,9 +318,9 @@ public class MaintenanceFlowApiTests
         Assert.Equal("Pending", logs[1].GetProperty("oldStatus").GetString());
         Assert.Equal("Approved", logs[2].GetProperty("oldStatus").GetString());
         using var scope = factory.Services.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Assert.Equal("Completed", (await context.MaintenanceRequests.FindAsync(id))!.Status);
-        var stored = await context.MaintenanceReports.Include(r => r.Images).SingleAsync(r => r.RequestId == id);
+        var finalContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal("Completed", (await finalContext.MaintenanceRequests.FindAsync(id))!.Status);
+        var stored = await finalContext.MaintenanceReports.Include(r => r.Images).SingleAsync(r => r.RequestId == id);
         Assert.StartsWith($"maintenance/{id}/", Assert.Single(stored.Images).ImageUrl);
         Assert.DoesNotContain("https://", stored.Images.Single().ImageUrl);
     }
@@ -279,6 +339,79 @@ public class MaintenanceFlowApiTests
         Assert.Equal("Approved", (await context.MaintenanceRequests.FindAsync(1))!.Status);
         Assert.Empty(await context.MaintenanceReports.Where(r => r.RequestId == 1).ToListAsync());
         Assert.Empty(await context.MaintenanceLogs.ToListAsync());
+        Assert.Empty(await context.Notifications.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Notifications_are_filtered_to_current_user_and_support_current_schema_filters()
+    {
+        using var factory = new MaintenanceApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            context.Notifications.AddRange(
+                new Notifications { NotificationId = 51, UserId = 10, Title = "unread maintenance", Type = "Maintenance", IsRead = false },
+                new Notifications { NotificationId = 52, UserId = 10, Title = "read maintenance", Type = "Maintenance", IsRead = true },
+                new Notifications { NotificationId = 53, UserId = 10, Title = "payment", Type = "Payment", IsRead = false },
+                new Notifications { NotificationId = 54, UserId = 20, Title = "other user", Type = "Maintenance", IsRead = false });
+            await context.SaveChangesAsync();
+        }
+
+        await LoginAsync(client, "customer@example.test");
+        var notifications = await client.GetFromJsonAsync<JsonElement>("/api/notifications?isRead=false&type=Maintenance");
+        Assert.Equal(new[] { 51 }, notifications.EnumerateArray().Select(item => item.GetProperty("notificationId").GetInt32()));
+        var newestFirst = await client.GetFromJsonAsync<JsonElement>("/api/notifications?isRead=false");
+        Assert.Equal(new[] { 53, 51 }, newestFirst.EnumerateArray().Select(item => item.GetProperty("notificationId").GetInt32()));
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/api/notifications?isRead=invalid")).StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed,
+            (await client.PostAsJsonAsync("/api/notifications", new { userId = 20, title = "spoof", type = "Maintenance" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task User_can_update_only_own_notification_read_state()
+    {
+        using var factory = new MaintenanceApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            context.Notifications.AddRange(
+                new Notifications { NotificationId = 60, UserId = 10, Title = "original", Type = "Maintenance", IsRead = false },
+                new Notifications { NotificationId = 61, UserId = 20, Title = "other", Type = "Maintenance", IsRead = false });
+            await context.SaveChangesAsync();
+        }
+
+        await LoginAsync(client, "customer@example.test");
+        Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync("/api/notifications/60", new
+        { isRead = true, userId = 20, type = "Payment", title = "spoof", createdAt = "2026-01-01" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PatchAsJsonAsync("/api/notifications/60", new { })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PatchAsJsonAsync("/api/notifications/61", new { isRead = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PatchAsJsonAsync("/api/notifications/999", new { isRead = true })).StatusCode);
+
+        using var verification = factory.Services.CreateScope();
+        var stored = verification.ServiceProvider.GetRequiredService<AppDbContext>();
+        var own = await stored.Notifications.SingleAsync(item => item.NotificationId == 60);
+        Assert.True(own.IsRead);
+        Assert.Equal((10, "original", "Maintenance"), (own.UserId, own.Title, own.Type));
+        Assert.False((await stored.Notifications.SingleAsync(item => item.NotificationId == 61)).IsRead);
+    }
+
+    [Fact]
+    public async Task Completion_without_approval_log_falls_back_to_active_admins_only()
+    {
+        using var factory = new MaintenanceApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "manager@example.test");
+
+        using var form = ReportForm();
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsync("/api/maintenance-requests/1/reports", form)).StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(new[] { 9, 10, 12 }, await context.Notifications.OrderBy(item => item.UserId)
+            .Select(item => item.UserId).ToArrayAsync());
+        Assert.DoesNotContain(await context.Notifications.ToListAsync(), item => item.UserId == 7 || item.UserId == 13);
     }
 
     [Fact]
@@ -289,6 +422,7 @@ public class MaintenanceFlowApiTests
         await LoginAsync(client, "admin@example.test");
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/maintenance-requests/1/reports")).StatusCode);
         using var swagger = JsonDocument.Parse(await client.GetStringAsync("/swagger/v1/swagger.json"));
+        var schemas = swagger.RootElement.GetProperty("components").GetProperty("schemas");
         var tagNames = swagger.RootElement.GetProperty("tags").EnumerateArray()
             .Select(tag => tag.GetProperty("name").GetString()).ToArray();
         Assert.Equal(new[] { "HealthChecks", "Auth", "Users" }, tagNames.Take(3));
@@ -298,6 +432,15 @@ public class MaintenanceFlowApiTests
             foreach (var verb in verbs) Assert.True(paths.GetProperty(path).TryGetProperty(verb, out _));
         Assert.True(paths.TryGetProperty("/api/auth/login", out _));
         Assert.True(paths.TryGetProperty("/api/auth/register", out _));
+        Assert.True(paths.GetProperty("/api/notifications").TryGetProperty("get", out var notificationsGet));
+        Assert.True(paths.GetProperty("/api/notifications/{id}").TryGetProperty("patch", out var notificationsPatch));
+        Assert.False(paths.GetProperty("/api/notifications").TryGetProperty("post", out _));
+        Assert.True(notificationsGet.GetProperty("security")[0].TryGetProperty("Bearer", out _));
+        Assert.True(notificationsPatch.GetProperty("security")[0].TryGetProperty("Bearer", out _));
+        Assert.Equal(new[] { "isRead", "type" }, notificationsGet.GetProperty("parameters").EnumerateArray()
+            .Select(parameter => parameter.GetProperty("name").GetString()).OrderBy(name => name, StringComparer.Ordinal));
+        Assert.Equal(new[] { "isRead" }, schemas.GetProperty("UpdateNotificationDto").GetProperty("properties")
+            .EnumerateObject().Select(property => property.Name));
         Assert.False(swagger.RootElement.TryGetProperty("security", out var globalSecurity) && globalSecurity.GetArrayLength() > 0);
         var bearerScheme = swagger.RootElement.GetProperty("components").GetProperty("securitySchemes").GetProperty("Bearer");
         Assert.Equal("http", bearerScheme.GetProperty("type").GetString());
@@ -307,7 +450,6 @@ public class MaintenanceFlowApiTests
         Assert.False(paths.GetProperty("/api/auth/login").GetProperty("post").TryGetProperty("security", out var loginSecurity) && loginSecurity.GetArrayLength() > 0);
         var properties = paths.GetProperty("/api/maintenance-requests/{id}/reports").GetProperty("post").GetProperty("requestBody").GetProperty("content").GetProperty("multipart/form-data").GetProperty("schema").GetProperty("properties");
         Assert.Equal(new[] { "Description", "Images" }, properties.EnumerateObject().Select(p => p.Name));
-        var schemas = swagger.RootElement.GetProperty("components").GetProperty("schemas");
         Assert.Equal(new[] { "assignedTo" }, schemas.GetProperty("UpdateMaintenanceRequestDto").GetProperty("properties").EnumerateObject().Select(p => p.Name));
         Assert.False(schemas.GetProperty("CreateMaintenanceRequestDto").GetProperty("properties").TryGetProperty("customerId", out _));
     }
@@ -388,12 +530,14 @@ public class MaintenanceFlowApiTests
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/maintenance-requests/1/reports")).StatusCode);
     }
 
-    private static async Task LoginAsync(HttpClient client, string email)
+    private static async Task<string> LoginAsync(HttpClient client, string email)
     {
         using var response = await client.PostAsJsonAsync("/api/auth/login", new { email, password = Password });
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body.GetProperty("accessToken").GetString());
+        var token = body.GetProperty("accessToken").GetString()!;
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return token;
     }
 
     private static MultipartFormDataContent ReportForm(string description = "Repaired and tested", int count = 1, string type = "image/png", byte[]? bytes = null)
@@ -439,10 +583,10 @@ internal sealed class MaintenanceApiFactory : WebApplicationFactory<MaintenanceR
         context.Database.EnsureCreated();
         var hash = BCrypt.Net.BCrypt.HashPassword(MaintenanceFlowApiTests.Password, workFactor: 4);
         context.Roles.AddRange(new Roles { RoleId = 1, RoleName = "Customer" }, new Roles { RoleId = 2, RoleName = "Manager" }, new Roles { RoleId = 3, RoleName = "Admin" });
-        context.Users.AddRange(User(10, 1, "Customer A", "customer@example.test", hash), User(20, 1, "Customer B", "other@example.test", hash), User(7, 2, "Manager A", "manager@example.test", hash), User(8, 2, "Manager B", "manager-b@example.test", hash), User(9, 3, "Admin", "admin@example.test", hash), User(11, 2, "Inactive", "inactive@example.test", hash, false));
+        context.Users.AddRange(User(10, 1, "Customer A", "customer@example.test", hash), User(20, 1, "Customer B", "other@example.test", hash), User(7, 2, "Manager A", "manager@example.test", hash), User(8, 2, "Manager B", "manager-b@example.test", hash), User(9, 3, "Admin", "admin@example.test", hash), User(11, 2, "Inactive Manager", "inactive@example.test", hash, false), User(12, 3, "Admin B", "admin-b@example.test", hash), User(13, 3, "Inactive Admin", "inactive-admin@example.test", hash, false));
         context.Properties.Add(new Property { PropertyId = 1, OwnerId = 7 });
         context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio" });
-        context.Rooms.AddRange(new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A-1" }, new Rooms { RoomId = 2, PropertyId = 1, RoomTypeId = 1, RoomCode = "A-2" });
+        context.Rooms.AddRange(new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A101" }, new Rooms { RoomId = 2, PropertyId = 1, RoomTypeId = 1, RoomCode = "A202" });
         context.Contracts.AddRange(Contract(1, 10, 1), Contract(2, 20, 2));
         context.MaintenanceRequests.AddRange(Request(1, 1, 7, "Approved"), Request(2, 2, 8, "Approved"), Request(3, 1, null, "Pending"), Request(4, 1, 7, "Completed"));
         context.MaintenanceReports.Add(new MaintenanceReports { ReportId = 1, RequestId = 4, ReportedBy = 7, Description = "Existing report", CreatedAt = DateTime.UtcNow, Images = [new MaintenanceReportImages { ImageUrl = "maintenance/4/existing.png" }] });

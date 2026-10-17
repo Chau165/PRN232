@@ -28,6 +28,7 @@ public class MaintenanceServiceTests
         Assert.Equal(1, repository.AddCount);
         Assert.Equal((null, "Pending", 42),
             (Assert.Single(repository.Logs).OldStatus, repository.Logs[0].NewStatus, repository.Logs[0].ChangedBy));
+        Assert.Equal("Có yêu cầu bảo trì mới #1 - Phòng A-12", Assert.Single(repository.GeneratedNotifications).Title);
     }
 
     [Fact]
@@ -126,7 +127,7 @@ public class MaintenanceServiceTests
         var storage = new FakeImageStorage();
 
         await Assert.ThrowsAsync<MaintenanceAuthorizationException>(() =>
-            new MaintenanceService(repository, storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
+            new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
                 .CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager));
         Assert.Equal(0, storage.UploadCount);
     }
@@ -140,7 +141,7 @@ public class MaintenanceServiceTests
         var storage = new FakeImageStorage();
 
         await Assert.ThrowsAsync<MaintenanceStatusTransitionException>(() =>
-            new MaintenanceService(repository, storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
+            new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
                 .CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager));
         Assert.Equal(0, storage.UploadCount);
     }
@@ -149,7 +150,7 @@ public class MaintenanceServiceTests
     public async Task CreateReportAsync_requires_description_and_at_least_one_image()
     {
         var repository = ValidRequest("Approved", assignedTo: 7);
-        var service = new MaintenanceService(repository, new FakeImageStorage(), new FixedTimeProvider(DateTimeOffset.UtcNow));
+        var service = new MaintenanceService(repository, new FakeNotificationService(), new FakeImageStorage(), new FixedTimeProvider(DateTimeOffset.UtcNow));
 
         await Assert.ThrowsAsync<MaintenanceBusinessRuleException>(() =>
             service.CreateReportAsync(1, new CreateMaintenanceReportDto(" ", ValidReportInput().Images), 7, RoleNames.Manager));
@@ -165,7 +166,7 @@ public class MaintenanceServiceTests
         var invalidImage = new MaintenanceReportImageInput("payload.jpg", "image/jpeg", [0, 1, 2]);
 
         await Assert.ThrowsAsync<MaintenanceBusinessRuleException>(() =>
-            new MaintenanceService(repository, storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
+            new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
                 .CreateReportAsync(1, new CreateMaintenanceReportDto("Done", [invalidImage]), 7, RoleNames.Manager));
         Assert.Equal(0, storage.UploadCount);
         Assert.Equal("Approved", repository.State!.Status);
@@ -191,7 +192,7 @@ public class MaintenanceServiceTests
     {
         var repository = ValidRequest("Approved", assignedTo: 7);
         var storage = new FakeImageStorage();
-        var service = new MaintenanceService(repository, storage, new FixedTimeProvider(DateTimeOffset.UtcNow));
+        var service = new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow));
 
         var report = await service.CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager);
 
@@ -212,7 +213,7 @@ public class MaintenanceServiceTests
         var storage = new FakeImageStorage();
 
         await Assert.ThrowsAsync<MaintenanceStatusTransitionException>(() =>
-            new MaintenanceService(repository, storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
+            new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
                 .CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager));
         Assert.Equal(1, storage.UploadCount);
         Assert.Equal(1, storage.DeleteCount);
@@ -228,7 +229,7 @@ public class MaintenanceServiceTests
         var storage = new FakeImageStorage();
 
         await Assert.ThrowsAsync<MaintenanceStatusTransitionException>(() =>
-            new MaintenanceService(repository, storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
+            new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
                 .CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager));
         Assert.Equal(0, storage.UploadCount);
     }
@@ -240,7 +241,7 @@ public class MaintenanceServiceTests
         var storage = new FakeImageStorage { FailUpload = true };
 
         await Assert.ThrowsAsync<HttpRequestException>(() =>
-            new MaintenanceService(repository, storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
+            new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
                 .CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager));
         Assert.Equal("Approved", repository.State!.Status);
         Assert.Empty(repository.Logs);
@@ -251,7 +252,7 @@ public class MaintenanceServiceTests
     {
         var repository = ValidRequest("Completed", assignedTo: 7);
         repository.SeedReport();
-        var service = new MaintenanceService(repository, new FakeImageStorage(), new FixedTimeProvider(DateTimeOffset.UtcNow));
+        var service = new MaintenanceService(repository, new FakeNotificationService(), new FakeImageStorage(), new FixedTimeProvider(DateTimeOffset.UtcNow));
 
         var report = await service.GetReportAsync(1, RoleNames.Admin);
 
@@ -559,7 +560,7 @@ public class MaintenanceServiceTests
     }
 
     private static MaintenanceService CreateService(FakeMaintenanceRepository repository) =>
-        new(repository, new FakeImageStorage(), new FixedTimeProvider(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero)));
+        new(repository, new FakeNotificationService(), new FakeImageStorage(), new FixedTimeProvider(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero)));
 
     private static FakeMaintenanceRepository ValidRequest(string status, int? assignedTo) => new()
     {
@@ -569,7 +570,25 @@ public class MaintenanceServiceTests
     };
 
     private static MaintenanceContractDto ValidContract(DateOnly start, DateOnly end) =>
-        new(10, 12, 42, start, end, "Unfinalized status");
+        new(10, 12, "A-12", 42, start, end, "Unfinalized status");
+
+    private sealed class FakeNotificationService : INotificationService
+    {
+        public Task<List<NotificationDto>> GetAllAsync(int userId, bool? isRead, string? type) =>
+            Task.FromResult(new List<NotificationDto>());
+
+        public Task UpdateReadStateAsync(int id, int userId, bool? isRead) => Task.CompletedTask;
+
+        public Task<List<int>> GetActiveAdminUserIdsAsync() => Task.FromResult(new List<int> { 99 });
+
+        public IReadOnlyList<Notifications> BuildMaintenanceNotifications(IEnumerable<int> userIds, string title) =>
+            userIds.Distinct().Select(userId => new Notifications
+            {
+                UserId = userId,
+                Title = title,
+                Type = NotificationTypes.Maintenance
+            }).ToList();
+    }
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
@@ -585,6 +604,7 @@ public class MaintenanceServiceTests
         public Dictionary<int, int> EquipmentRooms { get; } = new();
         public Dictionary<int, MaintenanceUserAssignmentDto> ActiveUsers { get; } = new();
         public List<MaintenanceLogDto> Logs { get; } = new();
+        public List<Notifications> GeneratedNotifications { get; } = new();
         public int AddCount { get; private set; }
         public int AtomicUpdateCount { get; private set; }
         public bool FailAtomicUpdate { get; set; }
@@ -618,7 +638,10 @@ public class MaintenanceServiceTests
         public Task<MaintenanceUserAssignmentDto?> GetUserAssignmentAsync(int userId) =>
             Task.FromResult(ActiveUsers.TryGetValue(userId, out var assignment) ? assignment : null);
 
-        public Task<MaintenanceRequests> AddWithInitialLogAsync(MaintenanceRequests request, MaintenanceLogs log)
+        public Task<MaintenanceRequests> AddWithInitialLogAsync(
+            MaintenanceRequests request,
+            MaintenanceLogs log,
+            Func<int, IReadOnlyCollection<Notifications>> notificationsFactory)
         {
             request.RequestId = _nextId++;
             State = new MaintenanceRequestStateDto(request.RequestId, request.ContractId, request.EquipmentId,
@@ -626,11 +649,12 @@ public class MaintenanceServiceTests
             AddCount++;
             Logs.Add(new MaintenanceLogDto(Logs.Count + 1, request.RequestId, log.OldStatus, log.NewStatus,
                 log.ChangedBy, null, log.ChangedAt));
+            GeneratedNotifications.AddRange(notificationsFactory(request.RequestId));
             return Task.FromResult(request);
         }
 
         public Task<bool> UpdateStatusAndAddLogAsync(int requestId, string expectedStatus, string status,
-            int? assignedTo, int? changedBy, DateTime changedAt)
+            int? assignedTo, int? changedBy, DateTime changedAt, IReadOnlyCollection<Notifications>? notifications = null)
         {
             if (FailAtomicUpdate)
             {
@@ -657,13 +681,15 @@ public class MaintenanceServiceTests
                             (!assignedManagerId.HasValue || assignedManagerId == State?.AssignedTo)
                 ? Logs.OrderBy(x => x.ChangedAt).ThenBy(x => x.LogId).ToList() : null);
 
+        public Task<int?> GetApprovingAdminIdAsync(int requestId) => Task.FromResult<int?>(9);
+
         public Task<MaintenanceReportDto?> GetReportAsync(int requestId) => Task.FromResult<MaintenanceReportDto?>(SavedReport is null || SavedReport.RequestId != requestId
             ? null
             : new MaintenanceReportDto(SavedReport.ReportId, SavedReport.RequestId, SavedReport.Description,
                 SavedReport.ReportedBy, "Manager", SavedReport.CreatedAt,
                 SavedReport.Images.Select((image, index) => new MaintenanceReportImageDto(index + 1, image.ImageUrl)).ToList()));
         public Task<bool> ReportExistsAsync(int requestId) => Task.FromResult(SavedReport?.RequestId == requestId);
-        public Task<bool> CompleteWithReportAsync(int requestId, MaintenanceReports report, int changedBy, DateTime changedAt)
+        public Task<bool> CompleteWithReportAsync(int requestId, MaintenanceReports report, int changedBy, DateTime changedAt, IReadOnlyCollection<Notifications>? notifications = null)
         {
             if (FailReportCompletion || State?.RequestId != requestId || State.Status != "Approved") return Task.FromResult(false);
             report.ReportId = 1;

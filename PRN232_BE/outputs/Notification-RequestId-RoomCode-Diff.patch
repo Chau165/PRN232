@@ -1,0 +1,1005 @@
+diff --git a/PRN232_BE/PRN232.Api/Program.cs b/PRN232_BE/PRN232.Api/Program.cs
+index db40781..85852fc 100644
+--- a/PRN232_BE/PRN232.Api/Program.cs
++++ b/PRN232_BE/PRN232.Api/Program.cs
+@@ -93,6 +93,8 @@ builder.Services.AddScoped<IRoleRepository, RoleRepository>();
+ builder.Services.AddScoped<IRoleService, RoleService>();
+ builder.Services.AddScoped<IMaintenanceRepository, MaintenanceRepository>();
+ builder.Services.AddScoped<IMaintenanceService, MaintenanceService>();
++builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
++builder.Services.AddScoped<INotificationService, NotificationService>();
+ builder.Services.AddHttpClient<IMaintenanceReportImageStorage, SupabaseMaintenanceReportImageStorage>();
+ builder.Services.AddHttpContextAccessor();
+ builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+diff --git a/PRN232_BE/PRN232.Application.Tests/MaintenanceFlowApiTests.cs b/PRN232_BE/PRN232.Application.Tests/MaintenanceFlowApiTests.cs
+index 33f4f57..17debfd 100644
+--- a/PRN232_BE/PRN232.Application.Tests/MaintenanceFlowApiTests.cs
++++ b/PRN232_BE/PRN232.Application.Tests/MaintenanceFlowApiTests.cs
+@@ -29,6 +29,8 @@ public class MaintenanceFlowApiTests
+     [InlineData("POST", "/api/maintenance-requests")]
+     [InlineData("PATCH", "/api/maintenance-requests/1")]
+     [InlineData("POST", "/api/maintenance-requests/1/reports")]
++    [InlineData("GET", "/api/notifications")]
++    [InlineData("PATCH", "/api/notifications/1")]
+     public async Task Anonymous_writes_and_reports_require_authentication(string method, string path)
+     {
+         using var factory = new MaintenanceApiFactory();
+@@ -222,35 +224,93 @@ public class MaintenanceFlowApiTests
+     {
+         using var factory = new MaintenanceApiFactory();
+         using var client = factory.CreateClient();
+-        await LoginAsync(client, "customer@example.test");
++        using (var seedScope = factory.Services.CreateScope())
++        {
++            var context = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
++            context.MaintenanceRequests.Add(new MaintenanceRequests
++            {
++                RequestId = 24, ContractId = 2, Description = "Other room request", Status = "Pending"
++            });
++            await context.SaveChangesAsync();
++        }
++        var customerToken = await LoginAsync(client, "customer@example.test");
+         var created = await client.PostAsJsonAsync("/api/maintenance-requests", new { contractId = 1, description = "Leaking faucet" });
+         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+         var id = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("requestId").GetInt32();
+-        await LoginAsync(client, "admin@example.test");
++        Assert.Equal(25, id);
++        Assert.Empty((await client.GetFromJsonAsync<JsonElement>("/api/notifications")).EnumerateArray());
++        using (var createScope = factory.Services.CreateScope())
++        {
++            var context = createScope.ServiceProvider.GetRequiredService<AppDbContext>();
++            Assert.Equal(2, await context.Notifications.CountAsync(n => n.Type == "Maintenance"));
++            Assert.Equal(1, await context.Notifications.CountAsync(n => n.UserId == 9));
++            Assert.Equal(1, await context.Notifications.CountAsync(n => n.UserId == 12));
++            Assert.Equal(0, await context.Notifications.CountAsync(n => n.UserId == 10 || n.UserId == 13));
++        }
++        var adminToken = await LoginAsync(client, "admin@example.test");
++        var createdNotifications = await client.GetFromJsonAsync<JsonElement>("/api/notifications");
++        Assert.Equal("Có yêu cầu bảo trì mới #25 - Phòng A101", createdNotifications[0].GetProperty("title").GetString());
++        Assert.Equal("Maintenance", createdNotifications[0].GetProperty("type").GetString());
++        Assert.False(createdNotifications[0].GetProperty("isRead").GetBoolean());
++        Assert.False(createdNotifications[0].TryGetProperty("createdAt", out _));
++        Assert.Equal(HttpStatusCode.MethodNotAllowed,
++            (await client.PostAsJsonAsync("/api/notifications", new { userId = 10, title = "spoof", type = "Maintenance" })).StatusCode);
++        Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync(
++            $"/api/notifications/{createdNotifications[0].GetProperty("notificationId").GetInt32()}", new { isRead = true })).StatusCode);
+         var assigned = await client.PatchAsJsonAsync($"/api/maintenance-requests/{id}", new { assignedTo = 7, status = "Completed", changedBy = 999 });
+         Assert.Equal(HttpStatusCode.OK, assigned.StatusCode);
+         var assignment = await assigned.Content.ReadFromJsonAsync<JsonElement>();
+         Assert.Equal("Approved", assignment.GetProperty("status").GetString());
+         Assert.Equal(7, assignment.GetProperty("assignedTo").GetInt32());
+-        await LoginAsync(client, "manager@example.test");
++        using (var assignmentScope = factory.Services.CreateScope())
++        {
++            var context = assignmentScope.ServiceProvider.GetRequiredService<AppDbContext>();
++            var log = await context.MaintenanceLogs.SingleAsync(item => item.RequestId == id && item.NewStatus == "Approved");
++            Assert.Equal(9, log.ChangedBy);
++            Assert.Equal(1, await context.Notifications.CountAsync(n => n.UserId == 10 && n.Title == "Yêu cầu bảo trì #25 - Phòng A101 đã được duyệt"));
++            Assert.Equal(1, await context.Notifications.CountAsync(n => n.UserId == 7 && n.Title == "Bạn được giao yêu cầu bảo trì #25 - Phòng A101"));
++            Assert.Equal(0, await context.Notifications.CountAsync(n => n.UserId == 8 || n.UserId == 20));
++        }
++        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", customerToken);
++        var customerApproval = await client.GetFromJsonAsync<JsonElement>("/api/notifications");
++        Assert.Equal("Yêu cầu bảo trì #25 - Phòng A101 đã được duyệt", customerApproval[0].GetProperty("title").GetString());
++        var managerToken = await LoginAsync(client, "manager@example.test");
++        var managerNotifications = await client.GetFromJsonAsync<JsonElement>("/api/notifications");
++        Assert.Equal("Bạn được giao yêu cầu bảo trì #25 - Phòng A101", managerNotifications[0].GetProperty("title").GetString());
+         using var form = ReportForm();
+         foreach (var name in new[] { "ReportedBy", "ChangedBy", "ManagerId" }) form.Add(new StringContent("999"), name);
+         form.Add(new StringContent("Pending"), "Status");
+         var completion = await client.PostAsync($"/api/maintenance-requests/{id}/reports", form);
+         Assert.Equal(HttpStatusCode.Created, completion.StatusCode);
++        Assert.Single((await client.GetFromJsonAsync<JsonElement>("/api/notifications")).EnumerateArray());
+         var report = await completion.Content.ReadFromJsonAsync<JsonElement>();
+         Assert.Equal(7, report.GetProperty("reportedBy").GetInt32());
+         Assert.Equal(id, report.GetProperty("requestId").GetInt32());
+         using var duplicate = ReportForm();
+         Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync($"/api/maintenance-requests/{id}/reports", duplicate)).StatusCode);
+         Assert.Equal(1, factory.Storage.UploadCount);
+-        await LoginAsync(client, "admin@example.test");
++        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
++        var adminNotifications = await client.GetFromJsonAsync<JsonElement>("/api/notifications");
++        Assert.Contains(adminNotifications.EnumerateArray(), item => item.GetProperty("title").GetString() == "Yêu cầu bảo trì #25 - Phòng A101 đã được hoàn tất");
++        using (var completionScope = factory.Services.CreateScope())
++        {
++            var context = completionScope.ServiceProvider.GetRequiredService<AppDbContext>();
++            Assert.Equal(1, await context.Notifications.CountAsync(n => n.UserId == 9 && n.Title == "Yêu cầu bảo trì #25 - Phòng A101 đã được hoàn tất"));
++            Assert.Equal(0, await context.Notifications.CountAsync(n =>
++                (n.UserId == 8 || n.UserId == 12 || n.UserId == 13) && n.Title == "Yêu cầu bảo trì #25 - Phòng A101 đã được hoàn tất"));
++        }
+         var reviewed = await client.GetFromJsonAsync<JsonElement>($"/api/maintenance-requests/{id}/reports");
+         Assert.Equal("Repaired and tested", reviewed.GetProperty("description").GetString());
+         Assert.Equal("Manager A", reviewed.GetProperty("reportedByName").GetString());
+         Assert.Equal(7, reviewed.GetProperty("reportedBy").GetInt32());
+         Assert.True(reviewed.GetProperty("createdAt").GetDateTime() > DateTime.UtcNow.AddMinutes(-5));
+         Assert.StartsWith("https://storage.test/", reviewed.GetProperty("images")[0].GetProperty("imageUrl").GetString());
++        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", customerToken);
++        var customerNotifications = await client.GetFromJsonAsync<JsonElement>("/api/notifications");
++        Assert.Equal(new[] { "Yêu cầu bảo trì #25 - Phòng A101 đã hoàn tất", "Yêu cầu bảo trì #25 - Phòng A101 đã được duyệt" },
++            customerNotifications.EnumerateArray().Select(item => item.GetProperty("title").GetString()));
++        Assert.DoesNotContain(customerNotifications.EnumerateArray(), item => item.GetProperty("title").GetString() == "Có yêu cầu bảo trì mới #25 - Phòng A101");
++        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+         var logs = await client.GetFromJsonAsync<JsonElement>($"/api/maintenance-requests/{id}/logs");
+         Assert.Equal(new[] { "Pending", "Approved", "Completed" }, logs.EnumerateArray().Select(l => l.GetProperty("newStatus").GetString()));
+         Assert.Equal(new[] { 10, 9, 7 }, logs.EnumerateArray().Select(l => l.GetProperty("changedBy").GetInt32()));
+@@ -258,9 +318,9 @@ public class MaintenanceFlowApiTests
+         Assert.Equal("Pending", logs[1].GetProperty("oldStatus").GetString());
+         Assert.Equal("Approved", logs[2].GetProperty("oldStatus").GetString());
+         using var scope = factory.Services.CreateScope();
+-        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+-        Assert.Equal("Completed", (await context.MaintenanceRequests.FindAsync(id))!.Status);
+-        var stored = await context.MaintenanceReports.Include(r => r.Images).SingleAsync(r => r.RequestId == id);
++        var finalContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
++        Assert.Equal("Completed", (await finalContext.MaintenanceRequests.FindAsync(id))!.Status);
++        var stored = await finalContext.MaintenanceReports.Include(r => r.Images).SingleAsync(r => r.RequestId == id);
+         Assert.StartsWith($"maintenance/{id}/", Assert.Single(stored.Images).ImageUrl);
+         Assert.DoesNotContain("https://", stored.Images.Single().ImageUrl);
+     }
+@@ -279,6 +339,79 @@ public class MaintenanceFlowApiTests
+         Assert.Equal("Approved", (await context.MaintenanceRequests.FindAsync(1))!.Status);
+         Assert.Empty(await context.MaintenanceReports.Where(r => r.RequestId == 1).ToListAsync());
+         Assert.Empty(await context.MaintenanceLogs.ToListAsync());
++        Assert.Empty(await context.Notifications.ToListAsync());
++    }
++
++    [Fact]
++    public async Task Notifications_are_filtered_to_current_user_and_support_current_schema_filters()
++    {
++        using var factory = new MaintenanceApiFactory();
++        using var client = factory.CreateClient();
++        using (var scope = factory.Services.CreateScope())
++        {
++            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
++            context.Notifications.AddRange(
++                new Notifications { NotificationId = 51, UserId = 10, Title = "unread maintenance", Type = "Maintenance", IsRead = false },
++                new Notifications { NotificationId = 52, UserId = 10, Title = "read maintenance", Type = "Maintenance", IsRead = true },
++                new Notifications { NotificationId = 53, UserId = 10, Title = "payment", Type = "Payment", IsRead = false },
++                new Notifications { NotificationId = 54, UserId = 20, Title = "other user", Type = "Maintenance", IsRead = false });
++            await context.SaveChangesAsync();
++        }
++
++        await LoginAsync(client, "customer@example.test");
++        var notifications = await client.GetFromJsonAsync<JsonElement>("/api/notifications?isRead=false&type=Maintenance");
++        Assert.Equal(new[] { 51 }, notifications.EnumerateArray().Select(item => item.GetProperty("notificationId").GetInt32()));
++        var newestFirst = await client.GetFromJsonAsync<JsonElement>("/api/notifications?isRead=false");
++        Assert.Equal(new[] { 53, 51 }, newestFirst.EnumerateArray().Select(item => item.GetProperty("notificationId").GetInt32()));
++        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/api/notifications?isRead=invalid")).StatusCode);
++        Assert.Equal(HttpStatusCode.MethodNotAllowed,
++            (await client.PostAsJsonAsync("/api/notifications", new { userId = 20, title = "spoof", type = "Maintenance" })).StatusCode);
++    }
++
++    [Fact]
++    public async Task User_can_update_only_own_notification_read_state()
++    {
++        using var factory = new MaintenanceApiFactory();
++        using var client = factory.CreateClient();
++        using (var scope = factory.Services.CreateScope())
++        {
++            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
++            context.Notifications.AddRange(
++                new Notifications { NotificationId = 60, UserId = 10, Title = "original", Type = "Maintenance", IsRead = false },
++                new Notifications { NotificationId = 61, UserId = 20, Title = "other", Type = "Maintenance", IsRead = false });
++            await context.SaveChangesAsync();
++        }
++
++        await LoginAsync(client, "customer@example.test");
++        Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync("/api/notifications/60", new
++        { isRead = true, userId = 20, type = "Payment", title = "spoof", createdAt = "2026-01-01" })).StatusCode);
++        Assert.Equal(HttpStatusCode.BadRequest, (await client.PatchAsJsonAsync("/api/notifications/60", new { })).StatusCode);
++        Assert.Equal(HttpStatusCode.Forbidden, (await client.PatchAsJsonAsync("/api/notifications/61", new { isRead = true })).StatusCode);
++        Assert.Equal(HttpStatusCode.NotFound, (await client.PatchAsJsonAsync("/api/notifications/999", new { isRead = true })).StatusCode);
++
++        using var verification = factory.Services.CreateScope();
++        var stored = verification.ServiceProvider.GetRequiredService<AppDbContext>();
++        var own = await stored.Notifications.SingleAsync(item => item.NotificationId == 60);
++        Assert.True(own.IsRead);
++        Assert.Equal((10, "original", "Maintenance"), (own.UserId, own.Title, own.Type));
++        Assert.False((await stored.Notifications.SingleAsync(item => item.NotificationId == 61)).IsRead);
++    }
++
++    [Fact]
++    public async Task Completion_without_approval_log_falls_back_to_active_admins_only()
++    {
++        using var factory = new MaintenanceApiFactory();
++        using var client = factory.CreateClient();
++        await LoginAsync(client, "manager@example.test");
++
++        using var form = ReportForm();
++        Assert.Equal(HttpStatusCode.Created, (await client.PostAsync("/api/maintenance-requests/1/reports", form)).StatusCode);
++
++        using var scope = factory.Services.CreateScope();
++        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
++        Assert.Equal(new[] { 9, 10, 12 }, await context.Notifications.OrderBy(item => item.UserId)
++            .Select(item => item.UserId).ToArrayAsync());
++        Assert.DoesNotContain(await context.Notifications.ToListAsync(), item => item.UserId == 7 || item.UserId == 13);
+     }
+ 
+     [Fact]
+@@ -289,6 +422,7 @@ public class MaintenanceFlowApiTests
+         await LoginAsync(client, "admin@example.test");
+         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/maintenance-requests/1/reports")).StatusCode);
+         using var swagger = JsonDocument.Parse(await client.GetStringAsync("/swagger/v1/swagger.json"));
++        var schemas = swagger.RootElement.GetProperty("components").GetProperty("schemas");
+         var tagNames = swagger.RootElement.GetProperty("tags").EnumerateArray()
+             .Select(tag => tag.GetProperty("name").GetString()).ToArray();
+         Assert.Equal(new[] { "HealthChecks", "Auth", "Users" }, tagNames.Take(3));
+@@ -298,6 +432,15 @@ public class MaintenanceFlowApiTests
+             foreach (var verb in verbs) Assert.True(paths.GetProperty(path).TryGetProperty(verb, out _));
+         Assert.True(paths.TryGetProperty("/api/auth/login", out _));
+         Assert.True(paths.TryGetProperty("/api/auth/register", out _));
++        Assert.True(paths.GetProperty("/api/notifications").TryGetProperty("get", out var notificationsGet));
++        Assert.True(paths.GetProperty("/api/notifications/{id}").TryGetProperty("patch", out var notificationsPatch));
++        Assert.False(paths.GetProperty("/api/notifications").TryGetProperty("post", out _));
++        Assert.True(notificationsGet.GetProperty("security")[0].TryGetProperty("Bearer", out _));
++        Assert.True(notificationsPatch.GetProperty("security")[0].TryGetProperty("Bearer", out _));
++        Assert.Equal(new[] { "isRead", "type" }, notificationsGet.GetProperty("parameters").EnumerateArray()
++            .Select(parameter => parameter.GetProperty("name").GetString()).OrderBy(name => name, StringComparer.Ordinal));
++        Assert.Equal(new[] { "isRead" }, schemas.GetProperty("UpdateNotificationDto").GetProperty("properties")
++            .EnumerateObject().Select(property => property.Name));
+         Assert.False(swagger.RootElement.TryGetProperty("security", out var globalSecurity) && globalSecurity.GetArrayLength() > 0);
+         var bearerScheme = swagger.RootElement.GetProperty("components").GetProperty("securitySchemes").GetProperty("Bearer");
+         Assert.Equal("http", bearerScheme.GetProperty("type").GetString());
+@@ -307,7 +450,6 @@ public class MaintenanceFlowApiTests
+         Assert.False(paths.GetProperty("/api/auth/login").GetProperty("post").TryGetProperty("security", out var loginSecurity) && loginSecurity.GetArrayLength() > 0);
+         var properties = paths.GetProperty("/api/maintenance-requests/{id}/reports").GetProperty("post").GetProperty("requestBody").GetProperty("content").GetProperty("multipart/form-data").GetProperty("schema").GetProperty("properties");
+         Assert.Equal(new[] { "Description", "Images" }, properties.EnumerateObject().Select(p => p.Name));
+-        var schemas = swagger.RootElement.GetProperty("components").GetProperty("schemas");
+         Assert.Equal(new[] { "assignedTo" }, schemas.GetProperty("UpdateMaintenanceRequestDto").GetProperty("properties").EnumerateObject().Select(p => p.Name));
+         Assert.False(schemas.GetProperty("CreateMaintenanceRequestDto").GetProperty("properties").TryGetProperty("customerId", out _));
+     }
+@@ -388,12 +530,14 @@ public class MaintenanceFlowApiTests
+         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/maintenance-requests/1/reports")).StatusCode);
+     }
+ 
+-    private static async Task LoginAsync(HttpClient client, string email)
++    private static async Task<string> LoginAsync(HttpClient client, string email)
+     {
+         using var response = await client.PostAsJsonAsync("/api/auth/login", new { email, password = Password });
+         response.EnsureSuccessStatusCode();
+         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body.GetProperty("accessToken").GetString());
++        var token = body.GetProperty("accessToken").GetString()!;
++        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
++        return token;
+     }
+ 
+     private static MultipartFormDataContent ReportForm(string description = "Repaired and tested", int count = 1, string type = "image/png", byte[]? bytes = null)
+@@ -439,10 +583,10 @@ internal sealed class MaintenanceApiFactory : WebApplicationFactory<MaintenanceR
+         context.Database.EnsureCreated();
+         var hash = BCrypt.Net.BCrypt.HashPassword(MaintenanceFlowApiTests.Password, workFactor: 4);
+         context.Roles.AddRange(new Roles { RoleId = 1, RoleName = "Customer" }, new Roles { RoleId = 2, RoleName = "Manager" }, new Roles { RoleId = 3, RoleName = "Admin" });
+-        context.Users.AddRange(User(10, 1, "Customer A", "customer@example.test", hash), User(20, 1, "Customer B", "other@example.test", hash), User(7, 2, "Manager A", "manager@example.test", hash), User(8, 2, "Manager B", "manager-b@example.test", hash), User(9, 3, "Admin", "admin@example.test", hash), User(11, 2, "Inactive", "inactive@example.test", hash, false));
++        context.Users.AddRange(User(10, 1, "Customer A", "customer@example.test", hash), User(20, 1, "Customer B", "other@example.test", hash), User(7, 2, "Manager A", "manager@example.test", hash), User(8, 2, "Manager B", "manager-b@example.test", hash), User(9, 3, "Admin", "admin@example.test", hash), User(11, 2, "Inactive Manager", "inactive@example.test", hash, false), User(12, 3, "Admin B", "admin-b@example.test", hash), User(13, 3, "Inactive Admin", "inactive-admin@example.test", hash, false));
+         context.Properties.Add(new Property { PropertyId = 1, OwnerId = 7 });
+         context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio" });
+-        context.Rooms.AddRange(new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A-1" }, new Rooms { RoomId = 2, PropertyId = 1, RoomTypeId = 1, RoomCode = "A-2" });
++        context.Rooms.AddRange(new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A101" }, new Rooms { RoomId = 2, PropertyId = 1, RoomTypeId = 1, RoomCode = "A202" });
+         context.Contracts.AddRange(Contract(1, 10, 1), Contract(2, 20, 2));
+         context.MaintenanceRequests.AddRange(Request(1, 1, 7, "Approved"), Request(2, 2, 8, "Approved"), Request(3, 1, null, "Pending"), Request(4, 1, 7, "Completed"));
+         context.MaintenanceReports.Add(new MaintenanceReports { ReportId = 1, RequestId = 4, ReportedBy = 7, Description = "Existing report", CreatedAt = DateTime.UtcNow, Images = [new MaintenanceReportImages { ImageUrl = "maintenance/4/existing.png" }] });
+diff --git a/PRN232_BE/PRN232.Application.Tests/MaintenanceServiceTests.cs b/PRN232_BE/PRN232.Application.Tests/MaintenanceServiceTests.cs
+index f5e55bf..c9ca34d 100644
+--- a/PRN232_BE/PRN232.Application.Tests/MaintenanceServiceTests.cs
++++ b/PRN232_BE/PRN232.Application.Tests/MaintenanceServiceTests.cs
+@@ -28,6 +28,7 @@ public class MaintenanceServiceTests
+         Assert.Equal(1, repository.AddCount);
+         Assert.Equal((null, "Pending", 42),
+             (Assert.Single(repository.Logs).OldStatus, repository.Logs[0].NewStatus, repository.Logs[0].ChangedBy));
++        Assert.Equal("Có yêu cầu bảo trì mới #1 - Phòng A-12", Assert.Single(repository.GeneratedNotifications).Title);
+     }
+ 
+     [Fact]
+@@ -126,7 +127,7 @@ public class MaintenanceServiceTests
+         var storage = new FakeImageStorage();
+ 
+         await Assert.ThrowsAsync<MaintenanceAuthorizationException>(() =>
+-            new MaintenanceService(repository, storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
++            new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
+                 .CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager));
+         Assert.Equal(0, storage.UploadCount);
+     }
+@@ -140,7 +141,7 @@ public class MaintenanceServiceTests
+         var storage = new FakeImageStorage();
+ 
+         await Assert.ThrowsAsync<MaintenanceStatusTransitionException>(() =>
+-            new MaintenanceService(repository, storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
++            new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
+                 .CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager));
+         Assert.Equal(0, storage.UploadCount);
+     }
+@@ -149,7 +150,7 @@ public class MaintenanceServiceTests
+     public async Task CreateReportAsync_requires_description_and_at_least_one_image()
+     {
+         var repository = ValidRequest("Approved", assignedTo: 7);
+-        var service = new MaintenanceService(repository, new FakeImageStorage(), new FixedTimeProvider(DateTimeOffset.UtcNow));
++        var service = new MaintenanceService(repository, new FakeNotificationService(), new FakeImageStorage(), new FixedTimeProvider(DateTimeOffset.UtcNow));
+ 
+         await Assert.ThrowsAsync<MaintenanceBusinessRuleException>(() =>
+             service.CreateReportAsync(1, new CreateMaintenanceReportDto(" ", ValidReportInput().Images), 7, RoleNames.Manager));
+@@ -165,7 +166,7 @@ public class MaintenanceServiceTests
+         var invalidImage = new MaintenanceReportImageInput("payload.jpg", "image/jpeg", [0, 1, 2]);
+ 
+         await Assert.ThrowsAsync<MaintenanceBusinessRuleException>(() =>
+-            new MaintenanceService(repository, storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
++            new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
+                 .CreateReportAsync(1, new CreateMaintenanceReportDto("Done", [invalidImage]), 7, RoleNames.Manager));
+         Assert.Equal(0, storage.UploadCount);
+         Assert.Equal("Approved", repository.State!.Status);
+@@ -191,7 +192,7 @@ public class MaintenanceServiceTests
+     {
+         var repository = ValidRequest("Approved", assignedTo: 7);
+         var storage = new FakeImageStorage();
+-        var service = new MaintenanceService(repository, storage, new FixedTimeProvider(DateTimeOffset.UtcNow));
++        var service = new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow));
+ 
+         var report = await service.CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager);
+ 
+@@ -212,7 +213,7 @@ public class MaintenanceServiceTests
+         var storage = new FakeImageStorage();
+ 
+         await Assert.ThrowsAsync<MaintenanceStatusTransitionException>(() =>
+-            new MaintenanceService(repository, storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
++            new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
+                 .CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager));
+         Assert.Equal(1, storage.UploadCount);
+         Assert.Equal(1, storage.DeleteCount);
+@@ -228,7 +229,7 @@ public class MaintenanceServiceTests
+         var storage = new FakeImageStorage();
+ 
+         await Assert.ThrowsAsync<MaintenanceStatusTransitionException>(() =>
+-            new MaintenanceService(repository, storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
++            new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
+                 .CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager));
+         Assert.Equal(0, storage.UploadCount);
+     }
+@@ -240,7 +241,7 @@ public class MaintenanceServiceTests
+         var storage = new FakeImageStorage { FailUpload = true };
+ 
+         await Assert.ThrowsAsync<HttpRequestException>(() =>
+-            new MaintenanceService(repository, storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
++            new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
+                 .CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager));
+         Assert.Equal("Approved", repository.State!.Status);
+         Assert.Empty(repository.Logs);
+@@ -251,7 +252,7 @@ public class MaintenanceServiceTests
+     {
+         var repository = ValidRequest("Completed", assignedTo: 7);
+         repository.SeedReport();
+-        var service = new MaintenanceService(repository, new FakeImageStorage(), new FixedTimeProvider(DateTimeOffset.UtcNow));
++        var service = new MaintenanceService(repository, new FakeNotificationService(), new FakeImageStorage(), new FixedTimeProvider(DateTimeOffset.UtcNow));
+ 
+         var report = await service.GetReportAsync(1, RoleNames.Admin);
+ 
+@@ -559,7 +560,7 @@ public class MaintenanceServiceTests
+     }
+ 
+     private static MaintenanceService CreateService(FakeMaintenanceRepository repository) =>
+-        new(repository, new FakeImageStorage(), new FixedTimeProvider(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero)));
++        new(repository, new FakeNotificationService(), new FakeImageStorage(), new FixedTimeProvider(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero)));
+ 
+     private static FakeMaintenanceRepository ValidRequest(string status, int? assignedTo) => new()
+     {
+@@ -569,7 +570,25 @@ public class MaintenanceServiceTests
+     };
+ 
+     private static MaintenanceContractDto ValidContract(DateOnly start, DateOnly end) =>
+-        new(10, 12, 42, start, end, "Unfinalized status");
++        new(10, 12, "A-12", 42, start, end, "Unfinalized status");
++
++    private sealed class FakeNotificationService : INotificationService
++    {
++        public Task<List<NotificationDto>> GetAllAsync(int userId, bool? isRead, string? type) =>
++            Task.FromResult(new List<NotificationDto>());
++
++        public Task UpdateReadStateAsync(int id, int userId, bool? isRead) => Task.CompletedTask;
++
++        public Task<List<int>> GetActiveAdminUserIdsAsync() => Task.FromResult(new List<int> { 99 });
++
++        public IReadOnlyList<Notifications> BuildMaintenanceNotifications(IEnumerable<int> userIds, string title) =>
++            userIds.Distinct().Select(userId => new Notifications
++            {
++                UserId = userId,
++                Title = title,
++                Type = NotificationTypes.Maintenance
++            }).ToList();
++    }
+ 
+     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+     {
+@@ -585,6 +604,7 @@ public class MaintenanceServiceTests
+         public Dictionary<int, int> EquipmentRooms { get; } = new();
+         public Dictionary<int, MaintenanceUserAssignmentDto> ActiveUsers { get; } = new();
+         public List<MaintenanceLogDto> Logs { get; } = new();
++        public List<Notifications> GeneratedNotifications { get; } = new();
+         public int AddCount { get; private set; }
+         public int AtomicUpdateCount { get; private set; }
+         public bool FailAtomicUpdate { get; set; }
+@@ -618,7 +638,10 @@ public class MaintenanceServiceTests
+         public Task<MaintenanceUserAssignmentDto?> GetUserAssignmentAsync(int userId) =>
+             Task.FromResult(ActiveUsers.TryGetValue(userId, out var assignment) ? assignment : null);
+ 
+-        public Task<MaintenanceRequests> AddWithInitialLogAsync(MaintenanceRequests request, MaintenanceLogs log)
++        public Task<MaintenanceRequests> AddWithInitialLogAsync(
++            MaintenanceRequests request,
++            MaintenanceLogs log,
++            Func<int, IReadOnlyCollection<Notifications>> notificationsFactory)
+         {
+             request.RequestId = _nextId++;
+             State = new MaintenanceRequestStateDto(request.RequestId, request.ContractId, request.EquipmentId,
+@@ -626,11 +649,12 @@ public class MaintenanceServiceTests
+             AddCount++;
+             Logs.Add(new MaintenanceLogDto(Logs.Count + 1, request.RequestId, log.OldStatus, log.NewStatus,
+                 log.ChangedBy, null, log.ChangedAt));
++            GeneratedNotifications.AddRange(notificationsFactory(request.RequestId));
+             return Task.FromResult(request);
+         }
+ 
+         public Task<bool> UpdateStatusAndAddLogAsync(int requestId, string expectedStatus, string status,
+-            int? assignedTo, int? changedBy, DateTime changedAt)
++            int? assignedTo, int? changedBy, DateTime changedAt, IReadOnlyCollection<Notifications>? notifications = null)
+         {
+             if (FailAtomicUpdate)
+             {
+@@ -657,13 +681,15 @@ public class MaintenanceServiceTests
+                             (!assignedManagerId.HasValue || assignedManagerId == State?.AssignedTo)
+                 ? Logs.OrderBy(x => x.ChangedAt).ThenBy(x => x.LogId).ToList() : null);
+ 
++        public Task<int?> GetApprovingAdminIdAsync(int requestId) => Task.FromResult<int?>(9);
++
+         public Task<MaintenanceReportDto?> GetReportAsync(int requestId) => Task.FromResult<MaintenanceReportDto?>(SavedReport is null || SavedReport.RequestId != requestId
+             ? null
+             : new MaintenanceReportDto(SavedReport.ReportId, SavedReport.RequestId, SavedReport.Description,
+                 SavedReport.ReportedBy, "Manager", SavedReport.CreatedAt,
+                 SavedReport.Images.Select((image, index) => new MaintenanceReportImageDto(index + 1, image.ImageUrl)).ToList()));
+         public Task<bool> ReportExistsAsync(int requestId) => Task.FromResult(SavedReport?.RequestId == requestId);
+-        public Task<bool> CompleteWithReportAsync(int requestId, MaintenanceReports report, int changedBy, DateTime changedAt)
++        public Task<bool> CompleteWithReportAsync(int requestId, MaintenanceReports report, int changedBy, DateTime changedAt, IReadOnlyCollection<Notifications>? notifications = null)
+         {
+             if (FailReportCompletion || State?.RequestId != requestId || State.Status != "Approved") return Task.FromResult(false);
+             report.ReportId = 1;
+diff --git a/PRN232_BE/PRN232.Application.Tests/MaintenanceTransactionTests.cs b/PRN232_BE/PRN232.Application.Tests/MaintenanceTransactionTests.cs
+index 21cb60b..d8e030e 100644
+--- a/PRN232_BE/PRN232.Application.Tests/MaintenanceTransactionTests.cs
++++ b/PRN232_BE/PRN232.Application.Tests/MaintenanceTransactionTests.cs
+@@ -21,7 +21,8 @@ public class MaintenanceTransactionTests
+             await RejectInsertAsync(context, "MaintenanceLogs");
+             await Assert.ThrowsAsync<DbUpdateException>(() => new MaintenanceRepository(context).AddWithInitialLogAsync(
+                 new MaintenanceRequests { ContractId = 1, Description = "Broken", Status = "Pending" },
+-                new MaintenanceLogs { NewStatus = "Pending", ChangedBy = 10, ChangedAt = DateTime.UtcNow }));
++                new MaintenanceLogs { NewStatus = "Pending", ChangedBy = 10, ChangedAt = DateTime.UtcNow },
++                _ => []));
+         }
+         using var verification = factory.Services.CreateScope();
+         var stored = verification.ServiceProvider.GetRequiredService<AppDbContext>();
+@@ -29,6 +30,27 @@ public class MaintenanceTransactionTests
+         Assert.Empty(await stored.MaintenanceLogs.ToListAsync());
+     }
+ 
++    [Fact]
++    public async Task Creation_rolls_back_request_and_log_when_notification_cannot_be_saved()
++    {
++        using var factory = new MaintenanceApiFactory();
++        using var client = factory.CreateClient();
++        using (var scope = factory.Services.CreateScope())
++        {
++            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
++            await RejectInsertAsync(context, "Notifications");
++            await Assert.ThrowsAsync<DbUpdateException>(() => new MaintenanceRepository(context).AddWithInitialLogAsync(
++                new MaintenanceRequests { ContractId = 1, Description = "Broken", Status = "Pending" },
++                new MaintenanceLogs { NewStatus = "Pending", ChangedBy = 10, ChangedAt = DateTime.UtcNow },
++                _ => [new Notifications { UserId = 9, Title = "new request", Type = "Maintenance" }]));
++        }
++        using var verification = factory.Services.CreateScope();
++        var stored = verification.ServiceProvider.GetRequiredService<AppDbContext>();
++        Assert.Equal(4, await stored.MaintenanceRequests.CountAsync());
++        Assert.Empty(await stored.MaintenanceLogs.ToListAsync());
++        Assert.Empty(await stored.Notifications.ToListAsync());
++    }
++
+     [Fact]
+     public async Task Assignment_rolls_back_status_and_assignee_when_log_cannot_be_saved()
+     {
+@@ -49,6 +71,28 @@ public class MaintenanceTransactionTests
+         Assert.Empty(await stored.MaintenanceLogs.ToListAsync());
+     }
+ 
++    [Fact]
++    public async Task Assignment_rolls_back_status_and_log_when_notification_cannot_be_saved()
++    {
++        using var factory = new MaintenanceApiFactory();
++        using var client = factory.CreateClient();
++        using (var scope = factory.Services.CreateScope())
++        {
++            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
++            await RejectInsertAsync(context, "Notifications");
++            await Assert.ThrowsAsync<DbUpdateException>(() => new MaintenanceRepository(context)
++                .UpdateStatusAndAddLogAsync(3, "Pending", "Approved", 7, 9, DateTime.UtcNow,
++                    [new Notifications { UserId = 10, Title = "approved", Type = "Maintenance" }]));
++        }
++        using var verification = factory.Services.CreateScope();
++        var stored = verification.ServiceProvider.GetRequiredService<AppDbContext>();
++        var request = await stored.MaintenanceRequests.FindAsync(3);
++        Assert.Equal("Pending", request!.Status);
++        Assert.Null(request.AssignedTo);
++        Assert.Empty(await stored.MaintenanceLogs.ToListAsync());
++        Assert.Empty(await stored.Notifications.ToListAsync());
++    }
++
+     [Fact]
+     public async Task Completion_rolls_back_status_report_images_and_log_on_database_failure()
+     {
+@@ -69,6 +113,27 @@ public class MaintenanceTransactionTests
+         Assert.Empty(await stored.MaintenanceLogs.ToListAsync());
+     }
+ 
++    [Fact]
++    public async Task Completion_rolls_back_report_and_log_when_notification_cannot_be_saved()
++    {
++        using var factory = new MaintenanceApiFactory();
++        using var client = factory.CreateClient();
++        using (var scope = factory.Services.CreateScope())
++        {
++            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
++            await RejectInsertAsync(context, "Notifications");
++            await Assert.ThrowsAsync<DbUpdateException>(() => new MaintenanceRepository(context)
++                .CompleteWithReportAsync(1, Report(), 7, DateTime.UtcNow,
++                    [new Notifications { UserId = 10, Title = "completed", Type = "Maintenance" }]));
++        }
++        using var verification = factory.Services.CreateScope();
++        var stored = verification.ServiceProvider.GetRequiredService<AppDbContext>();
++        Assert.Equal("Approved", (await stored.MaintenanceRequests.FindAsync(1))!.Status);
++        Assert.Empty(await stored.MaintenanceReports.Where(report => report.RequestId == 1).ToListAsync());
++        Assert.Empty(await stored.MaintenanceLogs.ToListAsync());
++        Assert.Empty(await stored.Notifications.ToListAsync());
++    }
++
+     [Fact]
+     public async Task Completion_rechecks_manager_assignment_at_atomic_persistence()
+     {
+@@ -123,6 +188,7 @@ public class MaintenanceTransactionTests
+         {
+             "MaintenanceLogs" => "CREATE TRIGGER reject_insert BEFORE INSERT ON \"MaintenanceLogs\" BEGIN SELECT RAISE(ABORT, 'test injected failure'); END",
+             "MaintenanceReportImages" => "CREATE TRIGGER reject_insert BEFORE INSERT ON \"MaintenanceReportImages\" BEGIN SELECT RAISE(ABORT, 'test injected failure'); END",
++            "Notifications" => "CREATE TRIGGER reject_insert BEFORE INSERT ON \"Notifications\" BEGIN SELECT RAISE(ABORT, 'test injected failure'); END",
+             _ => throw new ArgumentException("Unsupported fault injection table.", nameof(table))
+         };
+         return context.Database.ExecuteSqlRawAsync(sql);
+diff --git a/PRN232_BE/PRN232.Application/DTOs/MaintenanceRequestDto.cs b/PRN232_BE/PRN232.Application/DTOs/MaintenanceRequestDto.cs
+index fcc0d24..e272e67 100644
+--- a/PRN232_BE/PRN232.Application/DTOs/MaintenanceRequestDto.cs
++++ b/PRN232_BE/PRN232.Application/DTOs/MaintenanceRequestDto.cs
+@@ -38,6 +38,7 @@ public record MaintenanceRequestStateDto(
+ public record MaintenanceContractDto(
+     int ContractId,
+     int RoomId,
++    string? RoomCode,
+     int CustomerId,
+     DateOnly StartDate,
+     DateOnly EndDate,
+diff --git a/PRN232_BE/PRN232.Application/Interfaces/IMaintenanceRepository.cs b/PRN232_BE/PRN232.Application/Interfaces/IMaintenanceRepository.cs
+index a171fd7..9a91cc6 100644
+--- a/PRN232_BE/PRN232.Application/Interfaces/IMaintenanceRepository.cs
++++ b/PRN232_BE/PRN232.Application/Interfaces/IMaintenanceRepository.cs
+@@ -12,16 +12,26 @@ public interface IMaintenanceRepository
+     Task<MaintenanceContractDto?> GetContractAsync(int contractId);
+     Task<int?> GetEquipmentRoomIdAsync(int equipmentId);
+     Task<MaintenanceUserAssignmentDto?> GetUserAssignmentAsync(int userId);
+-    Task<MaintenanceRequests> AddWithInitialLogAsync(MaintenanceRequests request, MaintenanceLogs log);
++    Task<MaintenanceRequests> AddWithInitialLogAsync(
++        MaintenanceRequests request,
++        MaintenanceLogs log,
++        Func<int, IReadOnlyCollection<Notifications>> notificationsFactory);
+     Task<bool> UpdateStatusAndAddLogAsync(
+         int requestId,
+         string expectedStatus,
+         string status,
+         int? assignedTo,
+         int? changedBy,
+-        DateTime changedAt);
++        DateTime changedAt,
++        IReadOnlyCollection<Notifications>? notifications = null);
+     Task<List<MaintenanceLogDto>?> GetLogsAsync(int requestId, int? customerId, int? assignedManagerId);
++    Task<int?> GetApprovingAdminIdAsync(int requestId);
+     Task<MaintenanceReportDto?> GetReportAsync(int requestId);
+     Task<bool> ReportExistsAsync(int requestId);
+-    Task<bool> CompleteWithReportAsync(int requestId, MaintenanceReports report, int changedBy, DateTime changedAt);
++    Task<bool> CompleteWithReportAsync(
++        int requestId,
++        MaintenanceReports report,
++        int changedBy,
++        DateTime changedAt,
++        IReadOnlyCollection<Notifications>? notifications = null);
+ }
+diff --git a/PRN232_BE/PRN232.Application/Services/MaintenanceService.cs b/PRN232_BE/PRN232.Application/Services/MaintenanceService.cs
+index 36939d4..731426f 100644
+--- a/PRN232_BE/PRN232.Application/Services/MaintenanceService.cs
++++ b/PRN232_BE/PRN232.Application/Services/MaintenanceService.cs
+@@ -7,15 +7,18 @@ namespace PRN232.Application.Services;
+ public class MaintenanceService : IMaintenanceService
+ {
+     private readonly IMaintenanceRepository _repository;
++    private readonly INotificationService _notificationService;
+     private readonly IMaintenanceReportImageStorage _imageStorage;
+     private readonly TimeProvider _timeProvider;
+ 
+     public MaintenanceService(
+         IMaintenanceRepository repository,
++        INotificationService notificationService,
+         IMaintenanceReportImageStorage imageStorage,
+         TimeProvider timeProvider)
+     {
+         _repository = repository;
++        _notificationService = notificationService;
+         _imageStorage = imageStorage;
+         _timeProvider = timeProvider;
+     }
+@@ -79,13 +82,15 @@ public class MaintenanceService : IMaintenanceService
+             AssignedTo = null
+         };
+ 
++        var adminIds = await _notificationService.GetActiveAdminUserIdsAsync();
+         await _repository.AddWithInitialLogAsync(request, new MaintenanceLogs
+         {
+             OldStatus = null,
+             NewStatus = MaintenanceRequestStatuses.Pending,
+             ChangedBy = customerId,
+             ChangedAt = _timeProvider.GetUtcNow().UtcDateTime
+-        });
++        }, requestId => _notificationService.BuildMaintenanceNotifications(
++            adminIds, $"Có yêu cầu bảo trì mới #{requestId} - Phòng {contract.RoomCode}"));
+ 
+         return await _repository.GetByIdAsync(request.RequestId, customerId, null)
+             ?? throw new InvalidOperationException("Created maintenance request was not found.");
+@@ -136,9 +141,14 @@ public class MaintenanceService : IMaintenanceService
+         }
+ 
+         var changedAt = _timeProvider.GetUtcNow().UtcDateTime;
++        var notifications = _notificationService.BuildMaintenanceNotifications(
++                [contract.CustomerId], $"Yêu cầu bảo trì #{id} - Phòng {contract.RoomCode} đã được duyệt")
++            .Concat(_notificationService.BuildMaintenanceNotifications(
++                [dto.AssignedTo.Value], $"Bạn được giao yêu cầu bảo trì #{id} - Phòng {contract.RoomCode}"))
++            .ToArray();
+         var updated = await _repository.UpdateStatusAndAddLogAsync(
+             id, MaintenanceRequestStatuses.Pending, MaintenanceRequestStatuses.Approved,
+-            dto.AssignedTo, actorUserId, changedAt);
++            dto.AssignedTo, actorUserId, changedAt, notifications);
+         if (!updated)
+         {
+             throw new MaintenanceStatusTransitionException("Request status changed before the update completed.");
+@@ -202,6 +212,18 @@ public class MaintenanceService : IMaintenanceService
+             throw new MaintenanceStatusTransitionException("A completion report already exists for this request.");
+         }
+ 
++        var requestDetails = await _repository.GetByIdAsync(id, null, null)
++            ?? throw new MaintenanceNotFoundException("Maintenance request does not exist.");
++        var approvingAdminId = await _repository.GetApprovingAdminIdAsync(id);
++        var adminRecipients = approvingAdminId.HasValue
++            ? [approvingAdminId.Value]
++            : await _notificationService.GetActiveAdminUserIdsAsync();
++        var completionNotifications = _notificationService.BuildMaintenanceNotifications(
++                [requestDetails.CustomerId], $"Yêu cầu bảo trì #{id} - Phòng {requestDetails.RoomCode} đã hoàn tất")
++            .Concat(_notificationService.BuildMaintenanceNotifications(
++                adminRecipients, $"Yêu cầu bảo trì #{id} - Phòng {requestDetails.RoomCode} đã được hoàn tất"))
++            .ToArray();
++
+         var uploadedPaths = new List<string>();
+         var databaseCommitted = false;
+         try
+@@ -218,7 +240,8 @@ public class MaintenanceService : IMaintenanceService
+                 CreatedAt = _timeProvider.GetUtcNow().UtcDateTime,
+                 Images = uploadedPaths.Select(path => new MaintenanceReportImages { ImageUrl = path }).ToList()
+             };
+-            if (!await _repository.CompleteWithReportAsync(id, report, managerId, report.CreatedAt))
++            if (!await _repository.CompleteWithReportAsync(
++                    id, report, managerId, report.CreatedAt, completionNotifications))
+             {
+                 throw new MaintenanceStatusTransitionException("Request status changed before completion.");
+             }
+diff --git a/PRN232_BE/PRN232.Infrastructure/Repositories/MaintenanceRepository.cs b/PRN232_BE/PRN232.Infrastructure/Repositories/MaintenanceRepository.cs
+index 783b575..820c86c 100644
+--- a/PRN232_BE/PRN232.Infrastructure/Repositories/MaintenanceRepository.cs
++++ b/PRN232_BE/PRN232.Infrastructure/Repositories/MaintenanceRepository.cs
+@@ -78,7 +78,7 @@ public class MaintenanceRepository : IMaintenanceRepository
+             .AsNoTracking()
+             .Where(c => c.ContractId == contractId)
+             .Select(c => new MaintenanceContractDto(
+-                c.ContractId, c.RoomId, c.CustomerId, c.StartDate, c.EndDate, c.Status))
++                c.ContractId, c.RoomId, c.Room!.RoomCode, c.CustomerId, c.StartDate, c.EndDate, c.Status))
+             .FirstOrDefaultAsync();
+ 
+     public Task<int?> GetEquipmentRoomIdAsync(int equipmentId) =>
+@@ -95,12 +95,17 @@ public class MaintenanceRepository : IMaintenanceRepository
+             .Select(u => new MaintenanceUserAssignmentDto(u.IsActive, u.Role!.RoleName))
+             .FirstOrDefaultAsync();
+ 
+-    public async Task<MaintenanceRequests> AddWithInitialLogAsync(MaintenanceRequests request, MaintenanceLogs log)
++    public async Task<MaintenanceRequests> AddWithInitialLogAsync(
++        MaintenanceRequests request,
++        MaintenanceLogs log,
++        Func<int, IReadOnlyCollection<Notifications>> notificationsFactory)
+     {
+         await using var transaction = await _context.Database.BeginTransactionAsync();
+         request.MaintenanceLogs.Add(log);
+         await _context.MaintenanceRequests.AddAsync(request);
+         await _context.SaveChangesAsync();
++        await _context.Notifications.AddRangeAsync(notificationsFactory(request.RequestId));
++        await _context.SaveChangesAsync();
+         await transaction.CommitAsync();
+         return request;
+     }
+@@ -111,7 +116,8 @@ public class MaintenanceRepository : IMaintenanceRepository
+         string status,
+         int? assignedTo,
+         int? changedBy,
+-        DateTime changedAt)
++        DateTime changedAt,
++        IReadOnlyCollection<Notifications>? notifications = null)
+     {
+         await using var transaction = await _context.Database.BeginTransactionAsync();
+ 
+@@ -134,6 +140,10 @@ public class MaintenanceRepository : IMaintenanceRepository
+             ChangedBy = changedBy,
+             ChangedAt = DateTime.SpecifyKind(changedAt, DateTimeKind.Utc)
+         });
++        if (notifications is not null)
++        {
++            await _context.Notifications.AddRangeAsync(notifications);
++        }
+ 
+         await _context.SaveChangesAsync();
+         await transaction.CommitAsync();
+@@ -167,6 +177,16 @@ public class MaintenanceRepository : IMaintenanceRepository
+             .ToListAsync();
+     }
+ 
++    public Task<int?> GetApprovingAdminIdAsync(int requestId) => _context.MaintenanceLogs
++        .AsNoTracking()
++        .Where(log => log.RequestId == requestId &&
++                      log.OldStatus == MaintenanceRequestStatuses.Pending &&
++                      log.NewStatus == MaintenanceRequestStatuses.Approved)
++        .OrderBy(log => log.ChangedAt)
++        .ThenBy(log => log.LogId)
++        .Select(log => log.ChangedBy)
++        .FirstOrDefaultAsync();
++
+     public Task<MaintenanceReportDto?> GetReportAsync(int requestId) =>
+         _context.MaintenanceReports
+             .AsNoTracking()
+@@ -186,7 +206,12 @@ public class MaintenanceRepository : IMaintenanceRepository
+     public Task<bool> ReportExistsAsync(int requestId) =>
+         _context.MaintenanceReports.AnyAsync(report => report.RequestId == requestId);
+ 
+-    public async Task<bool> CompleteWithReportAsync(int requestId, MaintenanceReports report, int changedBy, DateTime changedAt)
++    public async Task<bool> CompleteWithReportAsync(
++        int requestId,
++        MaintenanceReports report,
++        int changedBy,
++        DateTime changedAt,
++        IReadOnlyCollection<Notifications>? notifications = null)
+     {
+         await using var transaction = await _context.Database.BeginTransactionAsync();
+         if (await _context.MaintenanceReports.AnyAsync(item => item.RequestId == requestId))
+@@ -213,6 +238,10 @@ public class MaintenanceRepository : IMaintenanceRepository
+             ChangedBy = changedBy,
+             ChangedAt = DateTime.SpecifyKind(changedAt, DateTimeKind.Utc)
+         });
++        if (notifications is not null)
++        {
++            await _context.Notifications.AddRangeAsync(notifications);
++        }
+         await _context.SaveChangesAsync();
+         await transaction.CommitAsync();
+         return true;
+diff --git a/PRN232_BE/PRN232.Api/Controllers/NotificationsController.cs b/PRN232_BE/PRN232.Api/Controllers/NotificationsController.cs
+new file mode 100644
+index 0000000..c692216
+--- /dev/null
++++ b/PRN232_BE/PRN232.Api/Controllers/NotificationsController.cs
+@@ -0,0 +1,51 @@
++using Microsoft.AspNetCore.Authorization;
++using Microsoft.AspNetCore.Mvc;
++using PRN232.Application.DTOs;
++using PRN232.Application.Interfaces;
++using PRN232.Application.Services;
++
++namespace PRN232.Api.Controllers;
++
++[ApiController]
++[Route("api/[controller]")]
++[Authorize]
++public class NotificationsController(INotificationService notificationService, ICurrentUserService currentUser) : ControllerBase
++{
++    [HttpGet]
++    public async Task<ActionResult<IEnumerable<NotificationDto>>> GetAll(
++        [FromQuery] bool? isRead,
++        [FromQuery] string? type)
++    {
++        if (!TryGetCurrentUser(out var userId)) return Unauthorized();
++        return Ok(await notificationService.GetAllAsync(userId, isRead, type));
++    }
++
++    [HttpPatch("{id:int}")]
++    public async Task<IActionResult> Update(int id, UpdateNotificationDto dto)
++    {
++        if (!TryGetCurrentUser(out var userId)) return Unauthorized();
++        try
++        {
++            await notificationService.UpdateReadStateAsync(id, userId, dto.IsRead);
++            return Ok();
++        }
++        catch (NotificationNotFoundException exception)
++        {
++            return NotFound(new ProblemDetails { Title = "Notification not found", Detail = exception.Message });
++        }
++        catch (NotificationAuthorizationException exception)
++        {
++            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = exception.Message });
++        }
++        catch (NotificationBusinessRuleException exception)
++        {
++            return BadRequest(new ProblemDetails { Title = "Invalid notification update", Detail = exception.Message });
++        }
++    }
++
++    private bool TryGetCurrentUser(out int userId)
++    {
++        userId = currentUser.UserId ?? 0;
++        return currentUser.IsAuthenticated && userId > 0;
++    }
++}
+diff --git a/PRN232_BE/PRN232.Application/DTOs/NotificationDto.cs b/PRN232_BE/PRN232.Application/DTOs/NotificationDto.cs
+new file mode 100644
+index 0000000..8e4321c
+--- /dev/null
++++ b/PRN232_BE/PRN232.Application/DTOs/NotificationDto.cs
+@@ -0,0 +1,5 @@
++namespace PRN232.Application.DTOs;
++
++public record NotificationDto(int NotificationId, string Title, string Type, bool IsRead);
++
++public record UpdateNotificationDto(bool? IsRead);
+diff --git a/PRN232_BE/PRN232.Application/Interfaces/INotificationRepository.cs b/PRN232_BE/PRN232.Application/Interfaces/INotificationRepository.cs
+new file mode 100644
+index 0000000..6a8c35f
+--- /dev/null
++++ b/PRN232_BE/PRN232.Application/Interfaces/INotificationRepository.cs
+@@ -0,0 +1,12 @@
++using PRN232.Application.DTOs;
++using PRN232.Domain.Entities;
++
++namespace PRN232.Application.Interfaces;
++
++public interface INotificationRepository
++{
++    Task<List<NotificationDto>> GetByUserAsync(int userId, bool? isRead, string? type);
++    Task<List<int>> GetActiveAdminUserIdsAsync();
++    Task<Notifications?> GetByIdAsync(int id);
++    Task SaveAsync();
++}
+diff --git a/PRN232_BE/PRN232.Application/Interfaces/INotificationService.cs b/PRN232_BE/PRN232.Application/Interfaces/INotificationService.cs
+new file mode 100644
+index 0000000..d35ffec
+--- /dev/null
++++ b/PRN232_BE/PRN232.Application/Interfaces/INotificationService.cs
+@@ -0,0 +1,12 @@
++using PRN232.Application.DTOs;
++using PRN232.Domain.Entities;
++
++namespace PRN232.Application.Interfaces;
++
++public interface INotificationService
++{
++    Task<List<NotificationDto>> GetAllAsync(int userId, bool? isRead, string? type);
++    Task UpdateReadStateAsync(int id, int userId, bool? isRead);
++    Task<List<int>> GetActiveAdminUserIdsAsync();
++    IReadOnlyList<Notifications> BuildMaintenanceNotifications(IEnumerable<int> userIds, string title);
++}
+diff --git a/PRN232_BE/PRN232.Application/Services/NotificationService.cs b/PRN232_BE/PRN232.Application/Services/NotificationService.cs
+new file mode 100644
+index 0000000..b5e9be9
+--- /dev/null
++++ b/PRN232_BE/PRN232.Application/Services/NotificationService.cs
+@@ -0,0 +1,52 @@
++using PRN232.Application.DTOs;
++using PRN232.Application.Interfaces;
++using PRN232.Domain.Entities;
++
++namespace PRN232.Application.Services;
++
++public class NotificationService(INotificationRepository repository) : INotificationService
++{
++    public Task<List<NotificationDto>> GetAllAsync(int userId, bool? isRead, string? type) =>
++        repository.GetByUserAsync(userId, isRead, type?.Trim());
++
++    public async Task UpdateReadStateAsync(int id, int userId, bool? isRead)
++    {
++        if (!isRead.HasValue)
++        {
++            throw new NotificationBusinessRuleException("IsRead is required.");
++        }
++
++        var notification = await repository.GetByIdAsync(id);
++        if (notification is null)
++        {
++            throw new NotificationNotFoundException("Notification does not exist.");
++        }
++        if (notification.UserId != userId)
++        {
++            throw new NotificationAuthorizationException("You cannot update another user's notification.");
++        }
++
++        notification.IsRead = isRead.Value;
++        await repository.SaveAsync();
++    }
++
++    public Task<List<int>> GetActiveAdminUserIdsAsync() => repository.GetActiveAdminUserIdsAsync();
++
++    // Build schema-backed rows so the maintenance repository can save them atomically.
++    public IReadOnlyList<Notifications> BuildMaintenanceNotifications(IEnumerable<int> userIds, string title) =>
++        userIds.Distinct()
++            .Select(userId => new Notifications
++            {
++                UserId = userId,
++                Title = title,
++                Type = NotificationTypes.Maintenance,
++                IsRead = false
++            })
++            .ToList();
++}
++
++public sealed class NotificationBusinessRuleException(string message) : Exception(message);
++
++public sealed class NotificationNotFoundException(string message) : Exception(message);
++
++public sealed class NotificationAuthorizationException(string message) : Exception(message);
+diff --git a/PRN232_BE/PRN232.Application/Services/NotificationTypes.cs b/PRN232_BE/PRN232.Application/Services/NotificationTypes.cs
+new file mode 100644
+index 0000000..51ef179
+--- /dev/null
++++ b/PRN232_BE/PRN232.Application/Services/NotificationTypes.cs
+@@ -0,0 +1,6 @@
++namespace PRN232.Application.Services;
++
++public static class NotificationTypes
++{
++    public const string Maintenance = "Maintenance";
++}
+diff --git a/PRN232_BE/PRN232.Infrastructure/Repositories/NotificationRepository.cs b/PRN232_BE/PRN232.Infrastructure/Repositories/NotificationRepository.cs
+new file mode 100644
+index 0000000..4b804cb
+--- /dev/null
++++ b/PRN232_BE/PRN232.Infrastructure/Repositories/NotificationRepository.cs
+@@ -0,0 +1,33 @@
++using Microsoft.EntityFrameworkCore;
++using PRN232.Application.DTOs;
++using PRN232.Application.Interfaces;
++using PRN232.Application.Services;
++using PRN232.Domain.Entities;
++using PRN232.Infrastructure.Data;
++
++namespace PRN232.Infrastructure.Repositories;
++
++public class NotificationRepository(AppDbContext context) : INotificationRepository
++{
++    public Task<List<NotificationDto>> GetByUserAsync(int userId, bool? isRead, string? type) =>
++        context.Notifications
++            .AsNoTracking()
++            .Where(notification => notification.UserId == userId)
++            .Where(notification => isRead == null || notification.IsRead == isRead)
++            .Where(notification => type == null || notification.Type == type)
++            .OrderByDescending(notification => notification.NotificationId)
++            .Select(notification => new NotificationDto(
++                notification.NotificationId, notification.Title, notification.Type, notification.IsRead))
++            .ToListAsync();
++
++    public Task<List<int>> GetActiveAdminUserIdsAsync() => context.Users
++        .AsNoTracking()
++        .Where(user => user.IsActive && user.Role!.RoleName == RoleNames.Admin)
++        .Select(user => user.UserId)
++        .ToListAsync();
++
++    public Task<Notifications?> GetByIdAsync(int id) =>
++        context.Notifications.SingleOrDefaultAsync(notification => notification.NotificationId == id);
++
++    public async Task SaveAsync() => await context.SaveChangesAsync();
++}

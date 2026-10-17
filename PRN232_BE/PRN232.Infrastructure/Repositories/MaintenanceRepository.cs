@@ -78,7 +78,7 @@ public class MaintenanceRepository : IMaintenanceRepository
             .AsNoTracking()
             .Where(c => c.ContractId == contractId)
             .Select(c => new MaintenanceContractDto(
-                c.ContractId, c.RoomId, c.CustomerId, c.StartDate, c.EndDate, c.Status))
+                c.ContractId, c.RoomId, c.Room!.RoomCode, c.CustomerId, c.StartDate, c.EndDate, c.Status))
             .FirstOrDefaultAsync();
 
     public Task<int?> GetEquipmentRoomIdAsync(int equipmentId) =>
@@ -95,11 +95,16 @@ public class MaintenanceRepository : IMaintenanceRepository
             .Select(u => new MaintenanceUserAssignmentDto(u.IsActive, u.Role!.RoleName))
             .FirstOrDefaultAsync();
 
-    public async Task<MaintenanceRequests> AddWithInitialLogAsync(MaintenanceRequests request, MaintenanceLogs log)
+    public async Task<MaintenanceRequests> AddWithInitialLogAsync(
+        MaintenanceRequests request,
+        MaintenanceLogs log,
+        Func<int, IReadOnlyCollection<Notifications>> notificationsFactory)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
         request.MaintenanceLogs.Add(log);
         await _context.MaintenanceRequests.AddAsync(request);
+        await _context.SaveChangesAsync();
+        await _context.Notifications.AddRangeAsync(notificationsFactory(request.RequestId));
         await _context.SaveChangesAsync();
         await transaction.CommitAsync();
         return request;
@@ -111,7 +116,8 @@ public class MaintenanceRepository : IMaintenanceRepository
         string status,
         int? assignedTo,
         int? changedBy,
-        DateTime changedAt)
+        DateTime changedAt,
+        IReadOnlyCollection<Notifications>? notifications = null)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
 
@@ -134,6 +140,10 @@ public class MaintenanceRepository : IMaintenanceRepository
             ChangedBy = changedBy,
             ChangedAt = DateTime.SpecifyKind(changedAt, DateTimeKind.Utc)
         });
+        if (notifications is not null)
+        {
+            await _context.Notifications.AddRangeAsync(notifications);
+        }
 
         await _context.SaveChangesAsync();
         await transaction.CommitAsync();
@@ -167,6 +177,16 @@ public class MaintenanceRepository : IMaintenanceRepository
             .ToListAsync();
     }
 
+    public Task<int?> GetApprovingAdminIdAsync(int requestId) => _context.MaintenanceLogs
+        .AsNoTracking()
+        .Where(log => log.RequestId == requestId &&
+                      log.OldStatus == MaintenanceRequestStatuses.Pending &&
+                      log.NewStatus == MaintenanceRequestStatuses.Approved)
+        .OrderBy(log => log.ChangedAt)
+        .ThenBy(log => log.LogId)
+        .Select(log => log.ChangedBy)
+        .FirstOrDefaultAsync();
+
     public Task<MaintenanceReportDto?> GetReportAsync(int requestId) =>
         _context.MaintenanceReports
             .AsNoTracking()
@@ -186,7 +206,12 @@ public class MaintenanceRepository : IMaintenanceRepository
     public Task<bool> ReportExistsAsync(int requestId) =>
         _context.MaintenanceReports.AnyAsync(report => report.RequestId == requestId);
 
-    public async Task<bool> CompleteWithReportAsync(int requestId, MaintenanceReports report, int changedBy, DateTime changedAt)
+    public async Task<bool> CompleteWithReportAsync(
+        int requestId,
+        MaintenanceReports report,
+        int changedBy,
+        DateTime changedAt,
+        IReadOnlyCollection<Notifications>? notifications = null)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
         if (await _context.MaintenanceReports.AnyAsync(item => item.RequestId == requestId))
@@ -213,6 +238,10 @@ public class MaintenanceRepository : IMaintenanceRepository
             ChangedBy = changedBy,
             ChangedAt = DateTime.SpecifyKind(changedAt, DateTimeKind.Utc)
         });
+        if (notifications is not null)
+        {
+            await _context.Notifications.AddRangeAsync(notifications);
+        }
         await _context.SaveChangesAsync();
         await transaction.CommitAsync();
         return true;

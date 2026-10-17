@@ -7,15 +7,18 @@ namespace PRN232.Application.Services;
 public class MaintenanceService : IMaintenanceService
 {
     private readonly IMaintenanceRepository _repository;
+    private readonly INotificationService _notificationService;
     private readonly IMaintenanceReportImageStorage _imageStorage;
     private readonly TimeProvider _timeProvider;
 
     public MaintenanceService(
         IMaintenanceRepository repository,
+        INotificationService notificationService,
         IMaintenanceReportImageStorage imageStorage,
         TimeProvider timeProvider)
     {
         _repository = repository;
+        _notificationService = notificationService;
         _imageStorage = imageStorage;
         _timeProvider = timeProvider;
     }
@@ -79,13 +82,15 @@ public class MaintenanceService : IMaintenanceService
             AssignedTo = null
         };
 
+        var adminIds = await _notificationService.GetActiveAdminUserIdsAsync();
         await _repository.AddWithInitialLogAsync(request, new MaintenanceLogs
         {
             OldStatus = null,
             NewStatus = MaintenanceRequestStatuses.Pending,
             ChangedBy = customerId,
             ChangedAt = _timeProvider.GetUtcNow().UtcDateTime
-        });
+        }, requestId => _notificationService.BuildMaintenanceNotifications(
+            adminIds, $"Có yêu cầu bảo trì mới #{requestId} - Phòng {contract.RoomCode}"));
 
         return await _repository.GetByIdAsync(request.RequestId, customerId, null)
             ?? throw new InvalidOperationException("Created maintenance request was not found.");
@@ -136,9 +141,14 @@ public class MaintenanceService : IMaintenanceService
         }
 
         var changedAt = _timeProvider.GetUtcNow().UtcDateTime;
+        var notifications = _notificationService.BuildMaintenanceNotifications(
+                [contract.CustomerId], $"Yêu cầu bảo trì #{id} - Phòng {contract.RoomCode} đã được duyệt")
+            .Concat(_notificationService.BuildMaintenanceNotifications(
+                [dto.AssignedTo.Value], $"Bạn được giao yêu cầu bảo trì #{id} - Phòng {contract.RoomCode}"))
+            .ToArray();
         var updated = await _repository.UpdateStatusAndAddLogAsync(
             id, MaintenanceRequestStatuses.Pending, MaintenanceRequestStatuses.Approved,
-            dto.AssignedTo, actorUserId, changedAt);
+            dto.AssignedTo, actorUserId, changedAt, notifications);
         if (!updated)
         {
             throw new MaintenanceStatusTransitionException("Request status changed before the update completed.");
@@ -202,6 +212,18 @@ public class MaintenanceService : IMaintenanceService
             throw new MaintenanceStatusTransitionException("A completion report already exists for this request.");
         }
 
+        var requestDetails = await _repository.GetByIdAsync(id, null, null)
+            ?? throw new MaintenanceNotFoundException("Maintenance request does not exist.");
+        var approvingAdminId = await _repository.GetApprovingAdminIdAsync(id);
+        var adminRecipients = approvingAdminId.HasValue
+            ? [approvingAdminId.Value]
+            : await _notificationService.GetActiveAdminUserIdsAsync();
+        var completionNotifications = _notificationService.BuildMaintenanceNotifications(
+                [requestDetails.CustomerId], $"Yêu cầu bảo trì #{id} - Phòng {requestDetails.RoomCode} đã hoàn tất")
+            .Concat(_notificationService.BuildMaintenanceNotifications(
+                adminRecipients, $"Yêu cầu bảo trì #{id} - Phòng {requestDetails.RoomCode} đã được hoàn tất"))
+            .ToArray();
+
         var uploadedPaths = new List<string>();
         var databaseCommitted = false;
         try
@@ -218,7 +240,8 @@ public class MaintenanceService : IMaintenanceService
                 CreatedAt = _timeProvider.GetUtcNow().UtcDateTime,
                 Images = uploadedPaths.Select(path => new MaintenanceReportImages { ImageUrl = path }).ToList()
             };
-            if (!await _repository.CompleteWithReportAsync(id, report, managerId, report.CreatedAt))
+            if (!await _repository.CompleteWithReportAsync(
+                    id, report, managerId, report.CreatedAt, completionNotifications))
             {
                 throw new MaintenanceStatusTransitionException("Request status changed before completion.");
             }
