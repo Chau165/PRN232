@@ -22,7 +22,6 @@ export type ManagedProperty = {
   managerName?: string
   status: ManagedPropertyStatus
 }
-
 export type ManagedRoomStatus = "Trống" | "Đã đặt cọc" | "Đang thuê" | "Đang sửa chữa"
 
 export type ManagedRoom = {
@@ -164,21 +163,4 @@ export type Area = {
   propertyIds: string[]
   managerNames: string[]
   status: "Đang hoạt động" | "Tạm đóng"
-}
-
-export type Manager = {
-  id: string
-  name: string
-  email: string
-  phone: string
-  assignedPropertyIds: string[]
-  status: "Đang hoạt động" | "Tạm khóa"
-}
-
-export type ManagedUser = {
-  id: string
-  name: string
-  email: string
-  role: "ADMIN" | "MANAGER" | "CUSTOMER"
-  status: "Đang hoạt động" | "Tạm khóa"
 }

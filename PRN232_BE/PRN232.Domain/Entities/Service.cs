@@ -7,4 +7,6 @@ public class Service
     public decimal Price { get; set; }
 
     public ICollection<RoomTypeServices> RoomTypeServices { get; set; } = new List<RoomTypeServices>();
+    public ICollection<PropertyServiceRates> PropertyServiceRates { get; set; } = new List<PropertyServiceRates>();
+    public ICollection<InvoiceDetails> InvoiceDetails { get; set; } = new List<InvoiceDetails>();
 }

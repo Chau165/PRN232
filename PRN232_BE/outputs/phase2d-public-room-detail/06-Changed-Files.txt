@@ -1,0 +1,37 @@
+Phase 2D changed-file and Git-status record
+Captured after implementation on 2026-10-19 (Asia/Saigon).
+
+PRE-TASK STATUS
+The baseline snapshot is at work/phase2d-baseline/pre-task-git-status.txt. Before Phase 2D, Git already showed these seven tracked files modified:
+  PRN232_BE/.codegraph/.gitignore
+  PRN232_BE/PRN232.Api/Program.cs
+  PRN232_BE/PRN232.Application/Interfaces/IRoomRepository.cs
+  PRN232_BE/PRN232.Application/Interfaces/IRoomService.cs
+  PRN232_BE/PRN232.Application/Services/RoomService.cs
+  PRN232_BE/PRN232.Application/Services/RoomStatuses.cs
+  PRN232_BE/PRN232.Infrastructure/Repositories/RoomRepository.cs
+
+Phase 2A-2C source, tests, reports, and two TestResults directories were already untracked. Their prior status is preserved in the baseline snapshot; they were not staged, reset, cleaned, or overwritten.
+
+PHASE 2D SOURCE/TEST FILES (eight)
+  PRN232_BE/PRN232.Api/Controllers/PublicRoomsController.cs (new)
+  PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs
+  PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingService.cs
+  PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
+  PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs
+  PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+  PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs
+  PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
+
+POST-TASK STATUS
+- The same seven pre-existing tracked modifications remain; Phase 2D did not edit them.
+- `PublicRoomsController.cs` and `outputs/phase2d-public-room-detail/` are the new repository untracked paths.
+- The six existing public-browsing source/test files listed above were already untracked before Phase 2D, so Git continues to display them as `??`; their Phase-2D-only deltas are isolated in `07-Diff.patch` using the pre-edit snapshots, not `git diff HEAD`.
+- Existing pre-task TestResults folders remain. New test and coverage result directories were written under the task's `work/` folder, outside the repository.
+- No frontend, schema/migration, dependency, or live-data file changed. No files were staged or committed; no push was performed.
+
+VERIFICATION
+- `git diff --check` exited 0. Git emitted only the existing LF-to-CRLF notices for `.codegraph/.gitignore` and `Program.cs`; both were pre-task modified files and were not edited in Phase 2D.
+- Strict UTF-8, trailing-whitespace, and conflict-marker scan passed for 22 source/report files and all added lines in the 8-file review patch. Existing whitespace present only in patch context was not treated as a Phase-2D addition.
+- `git apply --check` passed for `07-Diff.patch` in an isolated scratch repository populated from the pre-edit snapshots.
+- The 8 repository reports and their workspace mirror have matching SHA-256 hashes.

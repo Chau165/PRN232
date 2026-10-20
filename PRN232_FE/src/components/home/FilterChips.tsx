@@ -1,42 +1,43 @@
-import { useState } from "react"
 import Icon from "@/components/common/Icon"
 
-export default function FilterChips() {
-  const [radius, setRadius] = useState("3km")
+import type { PropertySearchDraft } from "@/utils/publicQueryState"
 
+type FilterChipsProps = {
+  draft: PropertySearchDraft
+
+  onChange: (field: keyof PropertySearchDraft, value: string) => void
+}
+
+export default function FilterChips({ draft, onChange }: FilterChipsProps) {
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-2">
-      <span className="mr-1 text-[13px] text-slate-400">Lọc thêm</span>
-      <button className="chip">
-        <Icon name="gps" size={15} />
-        Vị trí hiện tại
-      </button>
-      <button className="chip">
-        Số người ở <Icon name="chevron" size={14} />
-      </button>
-      <button className="chip">
-        Tiện ích <Icon name="chevron" size={14} />
-      </button>
-      <span className="ml-1 text-[13px] text-slate-400">Bán kính</span>
-      <div className="flex rounded-lg bg-slate-100/80 p-0.5">
-        {["1km", "3km", "5km", "10km"].map((item) => (
-          <button
-            key={item}
-            onClick={() => setRadius(item)}
-            className={`rounded-md px-2.5 py-1.5 text-[12px] font-semibold ${
-              radius === item
-                ? "bg-white text-[#087775] shadow-sm"
-                : "text-slate-500"
-            }`}
-          >
-            {item}
-          </button>
+    <details open className="mt-3 rounded-lg border-t border-slate-100 pt-3">
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-[13px] font-medium text-slate-500 hover:text-[#087775]">
+        <Icon name="sliders" size={15} />
+        Khu vực và tiện ích
+        <Icon name="chevron" size={14} />
+      </summary>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {([
+          ["city", "Thành phố", draft.city],
+
+          ["district", "Quận/Huyện", draft.district],
+
+          ["ward", "Phường/Xã", draft.ward],
+
+          ["amenityIds", "Mã tiện ích", draft.amenityIds],
+        ] as const).map(([field, label, value]) => (
+          <label key={field} className="text-[12px] font-medium text-slate-500">
+            {label}
+            <input
+              aria-label={label}
+              value={value}
+              onChange={(event) => onChange(field, event.target.value)}
+              placeholder={field === "amenityIds" ? "Ví dụ: 2, 5" : label}
+              className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[13px] text-slate-700 outline-none focus:border-teal-600"
+            />
+          </label>
         ))}
       </div>
-      <button className="ml-auto flex items-center gap-1.5 px-2 text-[13px] font-medium text-slate-500 hover:text-[#087775]">
-        <Icon name="sliders" size={15} />
-        Bộ lọc nâng cao
-      </button>
-    </div>
+    </details>
   )
 }

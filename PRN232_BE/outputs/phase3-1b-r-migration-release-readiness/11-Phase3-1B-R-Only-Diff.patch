@@ -1,0 +1,948 @@
+diff --git a/outputs/phase3-1b-r-migration-release-readiness/01-Executive-Decision-And-Status.md b/outputs/phase3-1b-r-migration-release-readiness/01-Executive-Decision-And-Status.md
+new file mode 100644
+index 0000000..0279870
+--- /dev/null
++++ b/outputs/phase3-1b-r-migration-release-readiness/01-Executive-Decision-And-Status.md
+@@ -0,0 +1,35 @@
++# Phase 3.1B-R — Quyết định và trạng thái
++
++**Trạng thái: BLOCKED — cần owner/DBA chấp nhận drift Maintenance, chứng cứ backup/restore và phê duyệt triển khai.**
++
++## Phạm vi đã thực hiện
++
++- Đọc `CODING_STANDARDS.md`, 9 báo cáo Phase 3.1A, 10 báo cáo Phase 3.1B và rà soát inventory của gói Phase 3.1B. Patch Phase 3.1B được giữ nguyên.
++- Kết nối Supabase bằng cấu hình có sẵn, chỉ chạy truy vấn catalog/count trong transaction `READ ONLY`, sau đó `ROLLBACK`. Snapshot lúc `2026-10-19 15:21:03 UTC`, PostgreSQL `17.11`, schema `public`.
++- Không chạy `ALTER`, `CREATE`, `INSERT`, `UPDATE`, `DELETE`, extension installation, migration-history write hay EF migration trên Supabase live.
++- Tạo PostgreSQL `17.10` cô lập trên loopback, dựng dữ liệu tổng hợp và replay Gate B cùng ba SQL migration C/D/E. Không dùng Docker và không dùng dữ liệu live trong test.
++- Không sửa API, entity, DbContext, migration source, frontend hay lịch sử Git. Không stage/commit/push/deploy.
++
++## Điều kiện đạt được
++
++| Điều kiện | Kết quả |
++|---|---|
++| Live database chỉ đọc | Đạt; transaction xác nhận `transaction_read_only=on`, kết thúc bằng rollback |
++| Reconcile Maintenance | Candidate Gate B qua trên clone đúng schema live-like; history marker chỉ thêm sau khi đủ precondition |
++| Ba migration Phase 3.1B | C/D/E replay thành công tuần tự trên PostgreSQL cô lập |
++| Bảo toàn dữ liệu cũ | Đạt trên fixture: 25 InvoiceDetails, 9 MaintenanceLogs, 4 MaintenanceReports, 5 MaintenanceReportImages; fingerprint các cột cũ không đổi |
++| EF migration drift | Không có pending model changes; local EF nhận đủ 8 migration sau replay |
++| Backend regression | `dotnet test PRN232_BE.sln --no-restore`: 200 passed, 0 failed, 0 skipped trên fixture local |
++| Live release readiness | Chưa đạt; các approval/blocker bên dưới chưa được xác nhận |
++
++## Blocker trước bất kỳ thay đổi live nào
++
++1. Owner/DBA phải xác nhận giữ `MaintenanceReports.CreatedAt DEFAULT CURRENT_TIMESTAMP`, giữ hai CHECK status trên `MaintenanceLogs`, và giữ trạng thái RLS hiện có của `MaintenanceLogs`.
++2. Cần bằng chứng từ Supabase Dashboard về plan, backup/recovery point mới nhất, retention/PITR và một restore drill độc lập. Catalog PostgreSQL không xác nhận được các thông tin account-level này.
++3. `btree_gist` chưa được cài trên live. Catalog cho thấy extension có phiên bản trusted và role có quyền CREATE ở database, nhưng quyền vận hành trên Supabase chưa được thử; không cài trên live trong phase này.
++4. Cần phê duyệt hash chính xác của SQL Gate B và ba migration SQL C/D/E trước khi áp dụng. Các SQL C/D/E hiện là review artifacts, không phải lệnh được phép chạy.
++5. Security review chưa thông qua: API có endpoint anonymous và `POST /api/roles` chưa có authorization; bảng mới dự kiến bật RLS nhưng không có policy.
++
++## Kết luận
++
++Gói review và replay độc lập đã hoàn thành. Supabase live không đổi. **Chưa đủ điều kiện để áp dụng migration live** cho đến khi owner/DBA giải quyết các quyết định và bằng chứng ở trên. Danh sách đầy đủ nằm tại `05-Production-Backup-PITR-Restore-And-Approval-Checklist.md` và `07-Release-Runbook-Gate-B-C-D-E.md`.
+
+diff --git a/outputs/phase3-1b-r-migration-release-readiness/02-Live-ReadOnly-Schema-Equivalence-Matrix.md b/outputs/phase3-1b-r-migration-release-readiness/02-Live-ReadOnly-Schema-Equivalence-Matrix.md
+new file mode 100644
+index 0000000..9ee3558
+--- /dev/null
++++ b/outputs/phase3-1b-r-migration-release-readiness/02-Live-ReadOnly-Schema-Equivalence-Matrix.md
+@@ -0,0 +1,51 @@
++# Phase 3.1B-R — So khớp live schema với migration Maintenance
++
++## Phạm vi và snapshot
++
++Nguồn so sánh: live catalog ở PostgreSQL `17.11`, schema `public`, snapshot `2026-10-19 15:21:03 UTC`; migration nguồn `20261013192052_ReconcileMaintenanceReportsAndLogNullability`, `InitialCreate`, `AppDbContextModelSnapshot` và API/service liên quan. Toàn bộ data access chỉ đếm dòng; không đọc description, URL, invoice text hoặc thông tin cá nhân.
++
++## History và thứ tự migration
++
++Live có bốn history rows, tất cả `ProductVersion=8.0.10`:
++
++1. `20261003142421_InitialCreate`
++2. `20261004073837_RenameKhuTroDichVuToPropertyService`
++3. `20261013140609_SeedRolesAndAuthSetup`
++4. `20261019034905_AddPropertyPrimaryImageUrl`
++
++`20261013192052_ReconcileMaintenanceReportsAndLogNullability` không có trong history dù bảng và phần lớn schema migration đó tạo đã tồn tại. Migration có ID thời gian sớm hơn chưa được ghi, trong khi migration mới hơn đã được ghi; chạy `dotnet ef database update` trực tiếp có nguy cơ tạo lại `MaintenanceReports` và dừng với `42P07 relation already exists`.
++
++## Bảng đối chiếu
++
++| Hạng mục | Migration/model | Live snapshot | Phân loại |
++|---|---|---|---|
++| `MaintenanceLogs.OldStatus` | InitialCreate yêu cầu NOT NULL; Reconcile làm nullable | `text NULL`; có 1 dòng NULL | Khớp trạng thái sau Up; dữ liệu khiến Down guard thất bại |
++| Reports và Images | Reconcile tạo bảng, identity, PK/FK, cột bắt buộc | Hai bảng tồn tại, identity ownership và PK/FK khớp | Khớp cấu trúc chính |
++| `MaintenanceReports.RequestId` | Unique index | Unique btree index tồn tại | Khớp |
++| `IX_MaintenanceReports_ReportedBy` | Reconcile tạo index btree | Thiếu | Drift thiếu index |
++| `IX_MaintenanceReportImages_ReportId` | Reconcile tạo index btree | Thiếu | Drift thiếu index |
++`20261013192052_ReconcileMaintenanceReportsAndLogNullability` không có trong history dù bảng và phần lớn schema migration đó tạo đã tồn tại. Migration có ID thời gian sớm hơn chưa được ghi, trong khi migration mới hơn đã được ghi; chạy `dotnet ef database update` trực tiếp có nguy cơ tạo lại `MaintenanceReports` và dừng với `42P07 relation already exists`.
++| `CK_MaintenanceLogs_OldStatus` | Không có trong InitialCreate hoặc snapshot | Có, CHECK tập `Pending/Approved/Completed` | Extra live, chưa rõ nguồn tạo |
++| `CK_MaintenanceLogs_NewStatus` | Không có trong InitialCreate hoặc snapshot | Có, cùng CHECK set | Extra live, chưa rõ nguồn tạo |
++| RLS Reports/Images | Reconcile bật RLS | Bật, `FORCE` off, không có policy | Khớp |
++| RLS MaintenanceLogs | Migration/snapshot không quản lý RLS | Bật, `FORCE` off, không có policy | Extra live; cần bảo toàn/xác nhận |
++| Secondary indexes MaintenanceLogs | Hai index trên `RequestId`, `ChangedBy` | Đúng hai btree index tồn tại | Khớp |
++| Constraint validation/deferrability | PK/FK/check expected validated, non-deferrable | Tất cả 10 constraint Maintenance validated, non-deferrable | Khớp theo live, nhưng 2 check là extra |
++
++## Số liệu tổng hợp live
++
++| Bảng | Dòng |
++|---|---:|
++| Properties | 3 |
++| InvoiceDetails | 25 |
++| MaintenanceLogs | 9 |
++| MaintenanceReports | 4 |
++| MaintenanceReportImages | 5 |
++
++RLS bật trên 24/24 bảng public, không có bảng nào `FORCE ROW LEVEL SECURITY`; số policy public là 0. Role kết nối live không phải superuser, có `BYPASSRLS` và quyền CREATE ở database, đồng thời là owner của bảng Maintenance/history cần thiết. `anon`/`authenticated` có SELECT/INSERT grants trên Reports/Images nhưng không có policy; quyền hiệu dụng còn phụ thuộc RLS-bypass của role, vì vậy không được kết luận chỉ từ grant.
++
++`btree_gist` chưa cài. PostgreSQL liệt kê các bản 1.2–1.7 là trusted; role live không phải superuser nhưng có quyền CREATE ở database. Đây là bằng chứng catalog, không chứng minh Supabase sẽ cho phép cài trong release.
++
++## Down migration
++
++`Down()` kiểm tra `MaintenanceLogs.OldStatus IS NULL` rồi ném exception; live có 1 dòng NULL nên Down sẽ dừng. Nếu điều kiện đó được xử lý thủ công, Down tiếp tục drop `MaintenanceReportImages` và `MaintenanceReports`, làm mất tối thiểu 5 metadata rows và 4 report rows. Không dùng Down làm rollback.
+
+diff --git a/outputs/phase3-1b-r-migration-release-readiness/03-Gate-B-Reconciliation-Design-And-Owner-Choices.md b/outputs/phase3-1b-r-migration-release-readiness/03-Gate-B-Reconciliation-Design-And-Owner-Choices.md
+new file mode 100644
+index 0000000..a512d72
+--- /dev/null
++++ b/outputs/phase3-1b-r-migration-release-readiness/03-Gate-B-Reconciliation-Design-And-Owner-Choices.md
+@@ -0,0 +1,40 @@
++# Gate B — Phương án reconcile Maintenance
++
++## Mục tiêu
++
++Đưa EF migration history về trạng thái nhất quán với schema live đã có, đồng thời chỉ bổ sung đúng hai index bị thiếu. Không chạy lại `Up()` vì các bảng đã tồn tại; không dùng `Down()` vì migration có thể từ chối do `OldStatus NULL` và sau đó drop dữ liệu report/image.
++
++## Trình tự ứng viên
++
++File review-only: `SQL_REVIEW/01-Gate-B-Maintenance-Reconciliation-REVIEW-ONLY.sql`.
++
++1. Chạy precondition read-only trong cùng database/schema, so history, toàn bộ cột/identity, PK/FK/CHECK, default, ownership, RLS và index definitions với snapshot đã review.
++2. Nếu có bất kỳ khác biệt nào, abort trước DDL. Không tự dọn index thay thế, constraint khác tên hoặc index invalid.
++3. Tạo riêng `IX_MaintenanceReports_ReportedBy` và `IX_MaintenanceReportImages_ReportId` bằng `CREATE INDEX CONCURRENTLY` ở autocommit, ngoài transaction.
++4. Xác minh hai index có định nghĩa chính xác, `indisvalid` và `indisready`.
++5. Chỉ sau khi mọi guard đúng, thêm history marker `20261013192052_ReconcileMaintenanceReportsAndLogNullability` trong transaction cuối.
++
++Script mặc định fail-closed. Nó yêu cầu `psql -v phase31br_gate_b_approved=true`; biến này không thay thế phê duyệt bên ngoài. Nếu một build `CONCURRENTLY` thất bại, PostgreSQL có thể để lại index invalid; dừng, kiểm tra catalog và xin quyết định cleanup riêng. Không tự drop index.
++
++## Quyết định owner/DBA cần ký
++
++### 1. `CreatedAt DEFAULT CURRENT_TIMESTAMP`
++
++- **Khuyến nghị cho reconcile:** giữ nguyên default live. `MaintenanceService` hiện gán `CreatedAt` rõ ràng trước insert; giữ default tương thích với writer khác và không cần rewrite migration lịch sử.
++- Migration/snapshot không khai báo default. Nếu quyết định bỏ default, phải có bằng chứng tất cả writer luôn cung cấp timestamp và phải dùng thay đổi forward-only được review; không sửa migration cũ.
++- Candidate hiện chỉ hỗ trợ lựa chọn **KEEP** và sẽ abort nếu default không còn khớp.
++
++### 2. Hai CHECK status trên `MaintenanceLogs`
++
++Migration `InitialCreate` và `AppDbContextModelSnapshot` không chứa CHECK này; live có hai constraint đã validated. Nguồn tạo chưa xác định. Khuyến nghị giữ nguyên để tránh nới lỏng dữ liệu hợp lệ; owner/DBA phải xác nhận đây là rule được chấp nhận. Candidate yêu cầu đúng tên/định nghĩa và đúng tổng số constraint; nó không sửa hai constraint.
++
++### 3. RLS của `MaintenanceLogs`
++
++Live bật RLS, không FORCE và không có policy; source migration không tạo cấu hình này. Candidate kiểm tra/bảo toàn trạng thái hiện có. Trước khi duyệt, xác nhận vai trò ứng dụng và quyền đọc/ghi kỳ vọng; không thêm policy trong phase này.
++
++## Không được làm
++
++- Không chạy migration Up/Down hoặc `dotnet ef database update` để reconcile live.
++- Không ghi history marker chỉ để khiến EF bỏ qua lỗi `42P07` nếu các precondition không khớp.
++- Không xóa/backfill `OldStatus NULL`; không update/drop report, image, check constraint hay RLS.
++- Không chạy script review trên Supabase trước khi owner/DBA phê duyệt đúng hash, backup/restore evidence, cửa sổ triển khai và lệnh đích.
+
+diff --git a/outputs/phase3-1b-r-migration-release-readiness/04-Gates-CDE-Migration-Review.md b/outputs/phase3-1b-r-migration-release-readiness/04-Gates-CDE-Migration-Review.md
+new file mode 100644
+index 0000000..008ea2b
+--- /dev/null
++++ b/outputs/phase3-1b-r-migration-release-readiness/04-Gates-CDE-Migration-Review.md
+@@ -0,0 +1,34 @@
++# Gates C/D/E — Rà soát ba migration Phase 3.1B
++
++SQL review ban đầu nằm trong `outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/`. Hash SHA-256 chính xác và thứ tự triển khai ở `SQL_REVIEW/03-Production-Gates-CDE-Manifest.md`.
++
++## Gate C — Property description và tiện ích chung
++
++- Thêm `Properties.Description text NULL`.
++- Tạo `PropertyAmenities(PropertyId, AmenityId)` với composite PK, hai FK cascade và index theo `AmenityId`.
++- Bật RLS cho bảng mới, không tạo policy và không seed dữ liệu.
++- Local replay cho kết quả Description vẫn NULL trên 3 fixture properties, bảng tiện ích rỗng.
++
++## Gate D — Bảng giá theo Property/Service
++
++- Tạo `PropertyServiceRates` theo cặp Property/Service, đơn giá `numeric(18,2)`, `UnitCode`, `BillingBasis`, khoảng hiệu lực nửa mở `[EffectiveFrom, EffectiveTo)` và các CHECK non-negative/month-start/đơn vị-basis.
++- FK Property/Service dùng RESTRICT; index tra cứu; exclusion constraint GiST ngăn các khoảng hiệu lực chồng lấn cho cùng Property/Service.
++- Dùng `btree_gist` cho toán tử equality trên cột integer trong exclusion constraint. Live chưa cài extension; catalog cho thấy các phiên bản trusted nhưng quyền cài trên project chưa xác minh. Local replay thành công bằng superuser PostgreSQL 17.10, không chứng minh quyền Supabase.
++- Bảng bắt đầu rỗng. Không tạo mức giá mẫu, không fallback sang `Services.Price`, không suy diễn applicability/bắt buộc từ đơn giá.
++
++## Gate E — Snapshot trên InvoiceDetails
++
++- Thêm nullable `Quantity numeric(18,4)`, `UnitPrice numeric(18,2)`, `UnitCode`, `BillingBasis`, `ServiceId`, `RateId`; FK tới Service và cặp RateId/ServiceId.
++- Không backfill 25 hóa đơn cũ; local postflight xác nhận cả 25 dòng giữ snapshot NULL và fingerprint năm cột cũ không đổi.
++- Chưa có Billing Engine, invoice recalculation, snapshot immutability trigger, FE, data seed hoặc policy RLS mới trong phase này.
++
++## Thứ tự / transaction
++
++Chạy C rồi D rồi E, mỗi file chính xác một lần và tuần tự; từng file đã bao transaction. C phải có trước D, D trước E. Không chạy các lệnh đồng thời, không chạy lại sau khi history marker đã ghi, không chạy `dotnet ef database update` trên live trong phase này. D có `CREATE EXTENSION IF NOT EXISTS btree_gist` bên trong transaction; cần xác nhận quyền/operation support trước.
++
++## Rủi ro cần approval
++
++- RLS bật nhưng policy bằng 0; public API access phải có owner/security sign-off.
++- Quy tắc `unit_code`/`billing_basis` chỉ gồm tập được migration liệt kê; đối chiếu với quyết định nghiệp vụ đã phê duyệt.
++- Exclusion constraint là integrity rule mới; xác nhận chưa có bảng/rate ngoại lệ cần nạp cùng migration. Không có rate nào được seed trong phase này.
++- Khi SQL thành công, các history rows C/D/E phải khớp đúng ID/ProductVersion; không chấp nhận sửa nội dung/hashes sau phê duyệt.
+
+diff --git a/outputs/phase3-1b-r-migration-release-readiness/05-Production-Backup-PITR-Restore-And-Approval-Checklist.md b/outputs/phase3-1b-r-migration-release-readiness/05-Production-Backup-PITR-Restore-And-Approval-Checklist.md
+new file mode 100644
+index 0000000..7e69f81
+--- /dev/null
++++ b/outputs/phase3-1b-r-migration-release-readiness/05-Production-Backup-PITR-Restore-And-Approval-Checklist.md
+@@ -0,0 +1,31 @@
++# Backup, PITR, restore và approvals
++
++## Trạng thái project cụ thể
++
++**CHƯA XÁC MINH.** PostgreSQL catalog không cung cấp Supabase plan, danh sách restore points, backup retention thực tế hay trạng thái PITR. Trong phiên này không có bằng chứng account Dashboard hoặc một restore drill của project. Không suy luận từ phiên bản PostgreSQL hoặc trạng thái role.
++
++Supabase hiện mô tả daily backup cho Pro/Team/Enterprise với retention theo plan (Pro 7 ngày, Team 14 ngày, Enterprise tối đa 30 ngày); PITR là add-on trên các plan trả phí và yêu cầu tối thiểu Small compute. Dashboard hiển thị recovery points thực tế; restore làm project không truy cập được trong quá trình chạy. Các chi tiết account-level này phải được xác nhận tại project của người dùng, không thể coi tài liệu chung là bằng chứng backup đang bật. [Supabase Database Backups](https://supabase.com/docs/guides/platform/backups)
++
++## Bằng chứng bắt buộc trước live
++
++- [ ] Plan hiện tại và project ref/region được xác nhận bởi project owner.
++- [ ] Ảnh/export Dashboard thể hiện backup gần nhất hoặc PITR earliest/latest recovery point, timezone và retention.
++- [ ] Recovery point nằm trước cửa sổ thay đổi và RPO được owner chấp nhận.
++- [ ] Restore drill thành công vào project độc lập hoặc môi trường phục hồi; xác minh schema, dữ liệu, auth/roles và extension cần thiết.
++- [ ] Có người phụ trách restore, người trực triển khai, cửa sổ downtime và kênh liên lạc.
++- [ ] Có phương án riêng cho Storage objects: Supabase ghi rõ daily database backup không bao gồm object trong Storage API. Nếu ứng dụng phụ thuộc ảnh/đính kèm, kiểm tra backup/restore riêng. [Backup scope and restoration](https://supabase.com/docs/guides/platform/backups)
++
++## Approval checklist
++
++- [ ] Owner chấp nhận giữ `CreatedAt DEFAULT CURRENT_TIMESTAMP`.
++- [ ] Owner/DBA xác nhận giữ hai status CHECK live extra và MaintenanceLogs RLS.
++- [ ] Security owner chấp nhận RLS không có policy và đường API/role dùng để đọc/ghi các bảng mới.
++- [ ] DBA xác nhận cài `btree_gist` theo quy trình Supabase; quyền catalog đơn thuần không đủ.
++- [ ] Owner/DBA review và ký SHA-256 trong SQL manifest cho Gate B, C, D, E.
++- [ ] Preflight mới chạy trong transaction READ ONLY ngay trước triển khai và khớp chính xác snapshot; nếu drift thì dừng.
++- [ ] DBA xác nhận không có ứng dụng/writer chạy thay đổi Maintenance/Invoice trong cửa sổ migration.
++- [ ] Có phê duyệt riêng cho mọi cleanup nếu `CREATE INDEX CONCURRENTLY` để lại invalid index.
++
++## Restore / rollback posture
++
++Không dùng `Down()` làm rollback: Down có guard gặp 1 NULL `OldStatus` và còn drop báo cáo/ảnh. Nếu C/D/E đã bắt đầu, dừng đúng tại migration hoàn tất cuối cùng, giữ database ở trạng thái đó, thu thập postflight và chọn forward-fix có review. Restore từ backup/PITR có thể loại bỏ giao dịch hợp lệ phát sinh sau recovery point và gây downtime; chỉ người có thẩm quyền mới quyết định. Kiểm thử restore tách biệt trước khi release.
+
+diff --git a/outputs/phase3-1b-r-migration-release-readiness/06-Isolated-PostgreSQL-Replay-And-Regression.md b/outputs/phase3-1b-r-migration-release-readiness/06-Isolated-PostgreSQL-Replay-And-Regression.md
+new file mode 100644
+index 0000000..9ffa4ea
+--- /dev/null
++++ b/outputs/phase3-1b-r-migration-release-readiness/06-Isolated-PostgreSQL-Replay-And-Regression.md
+@@ -0,0 +1,35 @@
++# PostgreSQL cô lập — replay và regression
++
++## Môi trường
++
++- PostgreSQL local `17.10`, cluster mới trong `%TEMP%`, chỉ bind `127.0.0.1:55432`; test role là superuser `postgres`.
++- Database fixture có dữ liệu synthetic `fixture.invalid`; không copy row hay credential từ Supabase.
++- Supabase live là PostgreSQL `17.11`; do khác patch version và quyền, local replay không chứng minh hành vi Supabase extension policy.
++
++## Kịch bản Gate B
++
++1. EF tạo schema tới migration `20261019034905_AddPropertyPrimaryImageUrl`.
++2. Fixture phản chiếu live: 3 Properties, 25 InvoiceDetails, 9 Logs (1 OldStatus NULL), 4 Reports, 5 Image metadata; `CreatedAt DEFAULT CURRENT_TIMESTAMP`; hai secondary index Reports/Images bị thiếu; Reconcile history row bị xóa nhưng marker migration sau vẫn còn.
++3. Thử `dotnet ef database update` trên fixture: dừng với PostgreSQL `42P07` khi gặp `MaintenanceReports already exists`; transaction rollback, dữ liệu/index/history không đổi. Đây là tái hiện tình huống, không phải lỗi live.
++4. Gate B candidate trên clone thiếu hai live status CHECK bị fail-closed; exit code 3, không tạo index và không thêm history. Sau khi clone được bổ sung hai CHECK cùng trạng thái RLS logs đúng snapshot, candidate hoàn tất: hai index tạo thành công, marker Reconcile ghi ở cuối.
++
++## Replay C/D/E và dữ liệu
++
++Chạy đúng ba SQL review hiện hành theo thứ tự C, D, E trên clone riêng; cả ba transaction commit thành công. Gate D cài `btree_gist 1.7` trong môi trường local superuser. Postflight READ ONLY xác nhận:
++
++- History có đủ 8 migration, `ProductVersion=8.0.10`.
++- Giữ nguyên 3 Properties; Description NULL cả 3; PropertyAmenities=0; PropertyServiceRates=0.
++- InvoiceDetails vẫn 25; cả 25 dòng có sáu snapshot fields NULL.
++- MaintenanceLogs=9, Reports=4, Images=5; 1 log có OldStatus NULL; CreatedAt default vẫn CURRENT_TIMESTAMP.
++- Fingerprint trước/sau không đổi: InvoiceDetails `c7729e66b11571b2dd49535a4d30cdb9`; Logs `b320935a5ef3e9aceaa4d2ea41a70bea`; Reports `905ac593f8840ba1e22796793cb0fe18`; Images `5fb8592d5d2f5304d3007514958bd621`. Invoice fingerprint chỉ gồm năm cột legacy; các bảng Maintenance hash toàn bộ synthetic rows. Không đưa giá trị từng dòng vào log.
++- Index Reports/Images và exclusion GiST đều `indisvalid=true`, `indisready=true`; RLS bật trên hai bảng mới, policy count 0.
++
++## EF/build/API evidence
++
++- `dotnet ef migrations list` trên clone cho thấy đủ 8 migration đã apply.
++- `dotnet ef migrations has-pending-model-changes`: “No changes have been made to the model since the last migration.” Exit 0.
++- `dotnet build PRN232_BE.sln --no-restore`: thành công, 0 warning / 0 error.
++- Full backend suite sau khi dùng database fixture đã migrate: 200 passed, 0 failed, 0 skipped; TRX tổng hợp ở `%TEMP%\prn232-phase31br-tests\full-regression-seeded.trx`.
++- Lần chạy test đầu tiên trước khi fixture được migrate có 196 pass / 4 fail do `42P01` (bảng `Rooms`/`Properties` chưa tồn tại). Sau khi setup fixture, chạy lại đạt 200/0; lỗi đầu tiên là setup test DB, không phải code regression.
++
++Đây là bằng chứng build/test local. Không xác nhận kết nối API thực tế tới Supabase, FE visual UAT, phân quyền RLS của từng role live hoặc backup/restore readiness.
+
+diff --git a/outputs/phase3-1b-r-migration-release-readiness/07-Release-Runbook-Gate-B-C-D-E.md b/outputs/phase3-1b-r-migration-release-readiness/07-Release-Runbook-Gate-B-C-D-E.md
+new file mode 100644
+index 0000000..018928b
+--- /dev/null
++++ b/outputs/phase3-1b-r-migration-release-readiness/07-Release-Runbook-Gate-B-C-D-E.md
+@@ -0,0 +1,28 @@
++# Runbook triển khai có approval — Gate B/C/D/E
++
++**Không thực hiện trong Phase 3.1B-R.** Chỉ dùng sau khi tất cả approval trong report 05 có bằng chứng và owner đã duyệt đúng file/hash trong manifest.
++
++## Trước cửa sổ
++
++1. Chọn người chịu trách nhiệm/rollback và cửa sổ downtime; thông báo backend/API consumers và pause các writer ảnh hưởng Maintenance/Invoice.
++2. Xác minh plan, restore point/PITR, restore drill và backup Storage riêng nếu có ảnh.
++3. Chốt ba owner decisions: giữ CreatedAt default; giữ CHECK constraints; giữ RLS MaintenanceLogs. Xác nhận security owner chấp nhận zero-policy RLS và cách backend truy cập.
++4. DBA xác nhận `btree_gist` có thể được bật trên project Supabase và có quyền đúng. Không lấy kết quả local superuser làm bằng chứng quyền live.
++5. Lưu output preflight READ ONLY, thời gian UTC, history IDs, row counts và index/constraint definitions. Nếu khác reviewed state, dừng.
++
++## Triển khai tuần tự
++
++1. **Gate B:** chạy candidate SQL đã phê duyệt đúng SHA-256 bằng `psql` autocommit; không thêm option single-transaction. Guard phải pass. Hai `CREATE INDEX CONCURRENTLY` chạy riêng; kiểm tra valid/ready. History marker chỉ được ghi bởi transaction cuối script.
++2. **Gate C:** áp dụng đúng `01-AddPropertyDescriptionAndAmenities.sql` đã duyệt. Xác nhận commit và history row.
++3. **Gate D:** áp dụng đúng `02-AddPropertyServiceRates.sql`. Xác nhận extension tồn tại, exclusion constraint và history row.
++4. **Gate E:** áp dụng đúng `03-AddInvoiceDetailBillingSnapshot.sql`. Xác nhận columns/FKs/indexes và history row.
++5. Chạy `02-Postflight-READ-ONLY.sql` trong READ ONLY transaction; đối chiếu counts với preflight, history IDs, hashes/backups, RLS, extension và index validity.
++6. Sau khi DBAs chấp nhận postflight mới tiếp tục khởi động lại backend/canary phù hợp; kiểm tra health/API logs. Đây không nằm trong scope hiện tại và cần approval/release plan riêng.
++
++## Dừng / phục hồi
++
++- Bất kỳ precondition nào sai: dừng trước DDL; không sửa live cho khớp script.
++- Gate B index concurrent thất bại: dừng toàn bộ; kiểm tra invalid indexes trong catalog, không auto-drop, xin DBA quyết định.
++- C/D/E transaction thất bại: giữ nguyên migration vừa commit trước đó; không chạy lại file đã commit, không chạy `Down()`, không ghi history tay. Thu thập trạng thái và soạn forward recovery SQL riêng để review.
++- Nếu recovery cần backup/PITR: restore drill/approval và downtime owner phải được xác nhận. Restore có thể bỏ các write hợp lệ sau điểm khôi phục.
++- Chỉ đóng release khi postflight, health check, API smoke tests được người có quyền chấp nhận. Smoke/visual test không thể được thay bằng EF history.
+
+diff --git a/outputs/phase3-1b-r-migration-release-readiness/08-Security-Compatibility-And-Remaining-Billing-Gates.md b/outputs/phase3-1b-r-migration-release-readiness/08-Security-Compatibility-And-Remaining-Billing-Gates.md
+new file mode 100644
+index 0000000..7449563
+--- /dev/null
++++ b/outputs/phase3-1b-r-migration-release-readiness/08-Security-Compatibility-And-Remaining-Billing-Gates.md
+@@ -0,0 +1,28 @@
++# Security, API compatibility và Billing gates còn lại
++
++## API/security
++
++- Source rà soát cho thấy `RolesController` có `POST /api/roles` không có `[Authorize]` ở controller/action. Không thay đổi endpoint trong Phase 3.1B-R.
++- Các báo cáo Phase 2E trước đó ghi nhận 21 anonymous GET endpoints; `PropertiesController` list/detail không có authorization/owner scope trong các đường public được rà soát. Đây là inherited audit evidence, không phải full route recount trong lần này.
++- Live bật RLS nhưng không có policy trên 24 bảng public. Reports/Images có grants cho một số role nhưng access còn phụ thuộc `BYPASSRLS`; role Supabase dùng bởi API/runtime chưa được kiểm chứng trong release này.
++- Vì vậy database regression pass không đồng nghĩa API security pass. Trước production, security owner cần duyệt exposure, authorization, tenant/owner scoping, role runtime và policy design riêng.
++
++## Compatibility
++
++- Không chỉnh BE/FE trong Phase 3.1B-R. Regression backend 200/0 trên local migrated fixture.
++- `Properties.Description`, `PropertyAmenities`, `PropertyServiceRates` bắt đầu rỗng/NULL; API/FE cần hiển thị empty state cho tới khi data được nhập và phê duyệt.
++- Không fallback `PropertyServiceRates` sang `Services.Price`. Phí theo rate không chứng minh mandatory/opt-in hoặc lượng sử dụng.
++- `RoomTypes.Price` vẫn là giá thuê public; `Contracts.MonthlyRent` vẫn là giá trong hợp đồng. Migration không đổi cách thuê phòng, booking hoặc hợp đồng.
++- Invoice snapshot columns nullable để giữ tương thích với 25 invoice details lịch sử; không sửa các dòng đó và không triển khai Billing Engine ở phase này.
++
++## Billing/API decisions chuyển sang phase kế tiếp
++
++- Quy định cách property detail hiển thị Description, tiện ích chung (`PropertyAmenities`) và tiện ích phòng (`RoomAmenities`) mà không trộn phạm vi.
++- Chỉ hiển thị rates còn hiệu lực theo thời điểm nghiệp vụ đã chốt; xác định applicability, opt-in/required và nội dung công khai trước khi tính tổng phí.
++- Chốt mapping ServiceId/UnitCode/BillingBasis và nghiệp vụ từ ngày đầu tháng tiếp theo. Không seed dịch vụ hoặc rate giả.
++- Lập transition cho consumers đang đọc `Services.Price`; giữ tương thích cho tới khi từng consumer được đổi có kiểm soát, không dual-write mặc định.
++- Xác định invoice snapshot immutability, rounding, quantity source, corrections/credit notes và quyền tạo invoice trước khi bắt đầu Billing Engine.
++
++## Giới hạn bằng chứng
++
++Không gọi API live, không kiểm thử FE/browser, không kiểm thử grant/RLS với role `anon`, `authenticated` hoặc runtime API trên Supabase. Build và test suite là bằng chứng nguồn/test local, không phải production readiness.
+
+diff --git a/outputs/phase3-1b-r-migration-release-readiness/09-Git-Baseline-Changed-Files-And-SQL-Hashes.txt b/outputs/phase3-1b-r-migration-release-readiness/09-Git-Baseline-Changed-Files-And-SQL-Hashes.txt
+new file mode 100644
+index 0000000..da9fef5
+--- /dev/null
++++ b/outputs/phase3-1b-r-migration-release-readiness/09-Git-Baseline-Changed-Files-And-SQL-Hashes.txt
+@@ -0,0 +1,44 @@
++Phase 3.1B-R — Git baseline, artifact inventory, SHA-256
++Captured: 2026-10-19, working directory C:\PRN232\PRN232_BE
++Repository root: C:\PRN232
++Branch: main
++HEAD: 897b0374bf057767b495b296217fbfb3f72a190e
++
++Git preservation check
++- Before baseline: 170 status entries, recorded outside the repo at %TEMP%\prn232-phase31br-before-status.txt.
++- After reports/SQL, before this file and the phase patch: 183 entries; 0 previous status entries removed; 13 new output paths.
++- The phase adds this report and 11-Phase3-1B-R-Only-Diff.patch, for 15 added status paths total when complete.
++- Existing staged/unstaged/untracked entries were not reset or staged. No commit, push or deploy occurred.
++- No BE/FE source path changed by this phase; existing frontend dirty paths remain as at baseline.
++- The Gate B candidate SQL path already appeared as untracked at baseline. This phase amended its candidate contents (schema-qualified index-name syntax corrected; live Logs RLS guard added). Git status alone did not contain a baseline content hash; therefore the old candidate bytes cannot be independently reconstructed. The final candidate hash below is the reviewed handoff identity.
++
++New phase output inventory (the candidate file above was present before this phase's status baseline)
++- 01-Executive-Decision-And-Status.md
++- 02-Live-ReadOnly-Schema-Equivalence-Matrix.md
++- 03-Gate-B-Reconciliation-Design-And-Owner-Choices.md
++- 04-Gates-CDE-Migration-Review.md
++- 05-Production-Backup-PITR-Restore-And-Approval-Checklist.md
++- 06-Isolated-PostgreSQL-Replay-And-Regression.md
++- 07-Release-Runbook-Gate-B-C-D-E.md
++- 08-Security-Compatibility-And-Remaining-Billing-Gates.md
++- 09-Git-Baseline-Changed-Files-And-SQL-Hashes.txt
++- 10-Phase3-1C-Readiness.md
++- SQL_REVIEW/00-Live-READ-ONLY-Preflight.sql
++- SQL_REVIEW/01-Gate-B-Maintenance-Reconciliation-REVIEW-ONLY.sql
++- SQL_REVIEW/02-Postflight-READ-ONLY.sql
++- SQL_REVIEW/03-Production-Gates-CDE-Manifest.md
++- 11-Phase3-1B-R-Only-Diff.patch
++
++Reviewed source and review SQL SHA-256
++489146ec406a8a036c39982298b9affc07d31b2aef7078bfd7d9e6a97bc171a8  CODING_STANDARDS.md
++09fc88d4d0696c061c1e6f28bee88d7011cbae83704119de786f06fc4f081efa  PRN232.Infrastructure/Migrations/20261013192052_ReconcileMaintenanceReportsAndLogNullability.cs
++a82bc610a949e5f49ed76a60f60fec0ee6bf3c75053bdcd3c1fb46ce5cf75e0a  PRN232.Infrastructure/Migrations/20261003142421_InitialCreate.cs
++288a69ac9addb45ea1bb81ec71f28a9d49783ff30fca84e45caa0b988069c726  PRN232.Infrastructure/Migrations/AppDbContextModelSnapshot.cs
++7390649de04ed4e2b2220ac3b8ae0ac6a6e9f414feb41d3911ba51727d87d33a  outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/01-AddPropertyDescriptionAndAmenities.sql
++8247c5208f02095cd288e4aa1c271b6e20f041a6c92712ccba3791ae759a509e  outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/02-AddPropertyServiceRates.sql
++225902a76a91ed7f548318fc60efeaf14204ed634d91266d6155992c9d6cbc85  outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/03-AddInvoiceDetailBillingSnapshot.sql
++5d4ff9aabad3113efc835854494ba485a996c3ae3816fd443e75085632a2216f  outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/00-Live-READ-ONLY-Preflight.sql
++d3dad4a20ab58aad4fbc374aa52a0508bd977f13ee5530475165d3104a1c0701  outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/01-Gate-B-Maintenance-Reconciliation-REVIEW-ONLY.sql
++b020d7ee0b1f1994d77e0177e67453a4bc1b5c2145f3ac78992268d867dfad4c  outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/02-Postflight-READ-ONLY.sql
++
++The phase patch is a review artifact snapshot containing only this phase's report/review files; viewing it does not modify project source.
+
+diff --git a/outputs/phase3-1b-r-migration-release-readiness/10-Phase3-1C-Readiness.md b/outputs/phase3-1b-r-migration-release-readiness/10-Phase3-1C-Readiness.md
+new file mode 100644
+index 0000000..59431ad
+--- /dev/null
++++ b/outputs/phase3-1b-r-migration-release-readiness/10-Phase3-1C-Readiness.md
+@@ -0,0 +1,22 @@
++# Phase 3.1C — Điều kiện bắt đầu
++
++Phase 3.1B-R chỉ chuẩn bị database/migration; chưa triển khai endpoint, seed data, Billing Engine hay frontend. Phase 3.1C chỉ nên bắt đầu sau khi live release được owner/DBA phê duyệt và schema postflight xác nhận.
++
++## Đầu vào phải đạt
++
++- [ ] Đóng hết blocker/approval trong `01-Executive-Decision-And-Status.md` và `05-Production-Backup-PITR-Restore-And-Approval-Checklist.md`.
++- [ ] Gate B/C/D/E áp dụng theo thứ tự, có backup/restore evidence và postflight thành công.
++- [ ] Chốt nguồn dữ liệu và owner cung cấp Description, tiện ích property, mapping service/rate và ngày hiệu lực; không suy diễn từ sample data.
++- [ ] Chốt security contract: public/owner/admin visibility, owner scoping, role dùng với Supabase, RLS policy và bảo vệ endpoints.
++- [ ] Kiểm tra live API/runtime so với source; health cũ hoặc Swagger không chứng minh database/API release hiện tại.
++
++## Hợp đồng Property Detail kế tiếp
++
++- `Description` lấy từ `Properties.Description`; NULL/blank hiển thị trạng thái chưa có nội dung.
++- `commonAmenities` đến từ `PropertyAmenities → Amenities`; `roomAmenities` vẫn lấy theo phòng. Không trộn hai phạm vi.
++- `livingCosts` chỉ trả rates Property/Service hợp lệ tại mốc thời gian nghiệp vụ đã thống nhất, với ServiceId, tên, Price, UnitCode, BillingBasis, EffectiveFrom. Chưa có rate thì trả empty state; tuyệt đối không fallback `Services.Price`.
++- Không đưa owner/customer/contract data vào public DTO. Không gọi khoản phí là bắt buộc nếu chưa có applicability decision.
++
++## Ranh giới
++
++Giữ `RoomTypes.Price` làm giá thuê public và `Contracts.MonthlyRent` làm giá hợp đồng. Quy trình nhập data/rates, endpoint changes, DTO mapping, policies, FE, và Billing Engine đều là workstream riêng cần scope/approval cụ thể.
+
+diff --git a/outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/00-Live-READ-ONLY-Preflight.sql b/outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/00-Live-READ-ONLY-Preflight.sql
+new file mode 100644
+index 0000000..25ea1a3
+--- /dev/null
++++ b/outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/00-Live-READ-ONLY-Preflight.sql
+@@ -0,0 +1,88 @@
++-- REVIEW ONLY. Read-only live preflight; run with a dedicated read-only role when available.
++-- No table data values, URLs, customer details, or secrets are selected.
++BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
++SET LOCAL statement_timeout = '10s';
++
++SELECT current_database() AS database_name,
++       current_schema() AS current_schema,
++       current_setting('server_version') AS server_version,
++       current_setting('transaction_read_only') AS transaction_read_only,
++       current_user AS effective_role,
++       current_setting('TimeZone') AS timezone;
++
++SELECT "MigrationId", "ProductVersion"
++FROM public."__EFMigrationsHistory"
++ORDER BY "MigrationId";
++
++SELECT table_name, column_name, data_type, is_nullable, column_default, ordinal_position
++FROM information_schema.columns
++WHERE table_schema = 'public'
++  AND table_name IN ('MaintenanceLogs','MaintenanceReports','MaintenanceReportImages',
++                     'Properties','InvoiceDetails','PropertyAmenities','PropertyServiceRates')
++ORDER BY table_name, ordinal_position;
++
++SELECT t.relname AS table_name,
++       c.reltuples::bigint AS estimated_rows,
++       c.relrowsecurity AS rls_enabled,
++       c.relforcerowsecurity AS force_rls,
++       (SELECT count(*) FROM pg_policies p
++         WHERE p.schemaname='public' AND p.tablename=t.relname) AS policy_count
++FROM pg_class c
++JOIN pg_namespace n ON n.oid=c.relnamespace
++JOIN pg_stat_user_tables t ON t.relid=c.oid
++WHERE n.nspname='public'
++  AND t.relname IN ('MaintenanceLogs','MaintenanceReports','MaintenanceReportImages',
++                    'Properties','InvoiceDetails')
++ORDER BY t.relname;
++
++SELECT 'Properties' AS table_name, count(*) AS row_count FROM public."Properties"
++UNION ALL SELECT 'InvoiceDetails', count(*) FROM public."InvoiceDetails"
++UNION ALL SELECT 'MaintenanceLogs', count(*) FROM public."MaintenanceLogs"
++UNION ALL SELECT 'MaintenanceReports', count(*) FROM public."MaintenanceReports"
++UNION ALL SELECT 'MaintenanceReportImages', count(*) FROM public."MaintenanceReportImages"
++ORDER BY table_name;
++
++SELECT conrelid::regclass AS table_name,
++       conname AS constraint_name,
++       contype AS constraint_type,
++       convalidated AS validated,
++       condeferrable AS deferrable,
++       pg_get_constraintdef(oid, true) AS definition
++FROM pg_constraint
++WHERE conrelid IN ('public."MaintenanceLogs"'::regclass,
++                   'public."MaintenanceReports"'::regclass,
++                   'public."MaintenanceReportImages"'::regclass)
++ORDER BY table_name, constraint_name;
++
++SELECT schemaname, tablename, indexname, indexdef
++FROM pg_indexes
++WHERE schemaname='public'
++  AND tablename IN ('MaintenanceLogs','MaintenanceReports','MaintenanceReportImages')
++ORDER BY tablename, indexname;
++
++SELECT extname, extversion, extnamespace::regnamespace AS extension_schema
++FROM pg_extension
++WHERE extname='btree_gist';
++
++SELECT name, version, superuser, trusted, relocatable, schema
++FROM pg_available_extension_versions
++WHERE name='btree_gist'
++ORDER BY version;
++
++SELECT r.rolname,
++       r.rolsuper,
++       r.rolbypassrls,
++       has_database_privilege(r.rolname, current_database(), 'CREATE') AS can_create_in_database
++FROM pg_roles r
++WHERE r.rolname IN (current_user,'anon','authenticated','service_role')
++ORDER BY r.rolname;
++
++SELECT to_regclass('public."PropertyAmenities"') IS NOT NULL AS property_amenities_exists,
++       to_regclass('public."PropertyServiceRates"') IS NOT NULL AS property_service_rates_exists,
++       EXISTS (SELECT 1 FROM information_schema.columns
++               WHERE table_schema='public' AND table_name='Properties' AND column_name='Description') AS property_description_exists,
++       (SELECT count(*) FROM information_schema.columns
++         WHERE table_schema='public' AND table_name='InvoiceDetails'
++           AND column_name IN ('Quantity','UnitPrice','UnitCode','BillingBasis','ServiceId','RateId')) AS invoice_snapshot_column_count;
++
++ROLLBACK;
+
+diff --git a/outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/01-Gate-B-Maintenance-Reconciliation-REVIEW-ONLY.sql b/outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/01-Gate-B-Maintenance-Reconciliation-REVIEW-ONLY.sql
+new file mode 100644
+index 0000000..c9d4c10
+--- /dev/null
++++ b/outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/01-Gate-B-Maintenance-Reconciliation-REVIEW-ONLY.sql
+@@ -0,0 +1,284 @@
++-- REVIEW ONLY / DO NOT RUN ON LIVE.
++-- Gate B candidate, based on the 2026-10-19 read-only snapshot. This version KEEPS
++-- MaintenanceReports.CreatedAt DEFAULT CURRENT_TIMESTAMP as an intentional live extra.
++-- It also preserves the two live MaintenanceLogs status checks and live MaintenanceLogs RLS.
++-- Owner/DBA must approve these three live extras and this exact file hash before production use.
++-- Execute with psql in autocommit mode. Do not use psql --single-transaction / -1:
++-- CREATE INDEX CONCURRENTLY cannot run inside a transaction block.
++-- Default behavior is fail-closed: pass -v phase31br_gate_b_approved=true only after
++-- separate approval of this exact SHA-256 and a fresh read-only preflight.
++
++\set ON_ERROR_STOP on
++\if :{?phase31br_gate_b_approved}
++  \if :phase31br_gate_b_approved
++    \echo 'Gate B approval switch present; SQL preconditions still must match.'
++  \else
++    \echo 'BLOCKED: Gate B approval switch is false. No SQL changes were attempted.'
++    DO $$ BEGIN RAISE EXCEPTION 'Gate B requires the explicit approval switch'; END $$;
++  \endif
++\else
++  \echo 'BLOCKED: Gate B approval switch is missing. No SQL changes were attempted.'
++  DO $$ BEGIN RAISE EXCEPTION 'Gate B requires the explicit approval switch'; END $$;
++\endif
++
++-- Read-only assertions. Any drift aborts before either concurrent index starts.
++DO $gate_b_preflight$
++DECLARE
++    v_actual text[];
++    v_default text;
++BEGIN
++    IF current_schema() <> 'public' THEN
++        RAISE EXCEPTION 'Gate B requires public as current_schema; found %', current_schema();
++    END IF;
++
++    IF (SELECT count(*) FROM public."__EFMigrationsHistory") <> 4
++       OR EXISTS (
++           SELECT 1 FROM public."__EFMigrationsHistory"
++           WHERE "MigrationId" NOT IN (
++             '20261003142421_InitialCreate',
++             '20261004073837_RenameKhuTroDichVuToPropertyService',
++             '20261013140609_SeedRolesAndAuthSetup',
++             '20261019034905_AddPropertyPrimaryImageUrl'
++           ) OR "ProductVersion" <> '8.0.10'
++       )
++       OR EXISTS (
++           SELECT 1 FROM public."__EFMigrationsHistory"
++           WHERE "MigrationId"='20261013192052_ReconcileMaintenanceReportsAndLogNullability'
++       ) THEN
++        RAISE EXCEPTION 'Gate B migration history differs from the reviewed live snapshot';
++    END IF;
++
++    IF to_regclass('public."MaintenanceLogs"') IS NULL
++       OR to_regclass('public."MaintenanceReports"') IS NULL
++       OR to_regclass('public."MaintenanceReportImages"') IS NULL THEN
++        RAISE EXCEPTION 'A required Maintenance table is missing';
++    END IF;
++
++    SELECT array_agg(format('%s|%s|%s|%s', a.attname,
++                            format_type(a.atttypid,a.atttypmod),
++                            a.attnotnull,
++                            coalesce(nullif(a.attidentity,''),'-')) ORDER BY a.attnum)
++      INTO v_actual
++      FROM pg_attribute a
++      JOIN pg_class c ON c.oid=a.attrelid
++      JOIN pg_namespace n ON n.oid=c.relnamespace
++     WHERE n.nspname='public' AND c.relname='MaintenanceLogs'
++       AND a.attnum>0 AND NOT a.attisdropped;
++    IF v_actual IS DISTINCT FROM ARRAY[
++        'LogId|integer|t|d','RequestId|integer|t|-','OldStatus|text|f|-',
++        'NewStatus|text|t|-','ChangedBy|integer|f|-','ChangedAt|timestamp with time zone|t|-'
++    ]::text[] THEN
++        RAISE EXCEPTION 'MaintenanceLogs columns differ from the reviewed post-Up shape';
++    END IF;
++
++    SELECT array_agg(format('%s|%s|%s|%s', a.attname,
++                            format_type(a.atttypid,a.atttypmod),
++                            a.attnotnull,
++                            coalesce(nullif(a.attidentity,''),'-')) ORDER BY a.attnum)
++      INTO v_actual
++      FROM pg_attribute a
++      JOIN pg_class c ON c.oid=a.attrelid
++      JOIN pg_namespace n ON n.oid=c.relnamespace
++     WHERE n.nspname='public' AND c.relname='MaintenanceReports'
++       AND a.attnum>0 AND NOT a.attisdropped;
++    IF v_actual IS DISTINCT FROM ARRAY[
++        'ReportId|integer|t|d','RequestId|integer|t|-','ReportedBy|integer|t|-',
++        'Description|text|t|-','CreatedAt|timestamp with time zone|t|-'
++    ]::text[] THEN
++        RAISE EXCEPTION 'MaintenanceReports columns differ from the reviewed post-Up shape';
++    END IF;
++
++    SELECT pg_get_expr(d.adbin,d.adrelid) INTO v_default
++      FROM pg_attribute a
++      JOIN pg_class c ON c.oid=a.attrelid
++      JOIN pg_namespace n ON n.oid=c.relnamespace
++      LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
++     WHERE n.nspname='public' AND c.relname='MaintenanceReports' AND a.attname='CreatedAt';
++    IF v_default IS DISTINCT FROM 'CURRENT_TIMESTAMP' THEN
++        RAISE EXCEPTION 'CreatedAt default differs; this candidate only supports an approved KEEP CURRENT_TIMESTAMP decision';
++    END IF;
++
++    IF EXISTS (
++        SELECT 1 FROM pg_attribute a
++        JOIN pg_class c ON c.oid=a.attrelid
++        JOIN pg_namespace n ON n.oid=c.relnamespace
++        LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
++        WHERE n.nspname='public'
++          AND c.relname IN ('MaintenanceLogs','MaintenanceReports','MaintenanceReportImages')
++          AND a.attnum>0 AND NOT a.attisdropped
++          AND a.attgenerated<>''
++    ) OR EXISTS (
++        SELECT 1 FROM pg_attribute a
++        JOIN pg_class c ON c.oid=a.attrelid
++        JOIN pg_namespace n ON n.oid=c.relnamespace
++        JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
++        WHERE n.nspname='public'
++          AND c.relname IN ('MaintenanceLogs','MaintenanceReports','MaintenanceReportImages')
++          AND a.attnum>0 AND NOT a.attisdropped
++          AND NOT (c.relname='MaintenanceReports' AND a.attname='CreatedAt'
++                   AND pg_get_expr(d.adbin,d.adrelid)='CURRENT_TIMESTAMP')
++    ) THEN
++        RAISE EXCEPTION 'An unexpected generated column/default exists on Maintenance tables';
++    END IF;
++
++    SELECT array_agg(format('%s|%s|%s|%s', a.attname,
++                            format_type(a.atttypid,a.atttypmod),
++                            a.attnotnull,
++                            coalesce(nullif(a.attidentity,''),'-')) ORDER BY a.attnum)
++      INTO v_actual
++      FROM pg_attribute a
++      JOIN pg_class c ON c.oid=a.attrelid
++      JOIN pg_namespace n ON n.oid=c.relnamespace
++     WHERE n.nspname='public' AND c.relname='MaintenanceReportImages'
++       AND a.attnum>0 AND NOT a.attisdropped;
++    IF v_actual IS DISTINCT FROM ARRAY[
++        'ImageId|integer|t|d','ReportId|integer|t|-','ImageUrl|text|t|-'
++    ]::text[] THEN
++        RAISE EXCEPTION 'MaintenanceReportImages columns differ from the reviewed post-Up shape';
++    END IF;
++
++    IF (SELECT count(*) FROM pg_constraint
++         WHERE conrelid IN ('public."MaintenanceLogs"'::regclass,
++                            'public."MaintenanceReports"'::regclass,
++                            'public."MaintenanceReportImages"'::regclass)) <> 10
++       OR EXISTS (
++           SELECT 1 FROM pg_constraint
++           WHERE conrelid IN ('public."MaintenanceLogs"'::regclass,
++                              'public."MaintenanceReports"'::regclass,
++                              'public."MaintenanceReportImages"'::regclass)
++              AND (NOT convalidated OR condeferrable OR condeferred)
++       ) THEN
++        RAISE EXCEPTION 'Maintenance constraint count/validation differs from reviewed source';
++    END IF;
++
++    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public."MaintenanceLogs"'::regclass AND conname='PK_MaintenanceLogs' AND pg_get_constraintdef(oid,true)='PRIMARY KEY ("LogId")')
++       OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public."MaintenanceLogs"'::regclass AND conname='FK_MaintenanceLogs_MaintenanceRequests_RequestId' AND pg_get_constraintdef(oid,true)='FOREIGN KEY ("RequestId") REFERENCES "MaintenanceRequests"("RequestId") ON DELETE CASCADE')
++       OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public."MaintenanceLogs"'::regclass AND conname='FK_MaintenanceLogs_Users_ChangedBy' AND pg_get_constraintdef(oid,true)='FOREIGN KEY ("ChangedBy") REFERENCES "Users"("UserId") ON DELETE RESTRICT')
++        OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public."MaintenanceLogs"'::regclass AND conname='CK_MaintenanceLogs_OldStatus' AND pg_get_constraintdef(oid,true)='CHECK ("OldStatus" = ANY (ARRAY[''Pending''::text, ''Approved''::text, ''Completed''::text]))')
++        OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public."MaintenanceLogs"'::regclass AND conname='CK_MaintenanceLogs_NewStatus' AND pg_get_constraintdef(oid,true)='CHECK ("NewStatus" = ANY (ARRAY[''Pending''::text, ''Approved''::text, ''Completed''::text]))')
++       OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public."MaintenanceReports"'::regclass AND conname='PK_MaintenanceReports' AND pg_get_constraintdef(oid,true)='PRIMARY KEY ("ReportId")')
++       OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public."MaintenanceReports"'::regclass AND conname='FK_MaintenanceReports_MaintenanceRequests_RequestId' AND pg_get_constraintdef(oid,true)='FOREIGN KEY ("RequestId") REFERENCES "MaintenanceRequests"("RequestId") ON DELETE CASCADE')
++       OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public."MaintenanceReports"'::regclass AND conname='FK_MaintenanceReports_Users_ReportedBy' AND pg_get_constraintdef(oid,true)='FOREIGN KEY ("ReportedBy") REFERENCES "Users"("UserId") ON DELETE RESTRICT')
++       OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public."MaintenanceReportImages"'::regclass AND conname='PK_MaintenanceReportImages' AND pg_get_constraintdef(oid,true)='PRIMARY KEY ("ImageId")')
++       OR NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public."MaintenanceReportImages"'::regclass AND conname='FK_MaintenanceReportImages_MaintenanceReports_ReportId' AND pg_get_constraintdef(oid,true)='FOREIGN KEY ("ReportId") REFERENCES "MaintenanceReports"("ReportId") ON DELETE CASCADE') THEN
++        RAISE EXCEPTION 'Maintenance PK/FK/check constraints differ from reviewed source';
++    END IF;
++
++    IF EXISTS (
++        SELECT 1 FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace
++        WHERE n.nspname='public' AND t.relname IN ('MaintenanceLogs','MaintenanceReports','MaintenanceReportImages','__EFMigrationsHistory')
++          AND t.relowner <> (SELECT oid FROM pg_roles WHERE rolname=current_user)
++    ) THEN
++        RAISE EXCEPTION 'Current role does not own every required Maintenance/history table';
++    END IF;
++
++    IF EXISTS (
++        SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
++        WHERE n.nspname='public' AND c.relname IN ('MaintenanceReports','MaintenanceReportImages')
++          AND (NOT c.relrowsecurity OR c.relforcerowsecurity)
++    ) OR EXISTS (
++        SELECT 1 FROM pg_policies
++        WHERE schemaname='public' AND tablename IN ('MaintenanceReports','MaintenanceReportImages')
++    ) THEN
++        RAISE EXCEPTION 'Maintenance RLS flags/policies differ from reviewed source';
++    END IF;
++
++    IF NOT EXISTS (
++        SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
++        WHERE n.nspname='public' AND c.relname='MaintenanceLogs'
++          AND c.relrowsecurity AND NOT c.relforcerowsecurity
++    ) OR EXISTS (
++        SELECT 1 FROM pg_policies
++        WHERE schemaname='public' AND tablename='MaintenanceLogs'
++    ) THEN
++        RAISE EXCEPTION 'MaintenanceLogs live RLS state differs from the reviewed snapshot';
++    END IF;
++
++    IF pg_get_serial_sequence('public."MaintenanceReports"','ReportId') IS NULL
++       OR pg_get_serial_sequence('public."MaintenanceReportImages"','ImageId') IS NULL THEN
++        RAISE EXCEPTION 'Maintenance identity sequence ownership is not intact';
++    END IF;
++
++    IF EXISTS (
++        SELECT 1 FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace
++        JOIN pg_index ix ON ix.indrelid=t.oid JOIN pg_class i ON i.oid=ix.indexrelid
++        WHERE n.nspname='public' AND t.relname IN ('MaintenanceLogs','MaintenanceReports','MaintenanceReportImages')
++          AND i.relname NOT IN ('PK_MaintenanceLogs','IX_MaintenanceLogs_ChangedBy','IX_MaintenanceLogs_RequestId','PK_MaintenanceReports','IX_MaintenanceReports_RequestId','IX_MaintenanceReports_ReportedBy','PK_MaintenanceReportImages','IX_MaintenanceReportImages_ReportId')
++    ) THEN
++        RAISE EXCEPTION 'Unexpected Maintenance index exists; review before adding indexes';
++    END IF;
++
++    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='PK_MaintenanceLogs' AND indexdef='CREATE UNIQUE INDEX "PK_MaintenanceLogs" ON public."MaintenanceLogs" USING btree ("LogId")')
++       OR NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='IX_MaintenanceLogs_ChangedBy' AND indexdef='CREATE INDEX "IX_MaintenanceLogs_ChangedBy" ON public."MaintenanceLogs" USING btree ("ChangedBy")')
++       OR NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='IX_MaintenanceLogs_RequestId' AND indexdef='CREATE INDEX "IX_MaintenanceLogs_RequestId" ON public."MaintenanceLogs" USING btree ("RequestId")')
++       OR NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='PK_MaintenanceReports' AND indexdef='CREATE UNIQUE INDEX "PK_MaintenanceReports" ON public."MaintenanceReports" USING btree ("ReportId")')
++       OR NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='IX_MaintenanceReports_RequestId' AND indexdef='CREATE UNIQUE INDEX "IX_MaintenanceReports_RequestId" ON public."MaintenanceReports" USING btree ("RequestId")')
++       OR NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='PK_MaintenanceReportImages' AND indexdef='CREATE UNIQUE INDEX "PK_MaintenanceReportImages" ON public."MaintenanceReportImages" USING btree ("ImageId")') THEN
++        RAISE EXCEPTION 'Maintenance PK/unique index definitions differ from reviewed source';
++    END IF;
++
++    IF EXISTS (
++        SELECT 1 FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace
++        JOIN pg_index ix ON ix.indrelid=t.oid JOIN pg_class i ON i.oid=ix.indexrelid
++        JOIN pg_am am ON am.oid=i.relam
++        JOIN pg_attribute a ON a.attrelid=t.oid AND a.attname='ReportedBy'
++        WHERE n.nspname='public' AND t.relname='MaintenanceReports'
++          AND ((i.relname='IX_MaintenanceReports_ReportedBy' AND NOT (ix.indisvalid AND ix.indisready AND NOT ix.indisunique AND NOT ix.indisprimary AND ix.indnatts=1 AND ix.indnkeyatts=1 AND ix.indkey[0]=a.attnum AND ix.indpred IS NULL AND ix.indexprs IS NULL AND am.amname='btree'))
++            OR (i.relname<>'IX_MaintenanceReports_ReportedBy' AND ix.indisvalid AND ix.indisready AND NOT ix.indisunique AND NOT ix.indisprimary AND ix.indnatts=1 AND ix.indnkeyatts=1 AND ix.indkey[0]=a.attnum AND ix.indpred IS NULL AND ix.indexprs IS NULL AND am.amname='btree'))
++    ) OR EXISTS (
++        SELECT 1 FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace
++        JOIN pg_index ix ON ix.indrelid=t.oid JOIN pg_class i ON i.oid=ix.indexrelid
++        JOIN pg_am am ON am.oid=i.relam
++        JOIN pg_attribute a ON a.attrelid=t.oid AND a.attname='ReportId'
++        WHERE n.nspname='public' AND t.relname='MaintenanceReportImages'
++          AND ((i.relname='IX_MaintenanceReportImages_ReportId' AND NOT (ix.indisvalid AND ix.indisready AND NOT ix.indisunique AND NOT ix.indisprimary AND ix.indnatts=1 AND ix.indnkeyatts=1 AND ix.indkey[0]=a.attnum AND ix.indpred IS NULL AND ix.indexprs IS NULL AND am.amname='btree'))
++            OR (i.relname<>'IX_MaintenanceReportImages_ReportId' AND ix.indisvalid AND ix.indisready AND NOT ix.indisunique AND NOT ix.indisprimary AND ix.indnatts=1 AND ix.indnkeyatts=1 AND ix.indkey[0]=a.attnum AND ix.indpred IS NULL AND ix.indexprs IS NULL AND am.amname='btree'))
++    ) THEN
++        RAISE EXCEPTION 'Expected secondary index has a conflicting or alternate exact definition; review manually';
++    END IF;
++END
++$gate_b_preflight$;
++
++-- Each statement commits independently. A failed CONCURRENTLY build may leave an
++-- INVALID index; inspect pg_index.indisvalid and obtain separate cleanup approval.
++CREATE INDEX CONCURRENTLY IF NOT EXISTS "IX_MaintenanceReports_ReportedBy"
++    ON public."MaintenanceReports" USING btree ("ReportedBy");
++CREATE INDEX CONCURRENTLY IF NOT EXISTS "IX_MaintenanceReportImages_ReportId"
++    ON public."MaintenanceReportImages" USING btree ("ReportId");
++
++-- Only the exact expected indexes may proceed to the history transaction.
++DO $gate_b_index_postcheck$
++BEGIN
++    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='IX_MaintenanceReports_ReportedBy' AND indexdef='CREATE INDEX "IX_MaintenanceReports_ReportedBy" ON public."MaintenanceReports" USING btree ("ReportedBy")')
++       OR NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='IX_MaintenanceReportImages_ReportId' AND indexdef='CREATE INDEX "IX_MaintenanceReportImages_ReportId" ON public."MaintenanceReportImages" USING btree ("ReportId")')
++       OR EXISTS (
++          SELECT 1 FROM pg_index ix JOIN pg_class i ON i.oid=ix.indexrelid
++          JOIN pg_namespace n ON n.oid=i.relnamespace
++          WHERE n.nspname='public' AND i.relname IN ('IX_MaintenanceReports_ReportedBy','IX_MaintenanceReportImages_ReportId')
++            AND (NOT ix.indisvalid OR NOT ix.indisready)
++       ) THEN
++        RAISE EXCEPTION 'Gate B concurrent index postcondition failed; do not write migration history';
++    END IF;
++END
++$gate_b_index_postcheck$;
++
++-- History is recorded only after every source postcondition above is true.
++-- CreatedAt's extra default is retained only under the separately approved choice.
++BEGIN;
++SET LOCAL statement_timeout = '15000ms';
++DO $gate_b_history_guard$
++BEGIN
++    IF (SELECT count(*) FROM public."__EFMigrationsHistory") <> 4
++       OR NOT EXISTS (SELECT 1 FROM public."__EFMigrationsHistory" WHERE "MigrationId"='20261019034905_AddPropertyPrimaryImageUrl' AND "ProductVersion"='8.0.10')
++       OR EXISTS (SELECT 1 FROM public."__EFMigrationsHistory" WHERE "MigrationId"='20261013192052_ReconcileMaintenanceReportsAndLogNullability')
++       OR NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='IX_MaintenanceReports_ReportedBy' AND indexdef='CREATE INDEX "IX_MaintenanceReports_ReportedBy" ON public."MaintenanceReports" USING btree ("ReportedBy")')
++       OR NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='IX_MaintenanceReportImages_ReportId' AND indexdef='CREATE INDEX "IX_MaintenanceReportImages_ReportId" ON public."MaintenanceReportImages" USING btree ("ReportId")')
++       OR (SELECT pg_get_expr(d.adbin,d.adrelid) FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum WHERE n.nspname='public' AND c.relname='MaintenanceReports' AND a.attname='CreatedAt') IS DISTINCT FROM 'CURRENT_TIMESTAMP'
++       OR (SELECT attnotnull FROM pg_attribute WHERE attrelid='public."MaintenanceLogs"'::regclass AND attname='OldStatus') THEN
++        RAISE EXCEPTION 'Gate B final guard failed; __EFMigrationsHistory remains unchanged';
++    END IF;
++END
++$gate_b_history_guard$;
++INSERT INTO public."__EFMigrationsHistory" ("MigrationId", "ProductVersion")
++VALUES ('20261013192052_ReconcileMaintenanceReportsAndLogNullability','8.0.10');
++COMMIT;
+
+diff --git a/outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/02-Postflight-READ-ONLY.sql b/outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/02-Postflight-READ-ONLY.sql
+new file mode 100644
+index 0000000..afa74dd
+--- /dev/null
++++ b/outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/02-Postflight-READ-ONLY.sql
+@@ -0,0 +1,93 @@
++-- REVIEW ONLY. Read-only postflight after approved Gate B/C/D/E execution.
++-- Run immediately after deployment while writers are paused; compare counts to saved preflight.
++BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
++SET LOCAL statement_timeout = '10s';
++
++SELECT current_database() AS database_name,
++       current_setting('server_version') AS server_version,
++       current_setting('transaction_read_only') AS transaction_read_only,
++       current_timestamp AS observed_at_utc;
++
++SELECT "MigrationId", "ProductVersion"
++FROM public."__EFMigrationsHistory"
++ORDER BY "MigrationId";
++
++SELECT 'Properties' AS table_name, count(*) AS row_count FROM public."Properties"
++UNION ALL SELECT 'InvoiceDetails', count(*) FROM public."InvoiceDetails"
++UNION ALL SELECT 'MaintenanceLogs', count(*) FROM public."MaintenanceLogs"
++UNION ALL SELECT 'MaintenanceReports', count(*) FROM public."MaintenanceReports"
++UNION ALL SELECT 'MaintenanceReportImages', count(*) FROM public."MaintenanceReportImages"
++UNION ALL SELECT 'PropertyAmenities', count(*) FROM public."PropertyAmenities"
++UNION ALL SELECT 'PropertyServiceRates', count(*) FROM public."PropertyServiceRates"
++ORDER BY table_name;
++
++SELECT count(*) AS properties,
++       count(*) FILTER (WHERE "Description" IS NULL) AS description_null_rows
++FROM public."Properties";
++
++SELECT count(*) AS invoice_details,
++       count(*) FILTER (WHERE "Quantity" IS NULL
++                        AND "UnitPrice" IS NULL
++                        AND "UnitCode" IS NULL
++                        AND "BillingBasis" IS NULL
++                        AND "ServiceId" IS NULL
++                        AND "RateId" IS NULL) AS rows_with_all_snapshot_fields_null
++FROM public."InvoiceDetails";
++
++SELECT count(*) FILTER (WHERE "OldStatus" IS NULL) AS maintenance_logs_with_null_old_status
++FROM public."MaintenanceLogs";
++
++SELECT pg_get_expr(d.adbin,d.adrelid) AS created_at_default
++FROM pg_attribute a
++JOIN pg_class c ON c.oid=a.attrelid
++JOIN pg_namespace n ON n.oid=c.relnamespace
++LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
++WHERE n.nspname='public' AND c.relname='MaintenanceReports' AND a.attname='CreatedAt';
++
++SELECT extname, extversion, extnamespace::regnamespace AS extension_schema
++FROM pg_extension
++WHERE extname='btree_gist';
++
++SELECT c.relname AS table_name, c.relrowsecurity AS rls_enabled,
++       c.relforcerowsecurity AS force_rls,
++       (SELECT count(*) FROM pg_policies p
++        WHERE p.schemaname='public' AND p.tablename=c.relname) AS policy_count
++FROM pg_class c
++JOIN pg_namespace n ON n.oid=c.relnamespace
++WHERE n.nspname='public'
++  AND c.relname IN ('MaintenanceLogs','MaintenanceReports','MaintenanceReportImages',
++                    'PropertyAmenities','PropertyServiceRates')
++ORDER BY c.relname;
++
++SELECT conrelid::regclass AS table_name,
++       conname AS constraint_name,
++       contype AS constraint_type,
++       convalidated AS validated,
++       pg_get_constraintdef(oid,true) AS definition
++FROM pg_constraint
++WHERE conrelid IN ('public."MaintenanceLogs"'::regclass,
++                   'public."MaintenanceReports"'::regclass,
++                   'public."MaintenanceReportImages"'::regclass,
++                   'public."PropertyAmenities"'::regclass,
++                   'public."PropertyServiceRates"'::regclass,
++                   'public."InvoiceDetails"'::regclass)
++ORDER BY table_name,constraint_name;
++
++SELECT schemaname, tablename, indexname, indexdef
++FROM pg_indexes
++WHERE schemaname='public'
++  AND tablename IN ('MaintenanceReports','MaintenanceReportImages',
++                    'PropertyAmenities','PropertyServiceRates','InvoiceDetails')
++ORDER BY tablename,indexname;
++
++SELECT i.relname AS index_name, ix.indisvalid AS valid, ix.indisready AS ready
++FROM pg_index ix
++JOIN pg_class i ON i.oid=ix.indexrelid
++JOIN pg_namespace n ON n.oid=i.relnamespace
++WHERE n.nspname='public'
++  AND i.relname IN ('IX_MaintenanceReports_ReportedBy',
++                    'IX_MaintenanceReportImages_ReportId',
++                    'EX_PropertyServiceRates_NoOverlappingPeriods')
++ORDER BY i.relname;
++
++ROLLBACK;
+
+diff --git a/outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/03-Production-Gates-CDE-Manifest.md b/outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/03-Production-Gates-CDE-Manifest.md
+new file mode 100644
+index 0000000..d47829f
+--- /dev/null
++++ b/outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/03-Production-Gates-CDE-Manifest.md
+@@ -0,0 +1,37 @@
++# Manifest — SQL review Gate B/C/D/E
++
++**Chỉ để review. Không phải phê duyệt chạy live.** Mọi SHA-256 dưới đây được tính từ bytes của file lúc chuẩn bị bàn giao. Thay đổi dù một byte cần review/hash/approval lại.
++
++## Gate B — Reconcile Maintenance
++
++| File | SHA-256 |
++|---|---|
++| `01-Gate-B-Maintenance-Reconciliation-REVIEW-ONLY.sql` | `d3dad4a20ab58aad4fbc374aa52a0508bd977f13ee5530475165d3104a1c0701` |
++
++Tác động ứng viên: tạo hai secondary btree index bằng `CREATE INDEX CONCURRENTLY`, rồi ghi đúng một history marker trong transaction guard cuối. Không replay `Up()`, không thay đổi dữ liệu/cột/CHECK/RLS/default. Script yêu cầu psql variable `phase31br_gate_b_approved=true`; chỉ dùng sau phê duyệt ngoài-of-band của hash này, decisions và preflight mới.
++
++## Gates C/D/E — nguồn SQL Phase 3.1B hiện có
++
++| Thứ tự | File gốc | Migration ID | SHA-256 |
++|---:|---|---|---|
++| C | `outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/01-AddPropertyDescriptionAndAmenities.sql` | `20261019143543_AddPropertyDescriptionAndAmenities` | `7390649de04ed4e2b2220ac3b8ae0ac6a6e9f414feb41d3911ba51727d87d33a` |
++| D | `outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/02-AddPropertyServiceRates.sql` | `20261019143615_AddPropertyServiceRates` | `8247c5208f02095cd288e4aa1c271b6e20f041a6c92712ccba3791ae759a509e` |
++| E | `outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/03-AddInvoiceDetailBillingSnapshot.sql` | `20261019143633_AddInvoiceDetailBillingSnapshot` | `225902a76a91ed7f548318fc60efeaf14204ed634d91266d6155992c9d6cbc85` |
++
++Ba file C/D/E hiện có transaction và ghi migration history theo đúng file. Chạy tuần tự C → D → E, mỗi file một lần sau Gate B. Gate D cài `btree_gist`. Cần approval một hash cho từng file; không chỉnh nội dung trong quá trình vận hành.
++
++## Read-only scripts
++
++| File | SHA-256 |
++|---|---|
++| `00-Live-READ-ONLY-Preflight.sql` | `5d4ff9aabad3113efc835854494ba485a996c3ae3816fd443e75085632a2216f` |
++| `02-Postflight-READ-ONLY.sql` | `b020d7ee0b1f1994d77e0177e67453a4bc1b5c2145f3ac78992268d867dfad4c` |
++
++Hai script trên chỉ đọc trong `BEGIN ... READ ONLY`, dùng để đối chiếu và không ghi trạng thái. Postflight phải chạy sau toàn bộ migration và so với preflight lưu lại.
++
++## Exact review provenance
++
++- Gate B design: `03-Gate-B-Reconciliation-Design-And-Owner-Choices.md`.
++- Live equivalence: `02-Live-ReadOnly-Schema-Equivalence-Matrix.md`.
++- Test replay: `06-Isolated-PostgreSQL-Replay-And-Regression.md`.
++- Không chạy Gate B/C/D/E trên Supabase live trong Phase 3.1B-R.
+

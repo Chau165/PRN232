@@ -1,4 +1,7 @@
+import type { ReactNode } from "react"
 import { createBrowserRouter } from "react-router"
+import { ProtectedRoute, GuestOnlyRoute } from "@/components/auth/ProtectedRoute"
+import type { AppRole } from "@/types/user"
 import HomePage from "@/pages/HomePage/HomePage"
 import AvailableRoomsPage from "@/pages/AvailableRoomsPage/AvailableRoomsPage"
 import MyBillsPage from "@/pages/MyBillsPage/MyBillsPage"
@@ -28,107 +31,46 @@ import RegisterPage from "@/pages/RegisterPage/RegisterPage"
 import DepositPage from "@/pages/DepositPage/DepositPage"
 import PaymentSuccessPage from "@/pages/PaymentSuccessPage/PaymentSuccessPage"
 import { routes } from "@/constants/routes"
-import { requireMockAuth } from "@/utils/authMock"
-import {
-  requireManagementPermission,
-  requireManagementRole,
-} from "@/utils/managementAuth"
+
+const managementRoles: readonly AppRole[] = ["ADMIN", "MANAGER"]
+const adminOnly: readonly AppRole[] = ["ADMIN"]
+const customerOnly: readonly AppRole[] = ["CUSTOMER"]
+
+function protectedElement(element: ReactNode, roles?: readonly AppRole[]) {
+  return <ProtectedRoute roles={roles}>{element}</ProtectedRoute>
+}
+
+function guestElement(element: ReactNode) {
+  return <GuestOnlyRoute>{element}</GuestOnlyRoute>
+}
 
 export const router = createBrowserRouter([
   { path: routes.home, Component: HomePage },
   { path: routes.propertyDetail, Component: PropertyDetailPage },
   { path: routes.availableRooms, Component: AvailableRoomsPage },
-  { path: routes.myRoom, Component: MyRoomPage, loader: requireMockAuth },
-  {
-    path: routes.myContracts,
-    Component: MyContractsPage,
-    loader: requireMockAuth,
-  },
-  { path: routes.myBills, Component: MyBillsPage, loader: requireMockAuth },
-  {
-    path: routes.myBookings,
-    Component: MyBookingsPage,
-    loader: requireMockAuth,
-  },
-  {
-    path: routes.notifications,
-    Component: NotificationsPage,
-    loader: requireMockAuth,
-  },
-  { path: routes.profile, Component: ProfilePage, loader: requireMockAuth },
-  {
-    path: routes.managementDashboard,
-    Component: ManagementDashboardPage,
-    loader: requireManagementRole,
-  },
-  {
-    path: routes.managementAreas,
-    Component: ManagementAreasPage,
-    loader: requireManagementPermission("viewAreas"),
-  },
-  {
-    path: routes.managementProperties,
-    Component: ManagementPropertiesPage,
-    loader: requireManagementRole,
-  },
-  {
-    path: routes.managementRooms,
-    Component: ManagementRoomsPage,
-    loader: requireManagementRole,
-  },
-  {
-    path: routes.managementTenants,
-    Component: ManagementTenantsPage,
-    loader: requireManagementRole,
-  },
-  {
-    path: routes.managementBookings,
-    Component: ManagementBookingsPage,
-    loader: requireManagementRole,
-  },
-  { path: routes.managementViewings, Component: ManagementViewingsPage, loader: requireManagementRole },
-  {
-    path: routes.managementContracts,
-    Component: ManagementContractsPage,
-    loader: requireManagementRole,
-  },
-  {
-    path: routes.managementCreateContract,
-    Component: CreateContractPage,
-    loader: requireManagementRole,
-  },
-  {
-    path: routes.managementInvoices,
-    Component: ManagementInvoicesPage,
-    loader: requireManagementRole,
-  },
-  {
-    path: routes.managementEquipment,
-    Component: ManagementEquipmentPage,
-    loader: requireManagementRole,
-  },
-  {
-    path: routes.managementMaintenance,
-    Component: ManagementMaintenancePage,
-    loader: requireManagementRole,
-  },
-  {
-    path: routes.managementReports,
-    Component: ManagementReportsPage,
-    loader: requireManagementPermission("viewReports"),
-  },
-  {
-    path: routes.managementManagers,
-    Component: ManagementManagersPage,
-    loader: requireManagementPermission("manageManagers"),
-  },
-  {
-    path: routes.managementUsers,
-    Component: ManagementUsersPage,
-    loader: requireManagementPermission("manageUsers"),
-  },
-  { path: routes.login, Component: LoginPage },
-  { path: routes.register, Component: RegisterPage },
-  { path: routes.deposit, Component: DepositPage, loader: requireMockAuth },
-  { path: routes.paymentSuccess, Component: PaymentSuccessPage, loader: requireMockAuth },
+  { path: routes.myRoom, element: protectedElement(<MyRoomPage />, customerOnly) },
+  { path: routes.myContracts, element: protectedElement(<MyContractsPage />, customerOnly) },
+  { path: routes.myBills, element: protectedElement(<MyBillsPage />, customerOnly) },
+  { path: routes.myBookings, element: protectedElement(<MyBookingsPage />, customerOnly) },
+  { path: routes.notifications, element: protectedElement(<NotificationsPage />, customerOnly) },
+  { path: routes.profile, element: protectedElement(<ProfilePage />) },
+  { path: routes.managementDashboard, element: protectedElement(<ManagementDashboardPage />, managementRoles) },
+  { path: routes.managementAreas, element: protectedElement(<ManagementAreasPage />, adminOnly) },
+  { path: routes.managementProperties, element: protectedElement(<ManagementPropertiesPage />, managementRoles) },
+  { path: routes.managementRooms, element: protectedElement(<ManagementRoomsPage />, managementRoles) },
+  { path: routes.managementTenants, element: protectedElement(<ManagementTenantsPage />, managementRoles) },
+  { path: routes.managementBookings, element: protectedElement(<ManagementBookingsPage />, managementRoles) },
+  { path: routes.managementViewings, element: protectedElement(<ManagementViewingsPage />, managementRoles) },
+  { path: routes.managementContracts, element: protectedElement(<ManagementContractsPage />, managementRoles) },
+  { path: routes.managementCreateContract, element: protectedElement(<CreateContractPage />, managementRoles) },
+  { path: routes.managementInvoices, element: protectedElement(<ManagementInvoicesPage />, managementRoles) },
+  { path: routes.managementEquipment, element: protectedElement(<ManagementEquipmentPage />, managementRoles) },
+  { path: routes.managementMaintenance, element: protectedElement(<ManagementMaintenancePage />, managementRoles) },
+  { path: routes.managementReports, element: protectedElement(<ManagementReportsPage />, adminOnly) },
+  { path: routes.managementManagers, element: protectedElement(<ManagementManagersPage />, adminOnly) },
+  { path: routes.managementUsers, element: protectedElement(<ManagementUsersPage />, adminOnly) },
+  { path: routes.login, element: guestElement(<LoginPage />) },
+  { path: routes.register, element: guestElement(<RegisterPage />) },
+  { path: routes.deposit, element: protectedElement(<DepositPage />, customerOnly) },
+  { path: routes.paymentSuccess, element: protectedElement(<PaymentSuccessPage />, customerOnly) },
 ])

@@ -7,6 +7,8 @@ public interface IRoomRepository
 {
     Task<List<RoomDto>> GetAllAsync(int? propertyId, string? status, string? city, decimal? maxPrice);
     Task<RoomDto?> GetByIdAsync(int id);
+    Task<List<RentableRoomDto>> GetRentableRoomsAsync(DateTimeOffset asOfUtc);
+    Task<List<PropertyAvailabilityDto>> GetPropertyAvailabilityAsync(DateTimeOffset asOfUtc);
     Task<Rooms?> GetEntityByIdAsync(int id);
     Task<Rooms> AddAsync(Rooms room);
     void Remove(Rooms room);

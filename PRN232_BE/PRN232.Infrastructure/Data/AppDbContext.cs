@@ -17,6 +17,8 @@ public class AppDbContext : DbContext
     public DbSet<RoomImages> RoomImages => Set<RoomImages>();
     public DbSet<Amenities> Amenities => Set<Amenities>();
     public DbSet<RoomAmenities> RoomAmenities => Set<RoomAmenities>();
+    public DbSet<PropertyAmenities> PropertyAmenities => Set<PropertyAmenities>();
+    public DbSet<PropertyServiceRates> PropertyServiceRates => Set<PropertyServiceRates>();
     public DbSet<Equipments> Equipments => Set<Equipments>();
     public DbSet<Bookings> Bookings => Set<Bookings>();
     public DbSet<Contracts> Contracts => Set<Contracts>();
@@ -36,6 +38,7 @@ public class AppDbContext : DbContext
         // ---- composite keys (junction tables) ----
         modelBuilder.Entity<RoomTypeServices>().HasKey(x => new { x.RoomTypeId, x.ServiceId });
         modelBuilder.Entity<RoomAmenities>().HasKey(x => new { x.RoomId, x.AmenityId });
+        modelBuilder.Entity<PropertyAmenities>().HasKey(x => new { x.PropertyId, x.AmenityId });
 
         // ---- primary keys: tên class để số nhiều (vd. "Amenities") nhưng property
         // khóa chính để số ít (vd. "AmenityId") nên EF Core convention không tự nhận
@@ -65,6 +68,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<MaintenanceReportImages>().HasKey(x => x.ImageId);
         modelBuilder.Entity<Notifications>().HasKey(x => x.NotificationId);
         modelBuilder.Entity<IdentityDocuments>().HasKey(x => x.IdentityDocumentId);
+        modelBuilder.Entity<PropertyServiceRates>().HasKey(x => x.RateId);
 
         // ---- Users: multiple FKs to the same table, set Restrict to avoid
         // multiple-cascade-path errors ----
@@ -123,6 +127,75 @@ public class AppDbContext : DbContext
             .HasForeignKey(image => image.ReportId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        modelBuilder.Entity<PropertyAmenities>()
+            .HasOne(link => link.Property)
+            .WithMany(property => property.PropertyAmenities)
+            .HasForeignKey(link => link.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<PropertyAmenities>()
+            .HasOne(link => link.Amenity)
+            .WithMany(amenity => amenity.PropertyAmenities)
+            .HasForeignKey(link => link.AmenityId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PropertyServiceRates>(entity =>
+        {
+            if (Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL")
+            {
+                entity.ToTable("PropertyServiceRates", table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_PropertyServiceRates_Price_NonNegative",
+                        "\"Price\" >= 0");
+                    table.HasCheckConstraint(
+                        "CK_PropertyServiceRates_EffectiveFrom_MonthStart",
+                        "EXTRACT(DAY FROM \"EffectiveFrom\") = 1");
+                    table.HasCheckConstraint(
+                        "CK_PropertyServiceRates_EffectiveTo_MonthStart",
+                        "\"EffectiveTo\" IS NULL OR EXTRACT(DAY FROM \"EffectiveTo\") = 1");
+                    table.HasCheckConstraint(
+                        "CK_PropertyServiceRates_EffectiveRange",
+                        "\"EffectiveTo\" IS NULL OR \"EffectiveTo\" > \"EffectiveFrom\"");
+                    table.HasCheckConstraint(
+                        "CK_PropertyServiceRates_UnitBillingBasis",
+                        "(\"UnitCode\" = 'kwh' AND \"BillingBasis\" = 'usage') OR " +
+                        "(\"UnitCode\" = 'm3' AND \"BillingBasis\" = 'usage') OR " +
+                        "(\"UnitCode\" = 'room_month' AND \"BillingBasis\" = 'fixed_room') OR " +
+                        "(\"UnitCode\" = 'person_month' AND \"BillingBasis\" = 'occupant') OR " +
+                        "(\"UnitCode\" = 'vehicle_month' AND \"BillingBasis\" = 'vehicle')");
+                });
+            }
+            entity.HasIndex(rate => new { rate.PropertyId, rate.ServiceId, rate.EffectiveFrom })
+                .HasDatabaseName("IX_PropertyServiceRates_PropertyId_ServiceId_EffectiveFrom");
+            entity.HasAlternateKey(rate => new { rate.RateId, rate.ServiceId })
+                .HasName("AK_PropertyServiceRates_RateId_ServiceId");
+            entity.HasOne(rate => rate.Property)
+                .WithMany(property => property.PropertyServiceRates)
+                .HasForeignKey(rate => rate.PropertyId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(rate => rate.Service)
+                .WithMany(service => service.PropertyServiceRates)
+                .HasForeignKey(rate => rate.ServiceId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<InvoiceDetails>()
+            .HasOne(detail => detail.Service)
+            .WithMany(service => service.InvoiceDetails)
+            .HasForeignKey(detail => detail.ServiceId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<InvoiceDetails>()
+            .HasOne(detail => detail.PropertyServiceRate)
+            .WithMany(rate => rate.InvoiceDetails)
+            .HasForeignKey(detail => new { detail.RateId, detail.ServiceId })
+            .HasPrincipalKey(rate => new { rate.RateId, rate.ServiceId })
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<InvoiceDetails>()
+            .ToTable("InvoiceDetails", table => table.HasCheckConstraint(
+                "CK_InvoiceDetails_RateRequiresService",
+                "\"RateId\" IS NULL OR \"ServiceId\" IS NOT NULL"));
+
+
         // ---- Bookings <-> Contracts: 1:1 optional (hợp đồng có thể không xuất phát từ booking) ----
         modelBuilder.Entity<Contracts>()
             .HasOne(c => c.Booking)
@@ -155,6 +228,10 @@ public class AppDbContext : DbContext
         {
             property.SetColumnType("decimal(18,2)");
         }
+
+        modelBuilder.Entity<InvoiceDetails>()
+            .Property(detail => detail.Quantity)
+            .HasColumnType("numeric(18,4)");
 
         base.OnModelCreating(modelBuilder);
     }

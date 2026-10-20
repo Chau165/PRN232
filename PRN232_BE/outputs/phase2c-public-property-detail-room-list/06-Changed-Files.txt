@@ -1,0 +1,67 @@
+PHASE 2C CHANGE INVENTORY
+Repository root: C:\PRN232
+Backend root: C:\PRN232\PRN232_BE
+
+Initial git status: the task began with the modified tracked entries and untracked Phase 2A/2B entries listed below, before the Phase 2C output directory existed. Phase 2C did not reset, stage, commit, or overwrite those pre-existing changes. The complete Phase 2C delta relative to the saved Phase 2B source/test baseline is in 07-Diff.patch and covers eight source/test files:
+
+Phase 2C source delta (files were already untracked Phase 2B files):
+  PRN232.Api/Controllers/PublicPropertiesController.cs
+  PRN232.Application/DTOs/PublicPropertyListingDto.cs
+  PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
+  PRN232.Application/Interfaces/IPublicPropertyListingService.cs
+  PRN232.Application/Services/PublicPropertyListingService.cs
+  PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+
+Phase 2C test delta (files were already untracked Phase 2B files):
+  PRN232.Application.Tests/PublicPropertyListingApiTests.cs
+  PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
+
+Phase 2C reports in this directory:
+  01-API-Contracts.md
+  02-Implementation-Report.md
+  03-PostgreSQL-Verification.md
+  04-Security-Legacy-And-Image-Gate.md
+  05-Test-Matrix.md
+  06-Changed-Files.txt
+  07-Diff.patch
+  08-Phase2D-Readiness.md
+
+Pre-existing modified tracked files retained:
+  PRN232_BE/.codegraph/.gitignore — existing local CodeGraph setting.
+  PRN232_BE/PRN232.Api/Program.cs — Phase 2B DI registrations; Phase 2C added no registration.
+  PRN232_BE/PRN232.Application/Interfaces/IRoomRepository.cs
+  PRN232_BE/PRN232.Application/Interfaces/IRoomService.cs
+  PRN232_BE/PRN232.Application/Services/RoomService.cs
+  PRN232_BE/PRN232.Application/Services/RoomStatuses.cs
+  PRN232_BE/PRN232.Infrastructure/Repositories/RoomRepository.cs
+
+Pre-existing untracked Phase 2A files retained:
+  PRN232.Application.Tests/RoomAvailabilityTests.cs
+  PRN232.Application/DTOs/RoomAvailabilityDto.cs
+  PRN232.Application/Services/BookingStatuses.cs
+  PRN232.Application/Services/ContractStatuses.cs
+  PRN232.Application/Services/RoomRentabilityPolicy.cs
+  PRN232.Infrastructure/Repositories/RoomAvailabilityQueries.cs
+  outputs/phase2a-room-availability/
+
+Other pre-existing untracked report folders retained:
+  outputs/phase1-public-browsing/
+  outputs/phase1-5-business-rules/
+  outputs/phase2a-room-availability/
+  outputs/phase2b-public-property-listing/
+
+Pre-existing test-result XML retained (some are ignored or tracked and therefore absent from git status):
+  PRN232.Application.Tests/TestResults/95e787a4-2f0e-4e3e-945c-85b8dff4db18/coverage.cobertura.xml
+  PRN232.Application.Tests/TestResults/9afa3cfe-465d-41cc-9f51-347a3026c999/coverage.cobertura.xml
+  PRN232.Application.Tests/TestResults/bf016a7c-ed6b-43b0-8618-78e6150df357/coverage.cobertura.xml
+  PRN232.Application.Tests/TestResults/2698b7b2-61dd-4e5b-98a1-0a1de57d1798/coverage.cobertura.xml
+  PRN232.Application.Tests/TestResults/3fb4f6e1-ea78-4ecc-8adb-bb2a1427f504/coverage.cobertura.xml
+
+Final git status still shows the seven pre-existing modified tracked files above; the Phase 2C source/test paths remain untracked Phase 2B files containing the Phase 2C delta. It additionally shows outputs/phase2c-public-property-detail-room-list/. No new TestResults folder was created by the final coverage run. Phase 2C coverage XML was written outside the repository: the initial focused result is under work/phase2c-coverage/3861b72d-399f-4317-98b7-3d6aff9b807e/coverage.cobertura.xml and the final result is under work/phase2c-coverage-final/e8f9de70-f61d-49bd-b46a-7f441a26d44d/coverage.cobertura.xml. Both were preserved. Temporary Phase 2C baseline and patch-check copies also remain under the task work directory.
+
+Git evidence:
+  Final git diff --stat reports 6 tracked files changed, 32 insertions(+), and 1 deletion(-); those are the pre-existing Phase 2A/2B edits and are not Phase 2C. Git diff does not include untracked files.
+  git diff --check exited 0. Git emitted only LF-to-CRLF normalization notices for the pre-existing .codegraph/.gitignore and Program.cs files. The direct whitespace/conflict-marker scan passed on 15 Phase 2C source/test/report files and the added-line payload of 07-Diff.patch.
+  07-Diff.patch was reconstructed against the saved Phase 2B patch baseline, contains only the eight Phase 2C source/test paths, and passed git apply --check in a scratch directory.
+
+No file was staged or committed. No push, frontend edit, database mutation, schema change, or migration was performed.

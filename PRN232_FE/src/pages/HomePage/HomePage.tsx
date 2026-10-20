@@ -1,23 +1,73 @@
-import { useEffect, useState } from "react"
-import { useLocation } from "react-router"
+import { useEffect, useMemo } from "react"
+
+import { useLocation, useNavigate } from "react-router"
+
+import { publicApi } from "@/api/publicBrowsingApi"
+
 import Footer from "@/components/common/Footer"
+
 import Navbar from "@/components/common/Navbar"
+
 import HeroSearch from "@/components/home/HeroSearch"
+
 import MapSection from "@/components/home/MapSection"
+
 import SearchSection from "@/components/home/SearchSection"
-import { properties } from "@/data/properties"
+
+import { usePublicApiResource } from "@/hooks/usePublicApiResource"
+
+import {
+  propertyQueryFromSearch,
+  propertySearchParams,
+  type PropertySearchDraft,
+} from "@/utils/publicQueryState"
+
 import { scrollToHash } from "@/utils/scrollToHash"
 
 export default function HomePage() {
   const location = useLocation()
-  const [selected, setSelected] = useState(properties[0])
+
+  const navigate = useNavigate()
+
+  const query = useMemo(
+    () => propertyQueryFromSearch(location.search),
+    [location.search],
+  )
+
+  const resource = usePublicApiResource(location.search, (signal) =>
+    publicApi.listProperties(query, signal),
+  )
+
+  function updateSearch(params: URLSearchParams) {
+    const search = params.toString()
+
+    navigate({
+      pathname: location.pathname,
+      search: search ? `?${search}` : "",
+      hash: location.hash,
+    })
+  }
+
+  function applySearch(draft: PropertySearchDraft) {
+    updateSearch(propertySearchParams(draft))
+  }
+
+  function changePage(page: number) {
+    const params = new URLSearchParams(location.search)
+
+    params.set("page", String(page))
+
+    updateSearch(params)
+  }
 
   useEffect(() => {
     if (!["#gioi-thieu", "#tim-phong", "#khu-vuc"].includes(location.hash))
       return
+
     const frame = window.requestAnimationFrame(() =>
       scrollToHash(location.hash),
     )
+
     return () => window.cancelAnimationFrame(frame)
   }, [location.hash])
 
@@ -26,15 +76,12 @@ export default function HomePage() {
       <Navbar />
       <HeroSearch />
       <SearchSection
-        properties={properties}
-        onMap={(property) => {
-          setSelected(property)
-          document
-            .getElementById("khu-vuc")
-            ?.scrollIntoView({ behavior: "smooth" })
-        }}
+        resource={resource}
+        query={query}
+        onSearch={applySearch}
+        onPageChange={changePage}
       />
-      <MapSection selected={selected} onSelect={setSelected} />
+      <MapSection />
       <Footer />
     </main>
   )

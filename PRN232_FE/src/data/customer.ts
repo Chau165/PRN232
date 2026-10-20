@@ -6,7 +6,6 @@ import type {
   MaintenanceRequest,
   Notification,
   Payment,
-  Profile,
   RoomRental,
 } from "@/types/customer"
 
@@ -197,9 +196,3 @@ export const notifications: Notification[] = [
     href: "/my-room",
   },
 ]
-
-export const profile: Profile = {
-  fullName: "Ngọc Anh",
-  email: "ngocanh@example.com",
-  phone: "0909 123 456",
-}

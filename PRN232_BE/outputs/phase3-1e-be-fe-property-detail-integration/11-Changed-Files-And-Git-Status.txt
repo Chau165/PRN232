@@ -1,0 +1,25 @@
+Phase 3.1E changed-file and Git-status record
+
+Phase-only source diff: 10 files
+- PRN232_BE/PRN232.Application.Tests/PublicPropertyListingServiceTests.cs (new)
+- PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
+- PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs
+- PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+- PRN232_FE/src/api/publicBrowsingApi.ts
+- PRN232_FE/src/components/room/RoomDetailModal.tsx
+- PRN232_FE/src/pages/AvailableRoomsPage/AvailableRoomsPage.tsx
+- PRN232_FE/src/pages/PropertyDetailPage/PropertyDetailPage.tsx
+- PRN232_FE/src/utils/publicFormatting.ts
+- PRN232_FE/tests/publicPropertyPages.test.tsx
+
+Phase-only patch: 12-Phase3-1E-BE-FE-Only-Diff.patch (10 diff entries; generated against the captured pre-phase working-tree snapshots, not against bare HEAD). `git apply --reverse --check` passed against the completed working tree.
+
+Repository state:
+- HEAD remains 897b0374bf057767b495b296217fbfb3f72a190e; no commit was created.
+- Baseline: 225 status rows = 37 tracked modified/deleted + 188 untracked; 0 staged.
+- After phase and 12 requested report artifacts: 238 status rows = 37 tracked modified/deleted + 201 untracked; 0 staged. The 13-row increase is one new service test plus the 12 report artifacts. Existing changes remain present.
+- No push or deployment occurred. No migration or live data write occurred.
+- Local API (55102), Vite (8443), and temporary PostgreSQL (55432) listeners were stopped after verification.
+- The task-created stopped PostgreSQL data directory remains at `%TEMP%\PRN232_Phase3_1E_PG_20261020`; its recursive deletion was rejected by the local command guard. It is not running and contains only the isolated test cluster.
+
+Phase-only files were derived by diffing the captured pre-phase snapshots against the final files. Two existing untracked BE test files were used during initial RED exploration but ended byte-identical to baseline, so they are not in the phase patch.

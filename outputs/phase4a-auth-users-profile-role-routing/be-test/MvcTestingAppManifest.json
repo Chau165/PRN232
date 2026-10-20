@@ -1,0 +1,6 @@
+{
+  "PRN232.Api, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\PRN232\\PRN232_BE\\PRN232.Api",
+  "PRN232.Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\PRN232\\PRN232_BE\\PRN232.Application",
+  "PRN232.Domain, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\PRN232\\PRN232_BE\\PRN232.Domain",
+  "PRN232.Infrastructure, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\PRN232\\PRN232_BE\\PRN232.Infrastructure"
+}

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
@@ -30,6 +31,7 @@ public class RolesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<RoleDto>> Create(CreateRoleDto dto)
     {
         var created = await _roleService.CreateAsync(dto);

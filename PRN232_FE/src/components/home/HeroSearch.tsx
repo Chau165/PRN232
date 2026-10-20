@@ -18,7 +18,7 @@ export default function HeroSearch() {
           <div className="relative overflow-hidden rounded-[28px] bg-white p-2 shadow-[0_18px_42px_rgba(17,68,70,.14)]">
             <img
               src="/hero-room.png"
-              alt="Phòng trọ sáng thoáng của TrọViệt"
+              alt="Ảnh minh họa không gian phòng trọ"
               className="h-[300px] w-full rounded-[22px] object-cover sm:h-[390px]"
             />
           </div>

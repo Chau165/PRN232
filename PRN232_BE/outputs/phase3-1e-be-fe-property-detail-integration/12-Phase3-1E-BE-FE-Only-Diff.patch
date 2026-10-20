@@ -1,0 +1,710 @@
+diff --git a/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingServiceTests.cs b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingServiceTests.cs
+new file mode 100644
+index 0000000..97ecf49
+--- /dev/null
++++ b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingServiceTests.cs
+@@ -0,0 +1,88 @@
++using PRN232.Application.DTOs;
++using PRN232.Application.Interfaces;
++using PRN232.Application.Services;
++using Xunit;
++
++namespace PRN232.Application.Tests;
++
++public sealed class PublicPropertyListingServiceTests
++{
++    [Theory]
++    [InlineData(2026, 10, 31, 16, 59, 2026, 10)]
++    [InlineData(2026, 10, 31, 17, 0, 2026, 11)]
++    public async Task Enriched_detail_uses_vietnamese_current_month_start(
++        int utcYear,
++        int utcMonth,
++        int utcDay,
++        int utcHour,
++        int utcMinute,
++        int expectedYear,
++        int expectedMonth)
++    {
++        var repository = new CapturingPublicPropertyListingRepository();
++        var asOfUtc = new DateTimeOffset(
++            utcYear,
++            utcMonth,
++            utcDay,
++            utcHour,
++            utcMinute,
++            0,
++            TimeSpan.Zero);
++        var service = new PublicPropertyListingService(
++            repository,
++            new FixedTimeProvider(asOfUtc),
++            propertyDetailEnrichmentEnabled: true);
++
++        await service.GetDetailAsync(1, CancellationToken.None);
++
++        Assert.Equal(new DateOnly(expectedYear, expectedMonth, 1), repository.CurrentMonthStart);
++    }
++
++    private sealed class CapturingPublicPropertyListingRepository : IPublicPropertyListingRepository
++    {
++        public DateOnly? CurrentMonthStart { get; private set; }
++
++        public Task<bool> AmenityIdsExistAsync(int[] amenityIds, CancellationToken cancellationToken) =>
++            throw new NotSupportedException();
++
++        public Task<PublicPropertyPageDto> GetPageAsync(
++            PublicPropertySearchCriteria criteria,
++            DateTimeOffset asOfUtc,
++            CancellationToken cancellationToken) =>
++            throw new NotSupportedException();
++
++        public Task<PublicPropertyDetailDto?> GetDetailAsync(
++            int propertyId,
++            DateTimeOffset asOfUtc,
++            CancellationToken cancellationToken) =>
++            throw new NotSupportedException();
++
++        public Task<PublicPropertyDetailDto?> GetEnrichedDetailAsync(
++            int propertyId,
++            DateTimeOffset asOfUtc,
++            DateOnly currentMonthStart,
++            CancellationToken cancellationToken)
++        {
++            CurrentMonthStart = currentMonthStart;
++            return Task.FromResult<PublicPropertyDetailDto?>(null);
++        }
++
++        public Task<PublicPropertyRoomPageDto?> GetRoomsAsync(
++            int propertyId,
++            PublicPropertySearchCriteria criteria,
++            DateTimeOffset asOfUtc,
++            CancellationToken cancellationToken) =>
++            throw new NotSupportedException();
++
++        public Task<PublicRoomDetailDto?> GetRoomDetailAsync(
++            int roomId,
++            DateTimeOffset asOfUtc,
++            CancellationToken cancellationToken) =>
++            throw new NotSupportedException();
++    }
++
++    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
++    {
++        public override DateTimeOffset GetUtcNow() => utcNow;
++    }
++}
+
+diff --git a/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs b/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
+index f4e3e0a..8605956 100644
+--- a/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
++++ b/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
+@@ -19,7 +19,7 @@ public interface IPublicPropertyListingRepository
+     Task<PublicPropertyDetailDto?> GetEnrichedDetailAsync(
+         int propertyId,
+         DateTimeOffset asOfUtc,
+-        DateOnly effectiveOnLocalDate,
++        DateOnly currentMonthStart,
+         CancellationToken cancellationToken);
+ 
+     Task<PublicPropertyRoomPageDto?> GetRoomsAsync(
+
+diff --git a/PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs b/PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs
+index c74990a..099a0f4 100644
+--- a/PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs
++++ b/PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs
+@@ -57,12 +57,12 @@ public sealed class PublicPropertyListingService : IPublicPropertyListingService
+             return await _repository.GetDetailAsync(propertyId, asOfUtc, cancellationToken);
+         }
+ 
+-        var localDate = TimeZoneInfo.ConvertTime(asOfUtc, PropertyBusinessTimeZone).Date;
+-        var effectiveOnLocalDate = DateOnly.FromDateTime(localDate);
++        var localNow = TimeZoneInfo.ConvertTime(asOfUtc, PropertyBusinessTimeZone);
++        var currentMonthStart = new DateOnly(localNow.Year, localNow.Month, 1);
+         return await _repository.GetEnrichedDetailAsync(
+             propertyId,
+             asOfUtc,
+-            effectiveOnLocalDate,
++            currentMonthStart,
+             cancellationToken);
+     }
+ 
+
+diff --git a/PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs b/PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+index cfee6f4..1f37c91 100644
+--- a/PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
++++ b/PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+@@ -143,15 +143,15 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
+     public Task<PublicPropertyDetailDto?> GetEnrichedDetailAsync(
+         int propertyId,
+         DateTimeOffset asOfUtc,
+-        DateOnly effectiveOnLocalDate,
++        DateOnly currentMonthStart,
+         CancellationToken cancellationToken) =>
+-        GetDetailCoreAsync(propertyId, asOfUtc, true, effectiveOnLocalDate, cancellationToken);
++        GetDetailCoreAsync(propertyId, asOfUtc, true, currentMonthStart, cancellationToken);
+ 
+     private async Task<PublicPropertyDetailDto?> GetDetailCoreAsync(
+         int propertyId,
+         DateTimeOffset asOfUtc,
+         bool includeEnrichment,
+-        DateOnly? effectiveOnLocalDate,
++        DateOnly? currentMonthStart,
+         CancellationToken cancellationToken)
+     {
+         await using var transaction = _context.Database.IsRelational()
+@@ -225,7 +225,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
+                 .Select(link => new PublicAmenitySummaryDto(link.AmenityId, link.Amenity!.Name))
+                 .ToListAsync(cancellationToken);
+ 
+-            var effectiveDate = effectiveOnLocalDate
++            var effectiveDate = currentMonthStart
+                 ?? throw new InvalidOperationException("An effective date is required when property detail enrichment is enabled.");
+             livingCosts = await _context.PropertyServiceRates
+                 .AsNoTracking()
+
+diff --git a/PRN232_FE/src/api/publicBrowsingApi.ts b/PRN232_FE/src/api/publicBrowsingApi.ts
+index 9af8d76..2ffd8fe 100644
+--- a/PRN232_FE/src/api/publicBrowsingApi.ts
++++ b/PRN232_FE/src/api/publicBrowsingApi.ts
+@@ -33,7 +33,21 @@ export interface PublicPropertyDetail {
+   primaryImageUrl: string | null
+   availableRoomCount: number
+   startingPrice: number | null
++  description?: string | null
++  commonAmenities?: PublicAmenitySummary[]
+   roomAmenities?: PublicPropertyRoomAmenity[]
++  livingCosts?: PublicPropertyServiceRate[]
++}
++
++export interface PublicPropertyServiceRate {
++  rateId?: number
++  serviceId: number
++  serviceName: string
++  price: number
++  unitCode: string
++  billingBasis: string
++  effectiveFrom: string
++  effectiveTo?: string | null
+ }
+ 
+ export interface PublicPropertyRoomAmenity extends PublicAmenitySummary {
+
+diff --git a/PRN232_FE/src/components/room/RoomDetailModal.tsx b/PRN232_FE/src/components/room/RoomDetailModal.tsx
+index 06ec35d..1092b4e 100644
+--- a/PRN232_FE/src/components/room/RoomDetailModal.tsx
++++ b/PRN232_FE/src/components/room/RoomDetailModal.tsx
+@@ -3,19 +3,24 @@ import {
+   useRef,
+   type KeyboardEvent as ReactKeyboardEvent,
+ } from "react"
+-import { publicApi } from "@/api/publicBrowsingApi"
++import {
++  publicApi,
++  type PublicPropertyServiceRate,
++} from "@/api/publicBrowsingApi"
+ import { usePublicApiResource } from "@/hooks/usePublicApiResource"
+ import { publicApiErrorMessage } from "@/utils/publicApiDisplay"
+-import { formatVnd } from "@/utils/publicFormatting"
++import { formatVnd, serviceRateUnitLabel } from "@/utils/publicFormatting"
+ 
+ type RoomDetailModalProps = {
+   roomId: number
++  propertyServiceRates?: PublicPropertyServiceRate[]
+   onClose: () => void
+   onRefresh: () => void
+ }
+ 
+ export default function RoomDetailModal({
+   roomId,
++  propertyServiceRates = [],
+   onClose,
+   onRefresh,
+ }: RoomDetailModalProps) {
+@@ -233,17 +238,34 @@ export default function RoomDetailModal({
+                 </h3>
+                 {room.services.length > 0 ? (
+                   <ul className="mt-3 divide-y divide-slate-100 rounded-xl bg-slate-50 px-4">
+-                    {room.services.map((service) => (
+-                      <li
+-                        key={service.serviceId}
+-                        className="flex justify-between gap-4 py-3 text-[14px]"
+-                      >
+-                        <span className="text-slate-600">{service.name}</span>
+-                        <strong className="font-semibold text-slate-800">
+-                          {formatVnd(service.price)}
+-                        </strong>
+-                      </li>
+-                    ))}
++                    {room.services.map((service) => {
++                      const rate = propertyServiceRates.find(
++                        (item) => item.serviceId === service.serviceId,
++                      )
++                      const unitLabel = rate
++                        ? serviceRateUnitLabel(rate.unitCode, rate.billingBasis)
++                        : null
++
++                      return (
++                        <li
++                          key={service.serviceId}
++                          className="flex justify-between gap-4 py-3 text-[14px]"
++                        >
++                          <span className="text-slate-600">{service.name}</span>
++                          {rate && unitLabel ? (
++                            <strong className="font-semibold text-slate-800">
++                              {formatVnd(rate.price)}/{unitLabel}
++                            </strong>
++                          ) : (
++                            <span className="text-right text-[12px] text-slate-500">
++                              {rate
++                                ? "Đơn vị tính đang được cập nhật."
++                                : "Biểu phí theo khu trọ đang được cập nhật."}
++                            </span>
++                          )}
++                        </li>
++                      )
++                    })}
+                   </ul>
+                 ) : (
+                   <p className="mt-2 text-[14px] text-slate-500">
+
+diff --git a/PRN232_FE/src/pages/AvailableRoomsPage/AvailableRoomsPage.tsx b/PRN232_FE/src/pages/AvailableRoomsPage/AvailableRoomsPage.tsx
+index 0f82977..240d352 100644
+--- a/PRN232_FE/src/pages/AvailableRoomsPage/AvailableRoomsPage.tsx
++++ b/PRN232_FE/src/pages/AvailableRoomsPage/AvailableRoomsPage.tsx
+@@ -357,6 +357,7 @@ export default function AvailableRoomsPage() {
+       {selectedRoomId !== null && (
+         <RoomDetailModal
+           roomId={selectedRoomId}
++          propertyServiceRates={property?.livingCosts ?? []}
+           onClose={() => setSelectedRoomId(null)}
+           onRefresh={roomsResource.retry}
+         />
+
+diff --git a/PRN232_FE/src/pages/PropertyDetailPage/PropertyDetailPage.tsx b/PRN232_FE/src/pages/PropertyDetailPage/PropertyDetailPage.tsx
+index cc253e2..1484ef3 100644
+--- a/PRN232_FE/src/pages/PropertyDetailPage/PropertyDetailPage.tsx
++++ b/PRN232_FE/src/pages/PropertyDetailPage/PropertyDetailPage.tsx
+@@ -11,7 +11,7 @@ import {
+ } from "@/constants/routes"
+ import { usePublicApiResource } from "@/hooks/usePublicApiResource"
+ import { publicApiErrorMessage } from "@/utils/publicApiDisplay"
+-import { formatVnd } from "@/utils/publicFormatting"
++import { formatVnd, serviceRateUnitLabel } from "@/utils/publicFormatting"
+ 
+ function amenityIcon(name: string): IconName {
+   const normalizedName = name.trim().toLowerCase()
+@@ -64,6 +64,9 @@ export default function PropertyDetailPage() {
+         .join(", ")
+     : ""
+   const roomAmenities = property?.roomAmenities ?? []
++  const commonAmenities = property?.commonAmenities ?? []
++  const livingCosts = property?.livingCosts ?? []
++  const description = property?.description?.trim() ?? ""
+ 
+   return (
+     <main className="min-h-screen bg-[#fcfdfd] text-slate-800">
+@@ -186,9 +189,15 @@ export default function PropertyDetailPage() {
+ 
+             <div className="mt-12">
+               <DetailSection title="Giới thiệu">
+-                <p role="status" className="mt-4 max-w-[680px] text-[15px] leading-7 text-slate-500">
+-                  Thông tin giới thiệu đang được cập nhật.
+-                </p>
++                {description ? (
++                  <p className="mt-4 max-w-[680px] whitespace-pre-line text-[15px] leading-7 text-slate-600">
++                    {property.description}
++                  </p>
++                ) : (
++                  <p role="status" className="mt-4 max-w-[680px] text-[15px] leading-7 text-slate-500">
++                    Thông tin giới thiệu đang được cập nhật.
++                  </p>
++                )}
+               </DetailSection>
+ 
+               <DetailSection title="Tiện ích">
+@@ -197,9 +206,27 @@ export default function PropertyDetailPage() {
+                     <h3 id="common-amenities-heading" className="text-[15px] font-semibold text-slate-800">
+                       Tiện ích chung
+                     </h3>
+-                    <p role="status" className="mt-3 text-[14px] text-slate-500">
+-                      Thông tin tiện ích chung đang được cập nhật.
+-                    </p>
++                    {commonAmenities.length === 0 ? (
++                      <p role="status" className="mt-3 text-[14px] text-slate-500">
++                        Chưa có thông tin tiện ích chung.
++                      </p>
++                    ) : (
++                      <ul className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
++                        {commonAmenities.map((amenity) => (
++                          <li key={amenity.amenityId} className="flex items-start gap-3">
++                            <span
++                              aria-hidden="true"
++                              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#f1f8f7] text-[#087775]"
++                            >
++                              <Icon name={amenityIcon(amenity.name)} size={17} />
++                            </span>
++                            <span className="pt-1 text-[14px] font-medium text-slate-700">
++                              {amenity.name}
++                            </span>
++                          </li>
++                        ))}
++                      </ul>
++                    )}
+                   </section>
+                   <section aria-labelledby="room-amenities-heading">
+                     <h3 id="room-amenities-heading" className="text-[15px] font-semibold text-slate-800">
+@@ -238,9 +265,38 @@ export default function PropertyDetailPage() {
+               </DetailSection>
+ 
+               <DetailSection title="Chi phí sinh hoạt">
+-                <p role="status" className="mt-4 text-[14px] text-slate-500">
+-                  Thông tin chi phí theo đơn vị thanh toán đang được cập nhật.
+-                </p>
++                {livingCosts.length === 0 ? (
++                  <p role="status" className="mt-4 text-[14px] text-slate-500">
++                    Chi phí sinh hoạt đang được cập nhật.
++                  </p>
++                ) : (
++                  <ul className="mt-4 divide-y divide-slate-100 rounded-xl border border-slate-100 bg-white px-4">
++                    {livingCosts.map((rate) => {
++                      const unitLabel = serviceRateUnitLabel(
++                        rate.unitCode,
++                        rate.billingBasis,
++                      )
++
++                      return (
++                        <li
++                          key={`${rate.serviceId}-${rate.effectiveFrom}`}
++                          className="flex flex-wrap items-center justify-between gap-3 py-3 text-[14px]"
++                        >
++                          <span className="text-slate-600">{rate.serviceName}</span>
++                          {unitLabel ? (
++                            <strong className="font-semibold text-[#087775]">
++                              {formatVnd(rate.price)}/{unitLabel}
++                            </strong>
++                          ) : (
++                            <span role="status" className="text-[13px] text-slate-500">
++                              Đơn vị tính đang được cập nhật.
++                            </span>
++                          )}
++                        </li>
++                      )
++                    })}
++                  </ul>
++                )}
+               </DetailSection>
+             </div>
+           </>
+
+diff --git a/PRN232_FE/src/utils/publicFormatting.ts b/PRN232_FE/src/utils/publicFormatting.ts
+index bb84add..acbbab8 100644
+--- a/PRN232_FE/src/utils/publicFormatting.ts
++++ b/PRN232_FE/src/utils/publicFormatting.ts
+@@ -9,3 +9,18 @@ export function formatVnd(value: number | null | undefined): string {
+     maximumFractionDigits: 2,
+   }).format(value)
+ }
++
++export function serviceRateUnitLabel(
++  unitCode: string,
++  billingBasis: string,
++): string | null {
++  const unitLabels: Record<string, string> = {
++    "kwh:usage": "kWh",
++    "m3:usage": "m³",
++    "room_month:fixed_room": "phòng/tháng",
++    "person_month:occupant": "người/tháng",
++    "vehicle_month:vehicle": "xe/tháng",
++  }
++
++  return unitLabels[`${unitCode}:${billingBasis}`] ?? null
++}
+
+diff --git a/PRN232_FE/tests/publicPropertyPages.test.tsx b/PRN232_FE/tests/publicPropertyPages.test.tsx
+index 768380a..e4df238 100644
+--- a/PRN232_FE/tests/publicPropertyPages.test.tsx
++++ b/PRN232_FE/tests/publicPropertyPages.test.tsx
+@@ -7,12 +7,15 @@ import {
+ } from "@testing-library/react"
+ import { MemoryRouter, Route, Routes } from "react-router"
+ import { describe, expect, it, vi } from "vitest"
++import HomePage from "@/pages/HomePage/HomePage"
+ import AvailableRoomsPage from "@/pages/AvailableRoomsPage/AvailableRoomsPage"
+ import PropertyDetailPage from "@/pages/PropertyDetailPage/PropertyDetailPage"
+ import type {
+   PublicPage,
++  PublicPropertyCard,
+   PublicPropertyDetail,
+   PublicPropertyRoomCard,
++  PublicPropertyServiceRate,
+   PublicRoomDetail,
+ } from "@/api/publicBrowsingApi"
+ 
+@@ -100,6 +103,7 @@ function renderAt(path: string) {
+   return render(
+     <MemoryRouter initialEntries={[path]}>
+       <Routes>
++        <Route path="/" element={<HomePage />} />
+         <Route path="/property/:propertyId" element={<PropertyDetailPage />} />
+         <Route
+           path="/property/:propertyId/rooms"
+@@ -157,6 +161,9 @@ describe("public property detail and room listing", () => {
+       [
+         1,
+         property(1, {
++          description: null,
++          commonAmenities: [],
++          livingCosts: [],
+           roomAmenities: [
+             { amenityId: 1, name: "Wi-Fi", rentableRoomCount: 1 },
+             { amenityId: 2, name: "Air conditioner", rentableRoomCount: 1 },
+@@ -166,6 +173,7 @@ describe("public property detail and room listing", () => {
+       [
+         2,
+         property(2, {
++          description: "   ",
+           roomAmenities: [
+             { amenityId: 3, name: "Balcony", rentableRoomCount: 2 },
+           ],
+@@ -188,8 +196,8 @@ describe("public property detail and room listing", () => {
+     expect(screen.getAllByText(/1 trên 3 phòng hiện có thể thuê/)).toHaveLength(2)
+     expect(screen.queryByText("Balcony")).toBeNull()
+     expect(screen.getByText("Thông tin giới thiệu đang được cập nhật.")).toBeTruthy()
+-    expect(screen.getByText("Thông tin tiện ích chung đang được cập nhật.")).toBeTruthy()
+-    expect(screen.getByText("Thông tin chi phí theo đơn vị thanh toán đang được cập nhật.")).toBeTruthy()
++    expect(screen.getByText("Chưa có thông tin tiện ích chung.")).toBeTruthy()
++    expect(screen.getByText("Chi phí sinh hoạt đang được cập nhật.")).toBeTruthy()
+     expect(screen.queryByText(/Sunrise Residence|3\.500|100\.000/)).toBeNull()
+     first.unmount()
+ 
+@@ -198,6 +206,140 @@ describe("public property detail and room listing", () => {
+     expect(screen.getByText("Balcony")).toBeTruthy()
+     expect(screen.queryByText("Wi-Fi")).toBeNull()
+     expect(screen.getByText(/2 trên 3 phòng hiện có thể thuê/)).toBeTruthy()
++    expect(screen.getByText("Thông tin giới thiệu đang được cập nhật.")).toBeTruthy()
++    expect(screen.getByText("Chưa có thông tin tiện ích chung.")).toBeTruthy()
++    expect(screen.getByText("Chi phí sinh hoạt đang được cập nhật.")).toBeTruthy()
++  })
++
++  it("renders API description, common amenities, and unit-specific living costs", async () => {
++    const serviceRate = (
++      serviceId: number,
++      serviceName: string,
++      price: number,
++      unitCode: string,
++      billingBasis: string,
++    ): PublicPropertyServiceRate => ({
++      serviceId,
++      serviceName,
++      price,
++      unitCode,
++      billingBasis,
++      effectiveFrom: "2026-10-01",
++      effectiveTo: null,
++    })
++    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
++      jsonResponse(
++        property(6, {
++          description: "Khu trọ yên tĩnh.\nGần trạm xe buýt.",
++          commonAmenities: [{ amenityId: 10, name: "Camera" }],
++          roomAmenities: [
++            { amenityId: 1, name: "Wi-Fi", rentableRoomCount: 2 },
++          ],
++          livingCosts: [
++            serviceRate(11, "Điện", 3500, "kwh", "usage"),
++            serviceRate(12, "Nước", 20000, "m3", "usage"),
++            serviceRate(13, "Internet", 100000, "room_month", "fixed_room"),
++            serviceRate(14, "Rác", 30000, "room_month", "fixed_room"),
++            serviceRate(16, "Phí người", 50000, "person_month", "occupant"),
++            serviceRate(17, "Phí xe", 70000, "vehicle_month", "vehicle"),
++            serviceRate(15, "Dịch vụ khác", 999000, "custom", "custom"),
++          ],
++        }),
++      ),
++    )
++    vi.stubGlobal("fetch", fetchMock)
++
++    renderAt("/property/6")
++
++    await screen.findByRole("heading", { name: "Property 6" })
++    expect(screen.getByText(/Khu trọ yên tĩnh\./).textContent).toContain(
++      "Gần trạm xe buýt.",
++    )
++    expect(screen.getByText("Camera")).toBeTruthy()
++    expect(screen.getByText("Wi-Fi")).toBeTruthy()
++    expect(screen.getByText(/3\.500/)).toBeTruthy()
++    expect(screen.getByText(/\/kWh/)).toBeTruthy()
++    expect(screen.getByText(/20\.000/)).toBeTruthy()
++    expect(screen.getByText(/\/m³/)).toBeTruthy()
++    expect(screen.getByText(/100\.000/)).toBeTruthy()
++    expect(screen.getAllByText(/\/phòng\/tháng/)).toHaveLength(2)
++    expect(screen.getByText(/\/người\/tháng/)).toBeTruthy()
++    expect(screen.getByText(/\/xe\/tháng/)).toBeTruthy()
++    expect(screen.getByText("Dịch vụ khác")).toBeTruthy()
++    expect(screen.getByText("Đơn vị tính đang được cập nhật.")).toBeTruthy()
++    expect(screen.queryByText(/999\.000/)).toBeNull()
++    expect(screen.queryByText("Tổng chi phí")).toBeNull()
++  })
++
++  it("navigates from Home through property and room detail using the selected Property ID", async () => {
++    const propertyCard: PublicPropertyCard = {
++      propertyId: 17,
++      propertyName: "Property 17",
++      addressText: "17 Đường API",
++      ward: "Phường Một",
++      district: "Quận Hai",
++      city: "TP.HCM",
++      primaryImageUrl: null,
++      amenitiesSummary: [],
++      availableRoomCount: 1,
++      startingPrice: 1350000,
++    }
++    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
++      const url = new URL(String(input), window.location.origin)
++      if (url.pathname === "/api/public/properties") {
++        return Promise.resolve(jsonResponse(page([propertyCard])))
++      }
++      if (url.pathname === "/api/public/properties/17") {
++        return Promise.resolve(
++          jsonResponse(
++            property(17, {
++              description: "Live API description",
++              livingCosts: [
++                {
++                  serviceId: 8,
++                  serviceName: "Điện",
++                  price: 3500,
++                  unitCode: "kwh",
++                  billingBasis: "usage",
++                  effectiveFrom: "2026-10-01",
++                  effectiveTo: null,
++                },
++              ],
++            }),
++          ),
++        )
++      }
++      if (url.pathname === "/api/public/properties/17/rooms") {
++        return Promise.resolve(jsonResponse(page([room()])))
++      }
++      return Promise.resolve(
++        jsonResponse(roomDetail(Number(url.pathname.split("/").pop()))),
++      )
++    })
++    vi.stubGlobal("fetch", fetchMock)
++
++    renderAt("/")
++    fireEvent.click(await screen.findByRole("link", { name: "Xem chi tiết" }))
++    expect(await screen.findByText("Live API description")).toBeTruthy()
++    fireEvent.click(screen.getByRole("link", { name: "Xem phòng trống" }))
++    await screen.findByText("Studio")
++    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết" }))
++
++    const dialog = await screen.findByRole("dialog")
++    expect(within(dialog).getByText(/3\.500/)).toBeTruthy()
++    expect(within(dialog).queryByText(/4\.000,5|25\.000/)).toBeNull()
++    expect(within(dialog).getByText(/biểu phí/i)).toBeTruthy()
++    expect(
++      fetchMock.mock.calls.map((call) =>
++        new URL(String(call[0]), window.location.origin).pathname,
++      ),
++    ).toEqual([
++      "/api/public/properties",
++      "/api/public/properties/17",
++      "/api/public/properties/17",
++      "/api/public/properties/17/rooms",
++      "/api/public/rooms/501",
++    ])
+   })
+ 
+   it("renders the supported amenity labels from the Property API", async () => {
+@@ -399,7 +541,23 @@ describe("public property detail and room listing", () => {
+     const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
+       const url = new URL(String(input), window.location.origin)
+       if (url.pathname === "/api/public/properties/17")
+-        return Promise.resolve(jsonResponse(property(17)))
++        return Promise.resolve(
++          jsonResponse(
++            property(17, {
++              livingCosts: [
++                {
++                  serviceId: 8,
++                  serviceName: "Điện",
++                  price: 3500,
++                  unitCode: "kwh",
++                  billingBasis: "usage",
++                  effectiveFrom: "2026-10-01",
++                  effectiveTo: null,
++                },
++              ],
++            }),
++          ),
++        )
+       if (url.pathname === "/api/public/properties/17/rooms")
+         return Promise.resolve(jsonResponse(page([room()])))
+       return Promise.resolve(
+@@ -418,7 +576,9 @@ describe("public property detail and room listing", () => {
+     expect(within(dialog).getByText("Wi-Fi")).toBeTruthy()
+     expect(within(dialog).getByText("20.5 m²")).toBeTruthy()
+     expect(within(dialog).getByText(/Điện/)).toBeTruthy()
+-    expect(within(dialog).getByText(/4\.000,5/)).toBeTruthy()
++    expect(within(dialog).getByText(/3\.500/)).toBeTruthy()
++    expect(within(dialog).queryByText(/4\.000,5|25\.000/)).toBeNull()
++    expect(within(dialog).getByText(/biểu phí/i)).toBeTruthy()
+     expect(
+       within(dialog).getByText("Chưa có thông tin thiết bị công khai."),
+     ).toBeTruthy()
+@@ -441,6 +601,54 @@ describe("public property detail and room listing", () => {
+     expect(document.activeElement).toBe(trigger)
+   })
+ 
++  it("keeps room modal focus contained and renders available media and equipment", async () => {
++    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
++      const url = new URL(String(input), window.location.origin)
++      if (url.pathname === "/api/public/properties/17")
++        return Promise.resolve(jsonResponse(property(17)))
++      if (url.pathname === "/api/public/properties/17/rooms")
++        return Promise.resolve(jsonResponse(page([room()])))
++      return Promise.resolve(
++        jsonResponse({
++          ...roomDetail(501),
++          images: ["https://images.example.test/room.jpg"],
++          amenities: [],
++          services: [],
++          equipments: [{ equipmentId: 4, name: "Bàn làm việc" }],
++        }),
++      )
++    })
++    vi.stubGlobal("fetch", fetchMock)
++
++    renderAt("/property/17/rooms")
++    await screen.findByText("Studio")
++    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết" }))
++
++    const dialog = await screen.findByRole("dialog")
++    const closeButton = within(dialog).getByRole("button", {
++      name: "Đóng chi tiết phòng",
++    })
++    expect(within(dialog).getByRole("img", { name: "Ảnh Studio" })).toBeTruthy()
++    expect(within(dialog).getByText("Bàn làm việc")).toBeTruthy()
++    expect(
++      within(dialog).getByText("Chưa có thông tin tiện ích công khai."),
++    ).toBeTruthy()
++    expect(
++      within(dialog).getByText("Chưa có thông tin dịch vụ công khai."),
++    ).toBeTruthy()
++
++    closeButton.focus()
++    fireEvent.keyDown(dialog, { key: "Tab" })
++    expect(document.activeElement).toBe(closeButton)
++    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true })
++    expect(document.activeElement).toBe(closeButton)
++
++    const backdrop = dialog.parentElement
++    if (!backdrop) throw new Error("Room detail backdrop is missing")
++    fireEvent.mouseDown(backdrop)
++    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
++  })
++
+   it("requests a new detail for each room and refreshes the list after a stale 404", async () => {
+     const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
+       const url = new URL(String(input), window.location.origin)

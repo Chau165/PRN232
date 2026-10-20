@@ -1,0 +1,285 @@
+diff --git a/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/01-TLS-Certificate-And-Connection-Verification.md b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/01-TLS-Certificate-And-Connection-Verification.md
+new file mode 100644
+index 0000000..ee3306d
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/01-TLS-Certificate-And-Connection-Verification.md
+@@ -0,0 +1,37 @@
++# 01 — TLS certificate và connection
++
++**TLS VerifyFull: PASS. Live DDL: BLOCKED bởi các gate khác.**  
++Preflight: 2026-10-20 00:02 Asia/Ho_Chi_Minh (2026-10-19 17:02 UTC).
++
++- Certificate: `C:\Users\Surface\Downloads\prod-ca-2021.crt`; Subject/Issuer `CN=Supabase Root 2021 CA`; hiệu lực 2021-04-28 đến 2031-04-26.
++- SHA-256 certificate fingerprint (DER): `807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa`.
++- SHA-256 file PEM: `700723581420dd1ac98fd7e9ac529f0ef210edcaf87fc868a3add7d114c2f3b7`.
++- Dùng lại Windows User Environment `ConnectionStrings__DefaultConnection`; process value khớp. Không tạo key trùng, không sửa biến đã lưu. Artifact cũ ghi .NET User Secrets không có connection key.
++- Host/port/database khớp `aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres`; username cấu hình có project ref `qvdrjyecaprfpgvbfyfe`.
++- Chuỗi lưu hiện có `SslMode=Require`, `TrustServerCertificate=true`; VerifyFull chạy bằng builder trong bộ nhớ, `TrustServerCertificate=false`, chỉ định CA ở trên.
++- Kết nối thành công, xác minh CA + hostname; Npgsql 8.0.5, PostgreSQL 17.11; database `postgres`; session/effective role `postgres`; `transaction_read_only=on`, sau đó ROLLBACK.
++- Không in/lưu password hoặc connection string.
++
++Owner xác nhận password chưa rotate sau khi chia sẻ trong chat. Điều kiện prompt yêu cầu rotate và cập nhật Windows User Environment trước live DDL; chưa đạt.
++
++## Tiếp tục xác minh — 2026-10-20
++
++- Owner báo đã đổi password và cập nhật Windows User Environment. Metadata của cấu hình User khớp host/port/database/username của dự án; không in connection string hay password.
++- Giá trị User khác với giá trị môi trường của tiến trình hiện tại. Kết nối thử trực tiếp từ giá trị User, dùng builder trong bộ nhớ với `SslMode=VerifyFull`, `TrustServerCertificate=false` và CA nêu trên, bị PostgreSQL từ chối với SQLSTATE `28P01` (password authentication failed). Do đó TLS VerifyFull mới chỉ đạt tới PostgreSQL authentication; credential hiện tại chưa được chấp nhận và chưa có kết nối DB thành công trong lần tiếp tục này.
++- Giá trị lưu trong User Environment vẫn có `TrustServerCertificate=true` và không có `SslMode`; cấu hình bền vững chưa đáp ứng yêu cầu TLS. Không sửa cấu hình credential trong lượt này.
++- Kết quả VerifyFull PASS ở snapshot ban đầu chỉ áp dụng cho credential trước đó; không dùng nó làm bằng chứng kết nối hiện tại.
++
++## Kết quả kiểm tra mới nhất — 2026-10-20
++
++- `NpgsqlConnectionStringBuilder` 8.0.5 constructor parse thành công; giá trị Windows User là Npgsql key/value trực tiếp, không có wrapper `ConnectionString=`.
++- Target: `aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres`, username scoped đúng project `qvdrjyecaprfpgvbfyfe`.
++- Windows User đã có `SslMode=VerifyFull`, `TrustServerCertificate=false`, `RootCertificate=C:\Users\Surface\Downloads\prod-ca-2021.crt`; file CA tồn tại và parse được, subject `CN=Supabase Root 2021 CA`.
++- Windows Process scope không có biến tương ứng; phép thử dùng trực tiếp User scope, không dùng giá trị process cũ.
++- Kết nối Npgsql với VerifyFull trả SQLSTATE `28P01`, `password authentication failed for user "postgres"`. TLS/CA/hostname đã qua tới bước PostgreSQL authentication; không mở được session, nên truy vấn read-only chưa chạy. Không có database write.
++- Kết quả mới này thay thế ghi chú cũ về SSL fields còn thiếu. Các SSL fields hiện đã đúng; blocker còn lại là xác thực password.
++
++## Kết nối PASS — 2026-10-20
++
++Sau khi owner cập nhật credential, Npgsql 8.0.5 parse trực tiếp giá trị Windows User; User và Process hiện khớp nhau. Host/port/database/username đúng dự án. `SslMode=VerifyFull`, `TrustServerCertificate=false`, CA `C:\Users\Surface\Downloads\prod-ca-2021.crt` tồn tại và hợp lệ.
++
++Npgsql mở kết nối thành công; transaction REPEATABLE READ READ ONLY trả database `postgres`, role `postgres`, server `17.11`, `transaction_read_only=on`, sau đó ROLLBACK. Đây là kết quả mới nhất và thay thế lần auth `28P01` trước đó. Password/connection string không được ghi vào báo cáo.
+
+diff --git a/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/02-Backup-Manifest-And-Restore-Drill.md b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/02-Backup-Manifest-And-Restore-Drill.md
+new file mode 100644
+index 0000000..6abeac0
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/02-Backup-Manifest-And-Restore-Drill.md
+@@ -0,0 +1,19 @@
++# 02 — Backup manifest và restore drill
++
++**BLOCKED — chưa tạo backup; chưa restore.**
++
++- DB live báo kích thước 12,842,675 bytes; pg_dump/pg_restore 17.10 sẵn có, cùng major với server 17.11.
++- Thư mục bảo vệ ngoài repo: `C:\Users\Surface\AppData\Local\PRN232\secure-backups\phase3-1b-l-resume-20261020`; ACL chỉ Windows user hiện tại và SYSTEM; hiện 0 file.
++- Automatic tool safety review từ chối lệnh tạo tạm PGPASSFILE từ cấu hình hiện có, trả thông báo “blocked by policy”. Bị chặn trước khi chạy; pg_dump chưa thực thi. Không chuyển password sang command line/environment để vượt chặn.
++- Backup file/hash/manifest: NOT CREATED. Restore vào PostgreSQL độc lập: NOT RUN. Rehearsal: NOT RUN.
++- Dashboard backup/PITR chưa refresh trong lượt này. Báo cáo cũ nêu Free Plan/sign-in, không xác nhận trạng thái hiện tại. RPO/RTO, Storage, Auth secrets và platform state chưa được xác minh.
++
++Theo prompt, thiếu backup có restore drill thì dừng trước rehearsal và live DDL.
++
++## Kiểm tra backup sau khi kết nối thành công — 2026-10-20
++
++- `pg_dump` và `pg_restore` 17.10 có tại `C:\Program Files\PostgreSQL\17\bin`; server PostgreSQL 17.11.
++- Không có `PGPASSFILE` trong User/Process và file mặc định `%APPDATA%\postgresql\pgpass.conf` chưa tồn tại. Thư mục backup vẫn trống (0 file).
++- Backup chưa chạy. Automatic safety review trước đó đã chặn việc provision PGPASSFILE tạm từ connection string; không dùng command-line password hoặc cách khác để né.
++
++Cần owner provision PGPASSFILE có ACL an toàn và báo path/ready status. Chỉ sau đó mới chạy backup, hash/manifest, restore độc lập, migration rehearsal và regression.
+
+diff --git a/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/03-Fresh-Live-Preflight-And-Hashes.md b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/03-Fresh-Live-Preflight-And-Hashes.md
+new file mode 100644
+index 0000000..e57d91f
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/03-Fresh-Live-Preflight-And-Hashes.md
+@@ -0,0 +1,49 @@
++# 03 — Fresh live preflight và exact hashes
++
++**Preflight read-only: PASS. Migration eligibility: BLOCKED.**
++
++Các statement trong `00-Live-READ-ONLY-Preflight.sql` chạy qua Npgsql, transaction REPEATABLE READ READ ONLY, kết thúc ROLLBACK. Metadata regclass được cast sang text khi đọc; không lấy giá trị nghiệp vụ/PII.
++
++## Snapshot
++
++- Host/project username khớp project ref `qvdrjyecaprfpgvbfyfe`; DB `postgres`; role `postgres`; PostgreSQL 17.11.
++- EF history có 4 dòng: `20261003142421_InitialCreate`, `20261004073837_RenameKhuTroDichVuToPropertyService`, `20261013140609_SeedRolesAndAuthSetup`, `20261019034905_AddPropertyPrimaryImageUrl`.
++- `Properties.Description`, `PropertyAmenities`, `PropertyServiceRates` chưa có; 6 snapshot columns của `InvoiceDetails` chưa có.
++- Exact counts: Properties 3; InvoiceDetails 25; MaintenanceLogs 9; MaintenanceReports 4; MaintenanceReportImages 5.
++- `MaintenanceReports.CreatedAt` default CURRENT_TIMESTAMP; MaintenanceLogs có CHECK OldStatus và NewStatus.
++- RLS bật, không có policy trên 5 bảng trong preflight. Indexes hiện có: MaintenanceLogs PK/ChangedBy/RequestId; MaintenanceReports PK/unique RequestId; MaintenanceReportImages PK. Hai Gate B index chưa có.
++- `btree_gist` chưa cài; versions 1.2–1.7 báo trusted. Role không superuser, có BYPASSRLS và database CREATE privilege; chưa thử CREATE EXTENSION.
++- `reltuples=-1` nên bỏ qua estimated counts. Booking/Contract/Invoice aggregate chưa được truy vấn.
++
++## SHA-256 — khớp manifest
++
++| Gate | SHA-256 |
++|---|---|
++| B | `d3dad4a20ab58aad4fbc374aa52a0508bd977f13ee5530475165d3104a1c0701` |
++| C | `7390649de04ed4e2b2220ac3b8ae0ac6a6e9f414feb41d3911ba51727d87d33a` |
++| D | `8247c5208f02095cd288e4aa1c271b6e20f041a6c92712ccba3791ae759a509e` |
++| E | `225902a76a91ed7f548318fc60efeaf14204ed634d91266d6155992c9d6cbc85` |
++
++SQL không bị sửa và migration history không bị ghi.
++
++## Tình trạng sau thay đổi credential — 2026-10-20
++
++Preflight và SHA-256 ở trên được thu trước lần cập nhật credential. Kết nối VerifyFull mới từ Windows User Environment hiện bị từ chối với SQLSTATE `28P01`; vì vậy không thể tái xác nhận migration history/schema sau lần đổi password. Các số liệu preflight là snapshot lịch sử, không phải post-change verification.
++
++## Fresh connection sau cập nhật — 2026-10-20
++
++Xác minh lại bằng Npgsql builder từ Windows User Environment: target và TLS VerifyFull hợp lệ, nhưng `Open()` nhận SQLSTATE `28P01`. Không có transaction/query nào bắt đầu trong lần kiểm tra này. Snapshot schema/history bên trên không được refresh; vẫn không có backup, restore, rehearsal hay migration live.
++
++## Fresh live preflight sau khi xác thực thành công — 2026-10-20
++
++Preflight chạy trong REPEATABLE READ READ ONLY, với các kiểu `regclass` cast sang text trong bộ nhớ; statement cuối ROLLBACK. Kết quả:
++
++- Database `postgres`, schema `public`, PostgreSQL `17.11`, role `postgres`, timezone `UTC`.
++- EF history vẫn có 4 migrations: `20261003142421_InitialCreate`, `20261004073837_RenameKhuTroDichVuToPropertyService`, `20261013140609_SeedRolesAndAuthSetup`, `20261019034905_AddPropertyPrimaryImageUrl`.
++- Counts: Properties 3; InvoiceDetails 25; MaintenanceLogs 9; MaintenanceReports 4; MaintenanceReportImages 5.
++- `Properties.Description`, `PropertyAmenities`, `PropertyServiceRates` chưa có; invoice snapshot column count là 0.
++- RLS bật, policy count 0 trên năm bảng được kiểm tra. Maintenance indexes/constraints khớp snapshot trước: indexes hiện có cho Logs/Reports/Images; MaintenanceLogs có hai status CHECK và các FK/PK được validate.
++- `btree_gist` chưa cài. Role postgres không superuser, có BYPASSRLS và CREATE database privilege.
++- Không lấy dữ liệu nghiệp vụ; không có write.
++
++Gate SQL SHA-256 được tính lại và khớp manifest: B `d3dad4a20ab58aad4fbc374aa52a0508bd977f13ee5530475165d3104a1c0701`; C `7390649de04ed4e2b2220ac3b8ae0ac6a6e9f414feb41d3911ba51727d87d33a`; D `8247c5208f02095cd288e4aa1c271b6e20f041a6c92712ccba3791ae759a509e`; E `225902a76a91ed7f548318fc60efeaf14204ed634d91266d6155992c9d6cbc85`.
+
+diff --git a/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/04-Backup-Clone-Rehearsal-And-Test-Results.md b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/04-Backup-Clone-Rehearsal-And-Test-Results.md
+new file mode 100644
+index 0000000..ea8d15f
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/04-Backup-Clone-Rehearsal-And-Test-Results.md
+@@ -0,0 +1,9 @@
++# 04 — Backup clone rehearsal và regression tests
++
++**BLOCKED — không có bản backup để restore/rehearse.**
++
++- Restore: NOT RUN. Gate B→C→D→E rehearsal trên bản restore: NOT RUN.
++- Full regression của lượt resume: NOT RUN; không chạy PostgreSQL public-route tests trên live.
++- Điều kiện 4 public-route PostgreSQL tests không bị skip trên isolated fixture chưa được chứng minh.
++
++Kết quả lịch sử, không thay thế rehearsal hiện tại: artifact Phase 3.1B-L ghi 199 passed, 0 failed, 4 skipped trên PostgreSQL synthetic loopback; bốn PublicPropertyListingPostgreSqlTests thiếu fixture riêng. Artifact Phase 3.1C-DEV ghi một run khác 203 passed, 0 failed, 0 skipped. Không run nào dùng bản restore live hiện tại.
+
+diff --git a/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/05-Live-Execution-B-C-D-E.md b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/05-Live-Execution-B-C-D-E.md
+new file mode 100644
+index 0000000..172b0b0
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/05-Live-Execution-B-C-D-E.md
+@@ -0,0 +1,12 @@
++# 05 — Live execution Gate B/C/D/E
++
++**STOP trước Gate B. Không có live SQL write.**
++
++| Gate | Trạng thái | Tác động |
++|---|---|---|
++| B — Maintenance reconciliation | SKIPPED | Không chạy index concurrent/history marker |
++| C — Description + PropertyAmenities | SKIPPED | Không chạy DDL |
++| D — PropertyServiceRates + btree_gist | SKIPPED | Không chạy extension/DDL |
++| E — InvoiceDetails snapshot | SKIPPED | Không chạy DDL |
++
++Lý do: backup/restore chưa đạt, password chưa rotate, rehearsal trên restore chưa chạy. Hash đúng không thay thế safety gates. Không dùng EF Down, không sửa Invoice/Booking/Contract/Maintenance, không phát hành hóa đơn.
+
+diff --git a/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/06-Live-Postflight-Integrity-And-RLS.md b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/06-Live-Postflight-Integrity-And-RLS.md
+new file mode 100644
+index 0000000..0e6f41c
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/06-Live-Postflight-Integrity-And-RLS.md
+@@ -0,0 +1,7 @@
++# 06 — Live postflight, integrity và RLS
++
++**Postflight sau migration: NOT RUN — không gate nào được áp dụng.**
++
++Preflight trước mọi thay đổi ghi nhận: Properties 3, InvoiceDetails 25, MaintenanceLogs 9, MaintenanceReports 4, MaintenanceReportImages 5; các bảng/cột Phase 3.1B đích chưa có. RLS bật, 0 policy trên các bảng được preflight.
++
++Task không ghi live nên không có post-migration delta. Không khẳng định không có thay đổi đồng thời từ ứng dụng/người vận hành khác. Không lấy fingerprint/giá trị Booking, Contract, Invoice hoặc Maintenance; task không sửa các bảng này.
+
+diff --git a/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/07-Three-Properties-Final-Seed-Preview.md b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/07-Three-Properties-Final-Seed-Preview.md
+new file mode 100644
+index 0000000..b8472f1
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/07-Three-Properties-Final-Seed-Preview.md
+@@ -0,0 +1,11 @@
++# 07 — Preview cuối cho ba khu trọ
++
++**PENDING — chưa lập preview ID-backed; không seed.**
++
++| Khu trọ | PropertyId thật | Description | AmenityId/Name thật | Service/rate/unit/effective date | Trạng thái |
++|---|---:|---|---|---|---|
++| Nhà trọ Bình An | Chưa tra | Chưa xác nhận | Chưa tra | Chưa xác nhận | PENDING |
++| Khu trọ Sunrise | Chưa tra | Chưa xác nhận | Chưa tra | Chưa xác nhận | PENDING |
++| Nhà trọ Minh Tâm | Chưa tra | Chưa xác nhận | Chưa tra | Chưa xác nhận | PENDING |
++
++Schema C/D chưa migrate. Không truy vấn/đoán PropertyId, AmenityId, ServiceId. Không có giá demo nào được duyệt trong lượt này; đề xuất ở artifact cũ không phải approval. Không INSERT/UPDATE.
+
+diff --git a/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/08-Gate-F-Seed-SQL-And-Outcome.md b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/08-Gate-F-Seed-SQL-And-Outcome.md
+new file mode 100644
+index 0000000..2f745b7
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/08-Gate-F-Seed-SQL-And-Outcome.md
+@@ -0,0 +1,7 @@
++# 08 — Gate F seed SQL và outcome
++
++**NOT GENERATED / NOT EXECUTED.**
++
++Chưa có preview dùng ID thật, catalog amenities/services hoặc owner approval theo từng dòng. Không tạo SQL với ID/giá giả định. Artifact cũ `outputs/phase3-1b-l-supabase-live-release/SQL_REVIEW/Gate-F-Sample-Seed-REVIEW.sql` không phải payload được duyệt cho trạng thái live hiện tại.
++
++Sau migration + postflight, cần lookup ID, lập preview Description/amenities/rates với ngày hiệu lực đầu tháng tới, xin duyệt từng dòng, rồi rehearsal SQL idempotent 2 lần trên bản restore.
+
+diff --git a/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/09-API-Smoke-Release-And-Security-Blockers.md b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/09-API-Smoke-Release-And-Security-Blockers.md
+new file mode 100644
+index 0000000..0263f31
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/09-API-Smoke-Release-And-Security-Blockers.md
+@@ -0,0 +1,7 @@
++# 09 — API smoke, release và security blockers
++
++- API smoke live: NOT RUN. Không bật feature flag, restart/deploy BE, sửa FE hoặc Billing Engine.
++- Artifact Phase 3.1C-DEV cũ ghi enrichment flag mặc định OFF và FE chưa render các trường enriched; runtime chưa được kiểm tra trong lượt này.
++- API behavior sau migration chưa xác minh vì không migrate.
++- Security blockers trong báo cáo Phase 3.1C-DEV: anonymous POST /api/roles, legacy anonymous/owner-scope, RLS policy gaps. Chưa re-audit source/runtime trong lượt resume.
++- Schema migration không đồng nghĩa production release-ready.
+
+diff --git a/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/10-Git-Status-And-Final-Decision.md b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/10-Git-Status-And-Final-Decision.md
+new file mode 100644
+index 0000000..bbf901a
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1b-l-resume-tls-backup-live/10-Git-Status-And-Final-Decision.md
+@@ -0,0 +1,58 @@
++# 10 — Git status và quyết định cuối
++
++## Quyết định
++
++**BLOCKED_BACKUP_RESTORE**
++
++TLS và fresh read-only preflight PASS; Gate B/C/D/E không chạy. Backup/restore bị chặn trước khi pg_dump chạy bởi automatic tool safety review; owner xác nhận password chưa rotate. Restore rehearsal và regression gates chưa đạt.
++
++Tool trả “blocked by policy” cho lệnh tạo PGPASSFILE tạm từ credential hiện có. Không tìm cách né bằng command-line password hay cơ chế kém an toàn. Để tiếp tục: owner rotate credential, cập nhật đúng Windows User Environment và tự provision PGPASSFILE an toàn; chỉ gửi path/ready status, không gửi nội dung.
++
++## Git và phạm vi
++
++- Trước resume: 90 status entries (37 tracked changes, 53 untracked) đã tồn tại từ Phase 3.1B/3.1C và FE work.
++- Lượt này không sửa source, migrations, FE hoặc Billing Engine. Chỉ thêm thư mục report mới.
++- Không stage/commit/push/deploy. Không live write; không đổi Invoice/Booking/Contract/Maintenance; không phát hành hóa đơn.
++
++## Điều kiện để tiếp tục
++
++1. Rotate mật khẩu ngay và cập nhật biến Windows User Environment hiện tại; không gửi secret.
++2. Provision PGPASSFILE có ACL chỉ user hiện tại; xác nhận bằng path/ready status.
++3. Tạo backup, manifest/hash, restore độc lập; rehearsal B→C→D→E trên bản restore.
++4. Chạy full regression, gồm 4 public-route PostgreSQL tests không skip; sau đó fresh preflight/hash/role checks.
++5. Chỉ khi mọi hard gate PASS mới áp dụng Gate B/C/D/E. Gate F vẫn cần approval riêng cho từng dòng preview.
++
++## Quyết định sau lần tiếp tục — 2026-10-20
++
++**BLOCKED_AUTH_AND_BACKUP_RESTORE**
++
++- Mặc dù owner báo đã rotate/cập nhật, kết nối thử từ chính giá trị Windows User Environment bị PostgreSQL từ chối (`28P01`). Giá trị User và tiến trình không đồng nhất; cần cập nhật/khởi động lại tiến trình sau khi xác minh lại cấu hình.
++- Windows User Environment hiện vẫn đặt `TrustServerCertificate=true` và không có `SslMode`; cần cấu hình VerifyFull cùng CA đúng trước khi dùng lại.
++- Backup/restore, migration rehearsal và regression vẫn chưa chạy. Automatic tool safety review trước đó chặn thao tác provision PGPASSFILE; không có backup và không chạy `pg_dump`.
++- Không có Gate B/C/D/E live write; không có thay đổi dữ liệu nghiệp vụ.
++
++Để tiếp tục an toàn: sửa Windows User Environment thành credential Supabase đang hoạt động và cấu hình TLS VerifyFull/CA; restart Codex/terminal để tiến trình nhận giá trị mới. Sau đó chỉ báo đã sẵn sàng, không gửi password. Cần owner provision PGPASSFILE an toàn và báo path/ready status để tiếp tục backup/restore; không gửi nội dung file.
++
++## Trạng thái kết nối mới nhất — 2026-10-20
++
++**BLOCKED_AUTH_AND_BACKUP_RESTORE — không migration.**
++
++- Npgsql 8.0.5 parse chuỗi User thành công, không có wrapper. Host/port/database/username khớp PRN232.
++- User scope đã được kiểm tra với `SslMode=VerifyFull`, `TrustServerCertificate=false`, CA tồn tại và đúng Supabase Root 2021. Process scope không có giá trị; phép thử đã dùng User scope trực tiếp.
++- PostgreSQL vẫn trả `28P01` cho user `postgres`. Đây là lỗi xác thực password; TLS xác minh đã đến được server. Không chạy truy vấn read-only vì xác thực thất bại ở `Open()`.
++- Không chạy backup/migration/test; không thay đổi dữ liệu live.
++
++Supabase ghi nhận shared pooler có thể trả `28P01` ngay sau khi rotate password và password mới có thể cần vài phút để có hiệu lực. Hãy chờ vài phút sau lần reset gần nhất rồi thử lại. Nếu vẫn lỗi, vào Supabase Dashboard → dự án `PRN232_DB` → **Database → Settings**, reset database password, cập nhật riêng password trong Windows User variable `ConnectionStrings__DefaultConnection` (giữ nguyên các trường target/TLS, không thêm wrapper), rồi restart Codex/terminal. Không gửi password. Hướng dẫn chính thức: https://supabase.com/docs/guides/troubleshooting/how-do-i-reset-my-supabase-database-password-oTs5sB
++
++Sau khi kết nối read-only PASS, mới tiếp tục backup/restore, rehearsal và các gate theo prompt. Backup hiện vẫn chưa tạo; automatic safety review trước đó chặn việc tạo PGPASSFILE tạm, vì vậy cần provision an toàn và báo path/ready status.
++
++## Quyết định mới nhất — 2026-10-20
++
++**CONNECTED_READ_ONLY_PASS; BLOCKED_BACKUP_RESTORE.**
++
++- Kết nối Npgsql VerifyFull thành công; fresh live preflight PASS; migration history, schema, counts, RLS, indexes và constraints đã được đọc trong transaction read-only và rollback. Bốn Gate B/C/D/E hashes khớp manifest.
++- Chưa có PGPASSFILE, backup directory có 0 file. `pg_dump`/`pg_restore` 17.10 có sẵn nhưng chưa chạy. Automatic safety review trước đó chặn việc tạo PGPASSFILE từ credential; không tìm cách né.
++- Do chưa có backup + independent restore + rehearsal + full regression, Gate B/C/D/E không được chạy live. Không có thay đổi dữ liệu hoặc schema live.
++- Gate B review script còn yêu cầu approval ngoài-of-band cho hash và `phase31br_gate_b_approved=true` trước thực thi.
++
++Bước tiếp theo: owner provision PGPASSFILE an toàn và chỉ gửi path/ready status (không gửi nội dung/password). Sau khi backup, restore, rehearsal và regression đạt, mới tiếp tục các Gate live theo prompt.

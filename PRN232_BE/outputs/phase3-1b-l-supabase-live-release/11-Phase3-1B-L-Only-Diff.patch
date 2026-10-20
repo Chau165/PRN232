@@ -1,0 +1,495 @@
+diff --git a/outputs/phase3-1b-l-supabase-live-release/01-Connection-And-Secrets-Redacted.md b/outputs/phase3-1b-l-supabase-live-release/01-Connection-And-Secrets-Redacted.md
+new file mode 100644
+index 0000000..2908355
+--- /dev/null
++++ b/outputs/phase3-1b-l-supabase-live-release/01-Connection-And-Secrets-Redacted.md
+@@ -0,0 +1,24 @@
++# 01 — Connection and secrets (redacted)
++
++**Status: BLOCKED — connection metadata matches the intended project, but server identity was not verified.**
++
++## Configuration found
++
++- PRN232.Api/Program.cs reads ConnectionStrings:DefaultConnection.
++- API UserSecretsId is prn232-be-api-secrets. Its secrets file exists, but it has no ConnectionStrings:DefaultConnection key.
++- ConnectionStrings__DefaultConnection exists in the Windows User environment and matches the current process value. Environment configuration takes precedence. No second key was created and no existing value was changed.
++- Base appsettings.json contains a local template. appsettings.Development.json exists; its value is not reproduced here.
++- The environment value was parsed in memory only. Host, port, database, and username match the supplied PRN232 shared session pooler: aws-0-ap-southeast-1.pooler.supabase.com:5432, database postgres, project-scoped username for qvdrjyecaprfpgvbfyfe. Password value is not printed or saved.
++- Connection mode found: shared session pooler, port 5432. Direct endpoint support was not tested.
++
++## TLS and identity
++
++The stored connection uses SslMode=Require and TrustServerCertificate=true. This encrypts traffic but bypasses certificate and hostname verification. An in-memory read-only connection attempt changed only its temporary builder to VerifyFull / TrustServerCertificate=false; TLS certificate validation failed before a database query ran. The local setting was not modified.
++
++Supabase documents that require does not verify the server certificate; verify-full requires the project CA certificate from Database Settings. The Dashboard redirected to sign-in before that certificate could be obtained. See [Supabase SSL enforcement](https://supabase.com/docs/guides/platform/ssl-enforcement) and [connecting to Postgres](https://supabase.com/docs/guides/database/connecting-to-postgres).
++
++**Consequences:** current_database(), current_user, live schema/history, and project identity have not been verified by SQL in this run. Host/user metadata is configuration evidence only. Password rotation status is also unverified.
++
++## Gate
++
++**BLOCKED.** Before any live write, obtain the project CA certificate through the owner's authenticated Dashboard flow (do not send a password), then verify a read-only VerifyFull connection. Confirm separately that the credential in the existing User environment was rotated as required by the attached runbook.
+\ No newline at end of file
+
+diff --git a/outputs/phase3-1b-l-supabase-live-release/02-Backup-Restore-Drill-And-Recovery-Readiness.md b/outputs/phase3-1b-l-supabase-live-release/02-Backup-Restore-Drill-And-Recovery-Readiness.md
+new file mode 100644
+index 0000000..f919d19
+--- /dev/null
++++ b/outputs/phase3-1b-l-supabase-live-release/02-Backup-Restore-Drill-And-Recovery-Readiness.md
+@@ -0,0 +1,22 @@
++# 02 — Backup, restore drill, and recovery readiness
++
++**Status: BLOCKED — no project-specific recovery point or successful restore drill is evidenced.**
++
++## Evidence
++
++- PRN232 Database Settings displayed the project as Free Plan. Navigating to Database Backups redirected to Supabase sign-in; the scheduled-backup/PITR detail and latest recovery point were not visible.
++- Supabase's current documentation says automatic daily backups are for Pro, Team, and Enterprise; it recommends regular exports and off-site backups for Free projects. Database backups also exclude Storage objects. [Supabase Database Backups](https://supabase.com/docs/guides/platform/backups)
++- PostgreSQL 17.10 pg_dump.exe and pg_restore.exe are installed at C:\Program Files\PostgreSQL\17\bin but are not on PATH. They were not run because the configured TLS connection does not verify the server certificate.
++- No backup file was created. No restore drill was run. No database dump or tenant/billing data was copied into the repository or reports.
++
++## Recovery facts
++
++| Item | Result |
++|---|---|
++| Dashboard backup/PITR point and retention | NOT VERIFIED |
++| Logical backup from live | NOT CREATED |
++| Restore drill to independent PostgreSQL | NOT RUN |
++| Storage object recovery | NOT VERIFIED |
++| RPO / RTO accepted by owner | NOT PROVIDED |
++
++**Stop decision:** the prompt explicitly blocks live writes when backup or restore cannot be demonstrated. No live migration or seed was started. Project backup evidence and a successful independent restore drill are still required.
+\ No newline at end of file
+
+diff --git a/outputs/phase3-1b-l-supabase-live-release/03-Exact-SQL-Hash-And-Fresh-Preflight.md b/outputs/phase3-1b-l-supabase-live-release/03-Exact-SQL-Hash-And-Fresh-Preflight.md
+new file mode 100644
+index 0000000..cecfcc5
+--- /dev/null
++++ b/outputs/phase3-1b-l-supabase-live-release/03-Exact-SQL-Hash-And-Fresh-Preflight.md
+@@ -0,0 +1,22 @@
++# 03 — Exact SQL hashes and live preflight
++
++**Status: SQL hashes PASS; fresh live preflight BLOCKED.**
++
++## Hash lock
++
++SHA-256 was computed over the source files in the repository. All four match the attached manifest byte-for-byte.
++
++| Gate | File | SHA-256 | Hash result |
++|---|---|---|---|
++| B | outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/01-Gate-B-Maintenance-Reconciliation-REVIEW-ONLY.sql | d3dad4a20ab58aad4fbc374aa52a0508bd977f13ee5530475165d3104a1c0701 | MATCH |
++| C | outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/01-AddPropertyDescriptionAndAmenities.sql | 7390649de04ed4e2b2220ac3b8ae0ac6a6e9f414feb41d3911ba51727d87d33a | MATCH |
++| D | outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/02-AddPropertyServiceRates.sql | 8247c5208f02095cd288e4aa1c271b6e20f041a6c92712ccba3791ae759a509e | MATCH |
++| E | outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/03-AddInvoiceDetailBillingSnapshot.sql | 225902a76a91ed7f548318fc60efeaf14204ed634d91266d6155992c9d6cbc85 | MATCH |
++
++Expected EF migration IDs are B 20261013192052_ReconcileMaintenanceReportsAndLogNullability, C 20261019143543_AddPropertyDescriptionAndAmenities, D 20261019143615_AddPropertyServiceRates, and E 20261019143633_AddInvoiceDetailBillingSnapshot.
++
++## Live preflight
++
++00-Live-READ-ONLY-Preflight.sql was not run. VerifyFull certificate validation failed before SQL execution, so live schema, history rows, row counts, indexes, constraints, RLS, extension state, and data fingerprints remain NOT VERIFIED in this run. The earlier Phase 3.1B-R catalog snapshot is historical evidence and was not substituted for a fresh preflight.
++
++No SQL file was edited, re-hashed, or executed on Supabase.
+\ No newline at end of file
+
+diff --git a/outputs/phase3-1b-l-supabase-live-release/04-Isolated-Replay-And-Backend-Regression.md b/outputs/phase3-1b-l-supabase-live-release/04-Isolated-Replay-And-Backend-Regression.md
+new file mode 100644
+index 0000000..5da7ae2
+--- /dev/null
++++ b/outputs/phase3-1b-l-supabase-live-release/04-Isolated-Replay-And-Backend-Regression.md
+@@ -0,0 +1,18 @@
++# 04 — Isolated replay and backend regression
++
++**Status: Migration-focused PostgreSQL tests PASS; separate public-listing fixture tests remain SKIPPED.**
++
++## Fresh run
++
++- Created a temporary PostgreSQL 17.10 cluster bound only to 127.0.0.1:55432, with synthetic test data and no Supabase connection string.
++- Ran dotnet test PRN232_BE.sln --no-restore --verbosity minimal with the migration-test variable pointing only to that loopback cluster.
++- Result: 199 passed, 0 failed, 4 skipped, 203 total. Build completed as part of the test run.
++- The Phase 3.1B migration/data-invariant test (including its live-like Gate B path) and both Phase 3.1C PostgreSQL tests ran; no test failed.
++- Four PublicPropertyListingPostgreSqlTests were skipped because their separate PRN232_TEST_POSTGRES_CONNECTION fixture was not supplied. The migration fixture variable is a different setting.
++- The temporary server was stopped, port 55432 was confirmed closed, and its synthetic data directory was removed.
++
++The existing Phase 3.1C report records a prior full run of 203 passed / 0 skipped / 0 failed, including 50 Phase 3.1C API/PostgreSQL checks. See outputs/phase3-1c-dev-public-property-enrichment/01-Executive-Summary-And-Development-Status.md and 06-PostgreSQL-Provider-Real-Test-Matrix.md.
++
++## Limits
++
++The local replay is synthetic PostgreSQL 17.10 under a local superuser. It does not prove Supabase's 17.11 role/extension privileges, live backup recovery, current schema/history, or production API state. The local replay and tests did not write to Supabase.
+\ No newline at end of file
+
+diff --git a/outputs/phase3-1b-l-supabase-live-release/05-Live-Gate-B-C-D-E-Execution.md b/outputs/phase3-1b-l-supabase-live-release/05-Live-Gate-B-C-D-E-Execution.md
+new file mode 100644
+index 0000000..1415e76
+--- /dev/null
++++ b/outputs/phase3-1b-l-supabase-live-release/05-Live-Gate-B-C-D-E-Execution.md
+@@ -0,0 +1,14 @@
++# 05 — Live Gate B/C/D/E execution
++
++**Outcome: BLOCKED before Gate B. No live SQL writes occurred.**
++
++| Gate | Status | Start / end | SQLSTATE | History marker |
++|---|---|---|---|---|
++| B — Maintenance reconciliation | SKIPPED — STOP GATE | Not started | N/A | Not queried |
++| C — Description + PropertyAmenities | SKIPPED — STOP GATE | Not started | N/A | Not queried |
++| D — PropertyServiceRates + btree_gist | SKIPPED — STOP GATE | Not started | N/A | Not queried |
++| E — InvoiceDetails snapshot columns | SKIPPED — STOP GATE | Not started | N/A | Not queried |
++
++Stop conditions observed: backup/restore evidence is missing; Dashboard backup details required sign-in; the existing connection bypasses certificate verification and the secure VerifyFull attempt failed; credential rotation status cannot be established; no fresh live preflight is available. The live role's btree_gist installation privilege is not proven.
++
++No Gate B index was attempted, no EF history marker was written, no C/D/E migration was attempted, and no recovery/Down action was taken. Do not infer that the live database has or lacks a particular marker from this execution.
+\ No newline at end of file
+
+diff --git a/outputs/phase3-1b-l-supabase-live-release/06-Live-Postflight-And-Integrity.md b/outputs/phase3-1b-l-supabase-live-release/06-Live-Postflight-And-Integrity.md
+new file mode 100644
+index 0000000..1fa545e
+--- /dev/null
++++ b/outputs/phase3-1b-l-supabase-live-release/06-Live-Postflight-And-Integrity.md
+@@ -0,0 +1,9 @@
++# 06 — Live postflight and integrity
++
++**Status: NOT RUN — no live gate completed.**
++
++No live postflight can be compared with a fresh preflight because the preflight was blocked before SQL execution. Live row counts/fingerprints, all eight EF migration-history rows, constraints, index validity/readiness, btree_gist, RLS/policies, and preservation of Invoice/Maintenance data are NOT VERIFIED in this run.
++
++There were no live DML or DDL statements, so this run made no change to InvoiceDetails, Maintenance*, Booking, Contract, users, or any other live table. This is not a postflight integrity claim.
++
++The read-only verification script is delivered at SQL_REVIEW/Live-ReadOnly-Verification.sql. Run it only after a verified fresh preflight and successful owner-authorized rollout.
+\ No newline at end of file
+
+diff --git a/outputs/phase3-1b-l-supabase-live-release/07-Three-Properties-Seed-Preview.md b/outputs/phase3-1b-l-supabase-live-release/07-Three-Properties-Seed-Preview.md
+new file mode 100644
+index 0000000..f3d88de
+--- /dev/null
++++ b/outputs/phase3-1b-l-supabase-live-release/07-Three-Properties-Seed-Preview.md
+@@ -0,0 +1,50 @@
++# 07 — Seed preview for the three properties
++
++**Status: PREVIEW ONLY — owner approval and live catalog resolution are pending. No IDs were guessed.**
++
++The descriptions and prices below are proposals copied from the attached prompt, not verified business facts. Since the TLS gate blocked live reads, PropertyId, AmenityId, ServiceId, existing descriptions, current rates, and name-to-service mappings are all NOT VERIFIED.
++
++## Description proposals
++
++| Property name from request | PropertyId | Proposed description | Approval |
++|---|---:|---|---|
++| Nhà trọ Bình An | NOT VERIFIED | Nhà trọ Bình An tại khu vực Linh Trung, Thủ Đức. Thông tin chi tiết về tiện ích và giá dịch vụ được cập nhật riêng theo từng phòng và khu trọ. | PENDING |
++| Khu trọ Sunrise | NOT VERIFIED | Khu trọ Sunrise cung cấp các lựa chọn phòng cho thuê tại TP. Hồ Chí Minh. Xem danh sách phòng và tiện ích theo thông tin đang có hiệu lực trên hệ thống. | PENDING |
++| Nhà trọ Minh Tâm | NOT VERIFIED | Nhà trọ Minh Tâm tại khu vực Gò Vấp. Các tiện ích chung và chi phí sinh hoạt được công bố theo cấu hình của khu trọ. | PENDING |
++
++These statements are not approved or independently verified. Preserve any existing non-empty description.
++
++## Amenity preview
++
++No amenity assignment is proposed. The live Amenities catalogue and actual AmenityId values were not read, and a room amenity does not prove a property-wide amenity. The owner must select catalogue entries and confirm they are common to the property before any insert. No camera, lift, parking, Wi-Fi, laundry, or other amenity is asserted.
++
++## Proposed rates (DEMO / NOT CONTRACTUAL)
++
++Proposed effective date is 2026-11-01 (first day of next month in Asia/Ho_Chi_Minh). EffectiveTo=NULL is only a proposal for an open-ended range; do not use it unless live overlap checks pass. Do not close or replace any existing rate.
++
++| Property | Service label (not verified DB name) | ServiceId | Proposed price | UnitCode / BillingBasis | EffectiveFrom / To | Approval |
++|---|---|---:|---:|---|---|---|
++| Nhà trọ Bình An | Điện | NOT VERIFIED | 3,500 | kwh / usage | 2026-11-01 / NULL | PENDING |
++| Nhà trọ Bình An | Nước | NOT VERIFIED | 20,000 | m3 / usage | 2026-11-01 / NULL | PENDING |
++| Nhà trọ Bình An | Internet | NOT VERIFIED | 100,000 | room_month / fixed_room | 2026-11-01 / NULL | PENDING |
++| Nhà trọ Bình An | Rác | NOT VERIFIED | 30,000 | room_month / fixed_room | 2026-11-01 / NULL | PENDING |
++| Khu trọ Sunrise | Điện | NOT VERIFIED | 3,800 | kwh / usage | 2026-11-01 / NULL | PENDING |
++| Khu trọ Sunrise | Nước | NOT VERIFIED | 22,000 | m3 / usage | 2026-11-01 / NULL | PENDING |
++| Khu trọ Sunrise | Internet | NOT VERIFIED | 100,000 | room_month / fixed_room | 2026-11-01 / NULL | PENDING |
++| Khu trọ Sunrise | Rác | NOT VERIFIED | 30,000 | room_month / fixed_room | 2026-11-01 / NULL | PENDING |
++| Nhà trọ Minh Tâm | Điện | NOT VERIFIED | 3,600 | kwh / usage | 2026-11-01 / NULL | PENDING |
++| Nhà trọ Minh Tâm | Nước | NOT VERIFIED | 20,000 | m3 / usage | 2026-11-01 / NULL | PENDING |
++| Nhà trọ Minh Tâm | Internet | NOT VERIFIED | 90,000 | room_month / fixed_room | 2026-11-01 / NULL | PENDING |
++| Nhà trọ Minh Tâm | Rác | NOT VERIFIED | 30,000 | room_month / fixed_room | 2026-11-01 / NULL | PENDING |
++
++All prices are proposal values in VND from the attached prompt, not current Services.Price, a contract, or an invoice rate. Exact ServiceId and catalog names must be resolved from live PostgreSQL after secure access. Missing services remain pending; do not create new services.
++
++## Required before seed
++
++1. Verify unique live PropertyId values and exact property names.
++2. Review current Description, PropertyAmenities, and overlapping PropertyServiceRates.
++3. Resolve actual AmenityId / ServiceId, unit mapping, effective dates, and conflicts.
++4. Obtain owner approval for each exact description, amenity assignment, and rate row.
++5. Rehearse the final idempotent SQL twice on an isolated migrated fixture.
++
++Until all five pass, Gate F remains NOT STARTED.
+\ No newline at end of file
+
+diff --git a/outputs/phase3-1b-l-supabase-live-release/08-Sample-Seed-Execution-And-Idempotency.md b/outputs/phase3-1b-l-supabase-live-release/08-Sample-Seed-Execution-And-Idempotency.md
+new file mode 100644
+index 0000000..71497c2
+--- /dev/null
++++ b/outputs/phase3-1b-l-supabase-live-release/08-Sample-Seed-Execution-And-Idempotency.md
+@@ -0,0 +1,18 @@
++# 08 — Sample seed execution and idempotency
++
++**Status: NOT STARTED — no seed SQL or seed data was executed.**
++
++| Check | Result |
++|---|---|
++| Final owner-approved description/amenity/rate payload | PENDING |
++| Live PropertyId / AmenityId / ServiceId lookup | NOT VERIFIED |
++| Final idempotent seed payload available | NO |
++| Isolated seed rehearsal, run 1 | NOT RUN |
++| Isolated seed rehearsal, run 2 | NOT RUN |
++| Invalid ServiceId and overlapping-rate negative tests | NOT RUN |
++| Live Gate F | NOT STARTED |
++| Insert/update/skip/conflict counts | 0 live writes; preview counts remain pending |
++
++SQL_REVIEW/Gate-F-Sample-Seed-REVIEW.sql is deliberately read-only and fails closed when asked to proceed. It is a discovery/review artifact, not a ready seed script. It contains no INSERT or UPDATE. Replace it with a fully mapped, owner-approved, rehearsed transaction only after schema postflight passes.
++
++No invoice, booking, contract, maintenance, user, or utility-reading rows were seeded or changed.
+\ No newline at end of file
+
+diff --git a/outputs/phase3-1b-l-supabase-live-release/09-API-Smoke-Frontend-Readiness.md b/outputs/phase3-1b-l-supabase-live-release/09-API-Smoke-Frontend-Readiness.md
+new file mode 100644
+index 0000000..8faa4f7
+--- /dev/null
++++ b/outputs/phase3-1b-l-supabase-live-release/09-API-Smoke-Frontend-Readiness.md
+@@ -0,0 +1,21 @@
++# 09 — API smoke and frontend readiness
++
++**Status: Local API/PostgreSQL evidence exists; live API and frontend UAT are NOT VERIFIED.**
++
++## API / tests
++
++- The current test run passed the two Phase 3.1C PostgreSQL tests, including enriched property-detail behavior on a migrated isolated PostgreSQL database.
++- Four PublicPropertyListingPostgreSqlTests for listing, property detail, property rooms, and room detail were skipped in the current run because PRN232_TEST_POSTGRES_CONNECTION was not configured. The Phase 3.1C report records a prior 203/203 full-suite pass and 50 Phase 3.1C API/PostgreSQL checks; this run did not repeat those four routes.
++- No live API process was connected to a fresh migrated Supabase schema. No live GET result is claimed.
++
++## FE
++
++Current FE source includes roomAmenities, but the property-detail API type and page do not include/render description, commonAmenities, or livingCosts. The Phase 3.1C report also records that the FE remains on the placeholder state. Schema/API changes would therefore not make the new values visible in the current FE.
++
++## Security / release
++
++- Phase 3.1C enrichment remains feature-flagged off by default until the schema and data are approved.
++- RolesController exposes POST /api/roles without an [Authorize] attribute. The Phase 3.1C security report also records legacy owner-scope and RLS/policy blockers.
++- New tables with RLS and no approved policies are not automatically reachable through Supabase Data APIs.
++
++**Security release remains BLOCKED.** No source deployment, FE change, or production-ready claim is made.
+\ No newline at end of file
+
+diff --git a/outputs/phase3-1b-l-supabase-live-release/10-Git-Baseline-Changes-And-Final-Summary.md b/outputs/phase3-1b-l-supabase-live-release/10-Git-Baseline-Changes-And-Final-Summary.md
+new file mode 100644
+index 0000000..dbb702f
+--- /dev/null
++++ b/outputs/phase3-1b-l-supabase-live-release/10-Git-Baseline-Changes-And-Final-Summary.md
+@@ -0,0 +1,25 @@
++# 10 — Git baseline, existing changes, and final summary
++
++## Git baseline before creating this deliverable
++
++At baseline, before any file in this release folder was created:
++
++- git status --short: 89 entries — 37 tracked paths changed and 52 untracked entries.
++- git diff --shortstat: 36 files changed, 2,378 insertions, 999 deletions.
++- Existing uncommitted changes included BE and FE work from earlier phases. Those changes were treated as user work and preserved.
++
++## This Phase 3.1B-L run
++
++- No BE/FE source file was edited.
++- No file was staged; no commit, push, merge, or deployment was performed.
++- This folder contains only this phase's reports and review SQL. 11-Phase3-1B-L-Only-Diff.patch includes only the new files in this release folder, not earlier Phase 3.1C or other work.
++- After adding this folder, git status --short showed 90 entries (37 tracked changes and 53 untracked entries); the tracked diff shortstat remained unchanged and the staging area was empty.
++- The temporary PostgreSQL test cluster was stopped and removed.
++
++## Final status
++
++**BLOCKED — NO LIVE WRITES; SAFETY/PREFLIGHT/RECOVERY NOT VERIFIED.**
++
++Phase 3.1C-DEV completion is evidenced by its existing report. The four SQL hashes match and isolated migration/API-focused tests passed. Live backup/restore, TLS identity verification, fresh schema preflight, Gate B/C/D/E execution, postflight, actual live IDs, Gate F approval/rehearsal/seed, live API smoke, and FE visibility remain incomplete.
++
++The only schema modified during execution was the temporary isolated PostgreSQL test fixture, which was stopped and deleted; no Supabase schema changed.
+\ No newline at end of file
+
+diff --git a/outputs/phase3-1b-l-supabase-live-release/SQL_REVIEW/Gate-F-Sample-Seed-REVIEW.sql b/outputs/phase3-1b-l-supabase-live-release/SQL_REVIEW/Gate-F-Sample-Seed-REVIEW.sql
+new file mode 100644
+index 0000000..6471546
+--- /dev/null
++++ b/outputs/phase3-1b-l-supabase-live-release/SQL_REVIEW/Gate-F-Sample-Seed-REVIEW.sql
+@@ -0,0 +1,85 @@
++-- REVIEW / DISCOVERY ONLY. No live seed payload is approved or mapped.
++-- Run only after B/C/D/E postflight, over a verified TLS connection.
++-- This file contains no INSERT or UPDATE and is intentionally read-only.
++BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
++SET LOCAL statement_timeout = '10s';
++
++-- Verify requested names and whether a description is eligible for filling.
++-- Do not return or overwrite existing non-empty description text.
++SELECT "PropertyId",
++       "PropertyName",
++       ("Description" IS NULL OR BTRIM("Description") = '') AS description_is_empty
++FROM public."Properties"
++WHERE "PropertyName" IN ('Nhà trọ Bình An', 'Khu trọ Sunrise', 'Nhà trọ Minh Tâm')
++ORDER BY "PropertyName", "PropertyId";
++
++-- Catalog only; a room-level assignment does not establish a common amenity.
++SELECT a."AmenityId",
++       a."Name",
++       count(DISTINCT r."PropertyId") AS room_assignment_property_count
++FROM public."Amenities" a
++LEFT JOIN public."RoomAmenities" ra ON ra."AmenityId" = a."AmenityId"
++LEFT JOIN public."Rooms" r ON r."RoomId" = ra."RoomId"
++GROUP BY a."AmenityId", a."Name"
++ORDER BY a."Name", a."AmenityId";
++
++-- Read service catalog as reference only; this does not approve its price or unit.
++SELECT "ServiceId", "Name", "Price"
++FROM public."Services"
++ORDER BY "Name", "ServiceId";
++
++-- Current assignments and rates for the requested properties, to detect conflicts.
++SELECT p."PropertyId",
++       p."PropertyName",
++       pa."AmenityId",
++       a."Name" AS amenity_name
++FROM public."Properties" p
++JOIN public."PropertyAmenities" pa ON pa."PropertyId" = p."PropertyId"
++JOIN public."Amenities" a ON a."AmenityId" = pa."AmenityId"
++WHERE p."PropertyName" IN ('Nhà trọ Bình An', 'Khu trọ Sunrise', 'Nhà trọ Minh Tâm')
++ORDER BY p."PropertyId", pa."AmenityId";
++
++SELECT p."PropertyId",
++       p."PropertyName",
++       r."ServiceId",
++       s."Name" AS service_name,
++       r."Price",
++       r."UnitCode",
++       r."BillingBasis",
++       r."EffectiveFrom",
++       r."EffectiveTo"
++FROM public."Properties" p
++JOIN public."PropertyServiceRates" r ON r."PropertyId" = p."PropertyId"
++JOIN public."Services" s ON s."ServiceId" = r."ServiceId"
++WHERE p."PropertyName" IN ('Nhà trọ Bình An', 'Khu trọ Sunrise', 'Nhà trọ Minh Tâm')
++ORDER BY p."PropertyId", r."ServiceId", r."EffectiveFrom";
++
++-- Proposal values only. IDs intentionally NULL until live catalog is verified.
++SELECT *
++FROM (VALUES
++    ('Nhà trọ Bình An', 'Điện', 3500::numeric, 'kwh', 'usage', DATE '2026-11-01', NULL::date, NULL::integer, 'DEMO / NOT CONTRACTUAL'),
++    ('Nhà trọ Bình An', 'Nước', 20000::numeric, 'm3', 'usage', DATE '2026-11-01', NULL::date, NULL::integer, 'DEMO / NOT CONTRACTUAL'),
++    ('Nhà trọ Bình An', 'Internet', 100000::numeric, 'room_month', 'fixed_room', DATE '2026-11-01', NULL::date, NULL::integer, 'DEMO / NOT CONTRACTUAL'),
++    ('Nhà trọ Bình An', 'Rác', 30000::numeric, 'room_month', 'fixed_room', DATE '2026-11-01', NULL::date, NULL::integer, 'DEMO / NOT CONTRACTUAL'),
++    ('Khu trọ Sunrise', 'Điện', 3800::numeric, 'kwh', 'usage', DATE '2026-11-01', NULL::date, NULL::integer, 'DEMO / NOT CONTRACTUAL'),
++    ('Khu trọ Sunrise', 'Nước', 22000::numeric, 'm3', 'usage', DATE '2026-11-01', NULL::date, NULL::integer, 'DEMO / NOT CONTRACTUAL'),
++    ('Khu trọ Sunrise', 'Internet', 100000::numeric, 'room_month', 'fixed_room', DATE '2026-11-01', NULL::date, NULL::integer, 'DEMO / NOT CONTRACTUAL'),
++    ('Khu trọ Sunrise', 'Rác', 30000::numeric, 'room_month', 'fixed_room', DATE '2026-11-01', NULL::date, NULL::integer, 'DEMO / NOT CONTRACTUAL'),
++    ('Nhà trọ Minh Tâm', 'Điện', 3600::numeric, 'kwh', 'usage', DATE '2026-11-01', NULL::date, NULL::integer, 'DEMO / NOT CONTRACTUAL'),
++    ('Nhà trọ Minh Tâm', 'Nước', 20000::numeric, 'm3', 'usage', DATE '2026-11-01', NULL::date, NULL::integer, 'DEMO / NOT CONTRACTUAL'),
++    ('Nhà trọ Minh Tâm', 'Internet', 90000::numeric, 'room_month', 'fixed_room', DATE '2026-11-01', NULL::date, NULL::integer, 'DEMO / NOT CONTRACTUAL'),
++    ('Nhà trọ Minh Tâm', 'Rác', 30000::numeric, 'room_month', 'fixed_room', DATE '2026-11-01', NULL::date, NULL::integer, 'DEMO / NOT CONTRACTUAL')
++) AS proposal(property_name, service_label, proposed_price, unit_code, billing_basis,
++              effective_from, effective_to, service_id, approval_label);
++
++DO $seed_guard$
++BEGIN
++    IF current_setting('app.phase31b_l_seed_approved', true) IS DISTINCT FROM 'true' THEN
++        RAISE NOTICE 'BLOCKED: owner has not approved the exact preview; no writes are present in this file.';
++        RETURN;
++    END IF;
++    RAISE EXCEPTION 'BLOCKED: this review file has no verified IDs or write payload; replace it only after approval and isolated rehearsal.';
++END
++$seed_guard$;
++
++ROLLBACK;
+\ No newline at end of file
+
+diff --git a/outputs/phase3-1b-l-supabase-live-release/SQL_REVIEW/Live-ReadOnly-Verification.sql b/outputs/phase3-1b-l-supabase-live-release/SQL_REVIEW/Live-ReadOnly-Verification.sql
+new file mode 100644
+index 0000000..afa74dd
+--- /dev/null
++++ b/outputs/phase3-1b-l-supabase-live-release/SQL_REVIEW/Live-ReadOnly-Verification.sql
+@@ -0,0 +1,93 @@
++-- REVIEW ONLY. Read-only postflight after approved Gate B/C/D/E execution.
++-- Run immediately after deployment while writers are paused; compare counts to saved preflight.
++BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
++SET LOCAL statement_timeout = '10s';
++
++SELECT current_database() AS database_name,
++       current_setting('server_version') AS server_version,
++       current_setting('transaction_read_only') AS transaction_read_only,
++       current_timestamp AS observed_at_utc;
++
++SELECT "MigrationId", "ProductVersion"
++FROM public."__EFMigrationsHistory"
++ORDER BY "MigrationId";
++
++SELECT 'Properties' AS table_name, count(*) AS row_count FROM public."Properties"
++UNION ALL SELECT 'InvoiceDetails', count(*) FROM public."InvoiceDetails"
++UNION ALL SELECT 'MaintenanceLogs', count(*) FROM public."MaintenanceLogs"
++UNION ALL SELECT 'MaintenanceReports', count(*) FROM public."MaintenanceReports"
++UNION ALL SELECT 'MaintenanceReportImages', count(*) FROM public."MaintenanceReportImages"
++UNION ALL SELECT 'PropertyAmenities', count(*) FROM public."PropertyAmenities"
++UNION ALL SELECT 'PropertyServiceRates', count(*) FROM public."PropertyServiceRates"
++ORDER BY table_name;
++
++SELECT count(*) AS properties,
++       count(*) FILTER (WHERE "Description" IS NULL) AS description_null_rows
++FROM public."Properties";
++
++SELECT count(*) AS invoice_details,
++       count(*) FILTER (WHERE "Quantity" IS NULL
++                        AND "UnitPrice" IS NULL
++                        AND "UnitCode" IS NULL
++                        AND "BillingBasis" IS NULL
++                        AND "ServiceId" IS NULL
++                        AND "RateId" IS NULL) AS rows_with_all_snapshot_fields_null
++FROM public."InvoiceDetails";
++
++SELECT count(*) FILTER (WHERE "OldStatus" IS NULL) AS maintenance_logs_with_null_old_status
++FROM public."MaintenanceLogs";
++
++SELECT pg_get_expr(d.adbin,d.adrelid) AS created_at_default
++FROM pg_attribute a
++JOIN pg_class c ON c.oid=a.attrelid
++JOIN pg_namespace n ON n.oid=c.relnamespace
++LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
++WHERE n.nspname='public' AND c.relname='MaintenanceReports' AND a.attname='CreatedAt';
++
++SELECT extname, extversion, extnamespace::regnamespace AS extension_schema
++FROM pg_extension
++WHERE extname='btree_gist';
++
++SELECT c.relname AS table_name, c.relrowsecurity AS rls_enabled,
++       c.relforcerowsecurity AS force_rls,
++       (SELECT count(*) FROM pg_policies p
++        WHERE p.schemaname='public' AND p.tablename=c.relname) AS policy_count
++FROM pg_class c
++JOIN pg_namespace n ON n.oid=c.relnamespace
++WHERE n.nspname='public'
++  AND c.relname IN ('MaintenanceLogs','MaintenanceReports','MaintenanceReportImages',
++                    'PropertyAmenities','PropertyServiceRates')
++ORDER BY c.relname;
++
++SELECT conrelid::regclass AS table_name,
++       conname AS constraint_name,
++       contype AS constraint_type,
++       convalidated AS validated,
++       pg_get_constraintdef(oid,true) AS definition
++FROM pg_constraint
++WHERE conrelid IN ('public."MaintenanceLogs"'::regclass,
++                   'public."MaintenanceReports"'::regclass,
++                   'public."MaintenanceReportImages"'::regclass,
++                   'public."PropertyAmenities"'::regclass,
++                   'public."PropertyServiceRates"'::regclass,
++                   'public."InvoiceDetails"'::regclass)
++ORDER BY table_name,constraint_name;
++
++SELECT schemaname, tablename, indexname, indexdef
++FROM pg_indexes
++WHERE schemaname='public'
++  AND tablename IN ('MaintenanceReports','MaintenanceReportImages',
++                    'PropertyAmenities','PropertyServiceRates','InvoiceDetails')
++ORDER BY tablename,indexname;
++
++SELECT i.relname AS index_name, ix.indisvalid AS valid, ix.indisready AS ready
++FROM pg_index ix
++JOIN pg_class i ON i.oid=ix.indexrelid
++JOIN pg_namespace n ON n.oid=i.relnamespace
++WHERE n.nspname='public'
++  AND i.relname IN ('IX_MaintenanceReports_ReportedBy',
++                    'IX_MaintenanceReportImages_ReportId',
++                    'EX_PropertyServiceRates_NoOverlappingPeriods')
++ORDER BY i.relname;
++
++ROLLBACK;

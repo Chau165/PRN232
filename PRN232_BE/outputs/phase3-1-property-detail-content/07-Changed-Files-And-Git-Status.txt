@@ -1,0 +1,31 @@
+Phase 3.1 output and diff manifest
+Date: 2026-10-19
+Git root: C:\PRN232
+Baseline HEAD: 897b0374bf057767b495b296217fbfb3f72a190e
+Baseline working-tree status captured before this task: 124 entries (including existing Phase 2/3 and other local work)
+
+The Phase 3.1 patch is generated from pre-edit snapshots of the seven listed code/test files, plus new Phase 3.1 report files. It does not include other pre-existing repository changes. The patch file itself is not embedded in the patch.
+
+Code and test changes:
+  PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs
+  PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+  PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs
+  PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
+  PRN232_FE/src/api/publicBrowsingApi.ts
+  PRN232_FE/src/pages/PropertyDetailPage/PropertyDetailPage.tsx
+  PRN232_FE/tests/publicPropertyPages.test.tsx
+
+Phase 3.1 reports included in the patch:
+  PRN232_BE/outputs/phase3-1-property-detail-content/01-Schema-And-Code-Audit.md
+  PRN232_BE/outputs/phase3-1-property-detail-content/02-Data-Model-Proposal-And-Owner-Decisions.md
+  PRN232_BE/outputs/phase3-1-property-detail-content/03-API-Contract.md
+  PRN232_BE/outputs/phase3-1-property-detail-content/04-FE-Implementation-Report.md
+  PRN232_BE/outputs/phase3-1-property-detail-content/05-Test-Matrix-And-UAT.md
+  PRN232_BE/outputs/phase3-1-property-detail-content/07-Changed-Files-And-Git-Status.txt
+  PRN232_BE/outputs/phase3-1-property-detail-content/09-Implementation-Readiness-And-Blocking-Decisions.md
+
+Review patch: PRN232_BE/outputs/phase3-1-property-detail-content/08-Phase3-1-Only-Diff.patch
+
+No seed-plan SQL is included as report 06: the tariff model and verified owner-provided content/rates are not approved or available, so a seed plan would invent values or target a schema that does not exist.
+
+No database migration, live data update, commit, push, or deployment was performed. Existing Phase 2/3 worktree changes were preserved.

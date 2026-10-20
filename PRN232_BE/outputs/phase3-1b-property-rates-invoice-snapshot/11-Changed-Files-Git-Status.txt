@@ -1,0 +1,325 @@
+PRN232 Phase 3.1B Git status evidence
+Repository: C:\PRN232
+HEAD baseline: 897b0374bf057767b495b296217fbfb3f72a190e
+No commit, push, stage, reset, clean, stash, or deploy was performed.
+
+Initial baseline: 141 entries; tracked changes=33; untracked=108.
+Final snapshot: 170 entries; tracked changes=37; untracked=133.
+Baseline entries removed: 0. Newly visible status entries including this report and the patch: 29.
+Frontend entries: initial=43, final=43; identical=True.
+The pre-existing Phase 1/2/public-browsing/FE changes remain present. Phase 3.1B source changes are limited to the 15 paths in the phase-only patch; the new reports and SQL are separate deliverables.
+
+=== INITIAL STATUS: git status --short --untracked-files=all ===
+ M PRN232_BE/.codegraph/.gitignore
+ M PRN232_BE/PRN232.Api/Program.cs
+ M PRN232_BE/PRN232.Application/Interfaces/IRoomRepository.cs
+ M PRN232_BE/PRN232.Application/Interfaces/IRoomService.cs
+ M PRN232_BE/PRN232.Application/Services/RoomService.cs
+ M PRN232_BE/PRN232.Application/Services/RoomStatuses.cs
+ M PRN232_BE/PRN232.Domain/Entities/Property.cs
+ M PRN232_BE/PRN232.Infrastructure/Migrations/AppDbContextModelSnapshot.cs
+ M PRN232_BE/PRN232.Infrastructure/Repositories/RoomRepository.cs
+ M PRN232_FE/.gitignore
+ M PRN232_FE/README.md
+ M PRN232_FE/package.json
+ M PRN232_FE/pnpm-lock.yaml
+ M PRN232_FE/src/components/home/FilterChips.tsx
+ M PRN232_FE/src/components/home/HeroSearch.tsx
+ M PRN232_FE/src/components/home/HorizontalPropertyCard.tsx
+ M PRN232_FE/src/components/home/MapSection.tsx
+ M PRN232_FE/src/components/home/ResultsHeader.tsx
+ M PRN232_FE/src/components/home/SearchSection.tsx
+ D PRN232_FE/src/components/home/SelectControl.tsx
+ D PRN232_FE/src/components/property/NeighborhoodMap.tsx
+ M PRN232_FE/src/components/room/AvailableRooms.tsx
+ M PRN232_FE/src/components/room/RoomDetailModal.tsx
+ D PRN232_FE/src/components/room/ViewingScheduleModal.tsx
+ M PRN232_FE/src/constants/routes.ts
+ D PRN232_FE/src/data/properties.ts
+ D PRN232_FE/src/data/propertyDetails.ts
+ M PRN232_FE/src/pages/AvailableRoomsPage/AvailableRoomsPage.tsx
+ M PRN232_FE/src/pages/HomePage/HomePage.tsx
+ M PRN232_FE/src/pages/PropertyDetailPage/PropertyDetailPage.tsx
+ M PRN232_FE/src/vite-env.d.ts
+ M PRN232_FE/tsconfig.json
+ M PRN232_FE/vite.config.ts
+?? PRN232_BE/PRN232.Api/Controllers/PublicPropertiesController.cs
+?? PRN232_BE/PRN232.Api/Controllers/PublicRoomsController.cs
+?? PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs
+?? PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
+?? PRN232_BE/PRN232.Application.Tests/RoomAvailabilityTests.cs
+?? PRN232_BE/PRN232.Application.Tests/TestResults/2698b7b2-61dd-4e5b-98a1-0a1de57d1798/coverage.cobertura.xml
+?? PRN232_BE/PRN232.Application.Tests/TestResults/3fb4f6e1-ea78-4ecc-8adb-bb2a1427f504/coverage.cobertura.xml
+?? PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs
+?? PRN232_BE/PRN232.Application/DTOs/RoomAvailabilityDto.cs
+?? PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
+?? PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingService.cs
+?? PRN232_BE/PRN232.Application/Services/BookingStatuses.cs
+?? PRN232_BE/PRN232.Application/Services/ContractStatuses.cs
+?? PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs
+?? PRN232_BE/PRN232.Application/Services/RoomRentabilityPolicy.cs
+?? PRN232_BE/PRN232.Infrastructure/Migrations/20261019034905_AddPropertyPrimaryImageUrl.cs
+?? PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+?? PRN232_BE/PRN232.Infrastructure/Repositories/RoomAvailabilityQueries.cs
+?? PRN232_BE/outputs/phase1-5-business-rules/01-Booking-Rules-Verification.md
+?? PRN232_BE/outputs/phase1-5-business-rules/02-Contract-Rules-Verification.md
+?? PRN232_BE/outputs/phase1-5-business-rules/03-Room-Status-Reserved-Audit.md
+?? PRN232_BE/outputs/phase1-5-business-rules/04-Property-Publication-Rules.md
+?? PRN232_BE/outputs/phase1-5-business-rules/05-Final-Room-Rentability-Spec.md
+?? PRN232_BE/outputs/phase1-5-business-rules/06-Phase2-Contract-Adjustments.md
+?? PRN232_BE/outputs/phase1-5-business-rules/07-Open-Decisions-For-Owner.md
+?? PRN232_BE/outputs/phase1-5-business-rules/08-Phase2-Readiness-And-Execution-Plan.md
+?? PRN232_BE/outputs/phase1-public-browsing/01-Current-API-Audit.md
+?? PRN232_BE/outputs/phase1-public-browsing/02-FE-Field-Mapping.md
+?? PRN232_BE/outputs/phase1-public-browsing/03-Database-Relationship-Audit.md
+?? PRN232_BE/outputs/phase1-public-browsing/04-Room-Availability-Business-Rules.md
+?? PRN232_BE/outputs/phase1-public-browsing/05-Public-Browsing-API-Contracts.md
+?? PRN232_BE/outputs/phase1-public-browsing/06-Schema-Gaps-And-Open-Decisions.md
+?? PRN232_BE/outputs/phase1-public-browsing/07-Phase2-Implementation-Plan.md
+?? PRN232_BE/outputs/phase1-public-browsing/08-Executive-Summary.md
+?? PRN232_BE/outputs/phase2a-room-availability/01-Approved-Business-Rules.md
+?? PRN232_BE/outputs/phase2a-room-availability/02-Implementation-Report.md
+?? PRN232_BE/outputs/phase2a-room-availability/03-Booking-Write-Contract-And-Concurrency.md
+?? PRN232_BE/outputs/phase2a-room-availability/04-Phase2B-API-Contract-And-Security-Gate.md
+?? PRN232_BE/outputs/phase2a-room-availability/05-Changed-Files.txt
+?? PRN232_BE/outputs/phase2a-room-availability/06-Diff.patch
+?? PRN232_BE/outputs/phase2b-public-property-listing/01-API-Contract.md
+?? PRN232_BE/outputs/phase2b-public-property-listing/02-Implementation-Report.md
+?? PRN232_BE/outputs/phase2b-public-property-listing/03-PostgreSQL-Verification.md
+?? PRN232_BE/outputs/phase2b-public-property-listing/04-Security-And-Legacy-Route-Gate.md
+?? PRN232_BE/outputs/phase2b-public-property-listing/05-Test-Matrix.md
+?? PRN232_BE/outputs/phase2b-public-property-listing/06-Changed-Files.txt
+?? PRN232_BE/outputs/phase2b-public-property-listing/07-Diff.patch
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/01-API-Contracts.md
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/02-Implementation-Report.md
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/03-PostgreSQL-Verification.md
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/04-Security-Legacy-And-Image-Gate.md
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/05-Test-Matrix.md
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/06-Changed-Files.txt
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/07-Diff.patch
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/08-Phase2D-Readiness.md
+?? PRN232_BE/outputs/phase2d-public-room-detail/01-API-Contract.md
+?? PRN232_BE/outputs/phase2d-public-room-detail/02-Implementation-Report.md
+?? PRN232_BE/outputs/phase2d-public-room-detail/03-PostgreSQL-Verification.md
+?? PRN232_BE/outputs/phase2d-public-room-detail/04-Security-Equipment-Images-And-Legacy-Gate.md
+?? PRN232_BE/outputs/phase2d-public-room-detail/05-Test-Matrix.md
+?? PRN232_BE/outputs/phase2d-public-room-detail/06-Changed-Files.txt
+?? PRN232_BE/outputs/phase2d-public-room-detail/07-Diff.patch
+?? PRN232_BE/outputs/phase2d-public-room-detail/08-Phase2E-And-FE-Readiness.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/01-EndToEnd-Public-API-Contract-Review.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/02-Integration-Implementation-Report.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/03-Legacy-Anonymous-GET-Security-Audit.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/04-PostgreSQL-Integration-And-Performance.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/05-Test-Matrix-And-Regression.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/06-Product-Owner-Decisions-And-Release-Gates.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/07-Phase3-FE-Integration-Plan.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/08-Changed-Files-And-Git-Status.txt
+?? PRN232_BE/outputs/phase2e-backend-integration-security/09-Phase2E-Only-Diff.patch
+?? PRN232_BE/outputs/phase3-1-property-detail-content/01-Schema-And-Code-Audit.md
+?? PRN232_BE/outputs/phase3-1-property-detail-content/02-Data-Model-Proposal-And-Owner-Decisions.md
+?? PRN232_BE/outputs/phase3-1-property-detail-content/03-API-Contract.md
+?? PRN232_BE/outputs/phase3-1-property-detail-content/04-FE-Implementation-Report.md
+?? PRN232_BE/outputs/phase3-1-property-detail-content/05-Test-Matrix-And-UAT.md
+?? PRN232_BE/outputs/phase3-1-property-detail-content/07-Changed-Files-And-Git-Status.txt
+?? PRN232_BE/outputs/phase3-1-property-detail-content/08-Phase3-1-Only-Diff.patch
+?? PRN232_BE/outputs/phase3-1-property-detail-content/09-Implementation-Readiness-And-Blocking-Decisions.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/01-Executive-Summary.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/02-Live-Supabase-Schema-And-Data-Audit.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/03-Amenities-Data-And-Relationship-Audit.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/04-Services-Pricing-And-Billing-Execution-Audit.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/05-Current-BE-FE-API-Gap-Matrix.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/06-Schema-Design-Options-And-Recommendation.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/07-Owner-And-Team-Decisions.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/08-Phase3-1B-Implementation-Plan.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/09-ReadOnly-Audit-SQL.sql
+?? PRN232_FE/.env.example
+?? PRN232_FE/outputs/phase3-public-browsing-integration/01-FE-To-Public-API-Mapping.md
+?? PRN232_FE/outputs/phase3-public-browsing-integration/02-Implementation-Report.md
+?? PRN232_FE/outputs/phase3-public-browsing-integration/03-API-Client-Routing-And-Config.md
+?? PRN232_FE/outputs/phase3-public-browsing-integration/04-Test-Matrix-And-UAT.md
+?? PRN232_FE/outputs/phase3-public-browsing-integration/05-Security-Booking-And-Owner-Gates.md
+?? PRN232_FE/outputs/phase3-public-browsing-integration/06-Changed-Files-And-Git-Status.txt
+?? PRN232_FE/outputs/phase3-public-browsing-integration/07-Phase3-Only-Diff.patch
+?? PRN232_FE/outputs/phase3-public-browsing-integration/08-Phase3-Readiness-And-Next-Steps.md
+?? PRN232_FE/src/api/publicBrowsingApi.ts
+?? PRN232_FE/src/hooks/usePublicApiResource.ts
+?? PRN232_FE/src/utils/publicApiDisplay.ts
+?? PRN232_FE/src/utils/publicFormatting.ts
+?? PRN232_FE/src/utils/publicQueryState.ts
+?? PRN232_FE/tests/publicBrowsingApi.test.ts
+?? PRN232_FE/tests/publicHome.test.tsx
+?? PRN232_FE/tests/publicPropertyPages.test.tsx
+?? PRN232_FE/tests/setup.ts
+?? PRN232_FE/vitest.config.ts
+
+=== FINAL STATUS: git status --short --untracked-files=all ===
+ M PRN232_BE/.codegraph/.gitignore
+ M PRN232_BE/PRN232.Api/Program.cs
+ M PRN232_BE/PRN232.Application/Interfaces/IRoomRepository.cs
+ M PRN232_BE/PRN232.Application/Interfaces/IRoomService.cs
+ M PRN232_BE/PRN232.Application/Services/RoomService.cs
+ M PRN232_BE/PRN232.Application/Services/RoomStatuses.cs
+ M PRN232_BE/PRN232.Domain/Entities/Amenities.cs
+ M PRN232_BE/PRN232.Domain/Entities/InvoiceDetails.cs
+ M PRN232_BE/PRN232.Domain/Entities/Property.cs
+ M PRN232_BE/PRN232.Domain/Entities/Service.cs
+ M PRN232_BE/PRN232.Infrastructure/Data/AppDbContext.cs
+ M PRN232_BE/PRN232.Infrastructure/Migrations/AppDbContextModelSnapshot.cs
+ M PRN232_BE/PRN232.Infrastructure/Repositories/RoomRepository.cs
+ M PRN232_FE/.gitignore
+ M PRN232_FE/README.md
+ M PRN232_FE/package.json
+ M PRN232_FE/pnpm-lock.yaml
+ M PRN232_FE/src/components/home/FilterChips.tsx
+ M PRN232_FE/src/components/home/HeroSearch.tsx
+ M PRN232_FE/src/components/home/HorizontalPropertyCard.tsx
+ M PRN232_FE/src/components/home/MapSection.tsx
+ M PRN232_FE/src/components/home/ResultsHeader.tsx
+ M PRN232_FE/src/components/home/SearchSection.tsx
+ D PRN232_FE/src/components/home/SelectControl.tsx
+ D PRN232_FE/src/components/property/NeighborhoodMap.tsx
+ M PRN232_FE/src/components/room/AvailableRooms.tsx
+ M PRN232_FE/src/components/room/RoomDetailModal.tsx
+ D PRN232_FE/src/components/room/ViewingScheduleModal.tsx
+ M PRN232_FE/src/constants/routes.ts
+ D PRN232_FE/src/data/properties.ts
+ D PRN232_FE/src/data/propertyDetails.ts
+ M PRN232_FE/src/pages/AvailableRoomsPage/AvailableRoomsPage.tsx
+ M PRN232_FE/src/pages/HomePage/HomePage.tsx
+ M PRN232_FE/src/pages/PropertyDetailPage/PropertyDetailPage.tsx
+ M PRN232_FE/src/vite-env.d.ts
+ M PRN232_FE/tsconfig.json
+ M PRN232_FE/vite.config.ts
+?? PRN232_BE/PRN232.Api/Controllers/PublicPropertiesController.cs
+?? PRN232_BE/PRN232.Api/Controllers/PublicRoomsController.cs
+?? PRN232_BE/PRN232.Application.Tests/Phase31BPostgreSqlMigrationTests.cs
+?? PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs
+?? PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
+?? PRN232_BE/PRN232.Application.Tests/RoomAvailabilityTests.cs
+?? PRN232_BE/PRN232.Application.Tests/TestResults/2698b7b2-61dd-4e5b-98a1-0a1de57d1798/coverage.cobertura.xml
+?? PRN232_BE/PRN232.Application.Tests/TestResults/3fb4f6e1-ea78-4ecc-8adb-bb2a1427f504/coverage.cobertura.xml
+?? PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs
+?? PRN232_BE/PRN232.Application/DTOs/RoomAvailabilityDto.cs
+?? PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
+?? PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingService.cs
+?? PRN232_BE/PRN232.Application/Services/BookingStatuses.cs
+?? PRN232_BE/PRN232.Application/Services/ContractStatuses.cs
+?? PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs
+?? PRN232_BE/PRN232.Application/Services/RoomRentabilityPolicy.cs
+?? PRN232_BE/PRN232.Domain/Entities/PropertyAmenities.cs
+?? PRN232_BE/PRN232.Domain/Entities/PropertyServiceRates.cs
+?? PRN232_BE/PRN232.Infrastructure/Migrations/20261019034905_AddPropertyPrimaryImageUrl.cs
+?? PRN232_BE/PRN232.Infrastructure/Migrations/20261019143543_AddPropertyDescriptionAndAmenities.Designer.cs
+?? PRN232_BE/PRN232.Infrastructure/Migrations/20261019143543_AddPropertyDescriptionAndAmenities.cs
+?? PRN232_BE/PRN232.Infrastructure/Migrations/20261019143615_AddPropertyServiceRates.Designer.cs
+?? PRN232_BE/PRN232.Infrastructure/Migrations/20261019143615_AddPropertyServiceRates.cs
+?? PRN232_BE/PRN232.Infrastructure/Migrations/20261019143633_AddInvoiceDetailBillingSnapshot.Designer.cs
+?? PRN232_BE/PRN232.Infrastructure/Migrations/20261019143633_AddInvoiceDetailBillingSnapshot.cs
+?? PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+?? PRN232_BE/PRN232.Infrastructure/Repositories/RoomAvailabilityQueries.cs
+?? PRN232_BE/outputs/phase1-5-business-rules/01-Booking-Rules-Verification.md
+?? PRN232_BE/outputs/phase1-5-business-rules/02-Contract-Rules-Verification.md
+?? PRN232_BE/outputs/phase1-5-business-rules/03-Room-Status-Reserved-Audit.md
+?? PRN232_BE/outputs/phase1-5-business-rules/04-Property-Publication-Rules.md
+?? PRN232_BE/outputs/phase1-5-business-rules/05-Final-Room-Rentability-Spec.md
+?? PRN232_BE/outputs/phase1-5-business-rules/06-Phase2-Contract-Adjustments.md
+?? PRN232_BE/outputs/phase1-5-business-rules/07-Open-Decisions-For-Owner.md
+?? PRN232_BE/outputs/phase1-5-business-rules/08-Phase2-Readiness-And-Execution-Plan.md
+?? PRN232_BE/outputs/phase1-public-browsing/01-Current-API-Audit.md
+?? PRN232_BE/outputs/phase1-public-browsing/02-FE-Field-Mapping.md
+?? PRN232_BE/outputs/phase1-public-browsing/03-Database-Relationship-Audit.md
+?? PRN232_BE/outputs/phase1-public-browsing/04-Room-Availability-Business-Rules.md
+?? PRN232_BE/outputs/phase1-public-browsing/05-Public-Browsing-API-Contracts.md
+?? PRN232_BE/outputs/phase1-public-browsing/06-Schema-Gaps-And-Open-Decisions.md
+?? PRN232_BE/outputs/phase1-public-browsing/07-Phase2-Implementation-Plan.md
+?? PRN232_BE/outputs/phase1-public-browsing/08-Executive-Summary.md
+?? PRN232_BE/outputs/phase2a-room-availability/01-Approved-Business-Rules.md
+?? PRN232_BE/outputs/phase2a-room-availability/02-Implementation-Report.md
+?? PRN232_BE/outputs/phase2a-room-availability/03-Booking-Write-Contract-And-Concurrency.md
+?? PRN232_BE/outputs/phase2a-room-availability/04-Phase2B-API-Contract-And-Security-Gate.md
+?? PRN232_BE/outputs/phase2a-room-availability/05-Changed-Files.txt
+?? PRN232_BE/outputs/phase2a-room-availability/06-Diff.patch
+?? PRN232_BE/outputs/phase2b-public-property-listing/01-API-Contract.md
+?? PRN232_BE/outputs/phase2b-public-property-listing/02-Implementation-Report.md
+?? PRN232_BE/outputs/phase2b-public-property-listing/03-PostgreSQL-Verification.md
+?? PRN232_BE/outputs/phase2b-public-property-listing/04-Security-And-Legacy-Route-Gate.md
+?? PRN232_BE/outputs/phase2b-public-property-listing/05-Test-Matrix.md
+?? PRN232_BE/outputs/phase2b-public-property-listing/06-Changed-Files.txt
+?? PRN232_BE/outputs/phase2b-public-property-listing/07-Diff.patch
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/01-API-Contracts.md
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/02-Implementation-Report.md
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/03-PostgreSQL-Verification.md
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/04-Security-Legacy-And-Image-Gate.md
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/05-Test-Matrix.md
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/06-Changed-Files.txt
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/07-Diff.patch
+?? PRN232_BE/outputs/phase2c-public-property-detail-room-list/08-Phase2D-Readiness.md
+?? PRN232_BE/outputs/phase2d-public-room-detail/01-API-Contract.md
+?? PRN232_BE/outputs/phase2d-public-room-detail/02-Implementation-Report.md
+?? PRN232_BE/outputs/phase2d-public-room-detail/03-PostgreSQL-Verification.md
+?? PRN232_BE/outputs/phase2d-public-room-detail/04-Security-Equipment-Images-And-Legacy-Gate.md
+?? PRN232_BE/outputs/phase2d-public-room-detail/05-Test-Matrix.md
+?? PRN232_BE/outputs/phase2d-public-room-detail/06-Changed-Files.txt
+?? PRN232_BE/outputs/phase2d-public-room-detail/07-Diff.patch
+?? PRN232_BE/outputs/phase2d-public-room-detail/08-Phase2E-And-FE-Readiness.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/01-EndToEnd-Public-API-Contract-Review.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/02-Integration-Implementation-Report.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/03-Legacy-Anonymous-GET-Security-Audit.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/04-PostgreSQL-Integration-And-Performance.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/05-Test-Matrix-And-Regression.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/06-Product-Owner-Decisions-And-Release-Gates.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/07-Phase3-FE-Integration-Plan.md
+?? PRN232_BE/outputs/phase2e-backend-integration-security/08-Changed-Files-And-Git-Status.txt
+?? PRN232_BE/outputs/phase2e-backend-integration-security/09-Phase2E-Only-Diff.patch
+?? PRN232_BE/outputs/phase3-1-property-detail-content/01-Schema-And-Code-Audit.md
+?? PRN232_BE/outputs/phase3-1-property-detail-content/02-Data-Model-Proposal-And-Owner-Decisions.md
+?? PRN232_BE/outputs/phase3-1-property-detail-content/03-API-Contract.md
+?? PRN232_BE/outputs/phase3-1-property-detail-content/04-FE-Implementation-Report.md
+?? PRN232_BE/outputs/phase3-1-property-detail-content/05-Test-Matrix-And-UAT.md
+?? PRN232_BE/outputs/phase3-1-property-detail-content/07-Changed-Files-And-Git-Status.txt
+?? PRN232_BE/outputs/phase3-1-property-detail-content/08-Phase3-1-Only-Diff.patch
+?? PRN232_BE/outputs/phase3-1-property-detail-content/09-Implementation-Readiness-And-Blocking-Decisions.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/01-Executive-Summary.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/02-Live-Supabase-Schema-And-Data-Audit.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/03-Amenities-Data-And-Relationship-Audit.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/04-Services-Pricing-And-Billing-Execution-Audit.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/05-Current-BE-FE-API-Gap-Matrix.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/06-Schema-Design-Options-And-Recommendation.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/07-Owner-And-Team-Decisions.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/08-Phase3-1B-Implementation-Plan.md
+?? PRN232_BE/outputs/phase3-1a-supabase-audit/09-ReadOnly-Audit-SQL.sql
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/01-Executive-Summary-And-Approvals.md
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/02-Live-Readonly-Preflight-And-EF-Drift.md
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/03-Maintenance-History-Reconciliation-Plan.md
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/04-Property-Description-And-Amenities-Migration.md
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/05-Property-Service-Rates-Migration.md
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/06-Invoice-Detail-Snapshot-Migration.md
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/07-Billing-Remaining-Decisions.md
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/08-Review-Only-SQL-And-Rollout.md
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/09-PostgreSQL-Migration-Tests-And-Regression.md
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/10-Phase3-1C-API-And-Data-Handoff.md
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/11-Changed-Files-Git-Status.txt
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/12-Phase3-1B-Only-Diff.patch
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/00-Maintenance-Reconciliation-Preflight-DRAFT-READ-ONLY.sql
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/01-AddPropertyDescriptionAndAmenities.sql
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/02-AddPropertyServiceRates.sql
+?? PRN232_BE/outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/03-AddInvoiceDetailBillingSnapshot.sql
+?? PRN232_FE/.env.example
+?? PRN232_FE/outputs/phase3-public-browsing-integration/01-FE-To-Public-API-Mapping.md
+?? PRN232_FE/outputs/phase3-public-browsing-integration/02-Implementation-Report.md
+?? PRN232_FE/outputs/phase3-public-browsing-integration/03-API-Client-Routing-And-Config.md
+?? PRN232_FE/outputs/phase3-public-browsing-integration/04-Test-Matrix-And-UAT.md
+?? PRN232_FE/outputs/phase3-public-browsing-integration/05-Security-Booking-And-Owner-Gates.md
+?? PRN232_FE/outputs/phase3-public-browsing-integration/06-Changed-Files-And-Git-Status.txt
+?? PRN232_FE/outputs/phase3-public-browsing-integration/07-Phase3-Only-Diff.patch
+?? PRN232_FE/outputs/phase3-public-browsing-integration/08-Phase3-Readiness-And-Next-Steps.md
+?? PRN232_FE/src/api/publicBrowsingApi.ts
+?? PRN232_FE/src/hooks/usePublicApiResource.ts
+?? PRN232_FE/src/utils/publicApiDisplay.ts
+?? PRN232_FE/src/utils/publicFormatting.ts
+?? PRN232_FE/src/utils/publicQueryState.ts
+?? PRN232_FE/tests/publicBrowsingApi.test.ts
+?? PRN232_FE/tests/publicHome.test.tsx
+?? PRN232_FE/tests/publicPropertyPages.test.tsx
+?? PRN232_FE/tests/setup.ts
+?? PRN232_FE/vitest.config.ts

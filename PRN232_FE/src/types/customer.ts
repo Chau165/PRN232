@@ -128,9 +128,3 @@ export type Notification = {
   read: boolean
   href?: string
 }
-
-export type Profile = {
-  fullName: string
-  email: string
-  phone: string
-}

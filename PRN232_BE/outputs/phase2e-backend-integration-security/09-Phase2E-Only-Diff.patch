@@ -1,0 +1,510 @@
+diff --git a/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
+--- a/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
++++ b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
+@@ -1,7 +1,17 @@
+ using System.Data.Common;
++using System.Net;
++using System.Net.Http.Json;
++using System.Text.Json;
++using Microsoft.AspNetCore.Hosting;
+ using Microsoft.EntityFrameworkCore;
+ using Microsoft.EntityFrameworkCore.Diagnostics;
++using Microsoft.AspNetCore.Mvc.Testing;
++using Microsoft.AspNetCore.TestHost;
++using Microsoft.Extensions.Configuration;
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.DependencyInjection.Extensions;
+ using Npgsql;
++using PRN232.Api.Controllers;
+ using PRN232.Application.DTOs;
+ using PRN232.Infrastructure.Data;
+ using PRN232.Infrastructure.Repositories;
+@@ -245,6 +255,133 @@
+         _output.WriteLine("Room detail read-only results: eligible=present (3 SELECTs), blocked=hidden (1 SELECT), unknown=hidden (1 SELECT).");
+     }
+ 
++    [PostgreSqlFact]
++    public async Task Four_public_browsing_routes_work_over_read_only_postgresql_without_authentication()
++    {
++        var connectionString = CreateReadOnlyConnectionString();
++        using var factory = new PublicBrowsingPostgreSqlApiFactory(connectionString);
++        using var client = factory.CreateClient();
++        Assert.Null(client.DefaultRequestHeaders.Authorization);
++
++        await AssertDatabaseSessionReadOnlyAsync(factory.Services);
++        await AssertPublicBrowsingRoutesAsync(client);
++        await AssertManagementWritesRequireAuthenticationAsync(client);
++    }
++
++    private static async Task AssertDatabaseSessionReadOnlyAsync(IServiceProvider services)
++    {
++        using var scope = services.CreateScope();
++        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
++        await context.Database.OpenConnectionAsync();
++        try
++        {
++            await using var command = context.Database.GetDbConnection().CreateCommand();
++            command.CommandText = "SHOW default_transaction_read_only";
++            Assert.Equal("on", await command.ExecuteScalarAsync());
++        }
++        finally
++        {
++            await context.Database.CloseConnectionAsync();
++        }
++    }
++
++    private static async Task AssertPublicBrowsingRoutesAsync(HttpClient client)
++    {
++        using var listingResponse = await client.GetAsync("/api/public/properties?pageSize=1");
++        Assert.Equal(HttpStatusCode.OK, listingResponse.StatusCode);
++        using var listing = JsonDocument.Parse(await listingResponse.Content.ReadAsStringAsync());
++        var propertyCard = Assert.Single(listing.RootElement.GetProperty("items").EnumerateArray());
++        var propertyId = propertyCard.GetProperty("propertyId").GetInt32();
++        Assert.Equal(JsonValueKind.Null, propertyCard.GetProperty("primaryImageUrl").ValueKind);
++
++        using var propertyDetailResponse = await client.GetAsync($"/api/public/properties/{propertyId}");
++        Assert.Equal(HttpStatusCode.OK, propertyDetailResponse.StatusCode);
++        using var propertyDetail = JsonDocument.Parse(await propertyDetailResponse.Content.ReadAsStringAsync());
++        Assert.Equal(propertyId, propertyDetail.RootElement.GetProperty("propertyId").GetInt32());
++        Assert.Equal(JsonValueKind.Null, propertyDetail.RootElement.GetProperty("primaryImageUrl").ValueKind);
++        Assert.False(propertyDetail.RootElement.TryGetProperty("ownerId", out _));
++
++        using var roomPageResponse = await client.GetAsync($"/api/public/properties/{propertyId}/rooms?pageSize=1");
++        Assert.Equal(HttpStatusCode.OK, roomPageResponse.StatusCode);
++        using var roomPage = JsonDocument.Parse(await roomPageResponse.Content.ReadAsStringAsync());
++        var roomCard = Assert.Single(roomPage.RootElement.GetProperty("items").EnumerateArray());
++        var roomId = roomCard.GetProperty("roomId").GetInt32();
++        Assert.Equal(JsonValueKind.Null, roomCard.GetProperty("primaryImageUrl").ValueKind);
++
++        using var roomDetailResponse = await client.GetAsync($"/api/public/rooms/{roomId}");
++        Assert.Equal(HttpStatusCode.OK, roomDetailResponse.StatusCode);
++        using var roomDetail = JsonDocument.Parse(await roomDetailResponse.Content.ReadAsStringAsync());
++        Assert.Equal(roomId, roomDetail.RootElement.GetProperty("roomId").GetInt32());
++        Assert.Empty(roomDetail.RootElement.GetProperty("images").EnumerateArray());
++        Assert.Empty(roomDetail.RootElement.GetProperty("equipments").EnumerateArray());
++        Assert.False(roomDetail.RootElement.TryGetProperty("status", out _));
++        Assert.False(roomDetail.RootElement.TryGetProperty("ownerId", out _));
++    }
++
++    private static async Task AssertManagementWritesRequireAuthenticationAsync(HttpClient client)
++    {
++        using var response = await client.PostAsJsonAsync(
++            "/api/rooms",
++            new { propertyId = 1, roomTypeId = 1, roomCode = "not-written", areaSqm = 1m });
++        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
++    }
++
++    private static string CreateReadOnlyConnectionString()
++    {
++        var configuredConnection = Environment.GetEnvironmentVariable("PRN232_TEST_POSTGRES_CONNECTION")!;
++        var connectionBuilder = new NpgsqlConnectionStringBuilder(configuredConnection)
++        {
++            Pooling = false,
++            Timeout = 8,
++            CommandTimeout = 20
++        };
++        return connectionBuilder.ConnectionString;
++    }
++
++    private sealed class PublicBrowsingPostgreSqlApiFactory : WebApplicationFactory<PublicPropertiesController>
++    {
++        private readonly string _connectionString;
++
++        public PublicBrowsingPostgreSqlApiFactory(string connectionString)
++        {
++            _connectionString = connectionString;
++        }
++
++        protected override void ConfigureWebHost(IWebHostBuilder builder)
++        {
++            builder.UseEnvironment("Testing");
++            builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(
++                new Dictionary<string, string?>
++                {
++                    ["ConnectionStrings:DefaultConnection"] = _connectionString,
++                    ["Jwt:Key"] = "integration-test-only-signing-key-32-bytes",
++                    ["Jwt:Issuer"] = "test-issuer",
++                    ["Jwt:Audience"] = "test-audience"
++                }));
++            builder.ConfigureTestServices(services =>
++            {
++                services.RemoveAll<DbContextOptions<AppDbContext>>();
++                services.AddDbContext<AppDbContext>(options =>
++                    options
++                        .UseNpgsql(_connectionString)
++                        .AddInterceptors(new ReadOnlySessionInterceptor()));
++            });
++        }
++    }
++
++    private sealed class ReadOnlySessionInterceptor : DbConnectionInterceptor
++    {
++        public override async Task ConnectionOpenedAsync(
++            DbConnection connection,
++            ConnectionEndEventData eventData,
++            CancellationToken cancellationToken = default)
++        {
++            await using var command = connection.CreateCommand();
++            command.CommandText = "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY";
++            await command.ExecuteNonQueryAsync(cancellationToken);
++        }
++    }
++
+     private static async Task<NpgsqlConnection> OpenReadOnlyConnectionAsync()
+     {
+         var configuredConnection = Environment.GetEnvironmentVariable("PRN232_TEST_POSTGRES_CONNECTION")!;
+diff --git a/PRN232_BE/outputs/phase2e-backend-integration-security/01-EndToEnd-Public-API-Contract-Review.md b/PRN232_BE/outputs/phase2e-backend-integration-security/01-EndToEnd-Public-API-Contract-Review.md
+new file mode 100644
+--- /dev/null
++++ b/PRN232_BE/outputs/phase2e-backend-integration-security/01-EndToEnd-Public-API-Contract-Review.md
+@@ -0,0 +1,27 @@
++# Phase 2E — Rà soát hợp đồng 4 Public Browsing API
++
++## Kết quả
++
++**Đã đối chiếu source, test API và gọi đủ bốn route qua HTTP test host dùng PostgreSQL READ ONLY.** Public DTO và quy tắc rentability hiện nhất quán. Việc xác minh không đóng các quyết định owner về `RoomCode`, 404 khi Property hết phòng, ảnh và thiết bị.
++
++| Route | Quyền và thành công | Lọc, phân trang, dữ liệu | Lỗi và tương thích |
++|---|---|---|---|
++| `GET /api/public/properties` | `[AllowAnonymous]`; `200` với `{ items, totalCount, page, pageSize }`. Không có kết quả phù hợp trả `200`, `items: []`. | `keyword`, city/district/ward, min/max price, `roomTypeName`, lặp `amenityIds`, `sortBy`, page/pageSize. Default page 1, size 10; size tối đa 50. Count, giá và amenity filter dùng cùng tập Room thuê được; amenity phải cùng một Room. Sort giá có tie-break `PropertyId`. | Query sai trả `400 ValidationProblemDetails`. Không có thay đổi contract Phase 2B. `primaryImageUrl` luôn `null`. |
++| `GET /api/public/properties/{id:int}` | `[AllowAnonymous]`; `200` khi Property có ít nhất một Room thuê được. | Trả `propertyId`, tên/địa chỉ/phường/quận/thành phố, số Room thuê được và giá thấp nhất trong tập đó. Một câu SQL projection cho count/min. | Unknown và zero rentable cùng `404` generic. Zero-room `404` vẫn **PENDING OWNER APPROVAL**; giữ contract hiện tại. |
++| `GET /api/public/properties/{id:int}/rooms` | `[AllowAnonymous]`; `200` cho trang kết quả, filter rỗng hoặc page vượt cuối; `404` khi Property unknown/không còn rentable. | `minPrice`, `maxPrice`, `roomTypeName`, lặp `amenityIds`, `sortBy`, page/pageSize. Sort theo giá tie-break `RoomId`; route ID quyết định scope. Giá/type/amenities gắn cùng một Room. DTO chỉ gồm ID, `RoomCode`, RoomType, giá, diện tích, ảnh nullable và amenity summary. | Query sai trả `400`; property ẩn trả cùng `404` generic. `RoomCode` tiếp tục có trong DTO theo contract Phase 2C, **PENDING OWNER APPROVAL**. |
++| `GET /api/public/rooms/{roomId:int}` | `[AllowAnonymous]`; `200` cho Room hiện rentable. | Giá đọc từ đúng `Rooms.RoomTypeId`; amenities giới hạn đúng Room; services gắn đúng RoomType ID và giữ từng `price` riêng. `images` và `equipments` luôn `[]`. | Unknown và không rentable cùng `404` generic. Non-integer không khớp route constraint nên framework trả `404`; không có contract `400`. |
++
++## Quy tắc chung đã đối chiếu
++
++- Service lấy một `asOfUtc` từ `TimeProvider` cho mỗi request hợp lệ; client không điều khiển thời điểm này.
++- Chỉ `Room.Status == "Available"` mới đủ điều kiện xét tiếp. `Reserved`, `Occupied`, `Maintenance` và status Room lạ đều fail-closed.
++- Booking `Pending` giữ phòng khi `ExpiryDate > asOfUtc`; tại đúng hạn không giữ. `Deposited` luôn giữ; `Cancelled` không tự giữ; Booking status lạ fail-closed.
++- Contract `Active` chặn bất kể ngày. Contract status khác/lạ cũng fail-closed theo Phase 2A.
++- `availableRoomCount` và `startingPrice` dùng cùng rentable set. Trùng `TypeName` không làm gộp `RoomTypeId`, giá hay service.
++- DTO anonymous không trả Owner/customer ID, raw status, Booking/Contract/payment/maintenance hoặc thông tin quản trị. Room detail không đọc `RoomImages`/`Equipments`.
++- `Service.Price` không có billing unit trong schema; không được đổi nhãn thành phí/tháng hoặc cộng vào tiền thuê.
++- Không tìm thấy cache middleware/response cache trên các route. GET chỉ là snapshot; không giữ phòng và không bảo đảm availability tới request sau.
++
++## Giới hạn xác minh
++
++PostgreSQL HTTP test đã xác nhận route/status/shape khi có Room rentable tại thời điểm chạy. Các test API với fixture kiểm tra thêm `400`, generic `404`, query filters, pagination và trạng thái boundary. Lỗi provider được tiêm có chủ đích, p95/load, deployed config và frontend browser UAT **chưa xác minh**. `Program.cs` không có exception handler/ProblemDetails middleware cấu hình tường minh; không kết luận về body lỗi database ở môi trường production.
+diff --git a/PRN232_BE/outputs/phase2e-backend-integration-security/02-Integration-Implementation-Report.md b/PRN232_BE/outputs/phase2e-backend-integration-security/02-Integration-Implementation-Report.md
+new file mode 100644
+--- /dev/null
++++ b/PRN232_BE/outputs/phase2e-backend-integration-security/02-Integration-Implementation-Report.md
+@@ -0,0 +1,28 @@
++# Phase 2E — Báo cáo tích hợp và triển khai
++
++## Phạm vi đã làm
++
++- Đối chiếu bốn public routes với controller → service → repository → `RoomAvailabilityQueries` → DTO; giữ nguyên N-layer boundary và coding standard của repo.
++- Bổ sung một PostgreSQL HTTP integration test trong `PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs`. Test chạy bốn GET qua `WebApplicationFactory`, không bearer token; kiểm tra response allow-list, ảnh/thiết bị rỗng và `POST /api/rooms` trả `401`.
++- Test host dùng test-only `DbConnectionInterceptor` đặt `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY`, sau đó xác nhận `SHOW default_transaction_read_only` là `on` trước khi gửi request. Kết nối lấy từ cấu hình sẵn có chỉ trong process; không ghi/in connection string.
++- Lập consumer matrix cho toàn bộ anonymous GET và đọc các trang FE liên quan. Không sửa production BE, FE, schema, migration, seed hay business data.
++
++## Thay đổi source
++
++Chỉ file test hiện có được mở rộng. Không đổi controller, service, repository, DTO, authorization, public response, role, DI, logging hay cấu hình production. Phase 2A–2D và các thay đổi đang có trước task được giữ nguyên.
++
++Không harden legacy `GET /api/properties`, `GET /api/rooms` và route con: FE trong checkout không gọi API, nhưng consumer ngoài checkout/deployed là **UNKNOWN**; đồng thời GET management hiện không có owner scope cho Manager. Chỉ thêm `[Authorize]` sẽ không sửa IDOR/owner filtering và có thể làm hỏng consumer chưa kiểm kê. Không có owner approval cho breaking change.
++
++Ngoài phạm vi GET audit, source cho thấy `POST /api/roles` cũng không có `[Authorize]`. Ghi nhận là security blocker riêng; không đổi route/authorization khi chưa có quyết định về role-management policy và consumer.
++
++## CodeGraph và giới hạn
++
++Đã thử CodeGraph theo prompt; MCP trả `Transport closed`. Tiếp tục bằng `rg` trên toàn bộ `PRN232.Api/Controllers`, đọc trực tiếp `Program.cs`, các controller/DTO/repository liên quan và tìm consumer trong FE. Đây là truy dấu phạm vi endpoint/consumer, không tuyên bố đã audit mọi source file trong BE.
++
++## TDD
++
++Test bổ sung kiểm chứng hành vi đã tồn tại nên không có production implementation cần RED/GREEN. Hai lần đầu của test mới thất bại do harness: thiếu import JSON extension và cấu hình startup read-only không được PostgreSQL server áp dụng (`SHOW` là `off`); test dừng trước khi gọi endpoint. Đây **không** phải RED hợp lệ của business behavior. Sau khi thay bằng test-only connection interceptor và xác nhận session `on`, HTTP test chạy qua cả bốn route thành công.
++
++## Trạng thái
++
++Build và 198 test cuối cùng pass. PostgreSQL provider query tests và HTTP test chạy SELECT-only; không có DDL/DML. Production security vẫn **BLOCKED** bởi legacy anonymous data exposure, owner/role decisions và `POST /api/roles`. Kết luận cuối: **COMPLETE — PHASE 3 FE DEVELOPMENT READY; PRODUCTION BLOCKED**.
+diff --git a/PRN232_BE/outputs/phase2e-backend-integration-security/03-Legacy-Anonymous-GET-Security-Audit.md b/PRN232_BE/outputs/phase2e-backend-integration-security/03-Legacy-Anonymous-GET-Security-Audit.md
+new file mode 100644
+--- /dev/null
++++ b/PRN232_BE/outputs/phase2e-backend-integration-security/03-Legacy-Anonymous-GET-Security-Audit.md
+@@ -0,0 +1,43 @@
++# Phase 2E — Kiểm toán anonymous GET và consumer
++
++## Authorization hiệu lực
++
++`Program.cs` gọi `AddAuthorization()` nhưng không đặt `FallbackPolicy`; do đó chỉ controller/action có `[Authorize]` mới yêu cầu đăng nhập. Bốn controller Public có `[AllowAnonymous]` tường minh. Các route liệt kê dưới đây thực sự anonymous theo cấu hình/source hiện tại.
++
++Tìm trên toàn bộ `PRN232.Api/Controllers` có **21 anonymous GET**:
++
++| Route | Controller/action; response | Rủi ro và consumer evidence | Trạng thái |
++|---|---|---|---|
++| `GET /api/public/properties` | `PublicPropertiesController.GetAll`; public allow-list, page/filter. | Public contract mới; không có Owner/PII. FE chưa gọi API. | **KEEP PUBLIC-APPROVED** |
++| `GET /api/public/properties/{id}` | `PublicPropertiesController.GetById`; Property summary + availability. | Cùng contract public mới. | **KEEP PUBLIC-APPROVED** |
++| `GET /api/public/properties/{id}/rooms` | `PublicPropertiesController.GetRooms`; rentable Room page. | Cùng contract public mới; `RoomCode` vẫn chờ owner xác nhận. | **KEEP PUBLIC-APPROVED** |
++| `GET /api/public/rooms/{roomId}` | `PublicRoomsController.GetById`; Room detail allow-list. | Cùng contract public mới; images/equipments rỗng. | **KEEP PUBLIC-APPROVED** |
++| `GET /api/properties`, `GET /api/properties/{id}` | `PropertiesController.GetAll/GetById`; `PropertyDto` gồm `OwnerId`, `OwnerName`, tọa độ và tổng `RoomCount`; list nhận `ownerId` từ query. | Lộ liên kết danh tính/chủ sở hữu, tọa độ và inventory; `ownerId` hỗ trợ enumeration. Không filter rentability. Không thể chỉ thêm role attribute: Manager có thể truyền ownerId khác; GetById không có owner check. FE hiện không gọi; external/deployed UNKNOWN. | **BLOCKED** — không đổi nếu chưa chứng minh tương thích/owner approval và thiết kế server-side owner scope. |
++| `GET /api/rooms`, `GET /api/rooms/{id}` | `RoomsController.GetAll/GetById`; `RoomDto` gồm Property/RoomType, giá, `RoomCode`, diện tích, raw `Status`, primary image URL. | Không áp dụng Booking/Contract rentability; có thể trả phòng occupied/blocked/status lạ và URL ảnh chưa duyệt. Room ID enumerable. FE hiện không gọi; external/deployed UNKNOWN. | **BLOCKED** — cần tách public allow-list khỏi management read và kiểm tra owner scope. |
++| `GET /api/rooms/{id}/images` | `RoomsController.GetImages`; `RoomImageDto` trả `RoomImageId`, `RoomId`, `ImageUrl`, `IsPrimary`. | Đọc ảnh theo RoomId, không kiểm tra publication/rentability/host/ACL; URL có thể là opaque/private. Không có consumer FE trong checkout; external UNKNOWN. | **BLOCKED** — ảnh chỉ được mở sau host allow-list, ACL và compatibility gate. |
++| `GET /api/rooms/{id}/amenities` | `RoomsController.GetAmenities`; amenity ID/name theo RoomId. | Có thể dò amenities của phòng không public/không rentable. Consumer ngoài repo UNKNOWN. | **BLOCKED** — cần public eligibility hoặc route management được bảo vệ. |
++| `GET /api/room-types`, `GET /api/room-types/{id}`, `GET /api/room-types/{id}/services` | `RoomTypesController`; `RoomTypeDto` (ID/name/price) và service catalog theo RoomType. | Danh mục/giá ít nhạy cảm hơn Room/Property nhưng chưa có owner decision cho public catalog; service không có billing unit. FE không gọi API. | **PENDING APPROVAL** — không suy diễn `/tháng`. |
++| `GET /api/services`, `GET /api/services/{id}` | `ServicesController`; Service ID/name/price. | Lộ toàn bộ giá dịch vụ và catalog; kỳ tính phí chưa xác định. Consumer ngoài repo UNKNOWN. | **PENDING APPROVAL** |
++| `GET /api/amenities`, `GET /api/amenities/{id}` | `AmenitiesController`; Amenity ID/name. | Nội dung reference data đơn giản; chưa tìm thấy quyết định cho direct anonymous catalog. FE chưa gọi API. | **PENDING APPROVAL** |
++| `GET /api/roles`, `GET /api/roles/{id}` | `RolesController`; Role ID/name. | Cấu trúc role phục vụ authorization; chưa có public reference approval. Consumer ngoài repo UNKNOWN. | **PENDING APPROVAL** |
++| `GET /api/health-checks` | `HealthChecksController.Get`; status/time. | Cho biết service đang phản hồi; consumer monitor/deployment chưa kiểm kê. | **PENDING APPROVAL** |
++| `GET /api/health-checks/database` | `HealthChecksController.GetDb`; `connected`/`unreachable`. | Tiết lộ trạng thái kết nối DB nhưng không trả exception/host; consumer monitor/deployment chưa kiểm kê. | **PENDING APPROVAL** |
++
++Các nhóm trên gồm 4 public + 6 Property/Room + 11 reference/diagnostic = **21 routes**.
++
++## Protected GET đã đối chiếu
++
++`UsersController` có `[Authorize]` ở class (GET list thêm Admin; `/me` cần đăng nhập); `EquipmentsController` giới hạn Admin/Manager; `IdentityDocumentsController`, `MaintenanceRequestsController` và `NotificationsController` có authorization ở class/action. Các GET quản trị này không anonymous theo source hiện tại. Management write `POST /api/rooms` được test không token và trả `401`.
++
++## Consumer matrix
++
++- Search `PRN232_FE/src` cho `fetch`, `axios`, client API và `/api/` không thấy callsite. Home dùng `src/data/properties.ts`; property detail dùng mock `properties[0]`/`propertyDetails.ts`; room list dùng `src/data/rooms.ts`; management properties/rooms dùng `getManagementScope`. README FE nói còn cần HTTP client để nối backend.
++- Không tìm thấy test FE/backend gọi legacy `/api/properties` hoặc `/api/rooms`. Swagger/source có route nhưng không chứng minh production caller.
++- **External, deployed, monitoring và consumer ngoài checkout: UNKNOWN.** Không kết luận route không ai dùng.
++
++## Security và compatibility
++
++- Thêm `[Authorize]` hàng loạt không an toàn: Property/Room GET không lấy owner từ authenticated principal, `ownerId` do caller truyền, và GetById/images/amenities không kiểm tra ownership. Policy đúng cần Manager chỉ đọc Property/Room của mình; Admin giữ quyền hiện tại.
++- Public caller tương lai phải dùng bốn `/api/public/...` allow-list, không dùng management `PropertyDto`/`RoomDto`. Cần inventory external/deployed consumer, owner xác nhận contract, rồi migration/deprecation + authorization/compatibility tests.
++- EF projection/parameterization được dùng trong public query; không thấy SQL string concatenation ở path này. Direct ID enumeration vẫn có ở legacy GET. Public GET không có rate-limit policy; CORS không phải authorization.
++- `POST /api/roles` là phát hiện ngoài danh sách GET: controller/action không có `[Authorize]`, trong khi action tạo Role. Đây là **BLOCKER riêng**, chưa thay đổi do scope/consumer/policy cần owner xác nhận.
+diff --git a/PRN232_BE/outputs/phase2e-backend-integration-security/04-PostgreSQL-Integration-And-Performance.md b/PRN232_BE/outputs/phase2e-backend-integration-security/04-PostgreSQL-Integration-And-Performance.md
+new file mode 100644
+--- /dev/null
++++ b/PRN232_BE/outputs/phase2e-backend-integration-security/04-PostgreSQL-Integration-And-Performance.md
+@@ -0,0 +1,30 @@
++# Phase 2E — PostgreSQL integration, read-only và hiệu năng
++
++## PostgreSQL và read-only guard
++
++- Dedicated `PRN232_TEST_POSTGRES_CONNECTION` ban đầu không có trong environment. Dùng `ConnectionStrings__DefaultConnection` đã cấu hình, gán vào biến test **chỉ trong process test**; không in/ghi connection string.
++- Repository provider tests mở kết nối không pooling, chạy `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY`, rồi xác nhận `SHOW default_transaction_read_only = on`.
++- HTTP integration test thay DbContext trong test host bằng Npgsql, cài interceptor đặt session read-only trên mỗi kết nối và xác nhận `SHOW ... = on` trước route request. Startup option `Options=-c default_transaction_read_only=on` trả `off` trên server; test dừng trước khi gọi API, sau đó harness được sửa dùng `SET SESSION`.
++- Bốn HTTP GET được gọi qua Npgsql thật; management `POST /api/rooms` bị authorization middleware từ chối `401`. Không có DDL/DML/seed/status mutation. Test không ghi giá trị property/room/ảnh ra output.
++
++## SQL shape và bounded SELECT
++
++| Luồng | Bằng chứng provider | SELECT |
++|---|---|---:|
++| Property listing repository call | Count, page aggregate/projection, page-batched amenity query. Filter/price/count dịch SQL; `NOT EXISTS`, `COUNT`, `MIN`, `LIMIT`, `OFFSET`. | 3 mỗi call; test hai call ghi nhận 6 |
++| Property detail | Một projection bao gồm eligibility, distinct count và min price. | 1 |
++| Property rooms | Eligibility check, filtered distinct count, page projection, amenity batch trong `RepeatableRead`. | 4 |
++| Unknown detail / unknown room list | Lookup/eligibility query, không trả resource. | 1 mỗi request |
++| Room detail | Projected Room/Property/RoomType + Phase 2A predicate; amenity batch; service batch theo exact RoomTypeId, trong `RepeatableRead`. Không query Images/Equipments. | 3 khi rentable; 1 khi blocked/unknown |
++
++HTTP service có thể chạy thêm một `AmenityIdsExistAsync` SELECT trước repository khi caller gửi `amenityIds`; đây là validation bounded, ngoài số statement của repository test. Amenities/services không N+1. Request dùng cùng `asOfUtc`; listing và room list dùng transaction `RepeatableRead`; property detail là một SQL statement.
++
++## Dữ liệu ảnh và kế hoạch query
++
++Read-only aggregate hiện tại (2026-10-19 UTC), chỉ log count: 12 RoomImages; 12 HTTPS/scheme tuyệt đối; 1 distinct host; 0 Supabase host/public/signed path, local/private host, query string hoặc signed-like query. Không in host/path. Kết quả này **không chứng minh trusted host hay anonymous ACL**; public DTO tiếp tục trả null/[] và không query ảnh.
++
++Không chạy `EXPLAIN` hay `EXPLAIN ANALYZE`; không đo p95/load. Chưa refresh index catalog trong lượt này và không đề xuất migration dựa trên snapshot cũ. Bước tiếp theo là `EXPLAIN` read-only trên staging/non-production, đánh giá indexes theo plan thực tế; không chạy analyze tải nặng trên Supabase live.
++
++## Giới hạn
++
++Các test chứng minh Npgsql execution/query shape trên live PostgreSQL tại thời điểm chạy, không chứng minh production throughput, toàn bộ tổ hợp dữ liệu hoặc mọi runtime config. Host/provider exception path chưa được inject/test; không kết luận stack trace/error body production. Cache middleware/response caching không thấy trong source; public read vẫn có thể stale giữa hai request do đây là snapshot, không phải reservation.
+diff --git a/PRN232_BE/outputs/phase2e-backend-integration-security/05-Test-Matrix-And-Regression.md b/PRN232_BE/outputs/phase2e-backend-integration-security/05-Test-Matrix-And-Regression.md
+new file mode 100644
+--- /dev/null
++++ b/PRN232_BE/outputs/phase2e-backend-integration-security/05-Test-Matrix-And-Regression.md
+@@ -0,0 +1,31 @@
++# Phase 2E — Ma trận test và regression
++
++## Test guarantees
++
++| Hành vi | Test | Loại | Kết quả |
++|---|---|---|---|
++| Public Property listing anonymous, allow-list, validations, sort/page/filter cùng rentable Room | `PublicPropertyListingApiTests` | HTTP integration, InMemory | PASS |
++| Property detail: count/price, generic 404 cho unknown/zero availability | `PublicPropertyListingApiTests` | HTTP integration, InMemory | PASS |
++| Room page: route scoping, same-room filters, duplicate TypeName nhưng đúng RoomTypeId/price, page tie-break | `PublicPropertyListingApiTests` | HTTP integration, InMemory | PASS |
++| Room detail: exact RoomType/service, scoped amenities, images/equipments rỗng, không status/PII, 404 boundary | `PublicPropertyListingApiTests` | HTTP integration, InMemory | PASS |
++| Pending trước/đúng/sau expiry, Deposited, Cancelled, Active Contract, status lạ và Room status | `RoomAvailabilityTests` + `PublicPropertyListingApiTests` | Unit/API | PASS |
++| Bốn route HTTP chạy qua Npgsql, không bearer; Property → room page → room detail; response allow-list | `Four_public_browsing_routes_work_over_read_only_postgresql_without_authentication` | HTTP + PostgreSQL thật | PASS |
++| Session của API host là READ ONLY trước request; không có write trên DB | Cùng test; `SHOW default_transaction_read_only` = `on` | PostgreSQL guard | PASS |
++| Anonymous management `POST /api/rooms` bị chặn | Cùng test; HTTP `401` | Negative auth | PASS |
++| SQL translation, no OwnerId/CustomerId/private image/equipment query, SELECT bounds | 3 provider tests trong `PublicPropertyListingPostgreSqlTests` | Npgsql repository | PASS |
++| JWT/role authorization trên các route maintenance/users hiện có | `MaintenanceFlowApiTests` | API security regression | PASS |
++
++## Commands đã chạy
++
++- `dotnet restore PRN232_BE.sln --verbosity minimal` — thành công; tất cả project up-to-date.
++- `dotnet build PRN232_BE.sln --no-restore --verbosity minimal` — thành công, 0 warning, 0 error.
++- Focused: `dotnet test PRN232_BE.sln --no-build --no-restore --settings 'C:\Users\Surface\Documents\Codex\2026-10-18\b\work\phase2b-sequential.runsettings' --results-directory 'C:\Users\Surface\Documents\Codex\2026-10-18\b\work\phase2e-test-results\focused-final' --logger 'console;verbosity=minimal' --filter 'FullyQualifiedName~PublicPropertyListingApiTests|FullyQualifiedName~RoomAvailabilityTests|FullyQualifiedName~MaintenanceFlowApiTests|FullyQualifiedName~PublicPropertyListingPostgreSqlTests'` — **112/112 pass, 0 skip**.
++- Full: `dotnet test PRN232_BE.sln --no-build --no-restore --settings 'C:\Users\Surface\Documents\Codex\2026-10-18\b\work\phase2b-sequential.runsettings' --results-directory 'C:\Users\Surface\Documents\Codex\2026-10-18\b\work\phase2e-test-results\full-final' --logger 'console;verbosity=minimal'` — **198/198 pass, 0 skip**. During this command only, PowerShell set `PRN232_TEST_POSTGRES_CONNECTION` from the configured `ConnectionStrings__DefaultConnection`; its value was not printed.
++- PostgreSQL tests were included in the focused/full runs — **4/4 pass**, comprising 3 repository/provider tests and 1 HTTP test that calls all four endpoints.
++- `git diff --check` — exit 0; chỉ có cảnh báo newline conversion trên hai file đã modified từ trước (`.codegraph/.gitignore`, `Program.cs`).
++
++## TDD và coverage
++
++Chỉ thêm test integration; không có production code/behavior mới, nên không báo cáo RED cho một bug không tồn tại và không chạy coverage tổng thể. Hai lỗi harness ban đầu (compile thiếu JSON extension; server bỏ qua startup-option read-only) được sửa trước lần pass; lần thứ hai dừng tại `SHOW ... = off`, chưa gọi route. Không tính chúng là business RED. Test cuối xác nhận session `on` rồi mới chạy API.
++
++Không chạy FE unit/E2E vì Phase 2E không sửa FE; frontend hiện không có test script/Playwright dependency. Không có test bị skip trong lần full cuối. Không tuyên bố coverage solution đạt 80%.
+diff --git a/PRN232_BE/outputs/phase2e-backend-integration-security/06-Product-Owner-Decisions-And-Release-Gates.md b/PRN232_BE/outputs/phase2e-backend-integration-security/06-Product-Owner-Decisions-And-Release-Gates.md
+new file mode 100644
+--- /dev/null
++++ b/PRN232_BE/outputs/phase2e-backend-integration-security/06-Product-Owner-Decisions-And-Release-Gates.md
+@@ -0,0 +1,19 @@
++# Phase 2E — Quyết định owner và release gates
++
++| Gate | Trạng thái | Cách xử lý hiện tại / thông tin cần owner xác nhận |
++|---|---|---|
++| A. Public `RoomCode` | **PENDING OWNER APPROVAL** | Giữ contract Phase 2C/2D; dùng `RoomId` để navigation, không parse code. Owner xác nhận RoomCode có thể hiển thị anonymous không. |
++| B. Property zero rentable Room | **PENDING OWNER APPROVAL** | Giữ `404` generic ở detail/room list. Owner chọn 404 hay 200 detail với zero count. |
++| C. Ảnh | **NOT VERIFIED / BLOCKED** | Giữ `primaryImageUrl: null`, `images: []`; HTTPS/count không chứng minh host trust/anonymous ACL. Cần bucket/source, host allow-list, ACL test và xác nhận không dùng maintenance signed URLs. |
++| D. Thiết bị | **PENDING OWNER APPROVAL** | Giữ `equipments: []`; cần public visibility và status vocabulary có nghĩa an toàn. Source hiện chấp nhận status bất kỳ và có supplier/warranty/maintenance data. |
++| E. Automatic Property publication | **APPROVED cho MVP** | Property public khi có ít nhất một Room rentable. Không thêm `IsPublished`. |
++| Legacy anonymous GET | **BLOCKED FOR PRODUCTION** | `GET /api/properties`, `/api/rooms` và route con vẫn lộ owner/status/image/amenity ngoài public allow-list. FE hiện không gọi; external/deployed caller UNKNOWN; Manager owner scope chưa có ở GET. Cần consumer inventory, owner/Admin matrix và migration approval. |
++| Public reference/diagnostic GET | **PENDING APPROVAL** | RoomType/Service/Amenity/Role/Health GET vẫn anonymous. Xác nhận route nào là danh mục công khai; không giả định consumer ngoài repo vắng mặt. |
++| `POST /api/roles` | **BLOCKED — SECURITY REVIEW REQUIRED** | Source không có `[Authorize]` cho action tạo Role. Cần owner quyết định Admin-only policy, kiểm kê caller, thêm positive/negative auth tests. Chưa sửa trong Phase 2E. |
++| Booking write/concurrency | **OUT OF SCOPE / NOT READY** | Không có Booking POST/transaction chống double booking. Public availability chỉ là snapshot và không giữ phòng. |
++
++## Trạng thái phát hành
++
++**COMPLETE — PHASE 3 FE DEVELOPMENT READY; PRODUCTION BLOCKED**
++
++Bốn read contracts đã kiểm chứng qua source/API tests và PostgreSQL HTTP test. Phase 3 có thể tích hợp theo contract hiện tại và phải xử lý placeholder/404 như tài liệu; điều này không đóng legacy security, owner approval hoặc booking write gates.
+diff --git a/PRN232_BE/outputs/phase2e-backend-integration-security/07-Phase3-FE-Integration-Plan.md b/PRN232_BE/outputs/phase2e-backend-integration-security/07-Phase3-FE-Integration-Plan.md
+new file mode 100644
+--- /dev/null
++++ b/PRN232_BE/outputs/phase2e-backend-integration-security/07-Phase3-FE-Integration-Plan.md
+@@ -0,0 +1,30 @@
++# Phase 3 — Kế hoạch tích hợp FE (analysis only)
++
++## Hiện trạng FE
++
++Không có `fetch`, Axios/API client hoặc `/api/` callsite trong `PRN232_FE/src`; README nói cần thêm HTTP client. Home dùng `src/data/properties.ts`; Property Detail dùng `properties[0]`, `propertyDetails.ts` và ảnh mock; Available Rooms dùng `src/data/rooms.ts`; management properties/rooms dùng `getManagementScope`. Router hiện dùng slug cố định `/property/sunrise-residence` và `/property/sunrise-residence/rooms`, room detail là modal. Không có sửa FE trong Phase 2E.
++
++| FE view hiện tại | Public API Phase 3 | Field khớp | FE field chưa có / cần quyết định |
++|---|---|---|---|
++| Home: `HomePage`, `SearchSection`, property card | `GET /api/public/properties` | `id→propertyId`, `name→propertyName`, `address→addressText`, `rooms→availableRoomCount`, `price→startingPrice`, amenities→`amenitiesSummary` | `distance`, tọa độ `x/y`, bản đồ chính xác, ảnh thật. `amenitiesSummary` mô tả Room đại diện, không phải tiện ích toàn Property. |
++| Property detail: `PropertyDetailPage` | `GET /api/public/properties/{propertyId}` | ID, tên, địa chỉ/khu vực, count, giá bắt đầu | Mô tả, nội quy, property-level amenities, chi phí, tọa độ/distance, gallery. `primaryImageUrl` là null. Zero-room hiện là 404. |
++| Room list: `AvailableRoomsPage`, `AvailableRooms` | `GET /api/public/properties/{propertyId}/rooms` | `roomId`, RoomCode, RoomType ID/name, `baseRent`, `areaSqm`, `primaryImageUrl`, `amenitiesSummary` | floor, capacity, ngày có thể dọn vào, mô tả, equipment. API có `roomTypeName` filter nhưng FE hiện chưa nối API; không suy đoán filter/UI đã có. |
++| Room detail: `RoomDetailModal` | `GET /api/public/rooms/{roomId}` | Room ID/code, type, giá, diện tích, Property summary, amenities, services | `images: []`, `equipments: []`; thiếu floor/capacity/available date/description. `RoomCode` hiển thị chờ owner sign-off; dùng RoomId để gọi/navigate. |
++
++`RoomTypes.Price`/`Services.Price` không có billing unit được lưu. FE hiện hiển thị tiền `/ tháng`; cần bỏ/đổi nhãn đó cho tới khi owner xác nhận semantics, không cộng service vào rent.
++
++## Đề xuất task slices
++
++1. **Client/contract:** thêm typed API client, base URL config, cancellation, map `400 ValidationProblemDetails`, generic `404` và lỗi mạng. Thêm type từ DTO thật; giữ numeric `PropertyId`/`RoomId` trong route state, slug chỉ để hiển thị nếu cần.
++2. **Home:** thay mock listing bằng page/filter API; loading skeleton, empty state, retry/error; ẩn map/distance khi API không có coordinate/distance. Format price không tự thêm kỳ thanh toán.
++3. **Property detail + rooms:** gọi detail rồi room page, truyền `propertyId`; filters/pagination theo query API; xử lý 404 khi property hết eligibility và 200 rỗng khi filter không có kết quả.
++4. **Room detail:** mở route/modal bằng `roomId`, fetch detail riêng để xử lý trường hợp phòng vừa bị giữ; generic not-found state không phân biệt unknown/blocked; placeholder FE cho ảnh/thiết bị, không thay bằng URL minh họa.
++5. **Security/write boundary:** nút `Đặt cọc giữ phòng` hiện chuyển sang mock Deposit bằng `RoomCode`. Disable hoặc chuyển sang login/placeholder cho đến khi Booking API chống concurrent reservation được triển khai. GET availability không giữ phòng.
++6. **Management integration:** tách task; chỉ dùng endpoint có JWT và owner/Admin policy đã chứng minh. Không dùng legacy anonymous DTO như management contract.
++
++## Test/UAT đề xuất
++
++- Unit/contract tests cho mapping DTO, giá decimal, null/empty arrays và không gắn billing unit giả.
++- FE API tests cho 400 validation, empty page, 404 do stale availability, timeout/cancel; loading skeleton và retry.
++- Browser E2E: Home → Property Detail → Rooms → Room Detail; lọc/pagination; 404 khi Room vừa bị giữ; ảnh/thiết bị placeholder; nút booking không gửi write request.
++- `PRN232_FE/package.json` hiện chưa có test script hoặc Playwright. Chọn test runner/E2E setup trong Phase 3; không cài thêm trong Phase 2E.
+diff --git a/PRN232_BE/outputs/phase2e-backend-integration-security/08-Changed-Files-And-Git-Status.txt b/PRN232_BE/outputs/phase2e-backend-integration-security/08-Changed-Files-And-Git-Status.txt
+new file mode 100644
+--- /dev/null
++++ b/PRN232_BE/outputs/phase2e-backend-integration-security/08-Changed-Files-And-Git-Status.txt
+@@ -0,0 +1,107 @@
++# Phase 2E — Changed files and Git status
++
++## Baseline and preservation
++
++Git root: `C:\PRN232`; backend workspace: `C:\PRN232\PRN232_BE`.
++
++Before any Phase 2E source/report change, saved status, tracked diff/stat, and untracked path inventory at:
++`C:\Users\Surface\Documents\Codex\2026-10-18\b\work\phase2e-baseline`.
++
++Phase 2A–2D source, tests, outputs, TestResults directories, and seven tracked modifications already existed. No reset, clean, checkout, stage, commit or push was performed. Phase 2E modifies only the pre-existing untracked PostgreSQL test file below and adds its new report folder; the test-only delta is isolated against a pre-edit file snapshot in `09-Phase2E-Only-Diff.patch`.
++
++## Phase 2E delta
++
++- `PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs` — added a READ ONLY Npgsql HTTP integration test for all four public GET routes and anonymous management-write rejection. The file was already untracked before this task.
++- `outputs/phase2e-backend-integration-security/` — nine requested handoff files.
++- No production BE, FE, schema/migration, seed, business data or dependency file changed.
++- Test results are under `C:\Users\Surface\Documents\Codex\2026-10-18\b\work\phase2e-test-results`, outside the repo.
++- Mirror copies for user access are under `C:\Users\Surface\Documents\Codex\2026-10-18\b\outputs\phase2e-backend-integration-security`.
++
++## Pre-task `git status --short`
++
++```
++ M .codegraph/.gitignore
++ M PRN232.Api/Program.cs
++ M PRN232.Application/Interfaces/IRoomRepository.cs
++ M PRN232.Application/Interfaces/IRoomService.cs
++ M PRN232.Application/Services/RoomService.cs
++ M PRN232.Application/Services/RoomStatuses.cs
++ M PRN232.Infrastructure/Repositories/RoomRepository.cs
++?? PRN232.Api/Controllers/PublicPropertiesController.cs
++?? PRN232.Api/Controllers/PublicRoomsController.cs
++?? PRN232.Application.Tests/PublicPropertyListingApiTests.cs
++?? PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
++?? PRN232.Application.Tests/RoomAvailabilityTests.cs
++?? PRN232.Application.Tests/TestResults/2698b7b2-61dd-4e5b-98a1-0a1de57d1798/
++?? PRN232.Application.Tests/TestResults/3fb4f6e1-ea78-4ecc-8adb-bb2a1427f504/
++?? PRN232.Application/DTOs/PublicPropertyListingDto.cs
++?? PRN232.Application/DTOs/RoomAvailabilityDto.cs
++?? PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
++?? PRN232.Application/Interfaces/IPublicPropertyListingService.cs
++?? PRN232.Application/Services/BookingStatuses.cs
++?? PRN232.Application/Services/ContractStatuses.cs
++?? PRN232.Application/Services/PublicPropertyListingService.cs
++?? PRN232.Application/Services/RoomRentabilityPolicy.cs
++?? PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
++?? PRN232.Infrastructure/Repositories/RoomAvailabilityQueries.cs
++?? outputs/phase1-5-business-rules/
++?? outputs/phase1-public-browsing/
++?? outputs/phase2a-room-availability/
++?? outputs/phase2b-public-property-listing/
++?? outputs/phase2c-public-property-detail-room-list/
++?? outputs/phase2d-public-room-detail/
++```
++
++## Post-task `git status --short`
++
++```
++ M .codegraph/.gitignore
++ M PRN232.Api/Program.cs
++ M PRN232.Application/Interfaces/IRoomRepository.cs
++ M PRN232.Application/Interfaces/IRoomService.cs
++ M PRN232.Application/Services/RoomService.cs
++ M PRN232.Application/Services/RoomStatuses.cs
++ M PRN232.Infrastructure/Repositories/RoomRepository.cs
++?? PRN232.Api/Controllers/PublicPropertiesController.cs
++?? PRN232.Api/Controllers/PublicRoomsController.cs
++?? PRN232.Application.Tests/PublicPropertyListingApiTests.cs
++?? PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
++?? PRN232.Application.Tests/RoomAvailabilityTests.cs
++?? PRN232.Application.Tests/TestResults/2698b7b2-61dd-4e5b-98a1-0a1de57d1798/
++?? PRN232.Application.Tests/TestResults/3fb4f6e1-ea78-4ecc-8adb-bb2a1427f504/
++?? PRN232.Application/DTOs/PublicPropertyListingDto.cs
++?? PRN232.Application/DTOs/RoomAvailabilityDto.cs
++?? PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
++?? PRN232.Application/Interfaces/IPublicPropertyListingService.cs
++?? PRN232.Application/Services/BookingStatuses.cs
++?? PRN232.Application/Services/ContractStatuses.cs
++?? PRN232.Application/Services/PublicPropertyListingService.cs
++?? PRN232.Application/Services/RoomRentabilityPolicy.cs
++?? PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
++?? PRN232.Infrastructure/Repositories/RoomAvailabilityQueries.cs
++?? outputs/phase1-5-business-rules/
++?? outputs/phase1-public-browsing/
++?? outputs/phase2a-room-availability/
++?? outputs/phase2b-public-property-listing/
++?? outputs/phase2c-public-property-detail-room-list/
++?? outputs/phase2d-public-room-detail/
++?? outputs/phase2e-backend-integration-security/
++```
++
++The output directory is shown as one untracked directory by default `git status --short`; it contains the nine Phase 2E files. Existing untracked paths above remain present.
++
++## Tracked diff summary
++
++`git diff --stat` after the task shows only the pre-existing tracked changes (no Phase 2E tracked production change):
++
++```
++ PRN232_BE/PRN232.Api/Program.cs                        |  2 ++
++ .../PRN232.Application/Interfaces/IRoomRepository.cs   |  2 ++
++ .../PRN232.Application/Interfaces/IRoomService.cs      |  2 ++
++ PRN232_BE/PRN232.Application/Services/RoomService.cs   |  6 ++++++
++ PRN232_BE/PRN232.Application/Services/RoomStatuses.cs  |  3 ++-
++ .../Repositories/RoomRepository.cs                     | 18 ++++++++++++++++++
++ 6 files changed, 32 insertions(+), 1 deletion(-)
++```
++
++`git diff --check` exited 0. Git emitted only existing LF-to-CRLF notices for `.codegraph/.gitignore` and `PRN232.Api/Program.cs`. No files were staged or committed; nothing was pushed.

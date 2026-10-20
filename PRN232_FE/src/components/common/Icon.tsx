@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 
-export type IconName = "pin" | "gps" | "search" | "chevron" | "arrow" | "wifi" | "snow" | "car" | "camera" | "building" | "sliders" | "check" | "lock" | "washer" | "toilet" | "lift" | "home" | "user" | "calendar" | "file" | "receipt" | "tool" | "wrench" | "chart" | "users"
+export type IconName = "pin" | "gps" | "search" | "chevron" | "arrow" | "wifi" | "snow" | "bolt" | "droplet" | "trash" | "car" | "camera" | "building" | "sliders" | "check" | "lock" | "washer" | "toilet" | "lift" | "home" | "user" | "calendar" | "file" | "receipt" | "tool" | "wrench" | "chart" | "users"
 
 type IconProps = {
   name: IconName
@@ -32,6 +32,13 @@ const paths: Record<IconName, ReactNode> = {
     <>
       <path d="M2.5 8.5a14.1 14.1 0 0 1 19 0M5.5 12a9.7 9.7 0 0 1 13 0M8.9 15.3a4.7 4.7 0 0 1 6.2 0" />
       <circle cx="12" cy="19" r=".7" fill="currentColor" stroke="none" />
+    </>
+  ),
+  bolt: <path d="m13 2-9 12h7l-1 8 10-12h-7z" />,
+  droplet: <path d="M12 2.5S5 10.3 5 15a7 7 0 0 0 14 0c0-4.7-7-12.5-7-12.5Z" />,
+  trash: (
+    <>
+      <path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3" />
     </>
   ),
   snow: (

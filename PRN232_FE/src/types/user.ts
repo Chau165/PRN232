@@ -7,5 +7,7 @@ export type CurrentUser = {
   email: string
   phone: string
   role: AppRole
+  roleId?: number
+  isActive?: boolean
   assignedPropertyIds?: string[]
 }

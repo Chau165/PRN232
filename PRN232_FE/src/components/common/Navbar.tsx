@@ -1,19 +1,19 @@
 import { useState } from "react"
 import { useLocation, useNavigate } from "react-router"
+import { useOptionalAuth } from "@/auth/AuthContext"
 import Icon from "@/components/common/Icon"
 import { notifications } from "@/data/customer"
 import { routes } from "@/constants/routes"
-import { endMockSession } from "@/utils/authMock"
-import { getCurrentUser } from "@/utils/managementAuth"
 import { scrollToHash } from "@/utils/scrollToHash"
 
 export default function Navbar() {
   const location = useLocation()
   const navigate = useNavigate()
-  const authenticated = window.localStorage.getItem("troviet-auth") === "true"
-  const currentUser = getCurrentUser()
+  const auth = useOptionalAuth()
+  const currentUser = auth?.user
+  const authenticated = auth?.status === "authenticated" && currentUser !== null
   const managementUser =
-    currentUser.role === "ADMIN" || currentUser.role === "MANAGER"
+    currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER"
   const [profileOpen, setProfileOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const unreadCount = notifications.filter((item) => !item.read).length
@@ -121,13 +121,14 @@ export default function Navbar() {
                 className="flex items-center gap-2 rounded-lg py-1.5 pl-1.5 pr-2 text-[13px] font-semibold text-slate-700 hover:bg-slate-50"
               >
                 <span className="grid h-7 w-7 place-items-center rounded-full bg-[#dff0ed] text-[11px] text-[#087775]">
-                  {managementUser
-                    ? currentUser.role === "ADMIN"
-                      ? "CT"
-                      : "NA"
-                    : "NA"}
+                  {currentUser?.name.trim().split(/\s+/).map((part) => part[0] ?? "").join("").slice(0, 2).toUpperCase()}
                 </span>
-                {currentUser.name}{" "}
+                <span className="flex flex-col items-start leading-tight">
+                  <span>{currentUser?.name}</span>
+                  <span className="text-[9px] font-bold uppercase tracking-wide text-[#087775]">
+                    {currentUser?.role}
+                  </span>
+                </span>{" "}
                 <Icon name="chevron" size={13} />
               </button>
               {profileOpen && (
@@ -170,8 +171,8 @@ export default function Navbar() {
                   <div className="my-1 border-t border-slate-100" />
                   <button
                     onClick={() => {
-                      endMockSession()
-                      window.location.assign(routes.home)
+                      auth?.logout()
+                      navigate(routes.home, { replace: true })
                     }}
                     className="block w-full rounded-lg px-3 py-2.5 text-left text-[13px] font-semibold text-rose-600 hover:bg-rose-50"
                   >

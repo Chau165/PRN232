@@ -1,0 +1,107 @@
+# Phase 2E — Changed files and Git status
+
+## Baseline and preservation
+
+Git root: `C:\PRN232`; backend workspace: `C:\PRN232\PRN232_BE`.
+
+Before any Phase 2E source/report change, saved status, tracked diff/stat, and untracked path inventory at:
+`C:\Users\Surface\Documents\Codex\2026-10-18\b\work\phase2e-baseline`.
+
+Phase 2A–2D source, tests, outputs, TestResults directories, and seven tracked modifications already existed. No reset, clean, checkout, stage, commit or push was performed. Phase 2E modifies only the pre-existing untracked PostgreSQL test file below and adds its new report folder; the test-only delta is isolated against a pre-edit file snapshot in `09-Phase2E-Only-Diff.patch`.
+
+## Phase 2E delta
+
+- `PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs` — added a READ ONLY Npgsql HTTP integration test for all four public GET routes and anonymous management-write rejection. The file was already untracked before this task.
+- `outputs/phase2e-backend-integration-security/` — nine requested handoff files.
+- No production BE, FE, schema/migration, seed, business data or dependency file changed.
+- Test results are under `C:\Users\Surface\Documents\Codex\2026-10-18\b\work\phase2e-test-results`, outside the repo.
+- Mirror copies for user access are under `C:\Users\Surface\Documents\Codex\2026-10-18\b\outputs\phase2e-backend-integration-security`.
+
+## Pre-task `git status --short`
+
+```
+ M .codegraph/.gitignore
+ M PRN232.Api/Program.cs
+ M PRN232.Application/Interfaces/IRoomRepository.cs
+ M PRN232.Application/Interfaces/IRoomService.cs
+ M PRN232.Application/Services/RoomService.cs
+ M PRN232.Application/Services/RoomStatuses.cs
+ M PRN232.Infrastructure/Repositories/RoomRepository.cs
+?? PRN232.Api/Controllers/PublicPropertiesController.cs
+?? PRN232.Api/Controllers/PublicRoomsController.cs
+?? PRN232.Application.Tests/PublicPropertyListingApiTests.cs
+?? PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
+?? PRN232.Application.Tests/RoomAvailabilityTests.cs
+?? PRN232.Application.Tests/TestResults/2698b7b2-61dd-4e5b-98a1-0a1de57d1798/
+?? PRN232.Application.Tests/TestResults/3fb4f6e1-ea78-4ecc-8adb-bb2a1427f504/
+?? PRN232.Application/DTOs/PublicPropertyListingDto.cs
+?? PRN232.Application/DTOs/RoomAvailabilityDto.cs
+?? PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
+?? PRN232.Application/Interfaces/IPublicPropertyListingService.cs
+?? PRN232.Application/Services/BookingStatuses.cs
+?? PRN232.Application/Services/ContractStatuses.cs
+?? PRN232.Application/Services/PublicPropertyListingService.cs
+?? PRN232.Application/Services/RoomRentabilityPolicy.cs
+?? PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+?? PRN232.Infrastructure/Repositories/RoomAvailabilityQueries.cs
+?? outputs/phase1-5-business-rules/
+?? outputs/phase1-public-browsing/
+?? outputs/phase2a-room-availability/
+?? outputs/phase2b-public-property-listing/
+?? outputs/phase2c-public-property-detail-room-list/
+?? outputs/phase2d-public-room-detail/
+```
+
+## Post-task `git status --short`
+
+```
+ M .codegraph/.gitignore
+ M PRN232.Api/Program.cs
+ M PRN232.Application/Interfaces/IRoomRepository.cs
+ M PRN232.Application/Interfaces/IRoomService.cs
+ M PRN232.Application/Services/RoomService.cs
+ M PRN232.Application/Services/RoomStatuses.cs
+ M PRN232.Infrastructure/Repositories/RoomRepository.cs
+?? PRN232.Api/Controllers/PublicPropertiesController.cs
+?? PRN232.Api/Controllers/PublicRoomsController.cs
+?? PRN232.Application.Tests/PublicPropertyListingApiTests.cs
+?? PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
+?? PRN232.Application.Tests/RoomAvailabilityTests.cs
+?? PRN232.Application.Tests/TestResults/2698b7b2-61dd-4e5b-98a1-0a1de57d1798/
+?? PRN232.Application.Tests/TestResults/3fb4f6e1-ea78-4ecc-8adb-bb2a1427f504/
+?? PRN232.Application/DTOs/PublicPropertyListingDto.cs
+?? PRN232.Application/DTOs/RoomAvailabilityDto.cs
+?? PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
+?? PRN232.Application/Interfaces/IPublicPropertyListingService.cs
+?? PRN232.Application/Services/BookingStatuses.cs
+?? PRN232.Application/Services/ContractStatuses.cs
+?? PRN232.Application/Services/PublicPropertyListingService.cs
+?? PRN232.Application/Services/RoomRentabilityPolicy.cs
+?? PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+?? PRN232.Infrastructure/Repositories/RoomAvailabilityQueries.cs
+?? outputs/phase1-5-business-rules/
+?? outputs/phase1-public-browsing/
+?? outputs/phase2a-room-availability/
+?? outputs/phase2b-public-property-listing/
+?? outputs/phase2c-public-property-detail-room-list/
+?? outputs/phase2d-public-room-detail/
+?? outputs/phase2e-backend-integration-security/
+```
+
+The output directory is shown as one untracked directory by default `git status --short`; it contains the nine Phase 2E files. Existing untracked paths above remain present.
+
+## Tracked diff summary
+
+`git diff --stat` after the task shows only the pre-existing tracked changes (no Phase 2E tracked production change):
+
+```
+ PRN232_BE/PRN232.Api/Program.cs                        |  2 ++
+ .../PRN232.Application/Interfaces/IRoomRepository.cs   |  2 ++
+ .../PRN232.Application/Interfaces/IRoomService.cs      |  2 ++
+ PRN232_BE/PRN232.Application/Services/RoomService.cs   |  6 ++++++
+ PRN232_BE/PRN232.Application/Services/RoomStatuses.cs  |  3 ++-
+ .../Repositories/RoomRepository.cs                     | 18 ++++++++++++++++++
+ 6 files changed, 32 insertions(+), 1 deletion(-)
+```
+
+`git diff --check` exited 0. Git emitted only existing LF-to-CRLF notices for `.codegraph/.gitignore` and `PRN232.Api/Program.cs`. No files were staged or committed; nothing was pushed.

@@ -6,6 +6,8 @@ public interface IRoomService
 {
     Task<List<RoomDto>> GetAllAsync(int? propertyId, string? status, string? city, decimal? maxPrice);
     Task<RoomDto?> GetByIdAsync(int id);
+    Task<List<RentableRoomDto>> GetRentableRoomsAsync(DateTimeOffset asOfUtc);
+    Task<List<PropertyAvailabilityDto>> GetPropertyAvailabilityAsync(DateTimeOffset asOfUtc);
     Task<RoomDto> CreateAsync(CreateRoomDto dto, int requestingUserId, bool isAdmin);
     Task<RoomDto?> UpdateAsync(int id, UpdateRoomDto dto, int requestingUserId, bool isAdmin);
     Task<bool> DeleteAsync(int id, int requestingUserId, bool isAdmin);

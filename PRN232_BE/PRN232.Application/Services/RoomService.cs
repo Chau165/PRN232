@@ -18,6 +18,12 @@ public class RoomService : IRoomService
 
     public Task<RoomDto?> GetByIdAsync(int id) => _repository.GetByIdAsync(id);
 
+    public Task<List<RentableRoomDto>> GetRentableRoomsAsync(DateTimeOffset asOfUtc) =>
+        _repository.GetRentableRoomsAsync(asOfUtc);
+
+    public Task<List<PropertyAvailabilityDto>> GetPropertyAvailabilityAsync(DateTimeOffset asOfUtc) =>
+        _repository.GetPropertyAvailabilityAsync(asOfUtc);
+
     public async Task<RoomDto> CreateAsync(CreateRoomDto dto, int requestingUserId, bool isAdmin)
     {
         if (!await _repository.PropertyExistsAsync(dto.PropertyId))

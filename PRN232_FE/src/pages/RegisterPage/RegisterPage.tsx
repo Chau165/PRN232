@@ -1,28 +1,53 @@
-import { useState } from "react"
-import { useNavigate } from "react-router"
+import { useState, type FormEvent } from "react"
+import { Link, useNavigate } from "react-router"
+import { useAuth } from "@/auth/AuthContext"
 import AuthShell from "@/components/auth/AuthShell"
 import PasswordInput from "@/components/auth/PasswordInput"
-import { registerMockAccount } from "@/utils/authMock"
-import { routes } from "@/constants/routes"
-
-const fields = [
-  ["Họ và tên", "Nhập họ và tên"],
-  ["Số điện thoại", "Nhập số điện thoại"],
-  ["Email", "Nhập địa chỉ email"],
-]
+import { roleLandingPath } from "@/components/auth/ProtectedRoute"
 
 export default function RegisterPage() {
   const navigate = useNavigate()
-  const [name, setName] = useState("")
-  const [phone, setPhone] = useState("")
+  const { register } = useAuth()
+  const [fullName, setFullName] = useState("")
+  const [phoneNumber, setPhoneNumber] = useState("")
   const [email, setEmail] = useState("")
-  const [otp, setOtp] = useState("")
   const [password, setPassword] = useState("")
-  const [confirm, setConfirm] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
   const [accepted, setAccepted] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-  const [registered, setRegistered] = useState(false)
-  const invalid = submitted && (password !== confirm || otp !== "123456" || !accepted || !name || !phone || !email)
+  const [error, setError] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError("")
+    if (password.length < 6) {
+      setError("Mật khẩu phải có ít nhất 6 ký tự.")
+      return
+    }
+    if (password !== confirmPassword) {
+      setError("Mật khẩu xác nhận chưa khớp.")
+      return
+    }
+    if (!accepted) {
+      setError("Vui lòng đồng ý với điều khoản sử dụng.")
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const user = await register({
+        fullName: fullName.trim(),
+        email: email.trim(),
+        password,
+        phoneNumber: phoneNumber.trim(),
+      })
+      navigate(roleLandingPath(user.role), { replace: true })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Đăng ký không thành công.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   return (
     <AuthShell>
@@ -34,44 +59,41 @@ export default function RegisterPage() {
           Tạo tài khoản TroViệt
         </h1>
         <p className="mt-2 text-[13px] leading-6 text-slate-500">
-          Đăng ký tài khoản để đặt lịch xem, đặt cọc và quản lý phòng thuê của
-          bạn.
+          Đăng ký tài khoản để đặt lịch xem, đặt cọc và quản lý phòng thuê của bạn.
         </p>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            setSubmitted(true)
-            if (password === confirm && otp === "123456" && accepted && name && phone && email) {
-              const user = { id: `customer-${Date.now()}`, name, email, phone, role: "CUSTOMER" as const }
-              registerMockAccount({ email, password, user })
-              setRegistered(true)
-              window.setTimeout(() => navigate(routes.login), 1500)
-            }
-          }}
-          className="mt-7 space-y-3.5"
-        >
-          {fields.map(([label, placeholder], index) => (
-            <label
-              key={label}
-              className="block text-[12px] font-semibold text-slate-700"
-            >
-              {label}
-              <input
-                placeholder={placeholder}
-                value={[name, phone, email][index]}
-                onChange={(event) => [setName, setPhone, setEmail][index](event.target.value)}
-                className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-[13px] outline-none transition placeholder:text-slate-400 focus:border-[#087775] focus:ring-2 focus:ring-teal-50"
-              />
-            </label>
-          ))}
+        <form onSubmit={submit} className="mt-7 space-y-3.5">
           <label className="block text-[12px] font-semibold text-slate-700">
-            Mã OTP
+            Họ và tên
             <input
-              inputMode="numeric"
-              maxLength={6}
-              value={otp}
-              onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="Nhập mã OTP 6 chữ số"
+              required
+              autoComplete="name"
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+              placeholder="Nhập họ và tên"
+              className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-[13px] outline-none transition placeholder:text-slate-400 focus:border-[#087775] focus:ring-2 focus:ring-teal-50"
+            />
+          </label>
+          <label className="block text-[12px] font-semibold text-slate-700">
+            Số điện thoại
+            <input
+              required
+              type="tel"
+              autoComplete="tel"
+              value={phoneNumber}
+              onChange={(event) => setPhoneNumber(event.target.value)}
+              placeholder="Nhập số điện thoại"
+              className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-[13px] outline-none transition placeholder:text-slate-400 focus:border-[#087775] focus:ring-2 focus:ring-teal-50"
+            />
+          </label>
+          <label className="block text-[12px] font-semibold text-slate-700">
+            Email
+            <input
+              required
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="Nhập địa chỉ email"
               className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-[13px] outline-none transition placeholder:text-slate-400 focus:border-[#087775] focus:ring-2 focus:ring-teal-50"
             />
           </label>
@@ -84,18 +106,9 @@ export default function RegisterPage() {
           <label className="block text-[12px] font-semibold text-slate-700">
             Xác nhận mật khẩu
             <div className="mt-2">
-              <PasswordInput
-                value={confirm}
-                onChange={setConfirm}
-                invalid={invalid}
-              />
+              <PasswordInput value={confirmPassword} onChange={setConfirmPassword} />
             </div>
           </label>
-          {invalid && (
-            <p className="text-[12px] text-rose-600">
-              Mật khẩu xác nhận chưa khớp.
-            </p>
-          )}
           <label className="flex items-start gap-2 pt-1 text-[11px] leading-5 text-slate-500">
             <input
               type="checkbox"
@@ -103,33 +116,21 @@ export default function RegisterPage() {
               onChange={(event) => setAccepted(event.target.checked)}
               className="mt-0.5 h-4 w-4 shrink-0 accent-[#087775]"
             />
-            Tôi đồng ý với{" "}
-            <span className="font-semibold text-[#087775]">
-              Điều khoản sử dụng
-            </span>{" "}
-            và{" "}
-            <span className="font-semibold text-[#087775]">
-              Chính sách bảo mật.
-            </span>
+            Tôi đồng ý với <span className="font-semibold text-[#087775]">Điều khoản sử dụng</span>
+            và <span className="font-semibold text-[#087775]">Chính sách bảo mật.</span>
           </label>
+          {error && <p role="alert" className="text-[12px] text-rose-700">{error}</p>}
           <button
             type="submit"
-            className="mt-2 w-full rounded-lg bg-[#087775] py-3 text-[13px] font-bold text-white shadow-sm hover:bg-[#066a68]"
+            disabled={isSubmitting}
+            className="mt-2 w-full rounded-lg bg-[#087775] py-3 text-[13px] font-bold text-white shadow-sm hover:bg-[#066a68] disabled:cursor-wait disabled:opacity-60"
           >
-            Đăng ký
+            {isSubmitting ? "Đang tạo tài khoản..." : "Đăng ký"}
           </button>
-          {submitted && otp !== "123456" && (
-            <p className="text-[12px] text-rose-600">Mã OTP không đúng. Với bản demo, hãy nhập 123456.</p>
-          )}
-          {registered && (
-            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-[12px] text-emerald-700">Đã tạo tài khoản thành công</p>
-          )}
         </form>
         <p className="mt-6 text-center text-[12px] text-slate-500">
           Đã có tài khoản?{" "}
-          <a href="/login" className="font-bold text-[#087775] hover:underline">
-            Đăng nhập
-          </a>
+          <Link to="/login" className="font-bold text-[#087775] hover:underline">Đăng nhập</Link>
         </p>
       </div>
     </AuthShell>

@@ -116,6 +116,17 @@ builder.Services.AddScoped<IRoomTypeRepository, RoomTypeRepository>();
 builder.Services.AddScoped<IRoomTypeService, RoomTypeService>();
 builder.Services.AddScoped<IRoomRepository, RoomRepository>();
 builder.Services.AddScoped<IRoomService, RoomService>();
+builder.Services.AddScoped<IPublicPropertyListingRepository, PublicPropertyListingRepository>();
+builder.Services.AddScoped<IPublicPropertyListingService>(serviceProvider =>
+{
+    var configuration = serviceProvider.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
+    var configuredValue = configuration["PublicBrowsing:PropertyDetailEnrichmentEnabled"];
+    var enrichmentEnabled = bool.TryParse(configuredValue, out var enabled) && enabled;
+    return new PublicPropertyListingService(
+        serviceProvider.GetRequiredService<IPublicPropertyListingRepository>(),
+        serviceProvider.GetRequiredService<TimeProvider>(),
+        enrichmentEnabled);
+});
 builder.Services.AddScoped<IEquipmentRepository, EquipmentRepository>();
 builder.Services.AddScoped<IEquipmentService, EquipmentService>();
 

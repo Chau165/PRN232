@@ -1,0 +1,717 @@
+diff --git a/PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs b/PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs
+--- a/PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs
++++ b/PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs
+@@ -58,7 +58,13 @@
+     string City,
+     string? PrimaryImageUrl,
+     int AvailableRoomCount,
+-    decimal? StartingPrice);
++    decimal? StartingPrice,
++    IReadOnlyList<PublicPropertyRoomAmenityDto> RoomAmenities);
++
++public sealed record PublicPropertyRoomAmenityDto(
++    int AmenityId,
++    string Name,
++    int RentableRoomCount);
+ 
+ public sealed class PublicPropertyRoomsQueryDto
+ {
+diff --git a/PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs b/PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+--- a/PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
++++ b/PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+@@ -139,12 +139,17 @@
+         DateTimeOffset asOfUtc,
+         CancellationToken cancellationToken)
+     {
++        await using var transaction = _context.Database.IsRelational()
++            ? await _context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken)
++            : null;
++
+         var rentableRooms = RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc);
+-        return await _context.Properties
++        var detail = await _context.Properties
+             .AsNoTracking()
+             .Where(property => property.PropertyId == propertyId &&
+                 rentableRooms.Any(room => room.PropertyId == property.PropertyId))
+-            .Select(property => new PublicPropertyDetailDto(
++            .Select(property => new
++            {
+                 property.PropertyId,
+                 property.PropertyName,
+                 property.AddressText,
+@@ -152,16 +157,56 @@
+                 property.District,
+                 property.City,
+                 property.PrimaryImageUrl,
+-                rentableRooms
++                AvailableRoomCount = rentableRooms
+                     .Where(room => room.PropertyId == property.PropertyId)
+                     .Select(room => room.RoomId)
+                     .Distinct()
+                     .Count(),
+-                rentableRooms
++                StartingPrice = rentableRooms
+                     .Where(room => room.PropertyId == property.PropertyId)
+                     .Select(room => (decimal?)room.RoomType!.Price)
+-                    .Min()))
++                    .Min()
++            })
+             .FirstOrDefaultAsync(cancellationToken);
++        if (detail is null)
++        {
++            if (transaction is not null)
++            {
++                await transaction.CommitAsync(cancellationToken);
++            }
++
++            return null;
++        }
++
++        var roomAmenities = await (
++            from roomAmenity in _context.RoomAmenities.AsNoTracking()
++            join room in rentableRooms on roomAmenity.RoomId equals room.RoomId
++            join amenity in _context.Amenities.AsNoTracking() on roomAmenity.AmenityId equals amenity.AmenityId
++            where room.PropertyId == propertyId
++            group roomAmenity.RoomId by new { amenity.AmenityId, amenity.Name } into amenityRooms
++            orderby amenityRooms.Key.AmenityId
++            select new PublicPropertyRoomAmenityDto(
++                amenityRooms.Key.AmenityId,
++                amenityRooms.Key.Name,
++                amenityRooms.Count()))
++            .ToListAsync(cancellationToken);
++
++        if (transaction is not null)
++        {
++            await transaction.CommitAsync(cancellationToken);
++        }
++
++        return new PublicPropertyDetailDto(
++            detail.PropertyId,
++            detail.PropertyName,
++            detail.AddressText,
++            detail.Ward,
++            detail.District,
++            detail.City,
++            detail.PrimaryImageUrl,
++            detail.AvailableRoomCount,
++            detail.StartingPrice,
++            roomAmenities);
+     }
+ 
+     public async Task<PublicPropertyRoomPageDto?> GetRoomsAsync(
+diff --git a/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs
+--- a/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs
++++ b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs
+@@ -232,7 +232,7 @@
+         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+         var detail = document.RootElement;
+         Assert.Equal(
+-            new[] { "addressText", "availableRoomCount", "city", "district", "primaryImageUrl", "propertyId", "propertyName", "startingPrice", "ward" },
++            new[] { "addressText", "availableRoomCount", "city", "district", "primaryImageUrl", "propertyId", "propertyName", "roomAmenities", "startingPrice", "ward" },
+             detail.EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+         Assert.Equal(1, detail.GetProperty("propertyId").GetInt32());
+         Assert.Equal("North_Star 100% Residence", detail.GetProperty("propertyName").GetString());
+@@ -248,6 +248,28 @@
+         Assert.Equal("Available", (await context.Rooms.SingleAsync(room => room.RoomId == 100)).Status);
+         Assert.Equal("Deposited", (await context.Bookings.SingleAsync(booking => booking.RoomId == 100)).Status);
+         Assert.Equal("Active", (await context.Contracts.SingleAsync(contract => contract.RoomId == 202)).Status);
++    }
++
++    [Fact]
++    public async Task Property_detail_includes_only_amenities_from_its_rentable_rooms()
++    {
++        using var factory = new PublicPropertiesApiFactory();
++        using var client = factory.CreateClient();
++
++        using var firstResponse = await client.GetAsync("/api/public/properties/1");
++        using var firstDocument = JsonDocument.Parse(await firstResponse.Content.ReadAsStringAsync());
++        var firstAmenities = firstDocument.RootElement.GetProperty("roomAmenities").EnumerateArray().ToArray();
++        Assert.Equal(new[] { 1, 2 }, firstAmenities.Select(amenity => amenity.GetProperty("amenityId").GetInt32()));
++        Assert.All(firstAmenities, amenity => Assert.Equal(1, amenity.GetProperty("rentableRoomCount").GetInt32()));
++        Assert.DoesNotContain(firstAmenities, amenity => amenity.GetProperty("name").GetString() == "Parking");
++        Assert.False(firstDocument.RootElement.TryGetProperty("description", out _));
++        Assert.False(firstDocument.RootElement.TryGetProperty("livingCosts", out _));
++
++        using var secondResponse = await client.GetAsync("/api/public/properties/2");
++        using var secondDocument = JsonDocument.Parse(await secondResponse.Content.ReadAsStringAsync());
++        var secondAmenities = secondDocument.RootElement.GetProperty("roomAmenities").EnumerateArray().ToArray();
++        Assert.Equal(new[] { 1, 2, 3, 4, 5, 6 }, secondAmenities.Select(amenity => amenity.GetProperty("amenityId").GetInt32()));
++        Assert.All(secondAmenities, amenity => Assert.Equal(1, amenity.GetProperty("rentableRoomCount").GetInt32()));
+     }
+ 
+     [Fact]
+@@ -782,6 +804,7 @@
+                 Contract(1, 202, "Active", AsOfUtc.AddDays(30), AsOfUtc.AddDays(60)),
+                 Contract(2, 302, "FutureContractStatus", AsOfUtc.AddDays(-60), AsOfUtc.AddDays(-30)));
+             context.RoomAmenities.AddRange(
++                new RoomAmenities { RoomId = 101, AmenityId = 3 },
+                 new RoomAmenities { RoomId = 102, AmenityId = 1 },
+                 new RoomAmenities { RoomId = 103, AmenityId = 2 },
+                 new RoomAmenities { RoomId = 201, AmenityId = 1 },
+diff --git a/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
+--- a/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
++++ b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
+@@ -125,6 +125,13 @@
+         Assert.NotNull(detail);
+         Assert.True(detail.AvailableRoomCount > 0);
+         Assert.NotNull(detail.StartingPrice);
++        var detailJson = JsonSerializer.SerializeToElement(detail);
++        Assert.True(detailJson.TryGetProperty("RoomAmenities", out var roomAmenities));
++        Assert.Equal(JsonValueKind.Array, roomAmenities.ValueKind);
++        Assert.All(roomAmenities.EnumerateArray(), amenity =>
++        {
++            Assert.InRange(amenity.GetProperty("RentableRoomCount").GetInt32(), 1, detail.AvailableRoomCount);
++        });
+ 
+         var rooms = await repository.GetRoomsAsync(
+             propertyId,
+@@ -140,7 +147,7 @@
+             new PublicPropertySearchCriteria(null, null, null, null, null, null, null, [], "roomid", 1, 2, 0),
+             nowUtc,
+             CancellationToken.None));
+-        Assert.Equal(10, sqlCapture.Commands.Count);
++        Assert.Equal(11, sqlCapture.Commands.Count);
+ 
+         var generatedSql = string.Join(Environment.NewLine, sqlCapture.Commands);
+         Assert.Contains("NOT EXISTS", generatedSql, StringComparison.OrdinalIgnoreCase);
+diff --git a/PRN232_FE/src/api/publicBrowsingApi.ts b/PRN232_FE/src/api/publicBrowsingApi.ts
+--- a/PRN232_FE/src/api/publicBrowsingApi.ts
++++ b/PRN232_FE/src/api/publicBrowsingApi.ts
+@@ -33,6 +33,11 @@
+   primaryImageUrl: string | null
+   availableRoomCount: number
+   startingPrice: number | null
++  roomAmenities?: PublicPropertyRoomAmenity[]
++}
++
++export interface PublicPropertyRoomAmenity extends PublicAmenitySummary {
++  rentableRoomCount: number
+ }
+ 
+ export interface PublicPropertyRoomCard {
+diff --git a/PRN232_FE/src/pages/PropertyDetailPage/PropertyDetailPage.tsx b/PRN232_FE/src/pages/PropertyDetailPage/PropertyDetailPage.tsx
+--- a/PRN232_FE/src/pages/PropertyDetailPage/PropertyDetailPage.tsx
++++ b/PRN232_FE/src/pages/PropertyDetailPage/PropertyDetailPage.tsx
+@@ -1,8 +1,9 @@
+ import { Link, useParams } from "react-router"
+ import { PublicApiError, publicApi } from "@/api/publicBrowsingApi"
+ import Footer from "@/components/common/Footer"
+-import Icon from "@/components/common/Icon"
++import Icon, { type IconName } from "@/components/common/Icon"
+ import Navbar from "@/components/common/Navbar"
++import DetailSection from "@/components/property/DetailSection"
+ import {
+   availableRoomsPath,
+   parsePositiveRouteId,
+@@ -11,6 +12,37 @@
+ import { usePublicApiResource } from "@/hooks/usePublicApiResource"
+ import { publicApiErrorMessage } from "@/utils/publicApiDisplay"
+ import { formatVnd } from "@/utils/publicFormatting"
++
++function amenityIcon(name: string): IconName {
++  const normalizedName = name.trim().toLowerCase()
++
++  if (normalizedName.includes("wi-fi") || normalizedName.includes("wifi")) {
++    return "wifi"
++  }
++  if (normalizedName.includes("air conditioner") || normalizedName.includes("máy lạnh")) {
++    return "snow"
++  }
++  if (normalizedName.includes("parking") || normalizedName.includes("bãi xe")) {
++    return "car"
++  }
++  if (normalizedName.includes("camera")) {
++    return "camera"
++  }
++  if (normalizedName.includes("toilet") || normalizedName.includes("wc")) {
++    return "toilet"
++  }
++  if (normalizedName.includes("washing machine") || normalizedName.includes("laundry") || normalizedName.includes("máy giặt")) {
++    return "washer"
++  }
++  if (normalizedName.includes("elevator") || normalizedName.includes("thang máy")) {
++    return "lift"
++  }
++  if (normalizedName.includes("lock") || normalizedName.includes("khóa")) {
++    return "lock"
++  }
++
++  return "home"
++}
+ 
+ export default function PropertyDetailPage() {
+   const { propertyId: routePropertyId } = useParams()
+@@ -31,6 +63,7 @@
+         .filter((part) => part?.trim())
+         .join(", ")
+     : ""
++  const roomAmenities = property?.roomAmenities ?? []
+ 
+   return (
+     <main className="min-h-screen bg-[#fcfdfd] text-slate-800">
+@@ -150,6 +183,66 @@
+                 </div>
+               )}
+             </div>
++
++            <div className="mt-12">
++              <DetailSection title="Giới thiệu">
++                <p role="status" className="mt-4 max-w-[680px] text-[15px] leading-7 text-slate-500">
++                  Thông tin giới thiệu đang được cập nhật.
++                </p>
++              </DetailSection>
++
++              <DetailSection title="Tiện ích">
++                <div className="mt-5 grid grid-cols-1 gap-8 md:grid-cols-2">
++                  <section aria-labelledby="common-amenities-heading">
++                    <h3 id="common-amenities-heading" className="text-[15px] font-semibold text-slate-800">
++                      Tiện ích chung
++                    </h3>
++                    <p role="status" className="mt-3 text-[14px] text-slate-500">
++                      Thông tin tiện ích chung đang được cập nhật.
++                    </p>
++                  </section>
++                  <section aria-labelledby="room-amenities-heading">
++                    <h3 id="room-amenities-heading" className="text-[15px] font-semibold text-slate-800">
++                      Tiện ích trong phòng
++                    </h3>
++                    {roomAmenities.length === 0 ? (
++                      <p role="status" className="mt-3 text-[14px] text-slate-500">
++                        Chưa có dữ liệu tiện ích cho các phòng hiện có thể thuê.
++                      </p>
++                    ) : (
++                      <ul className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
++                        {roomAmenities.map((amenity) => (
++                          <li key={amenity.amenityId} className="flex items-start gap-3">
++                            <span
++                              aria-hidden="true"
++                              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#f1f8f7] text-[#087775]"
++                            >
++                              <Icon name={amenityIcon(amenity.name)} size={17} />
++                            </span>
++                            <span>
++                              <span className="block text-[14px] font-medium text-slate-700">
++                                {amenity.name}
++                              </span>
++                              <span className="mt-1 block text-[12px] text-slate-500">
++                                {amenity.rentableRoomCount === property.availableRoomCount
++                                  ? "Có tại tất cả phòng hiện có thể thuê"
++                                  : `Có tại ${amenity.rentableRoomCount} trên ${property.availableRoomCount} phòng hiện có thể thuê`}
++                              </span>
++                            </span>
++                          </li>
++                        ))}
++                      </ul>
++                    )}
++                  </section>
++                </div>
++              </DetailSection>
++
++              <DetailSection title="Chi phí sinh hoạt">
++                <p role="status" className="mt-4 text-[14px] text-slate-500">
++                  Thông tin chi phí theo đơn vị thanh toán đang được cập nhật.
++                </p>
++              </DetailSection>
++            </div>
+           </>
+         )}
+       </div>
+diff --git a/PRN232_FE/tests/publicPropertyPages.test.tsx b/PRN232_FE/tests/publicPropertyPages.test.tsx
+--- a/PRN232_FE/tests/publicPropertyPages.test.tsx
++++ b/PRN232_FE/tests/publicPropertyPages.test.tsx
+@@ -16,7 +16,10 @@
+   PublicRoomDetail,
+ } from "@/api/publicBrowsingApi"
+ 
+-function property(propertyId: number): PublicPropertyDetail {
++function property(
++  propertyId: number,
++  overrides: Partial<PublicPropertyDetail> = {},
++): PublicPropertyDetail {
+   return {
+     propertyId,
+     propertyName: `Property ${propertyId}`,
+@@ -27,6 +30,8 @@
+     primaryImageUrl: null,
+     availableRoomCount: 3,
+     startingPrice: 1250000.5,
++    roomAmenities: [],
++    ...overrides,
+   }
+ }
+ 
+@@ -133,6 +138,9 @@
+         .getByRole("link", { name: "Xem phòng trống" })
+         .getAttribute("href"),
+     ).toBe("/property/7/rooms")
++    expect(
++      screen.getByText("Chưa có dữ liệu tiện ích cho các phòng hiện có thể thuê."),
++    ).toBeTruthy()
+     expect(requestUrl(fetchMock, 0).pathname).toBe("/api/public/properties/7")
+     first.unmount()
+ 
+@@ -142,6 +150,89 @@
+     ).toBeTruthy()
+     expect(requestUrl(fetchMock, 1).pathname).toBe("/api/public/properties/28")
+     expect(screen.queryByText("Sunrise Residence")).toBeNull()
++  })
++
++  it("shows only API amenities for each Property and leaves missing content explicit", async () => {
++    const details = new Map([
++      [
++        1,
++        property(1, {
++          roomAmenities: [
++            { amenityId: 1, name: "Wi-Fi", rentableRoomCount: 1 },
++            { amenityId: 2, name: "Air conditioner", rentableRoomCount: 1 },
++          ],
++        }),
++      ],
++      [
++        2,
++        property(2, {
++          roomAmenities: [
++            { amenityId: 3, name: "Balcony", rentableRoomCount: 2 },
++          ],
++        }),
++      ],
++    ])
++    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
++      const url = new URL(String(input), window.location.origin)
++      const propertyId = Number(url.pathname.split("/").pop())
++      return Promise.resolve(jsonResponse(details.get(propertyId)))
++    })
++    vi.stubGlobal("fetch", fetchMock)
++
++    const first = renderAt("/property/1")
++    await screen.findByRole("heading", { name: "Property 1" })
++    expect(screen.getByRole("heading", { name: "Giới thiệu" })).toBeTruthy()
++    expect(screen.getByRole("heading", { name: "Tiện ích" })).toBeTruthy()
++    expect(screen.getByRole("heading", { name: "Chi phí sinh hoạt" })).toBeTruthy()
++    expect(screen.getByText("Wi-Fi")).toBeTruthy()
++    expect(screen.getAllByText(/1 trên 3 phòng hiện có thể thuê/)).toHaveLength(2)
++    expect(screen.queryByText("Balcony")).toBeNull()
++    expect(screen.getByText("Thông tin giới thiệu đang được cập nhật.")).toBeTruthy()
++    expect(screen.getByText("Thông tin tiện ích chung đang được cập nhật.")).toBeTruthy()
++    expect(screen.getByText("Thông tin chi phí theo đơn vị thanh toán đang được cập nhật.")).toBeTruthy()
++    expect(screen.queryByText(/Sunrise Residence|3\.500|100\.000/)).toBeNull()
++    first.unmount()
++
++    renderAt("/property/2")
++    await screen.findByRole("heading", { name: "Property 2" })
++    expect(screen.getByText("Balcony")).toBeTruthy()
++    expect(screen.queryByText("Wi-Fi")).toBeNull()
++    expect(screen.getByText(/2 trên 3 phòng hiện có thể thuê/)).toBeTruthy()
++  })
++
++  it("renders the supported amenity labels from the Property API", async () => {
++    const amenityNames = [
++      "WiFi",
++      "Máy lạnh",
++      "Bãi xe",
++      "Camera",
++      "WC riêng",
++      "Washing machine",
++      "Laundry",
++      "Máy giặt",
++      "Thang máy",
++      "Khóa cửa",
++      "Balcony",
++    ]
++    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
++      jsonResponse(
++        property(4, {
++          roomAmenities: amenityNames.map((name, index) => ({
++            amenityId: index + 1,
++            name,
++            rentableRoomCount: 1,
++          })),
++        }),
++      ),
++    )
++    vi.stubGlobal("fetch", fetchMock)
++
++    renderAt("/property/4")
++
++    await screen.findByRole("heading", { name: "Property 4" })
++    for (const name of amenityNames) {
++      expect(screen.getByText(name)).toBeTruthy()
++    }
+   })
+ 
+   it("shows one generic unavailable message for a property 404", async () => {
+diff --git a/PRN232_BE/outputs/phase3-1-property-detail-content/01-Schema-And-Code-Audit.md b/PRN232_BE/outputs/phase3-1-property-detail-content/01-Schema-And-Code-Audit.md
+new file mode 100644
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1-property-detail-content/01-Schema-And-Code-Audit.md
+@@ -0,0 +1,53 @@
++# Phase 3.1 — Live schema and code audit
++
++**Date:** 2026-10-19
++
++**Repositories:** `C:\PRN232\PRN232_BE`, `C:\PRN232\PRN232_FE`
++**Scope:** Property detail introduction, amenities, and living costs
++
++## Audit boundary
++
++Reviewed the Phase 3.1 prompt, backend `CODING_STANDARDS.md`, Phase 2E report, Phase 2B–2D API contracts, relevant Phase 3 reports, the public property detail flow, its FE consumer, and the live PostgreSQL schema/data using read-only queries. CodeGraph was available for backend navigation; its index did not include the current untracked public-listing implementation, so source files were checked directly for that path. The FE has no CodeGraph index. This is a scoped call-chain audit, not a claim that every unrelated repository file was read.
++
++No migration, `INSERT`, `UPDATE`, or `DELETE` was run against Supabase.
++
++## Live schema findings
++
++| Area | Observed schema/data | Phase 3.1 consequence |
++|---|---|---|
++| `Properties` | Property identity, owner, name, address/location, coordinates, nullable `PrimaryImageUrl`; no description/introduction column | No truthful introduction text can be returned. The UI shows a clear “đang được cập nhật” state. |
++| `Amenities` | Shared amenity catalog with `AmenityId` and `Name` | Supplies labels, but does not say which property offers each amenity. |
++| `RoomAmenities` | Room-to-amenity relation; no direct property relation | A property amenity summary can safely be derived from currently rentable rooms belonging to that property. |
++| `Services` | Shared catalog with `ServiceId`, `Name`, `Price` | The catalog price has no structured unit/billing-period field and is not proven to be a property-specific public utility rate. |
++| `RoomTypeServices` | Room-type-to-service relation | No property-specific rate or public cost contract. It is not safe to treat its association alone as a utility-cost statement. |
++| Utility/invoice data | `UtilityReadings` contains meter readings, not a tariff; `InvoiceDetails` contains historical item description/amount without a service identity suitable for current advertised rates | Neither provides a current, comparable living-cost estimate. |
++| Property-level amenity/rate tables | No `PropertyAmenities`, `PropertyServices`, `PropertyServiceRates`, or `UtilityRates` table found | Persisted property-level amenities and advertised rates need an approved model and owner-managed data path. |
++
++The `Services` names in the live catalog include “Electricity - per kWh”, “Water - per m3”, “Internet - monthly”, and “Trash - monthly”. Those are display names, not structured unit metadata; no unit or billing rule is inferred from their text and no price is displayed as a verified public cost.
++
++## Existing code path
++
++- Anonymous public detail route: `GET /api/public/properties/{id}`.
++- Backend detail already calculates available room count and starting rent using the public rentability rule. The Phase 3.1 change derives amenity summaries from those same rentable rooms.
++- The query is property-scoped and grouped in SQL; it does not return owner data or use per-room N+1 queries.
++- The FE public detail page consumes the detail endpoint. Previously removed mock copy/amenities/costs were not restored.
++- Existing property update authorization is Admin/Manager with owner-scope checks, but its DTO has no description field. There is no owner-scoped property-amenity assignment flow. Existing service administration is global and does not provide an approved property-specific rate workflow.
++
++## Read-only data snapshot
++
++Snapshot date: **2026-10-19 (Asia/Saigon)**. Counts use the same current rentable-room predicate as the public detail query; they are a time-bound observation and can change with booking/room state.
++
++| Property | Rentable rooms | Starting rent | Amenities present on rentable rooms |
++|---|---:|---:|---|
++| ID 1 — Nhà trọ Bình An | 1 | 3,500,000 | Wi-Fi 1, Air conditioner 1, Balcony 1, Private kitchen 1 |
++| ID 2 — Khu trọ Sunrise | 2 | 2,500,000 | Wi-Fi 2, Air conditioner 1, Balcony 1, Private kitchen 1, Shared washing machine 1 |
++| ID 3 — Nhà trọ Minh Tâm | 1 | 3,500,000 | Wi-Fi 1, Air conditioner 1, Balcony 1 |
++
++The detail query test also confirms an amenity attached only to a room blocked by a pending booking is excluded from that property’s public rentable-room summary.
++
++## Current gaps
++
++1. No stored property description exists.
++2. No explicit property-to-amenity mapping exists. The implemented public summary is intentionally a derived “amenities available among rentable rooms” summary, not a claim that every room has each amenity.
++3. No structured, property-scoped utility tariff with unit/billing basis exists. Living costs remain an explicit unavailable state.
++4. Adding persistent content requires schema work and a corresponding owner-authorized write path; neither is part of this unapproved database scope.
+diff --git a/PRN232_BE/outputs/phase3-1-property-detail-content/02-Data-Model-Proposal-And-Owner-Decisions.md b/PRN232_BE/outputs/phase3-1-property-detail-content/02-Data-Model-Proposal-And-Owner-Decisions.md
+new file mode 100644
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1-property-detail-content/02-Data-Model-Proposal-And-Owner-Decisions.md
+@@ -0,0 +1,31 @@
++# Phase 3.1 — Data model proposal and owner decisions
++
++**Status: proposal only. Nothing in this report was applied to the database or live data.**
++
++## Introduction
++
++Add a nullable description field to `Properties`, sized and constrained according to the existing live column conventions. Extend the existing owner-scoped property update DTO/service so only an authorized manager can edit it. Public reads should expose the stored value when non-empty; null/blank stays unavailable. Do not migrate mock copy into live rows without an owner-approved source for each property.
++
++## Property amenities
++
++The current `RoomAmenities` relation is room-scoped and already supports a safe public summary over rentable rooms. Keep this derived summary for Phase 3.1. If product requirements need an explicit property-level amenity claim independent of rooms, add a junction between `Properties` and `Amenities` using the exact existing key types, a composite primary key, and foreign keys. Add a manager/owner-scoped assignment flow before allowing edits. Do not bulk-copy room amenities into property-level claims: room coverage can differ, and a derived count is not an explicit property promise.
++
++## Living costs / utility rates
++
++Do not publish `Services.Price` as a current advertised rate until ownership, scope, unit, and billing period are confirmed. Two viable models:
++
++1. **Globally uniform catalog rate:** retain `Services.Price`, add a structured unit/billing code and only use it publicly if the business owner confirms each service’s rate applies uniformly to every property. This has the smallest schema footprint but creates global pricing semantics.
++2. **Property-scoped rates (recommended if rates vary by property):** add a rate relation keyed by property and service, with a non-negative amount, structured unit/billing code, and an owner-scoped management workflow. If rates can vary by room type, include a nullable room-type key plus a uniqueness rule for property defaults versus room-type overrides. Define precedence and effective-date/history behavior before migration. Do not silently fall back to `Services.Price`.
++
++Either choice needs an explicit policy for included/free utilities, missing rates, currency, tax/rounding, and whether a displayed amount is a tariff or an estimate. Phase 2D room-detail output currently includes service price data; any change to its meaning must keep that endpoint’s contract and management flows consistent.
++
++## Approval required before database work
++
++Please decide:
++
++- Should introduction text be added to each property, and who will provide/maintain the verified content?
++- Are property amenities only a derived summary of rentable rooms, or should managers maintain explicit property-level amenities?
++- Which rate model applies: globally uniform catalog rates or property/room-type-specific rates? Who confirms structured units, billing periods, currency, effective dates, and initial values?
++- Should the Phase 2D room-detail service-price contract change if property-specific rates are adopted?
++
++No migration SQL is presented as executable here because the ownership and rate semantics are not yet approved. After the decisions and initial verified values are supplied, the migration and backfill can be prepared for review before any live execution.
+diff --git a/PRN232_BE/outputs/phase3-1-property-detail-content/03-API-Contract.md b/PRN232_BE/outputs/phase3-1-property-detail-content/03-API-Contract.md
+new file mode 100644
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1-property-detail-content/03-API-Contract.md
+@@ -0,0 +1,37 @@
++# Phase 3.1 — Public property detail API contract
++
++## Endpoint
++
++`GET /api/public/properties/{id}` (anonymous). Existing detail fields and not-found behavior remain unchanged.
++
++## Added field
++
++```json
++"roomAmenities": [
++  {
++    "amenityId": 1,
++    "name": "Wi-Fi",
++    "rentableRoomCount": 2
++  }
++]
++```
++
++`roomAmenities` is an array of amenity catalog entries found on at least one currently rentable room of this property. `rentableRoomCount` is the number of this property’s currently rentable rooms carrying that amenity. Entries are scoped to the requested property and use the public room-availability predicate. It is not a property-wide guarantee and does not imply every rentable room has the amenity. An empty array means no such amenities were found on rentable rooms at query time.
++
++The detail response does **not** add `description` or `livingCosts`: neither has a truthful source in the current schema. These sections remain visible in the FE with an unavailable/update state. No fallback/mock values are sent.
++
++## Read-only sample snapshot
++
++Observed on **2026-10-19 (Asia/Saigon)**. This is a direct read-only database calculation for contract/data review, not a captured HTTP response from the running API.
++
++- Property 1, Nhà trọ Bình An: one rentable room, starting rent 3,500,000; Wi-Fi, Air conditioner, Balcony, Private kitchen each count 1.
++- Property 2, Khu trọ Sunrise: two rentable rooms, starting rent 2,500,000; Wi-Fi count 2; Air conditioner, Balcony, Private kitchen, Shared washing machine each count 1.
++- Property 3, Nhà trọ Minh Tâm: one rentable room, starting rent 3,500,000; Wi-Fi, Air conditioner, Balcony each count 1.
++
++Address and image URLs are omitted from this report. Counts and starting rents can change as availability changes.
++
++## Compatibility and implementation
++
++FE models the added property field as optional during rollout so an older already-running API response renders safely. The DTO itself returns an array. The backend computes the summary in a grouped query in the same repeatable-read detail transaction as the base detail, avoiding an N+1 request/query pattern and keeping the availability snapshot aligned.
++
++The already-running local API on port 5102 returned the previous detail shape and did not include `roomAmenities`; it was not restarted or modified. New live HTTP behavior is therefore **not verified**. Backend serialization and read-only PostgreSQL tests cover the changed contract.
+diff --git a/PRN232_BE/outputs/phase3-1-property-detail-content/04-FE-Implementation-Report.md b/PRN232_BE/outputs/phase3-1-property-detail-content/04-FE-Implementation-Report.md
+new file mode 100644
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1-property-detail-content/04-FE-Implementation-Report.md
+@@ -0,0 +1,29 @@
++# Phase 3.1 — FE/BE implementation report
++
++## Implemented
++
++- Backend public detail DTO now includes `roomAmenities` entries with amenity ID, catalog name, and count of rentable rooms carrying that amenity.
++- Backend derives entries from this property’s rentable rooms, excludes blocked/unrentable rooms, groups in SQL, and reads the base detail plus summary in a repeatable-read transaction.
++- FE restores the **Giới thiệu**, **Tiện ích**, and **Chi phí sinh hoạt** sections on `PropertyDetailPage` while preserving the existing `DetailSection` presentation pattern.
++- FE renders actual API room-amenity names and coverage counts. Known amenity names receive existing-style icons; unknown names retain their actual text with a generic icon.
++- Missing introduction and cost data display an accessible “đang được cập nhật” status. No Phase 2-era sample description, universal amenities, or invented price/unit was reintroduced.
++- FE supports the old API response during rollout by treating the new field as optional.
++- BE API/PostgreSQL tests and FE page tests cover property scoping, rentable-room counts, empty amenities, unavailable content states, and sample/mock leakage.
++
++## Changed code files
++
++- `PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs`
++- `PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs`
++- `PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs`
++- `PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs`
++- `PRN232_FE/src/api/publicBrowsingApi.ts`
++- `PRN232_FE/src/pages/PropertyDetailPage/PropertyDetailPage.tsx`
++- `PRN232_FE/tests/publicPropertyPages.test.tsx`
++
++## Not implemented pending schema/content approval
++
++Persisted introduction content, explicit property-level amenity assignments, and structured public utility rates require owner decisions and database work. No migrations or live data updates were run. Management CRUD was not changed.
++
++## Runtime boundary
++
++FE build/type checks and automated tests passed as reported in `05-Test-Matrix-And-UAT.md`. Browser UAT and FE-to-new-BE live HTTP verification remain unverified because starting temporary local servers was rejected by the execution/tool policy; the existing API process was left untouched.
+diff --git a/PRN232_BE/outputs/phase3-1-property-detail-content/05-Test-Matrix-And-UAT.md b/PRN232_BE/outputs/phase3-1-property-detail-content/05-Test-Matrix-And-UAT.md
+new file mode 100644
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1-property-detail-content/05-Test-Matrix-And-UAT.md
+@@ -0,0 +1,33 @@
++# Phase 3.1 — Test matrix and UAT status
++
++## TDD sequence
++
++Added failing tests first for the missing property-detail sections and missing `roomAmenities` API contract, then implemented the FE and BE changes and reran the targeted tests.
++
++| Area | Verification | Result |
++|---|---|---|
++| FE property detail | Vitest tests for headings/unavailable states, actual API amenities, property isolation, coverage counts, empty state, known amenity labels | **9/9 passed** |
++| FE full suite + focused coverage | Vitest: 3 files, 28 tests; coverage focused on `PropertyDetailPage.tsx` | **28/28 passed**; statements 100%, branches 88.05%, functions 100%, lines 100% |
++| FE type check | `tsc --noEmit` | **Passed** |
++| FE production build | Vite build | **Passed**; emitted Node `DEP0205` deprecation warning (`module.register`) |
++| FE management contract regression | Node test runner, `managementContracts.test.cjs` | **6/6 passed** |
++| BE targeted detail tests | Public property detail unit/API and PostgreSQL detail tests | **4 passed, 0 skipped** |
++| BE complete suite against read-only PostgreSQL | Full application test project | **197 passed, 2 failed (199 total)**; both failures are existing `PrimaryImageUrl` null expectations contradicted by current live rows containing Supabase public URLs |
++| BE suite excluding the two image-contract failures | Same suite, no rebuild | **197/197 passed** |
++
++The two full-suite failures are `Four_public_browsing_routes_work_over_read_only_postgresql_without_authentication` (assertion at `PublicPropertyListingPostgreSqlTests.cs:302`) and `Listing_query_executes_on_postgresql_with_a_read_only_session` (assertion at line 65). They expect `PrimaryImageUrl` to be null while the live records have non-null public object URLs. This Phase 3.1 change did not alter image handling; these failures are documented as live data/test-contract drift and should be resolved in their own approved scope.
++
++FE verification used the installed local Node **v26.7.0** runtime; the repository declares Node 22. Node 22 execution was not verified. `pnpm exec` was not used for final verification because it attempted to manage the existing modules directory and aborted without a TTY; no dependency install occurred.
++
++## Live database safety
++
++Schema/data checks and PostgreSQL tests ran using read-only database sessions/queries. No DDL/DML or migration was executed. The live data snapshot is documented in `01-Schema-And-Code-Audit.md`.
++
++## UAT not verified
++
++- No browser session exercised the changed FE against a freshly started Phase 3.1 API.
++- The existing API on port 5102 serves the previous DTO shape, so its response cannot prove the new field over HTTP.
++- Starting temporary local API/Vite servers was rejected by the execution/tool policy. No workaround was attempted, and the existing server was not stopped or changed.
++- Node 22 verification remains open.
++
++These are verification limits, not evidence that the new browser flow passed. Complete browser UAT with the API response containing `roomAmenities` before production sign-off.
+diff --git a/PRN232_BE/outputs/phase3-1-property-detail-content/07-Changed-Files-And-Git-Status.txt b/PRN232_BE/outputs/phase3-1-property-detail-content/07-Changed-Files-And-Git-Status.txt
+new file mode 100644
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1-property-detail-content/07-Changed-Files-And-Git-Status.txt
+@@ -0,0 +1,31 @@
++Phase 3.1 output and diff manifest
++Date: 2026-10-19
++Git root: C:\PRN232
++Baseline HEAD: 897b0374bf057767b495b296217fbfb3f72a190e
++Baseline working-tree status captured before this task: 124 entries (including existing Phase 2/3 and other local work)
++
++The Phase 3.1 patch is generated from pre-edit snapshots of the seven listed code/test files, plus new Phase 3.1 report files. It does not include other pre-existing repository changes. The patch file itself is not embedded in the patch.
++
++Code and test changes:
++  PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs
++  PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
++  PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs
++  PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
++  PRN232_FE/src/api/publicBrowsingApi.ts
++  PRN232_FE/src/pages/PropertyDetailPage/PropertyDetailPage.tsx
++  PRN232_FE/tests/publicPropertyPages.test.tsx
++
++Phase 3.1 reports included in the patch:
++  PRN232_BE/outputs/phase3-1-property-detail-content/01-Schema-And-Code-Audit.md
++  PRN232_BE/outputs/phase3-1-property-detail-content/02-Data-Model-Proposal-And-Owner-Decisions.md
++  PRN232_BE/outputs/phase3-1-property-detail-content/03-API-Contract.md
++  PRN232_BE/outputs/phase3-1-property-detail-content/04-FE-Implementation-Report.md
++  PRN232_BE/outputs/phase3-1-property-detail-content/05-Test-Matrix-And-UAT.md
++  PRN232_BE/outputs/phase3-1-property-detail-content/07-Changed-Files-And-Git-Status.txt
++  PRN232_BE/outputs/phase3-1-property-detail-content/09-Implementation-Readiness-And-Blocking-Decisions.md
++
++Review patch: PRN232_BE/outputs/phase3-1-property-detail-content/08-Phase3-1-Only-Diff.patch
++
++No seed-plan SQL is included as report 06: the tariff model and verified owner-provided content/rates are not approved or available, so a seed plan would invent values or target a schema that does not exist.
++
++No database migration, live data update, commit, push, or deployment was performed. Existing Phase 2/3 worktree changes were preserved.
+diff --git a/PRN232_BE/outputs/phase3-1-property-detail-content/09-Implementation-Readiness-And-Blocking-Decisions.md b/PRN232_BE/outputs/phase3-1-property-detail-content/09-Implementation-Readiness-And-Blocking-Decisions.md
+new file mode 100644
+--- /dev/null
++++ b/PRN232_BE/outputs/phase3-1-property-detail-content/09-Implementation-Readiness-And-Blocking-Decisions.md
+@@ -0,0 +1,26 @@
++# Phase 3.1 — Readiness and production blockers
++
++## Implemented in source
++
++The public property detail page now restores the three requested sections. Amenities are sourced from the current property’s rentable rooms and include per-amenity room coverage. Introduction and cost sections accurately state when data is unavailable. BE and FE automated verification results are recorded in `05-Test-Matrix-And-UAT.md`.
++
++## Production blockers / owner decisions
++
++1. **Introduction:** live schema has no description field and no verified copy was supplied. Approve the nullable field and provide owner-verified content before migration/backfill.
++2. **Property amenities:** current UI presents derived rentable-room amenities. Decide whether this is the intended public meaning or whether managers need an explicit property-level amenity list and owner-scoped editing.
++3. **Living costs:** current schema has no structured utility unit/billing basis or property-scoped tariff. Choose the global or property/room-type rate model, define semantics, and provide verified values. Do not publish current `Services.Price` as a property cost by inference.
++4. **HTTP/browser UAT:** not completed against a freshly started API with the new response. Existing local API returns the old DTO; temporary server launch was rejected by tool policy.
++5. **Existing image assertions:** two full BE PostgreSQL tests fail because live `PrimaryImageUrl` values are non-null while the tests expect null. Track/resolve separately before using the full suite as a clean production gate.
++6. **Runtime parity:** FE checks used Node 26.7.0 although repository configuration specifies Node 22; repeat the FE verification on the pinned version.
++
++## Database/live state
++
++No migration, schema change, or live row update occurred. The recommended next step is for the owner to answer the four data-model/content decisions in `02-Data-Model-Proposal-And-Owner-Decisions.md`. After approval, prepare a reviewable migration and verified initial values; execute only after separate explicit approval.
++
++## Release assessment
++
++**Source implementation:** ready for review.
++
++**Database-backed introduction and living costs:** blocked on approved schema and verified data.
++
++**Browser end-to-end / production sign-off:** not verified; do not treat this as completed UAT.

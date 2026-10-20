@@ -8,8 +8,6 @@ import type {
   ManagedMaintenanceRequest,
   ManagedProperty,
   ManagedRoom,
-  ManagedUser,
-  Manager,
   Tenant,
 } from "@/types/management"
 
@@ -80,7 +78,6 @@ export const managementProperties: ManagedProperty[] = [
     status: "Đang hoạt động",
   },
 ]
-
 export const managementRooms: ManagedRoom[] = [
   {
     id: "room-a101",
@@ -501,57 +498,6 @@ export const areas: Area[] = [
     name: "Gò Vấp",
     propertyIds: ["moonlight-residence"],
     managerNames: ["Lê Văn C"],
-    status: "Đang hoạt động",
-  },
-]
-
-export const managers: Manager[] = [
-  {
-    id: "manager-1",
-    name: "Nguyễn Văn A",
-    email: "nguyenvana@example.com",
-    phone: "0901 234 567",
-    assignedPropertyIds: ["sunrise-residence", "happy-home"],
-    status: "Đang hoạt động",
-  },
-  {
-    id: "manager-2",
-    name: "Trần Văn B",
-    email: "tranvanb@example.com",
-    phone: "0902 345 678",
-    assignedPropertyIds: ["green-house"],
-    status: "Đang hoạt động",
-  },
-  {
-    id: "manager-3",
-    name: "Lê Văn C",
-    email: "levanc@example.com",
-    phone: "0903 456 789",
-    assignedPropertyIds: ["moonlight-residence"],
-    status: "Đang hoạt động",
-  },
-]
-
-export const users: ManagedUser[] = [
-  {
-    id: "admin-1",
-    name: "Chủ trọ",
-    email: "admin@troviet.vn",
-    role: "ADMIN",
-    status: "Đang hoạt động",
-  },
-  ...managers.map((manager) => ({
-    id: manager.id,
-    name: manager.name,
-    email: manager.email,
-    role: "MANAGER" as const,
-    status: manager.status,
-  })),
-  {
-    id: "customer-1",
-    name: "Ngọc Anh",
-    email: "ngocanh@example.com",
-    role: "CUSTOMER",
     status: "Đang hoạt động",
   },
 ]

@@ -1,0 +1,1021 @@
+diff --git a/PRN232_BE/PRN232.Api/Program.cs b/PRN232_BE/PRN232.Api/Program.cs
+index 85852fc..fdd75a3 100644
+--- a/PRN232_BE/PRN232.Api/Program.cs
++++ b/PRN232_BE/PRN232.Api/Program.cs
+@@ -116,6 +116,8 @@ builder.Services.AddScoped<IRoomTypeRepository, RoomTypeRepository>();
+ builder.Services.AddScoped<IRoomTypeService, RoomTypeService>();
+ builder.Services.AddScoped<IRoomRepository, RoomRepository>();
+ builder.Services.AddScoped<IRoomService, RoomService>();
++builder.Services.AddScoped<IPublicPropertyListingRepository, PublicPropertyListingRepository>();
++builder.Services.AddScoped<IPublicPropertyListingService, PublicPropertyListingService>();
+ builder.Services.AddScoped<IEquipmentRepository, EquipmentRepository>();
+ builder.Services.AddScoped<IEquipmentService, EquipmentService>();
+ 
+diff --git a/PRN232_BE/PRN232.Api/Controllers/PublicPropertiesController.cs b/PRN232_BE/PRN232.Api/Controllers/PublicPropertiesController.cs
+new file mode 100644
+index 0000000..2d91533
+--- /dev/null
++++ b/PRN232_BE/PRN232.Api/Controllers/PublicPropertiesController.cs
+@@ -0,0 +1,40 @@
++using Microsoft.AspNetCore.Authorization;
++using Microsoft.AspNetCore.Mvc;
++using PRN232.Application.DTOs;
++using PRN232.Application.Interfaces;
++using PRN232.Application.Services;
++
++namespace PRN232.Api.Controllers;
++
++[ApiController]
++[AllowAnonymous]
++[Route("api/public/properties")]
++public sealed class PublicPropertiesController : ControllerBase
++{
++    private readonly IPublicPropertyListingService _propertyListingService;
++
++    public PublicPropertiesController(IPublicPropertyListingService propertyListingService)
++    {
++        _propertyListingService = propertyListingService;
++    }
++
++    [HttpGet]
++    [ProducesResponseType(typeof(PublicPropertyPageDto), StatusCodes.Status200OK)]
++    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
++    public async Task<ActionResult<PublicPropertyPageDto>> GetAll(
++        [FromQuery] PublicPropertyQueryDto query,
++        CancellationToken cancellationToken)
++    {
++        try
++        {
++            return Ok(await _propertyListingService.GetAllAsync(query, cancellationToken));
++        }
++        catch (PublicPropertyQueryValidationException exception)
++        {
++            return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
++            {
++                [exception.Field] = [exception.Message]
++            }));
++        }
++    }
++}
+diff --git a/PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs b/PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs
+new file mode 100644
+index 0000000..f51a2ea
+--- /dev/null
++++ b/PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs
+@@ -0,0 +1,50 @@
++namespace PRN232.Application.DTOs;
++
++public sealed class PublicPropertyQueryDto
++{
++    public string? Keyword { get; set; }
++    public string? City { get; set; }
++    public string? District { get; set; }
++    public string? Ward { get; set; }
++    public decimal? MinPrice { get; set; }
++    public decimal? MaxPrice { get; set; }
++    public string? RoomTypeName { get; set; }
++    public int[]? AmenityIds { get; set; }
++    public string? SortBy { get; set; }
++    public int? Page { get; set; }
++    public int? PageSize { get; set; }
++}
++
++public sealed record PublicPropertySearchCriteria(
++    string? Keyword,
++    string? City,
++    string? District,
++    string? Ward,
++    decimal? MinPrice,
++    decimal? MaxPrice,
++    string? RoomTypeName,
++    int[] AmenityIds,
++    string SortBy,
++    int Page,
++    int PageSize,
++    int Offset);
++
++public sealed record PublicPropertyPageDto(
++    IReadOnlyList<PublicPropertyCardDto> Items,
++    int TotalCount,
++    int Page,
++    int PageSize);
++
++public sealed record PublicPropertyCardDto(
++    int PropertyId,
++    string PropertyName,
++    string AddressText,
++    string Ward,
++    string District,
++    string City,
++    string? PrimaryImageUrl,
++    IReadOnlyList<PublicAmenitySummaryDto> AmenitiesSummary,
++    int AvailableRoomCount,
++    decimal? StartingPrice);
++
++public sealed record PublicAmenitySummaryDto(int AmenityId, string Name);
+diff --git a/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs b/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
+new file mode 100644
+index 0000000..b08e417
+--- /dev/null
++++ b/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
+@@ -0,0 +1,13 @@
++using PRN232.Application.DTOs;
++
++namespace PRN232.Application.Interfaces;
++
++public interface IPublicPropertyListingRepository
++{
++    Task<bool> AmenityIdsExistAsync(int[] amenityIds, CancellationToken cancellationToken);
++
++    Task<PublicPropertyPageDto> GetPageAsync(
++        PublicPropertySearchCriteria criteria,
++        DateTimeOffset asOfUtc,
++        CancellationToken cancellationToken);
++}
+diff --git a/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingService.cs b/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingService.cs
+new file mode 100644
+index 0000000..fc699b0
+--- /dev/null
++++ b/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingService.cs
+@@ -0,0 +1,8 @@
++using PRN232.Application.DTOs;
++
++namespace PRN232.Application.Interfaces;
++
++public interface IPublicPropertyListingService
++{
++    Task<PublicPropertyPageDto> GetAllAsync(PublicPropertyQueryDto query, CancellationToken cancellationToken);
++}
+diff --git a/PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs b/PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs
+new file mode 100644
+index 0000000..2acf754
+--- /dev/null
++++ b/PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs
+@@ -0,0 +1,112 @@
++using PRN232.Application.DTOs;
++using PRN232.Application.Interfaces;
++
++namespace PRN232.Application.Services;
++
++public sealed class PublicPropertyListingService : IPublicPropertyListingService
++{
++    private const int DefaultPage = 1;
++    private const int DefaultPageSize = 10;
++    private const int MaximumPageSize = 50;
++    private const int MaximumAmenityIds = 20;
++    private static readonly string[] SupportedSorts = ["propertyid", "price_asc", "price_desc"];
++
++    private readonly IPublicPropertyListingRepository _repository;
++    private readonly TimeProvider _timeProvider;
++
++    public PublicPropertyListingService(
++        IPublicPropertyListingRepository repository,
++        TimeProvider timeProvider)
++    {
++        _repository = repository;
++        _timeProvider = timeProvider;
++    }
++
++    public async Task<PublicPropertyPageDto> GetAllAsync(
++        PublicPropertyQueryDto query,
++        CancellationToken cancellationToken)
++    {
++        var criteria = NormalizeAndValidate(query);
++        if (criteria.AmenityIds.Length > 0 &&
++            !await _repository.AmenityIdsExistAsync(criteria.AmenityIds, cancellationToken))
++        {
++            throw new PublicPropertyQueryValidationException("amenityIds", "One or more amenity IDs do not exist.");
++        }
++
++        var asOfUtc = _timeProvider.GetUtcNow().ToUniversalTime();
++        return await _repository.GetPageAsync(criteria, asOfUtc, cancellationToken);
++    }
++
++    private static PublicPropertySearchCriteria NormalizeAndValidate(PublicPropertyQueryDto query)
++    {
++        var page = query.Page ?? DefaultPage;
++        if (page < 1)
++        {
++            throw new PublicPropertyQueryValidationException("page", "Page must be at least 1.");
++        }
++
++        var pageSize = query.PageSize ?? DefaultPageSize;
++        if (pageSize is < 1 or > MaximumPageSize)
++        {
++            throw new PublicPropertyQueryValidationException("pageSize", $"Page size must be between 1 and {MaximumPageSize}.");
++        }
++
++        var offset = (long)(page - 1) * pageSize;
++        if (offset > int.MaxValue)
++        {
++            throw new PublicPropertyQueryValidationException("page", "Page is too large.");
++        }
++
++        if (query.MinPrice < 0)
++        {
++            throw new PublicPropertyQueryValidationException("minPrice", "Minimum price cannot be negative.");
++        }
++        if (query.MaxPrice < 0)
++        {
++            throw new PublicPropertyQueryValidationException("maxPrice", "Maximum price cannot be negative.");
++        }
++        if (query.MinPrice is not null && query.MaxPrice is not null && query.MinPrice > query.MaxPrice)
++        {
++            throw new PublicPropertyQueryValidationException("maxPrice", "Maximum price must be greater than or equal to minimum price.");
++        }
++
++        var submittedAmenityIds = query.AmenityIds ?? [];
++        if (submittedAmenityIds.Length > MaximumAmenityIds)
++        {
++            throw new PublicPropertyQueryValidationException("amenityIds", $"At most {MaximumAmenityIds} amenity IDs may be supplied.");
++        }
++        if (submittedAmenityIds.Any(amenityId => amenityId <= 0))
++        {
++            throw new PublicPropertyQueryValidationException("amenityIds", "Amenity IDs must be positive integers.");
++        }
++
++        var amenityIds = submittedAmenityIds.Distinct().Order().ToArray();
++        var sortBy = NormalizeText(query.SortBy)?.ToLowerInvariant() ?? "propertyid";
++        if (!SupportedSorts.Contains(sortBy, StringComparer.Ordinal))
++        {
++            throw new PublicPropertyQueryValidationException("sortBy", "Sort must be propertyId, price_asc, or price_desc.");
++        }
++
++        return new PublicPropertySearchCriteria(
++            NormalizeText(query.Keyword),
++            NormalizeText(query.City),
++            NormalizeText(query.District),
++            NormalizeText(query.Ward),
++            query.MinPrice,
++            query.MaxPrice,
++            NormalizeText(query.RoomTypeName),
++            amenityIds,
++            sortBy,
++            page,
++            pageSize,
++            (int)offset);
++    }
++
++    private static string? NormalizeText(string? value) =>
++        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
++}
++
++public sealed class PublicPropertyQueryValidationException(string field, string message) : Exception(message)
++{
++    public string Field { get; } = field;
++}
+diff --git a/PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs b/PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+new file mode 100644
+index 0000000..afe4518
+--- /dev/null
++++ b/PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+@@ -0,0 +1,195 @@
++using System.Data;
++using Microsoft.EntityFrameworkCore;
++using PRN232.Application.DTOs;
++using PRN232.Application.Interfaces;
++using PRN232.Domain.Entities;
++using PRN232.Infrastructure.Data;
++
++namespace PRN232.Infrastructure.Repositories;
++
++public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepository
++{
++    private const int MaximumAmenitiesSummary = 5;
++
++    private readonly AppDbContext _context;
++
++    public PublicPropertyListingRepository(AppDbContext context)
++    {
++        _context = context;
++    }
++
++    public async Task<bool> AmenityIdsExistAsync(int[] amenityIds, CancellationToken cancellationToken) =>
++        await _context.Amenities
++            .AsNoTracking()
++            .Where(amenity => amenityIds.Contains(amenity.AmenityId))
++            .Select(amenity => amenity.AmenityId)
++            .Distinct()
++            .CountAsync(cancellationToken) == amenityIds.Length;
++
++    public async Task<PublicPropertyPageDto> GetPageAsync(
++        PublicPropertySearchCriteria criteria,
++        DateTimeOffset asOfUtc,
++        CancellationToken cancellationToken)
++    {
++        await using var transaction = _context.Database.IsRelational()
++            ? await _context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken)
++            : null;
++
++        var matchingRooms = ApplyRoomFilters(
++            RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc),
++            criteria);
++        var eligibleProperties = ApplyPropertyFilters(_context.Properties.AsNoTracking(), criteria)
++            .Where(property => matchingRooms.Any(room => room.PropertyId == property.PropertyId));
++
++        var totalCount = await eligibleProperties.CountAsync(cancellationToken);
++        var listingRows = eligibleProperties.Select(property => new
++        {
++            property.PropertyId,
++            property.PropertyName,
++            property.AddressText,
++            property.Ward,
++            property.District,
++            property.City,
++            AvailableRoomCount = matchingRooms
++                .Where(room => room.PropertyId == property.PropertyId)
++                .Select(room => room.RoomId)
++                .Distinct()
++                .Count(),
++            StartingPrice = matchingRooms
++                .Where(room => room.PropertyId == property.PropertyId)
++                .Select(room => (decimal?)room.RoomType!.Price)
++                .Min(),
++            RepresentativeRoomId = matchingRooms
++                .Where(room => room.PropertyId == property.PropertyId)
++                .OrderBy(room => room.RoomType!.Price)
++                .ThenBy(room => room.RoomId)
++                .Select(room => (int?)room.RoomId)
++                .FirstOrDefault()
++        });
++
++        var orderedRows = criteria.SortBy switch
++        {
++            "price_asc" => listingRows
++                .OrderBy(row => row.StartingPrice)
++                .ThenBy(row => row.PropertyId),
++            "price_desc" => listingRows
++                .OrderByDescending(row => row.StartingPrice)
++                .ThenBy(row => row.PropertyId),
++            _ => listingRows.OrderBy(row => row.PropertyId)
++        };
++
++        var pageRows = await orderedRows
++            .Skip(criteria.Offset)
++            .Take(criteria.PageSize)
++            .ToListAsync(cancellationToken);
++        var representativeRoomIds = pageRows
++            .Where(row => row.RepresentativeRoomId.HasValue)
++            .Select(row => row.RepresentativeRoomId!.Value)
++            .ToArray();
++
++        var amenityRows = await _context.RoomAmenities
++            .AsNoTracking()
++            .Where(link => representativeRoomIds.Contains(link.RoomId))
++            .OrderBy(link => link.RoomId)
++            .ThenBy(link => link.AmenityId)
++            .Select(link => new
++            {
++                link.RoomId,
++                AmenityId = link.Amenity!.AmenityId,
++                link.Amenity.Name
++            })
++            .ToListAsync(cancellationToken);
++
++        var amenitiesByRoom = amenityRows
++            .GroupBy(link => link.RoomId)
++            .ToDictionary(
++                group => group.Key,
++                group => (IReadOnlyList<PublicAmenitySummaryDto>)group
++                    .Take(MaximumAmenitiesSummary)
++                    .Select(link => new PublicAmenitySummaryDto(link.AmenityId, link.Name))
++                    .ToArray());
++
++        var items = pageRows
++            .Select(row => new PublicPropertyCardDto(
++                row.PropertyId,
++                row.PropertyName,
++                row.AddressText,
++                row.Ward,
++                row.District,
++                row.City,
++                null,
++                row.RepresentativeRoomId is int roomId && amenitiesByRoom.TryGetValue(roomId, out var amenities)
++                    ? amenities
++                    : Array.Empty<PublicAmenitySummaryDto>(),
++                row.AvailableRoomCount,
++                row.StartingPrice))
++            .ToArray();
++
++        if (transaction is not null)
++        {
++            await transaction.CommitAsync(cancellationToken);
++        }
++
++        return new PublicPropertyPageDto(items, totalCount, criteria.Page, criteria.PageSize);
++    }
++
++    private static IQueryable<Rooms> ApplyRoomFilters(
++        IQueryable<Rooms> rooms,
++        PublicPropertySearchCriteria criteria)
++    {
++        if (criteria.MinPrice is decimal minPrice)
++        {
++            rooms = rooms.Where(room => room.RoomType!.Price >= minPrice);
++        }
++        if (criteria.MaxPrice is decimal maxPrice)
++        {
++            rooms = rooms.Where(room => room.RoomType!.Price <= maxPrice);
++        }
++        if (criteria.RoomTypeName is not null)
++        {
++            var roomTypeName = criteria.RoomTypeName.ToLowerInvariant();
++            rooms = rooms.Where(room => room.RoomType!.TypeName.Trim().ToLower() == roomTypeName);
++        }
++
++        foreach (var amenityId in criteria.AmenityIds)
++        {
++            rooms = rooms.Where(room => room.RoomAmenities.Any(link => link.AmenityId == amenityId));
++        }
++
++        return rooms;
++    }
++
++    private static IQueryable<Property> ApplyPropertyFilters(
++        IQueryable<Property> properties,
++        PublicPropertySearchCriteria criteria)
++    {
++        if (criteria.Keyword is not null)
++        {
++            var keyword = criteria.Keyword.ToLowerInvariant();
++            properties = properties.Where(property =>
++                property.PropertyName.ToLower().Contains(keyword) ||
++                property.AddressText.ToLower().Contains(keyword) ||
++                property.Ward.ToLower().Contains(keyword) ||
++                property.District.ToLower().Contains(keyword) ||
++                property.City.ToLower().Contains(keyword));
++        }
++
++        if (criteria.City is not null)
++        {
++            var city = criteria.City.ToLowerInvariant();
++            properties = properties.Where(property => property.City.Trim().ToLower() == city);
++        }
++        if (criteria.District is not null)
++        {
++            var district = criteria.District.ToLowerInvariant();
++            properties = properties.Where(property => property.District.Trim().ToLower() == district);
++        }
++        if (criteria.Ward is not null)
++        {
++            var ward = criteria.Ward.ToLowerInvariant();
++            properties = properties.Where(property => property.Ward.Trim().ToLower() == ward);
++        }
++
++        return properties;
++    }
++}
+diff --git a/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs
+new file mode 100644
+index 0000000..5525c7a
+--- /dev/null
++++ b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs
+@@ -0,0 +1,412 @@
++using System.Net;
++using System.Text.Json;
++using Microsoft.AspNetCore.Hosting;
++using Microsoft.AspNetCore.Mvc.Testing;
++using Microsoft.AspNetCore.TestHost;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.Extensions.Configuration;
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.DependencyInjection.Extensions;
++using PRN232.Api.Controllers;
++using PRN232.Domain.Entities;
++using PRN232.Infrastructure.Data;
++using Xunit;
++
++namespace PRN232.Application.Tests;
++
++public sealed class PublicPropertyListingApiTests
++{
++    private static readonly DateTimeOffset AsOfUtc = new(2026, 10, 19, 5, 0, 0, TimeSpan.Zero);
++
++    [Fact]
++    public async Task Anonymous_listing_returns_only_allowlisted_property_cards()
++    {
++        using var factory = new PublicPropertiesApiFactory();
++        using var client = factory.CreateClient();
++
++        using var document = await GetListingAsync(client);
++
++        Assert.Equal(3, document.RootElement.GetProperty("totalCount").GetInt32());
++        Assert.Equal(new[] { 1, 2, 5 }, GetPropertyIds(document));
++
++        var card = GetItem(document, 1);
++        Assert.Equal(
++            new[]
++            {
++                "addressText", "amenitiesSummary", "availableRoomCount", "city", "district",
++                "primaryImageUrl", "propertyId", "propertyName", "startingPrice", "ward"
++            },
++            card.EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
++        Assert.Equal("North_Star 100% Residence", card.GetProperty("propertyName").GetString());
++        Assert.False(card.TryGetProperty("ownerId", out _));
++        Assert.False(card.TryGetProperty("ownerName", out _));
++        Assert.False(card.TryGetProperty("status", out _));
++        Assert.False(card.TryGetProperty("bookings", out _));
++        Assert.Equal(1, document.RootElement.GetProperty("page").GetInt32());
++        Assert.Equal(10, document.RootElement.GetProperty("pageSize").GetInt32());
++        Assert.Equal(1, factory.Clock.ReadCount);
++    }
++
++    [Fact]
++    public async Task Swagger_lists_public_listing_without_bearer_security()
++    {
++        using var factory = new PublicPropertiesApiFactory();
++        using var client = factory.CreateClient();
++
++        using var response = await client.GetAsync("/swagger/v1/swagger.json");
++        response.EnsureSuccessStatusCode();
++        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
++        var operation = document.RootElement
++            .GetProperty("paths")
++            .GetProperty("/api/public/properties")
++            .GetProperty("get");
++
++        Assert.False(operation.TryGetProperty("security", out _));
++        Assert.True(operation.GetProperty("responses").TryGetProperty("200", out _));
++        Assert.True(operation.GetProperty("responses").TryGetProperty("400", out _));
++    }
++
++    [Fact]
++    public async Task Listing_uses_phase2a_blockers_and_aggregates_only_matching_rentable_rooms()
++    {
++        using var factory = new PublicPropertiesApiFactory();
++        using var client = factory.CreateClient();
++
++        using var document = await GetListingAsync(client);
++
++        var first = GetItem(document, 1);
++        Assert.Equal(3, first.GetProperty("availableRoomCount").GetInt32());
++        Assert.Equal(1_500_000m, first.GetProperty("startingPrice").GetDecimal());
++
++        var second = GetItem(document, 2);
++        Assert.Equal(1, second.GetProperty("availableRoomCount").GetInt32());
++        Assert.Equal(4_000_000m, second.GetProperty("startingPrice").GetDecimal());
++        Assert.DoesNotContain(3, GetPropertyIds(document));
++
++        using var scope = factory.Services.CreateScope();
++        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
++        Assert.Equal("Available", (await context.Rooms.SingleAsync(room => room.RoomId == 102)).Status);
++        Assert.Equal("Deposited", (await context.Bookings.SingleAsync(booking => booking.RoomId == 100)).Status);
++        Assert.Equal("Active", (await context.Contracts.SingleAsync(contract => contract.RoomId == 202)).Status);
++    }
++
++    [Fact]
++    public async Task Room_type_and_amenity_filters_apply_to_one_room_and_keep_same_name_type_ids()
++    {
++        using var factory = new PublicPropertiesApiFactory();
++        using var client = factory.CreateClient();
++
++        using var sameNameTypes = await GetListingAsync(client, "?roomTypeName=%20sTuDiO%20");
++        var studioCard = GetItem(sameNameTypes, 1);
++        Assert.Equal(2, studioCard.GetProperty("availableRoomCount").GetInt32());
++        Assert.Equal(1_500_000m, studioCard.GetProperty("startingPrice").GetDecimal());
++
++        using var sameRoomRequired = await GetListingAsync(client, "?minPrice=3500000&amenityIds=1");
++        Assert.Equal(new[] { 2 }, GetPropertyIds(sameRoomRequired));
++        Assert.Equal(1, GetItem(sameRoomRequired, 2).GetProperty("availableRoomCount").GetInt32());
++
++        using var duplicateAmenity = await GetListingAsync(client, "?roomTypeName=loft&amenityIds=1&amenityIds=2&amenityIds=1");
++        Assert.Equal(new[] { 2 }, GetPropertyIds(duplicateAmenity));
++        Assert.Equal(1, GetItem(duplicateAmenity, 2).GetProperty("availableRoomCount").GetInt32());
++
++        using var everySameNameType = await GetListingAsync(client, "?roomTypeName=loft");
++        Assert.Equal(new[] { 2, 5 }, GetPropertyIds(everySameNameType));
++
++        using var inclusivePriceInterval = await GetListingAsync(client, "?minPrice=4000000&maxPrice=4000000");
++        Assert.Equal(new[] { 1, 2, 5 }, GetPropertyIds(inclusivePriceInterval));
++        Assert.All(inclusivePriceInterval.RootElement.GetProperty("items").EnumerateArray(), item =>
++        {
++            Assert.Equal(1, item.GetProperty("availableRoomCount").GetInt32());
++            Assert.Equal(4_000_000m, item.GetProperty("startingPrice").GetDecimal());
++        });
++
++        using var combinedFilters = await GetListingAsync(
++            client,
++            "?minPrice=3500000&roomTypeName=loft&amenityIds=1&amenityIds=2");
++        Assert.Equal(new[] { 2 }, GetPropertyIds(combinedFilters));
++    }
++
++    [Fact]
++    public async Task Keyword_is_case_insensitive_and_treats_like_wildcards_as_literals()
++    {
++        using var factory = new PublicPropertiesApiFactory();
++        using var client = factory.CreateClient();
++
++        using var underscore = await GetListingAsync(client, "?keyword=nOrTh_StAr");
++        Assert.Equal(new[] { 1 }, GetPropertyIds(underscore));
++
++        using var percent = await GetListingAsync(client, "?keyword=100%25");
++        Assert.Equal(new[] { 1 }, GetPropertyIds(percent));
++
++        using var city = await GetListingAsync(client, "?city=%20tp.hcm%20");
++        Assert.Equal(new[] { 1, 2 }, GetPropertyIds(city));
++
++        using var fullLocation = await GetListingAsync(
++            client,
++            "?city=tp.hcm&district=THU%20DUC&ward=linh%20trung");
++        Assert.Equal(new[] { 1 }, GetPropertyIds(fullLocation));
++    }
++
++    [Fact]
++    public async Task Pagination_and_price_sorts_are_stable_and_total_counts_properties()
++    {
++        using var factory = new PublicPropertiesApiFactory();
++        using var client = factory.CreateClient();
++
++        using var firstPage = await GetListingAsync(client, "?sortBy=price_desc&page=1&pageSize=1");
++        Assert.Equal(3, firstPage.RootElement.GetProperty("totalCount").GetInt32());
++        Assert.Equal(new[] { 2 }, GetPropertyIds(firstPage));
++        Assert.Equal(1, firstPage.RootElement.GetProperty("page").GetInt32());
++        Assert.Equal(1, firstPage.RootElement.GetProperty("pageSize").GetInt32());
++
++        using var secondPage = await GetListingAsync(client, "?sortBy=price_desc&page=2&pageSize=1");
++        Assert.Equal(new[] { 5 }, GetPropertyIds(secondPage));
++
++        using var ascending = await GetListingAsync(client, "?sortBy=price_asc");
++        Assert.Equal(new[] { 1, 2, 5 }, GetPropertyIds(ascending));
++
++        using var emptyPage = await GetListingAsync(client, "?page=4&pageSize=1");
++        Assert.Empty(emptyPage.RootElement.GetProperty("items").EnumerateArray());
++        Assert.Equal(3, emptyPage.RootElement.GetProperty("totalCount").GetInt32());
++    }
++
++    [Fact]
++    public async Task Representative_room_amenities_are_bounded_and_unverified_images_are_not_exposed()
++    {
++        using var factory = new PublicPropertiesApiFactory();
++        using var client = factory.CreateClient();
++
++        using var document = await GetListingAsync(client);
++
++        var card = GetItem(document, 2);
++        var amenities = card.GetProperty("amenitiesSummary").EnumerateArray().ToArray();
++        Assert.Equal(new[] { 1, 2, 3, 4, 5 }, amenities.Select(item => item.GetProperty("amenityId").GetInt32()));
++        Assert.All(amenities, amenity => Assert.True(amenity.TryGetProperty("name", out _)));
++        Assert.Null(card.GetProperty("primaryImageUrl").GetString());
++        Assert.DoesNotContain("private-token", document.RootElement.GetRawText(), StringComparison.Ordinal);
++    }
++
++    [Theory]
++    [InlineData("?page=0")]
++    [InlineData("?pageSize=51")]
++    [InlineData("?minPrice=-1")]
++    [InlineData("?maxPrice=-1")]
++    [InlineData("?minPrice=4000000&maxPrice=3000000")]
++    [InlineData("?page=50000000&pageSize=50")]
++    [InlineData("?amenityIds=0")]
++    [InlineData("?amenityIds=999")]
++    [InlineData("?sortBy=recent")]
++    [InlineData("?minPrice=not-a-number")]
++    public async Task Invalid_listing_parameters_return_a_validation_problem(string query)
++    {
++        using var factory = new PublicPropertiesApiFactory();
++        using var client = factory.CreateClient();
++
++        using var response = await client.GetAsync("/api/public/properties" + query);
++
++        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
++        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
++        Assert.True(document.RootElement.TryGetProperty("errors", out _));
++    }
++
++    [Fact]
++    public async Task No_matching_rentable_room_returns_an_empty_success_page()
++    {
++        using var factory = new PublicPropertiesApiFactory();
++        using var client = factory.CreateClient();
++
++        using var document = await GetListingAsync(client, "?minPrice=100000000");
++
++        Assert.Empty(document.RootElement.GetProperty("items").EnumerateArray());
++        Assert.Equal(0, document.RootElement.GetProperty("totalCount").GetInt32());
++    }
++
++    private static async Task<JsonDocument> GetListingAsync(HttpClient client, string query = "")
++    {
++        using var response = await client.GetAsync("/api/public/properties" + query);
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
++    }
++
++    private static int[] GetPropertyIds(JsonDocument document) =>
++        document.RootElement.GetProperty("items")
++            .EnumerateArray()
++            .Select(item => item.GetProperty("propertyId").GetInt32())
++            .ToArray();
++
++    private static JsonElement GetItem(JsonDocument document, int propertyId) =>
++        document.RootElement.GetProperty("items")
++            .EnumerateArray()
++            .Single(item => item.GetProperty("propertyId").GetInt32() == propertyId);
++
++    private sealed class PublicPropertiesApiFactory : WebApplicationFactory<PropertiesController>
++    {
++        private readonly string _databaseName = Guid.NewGuid().ToString();
++        public FixedTimeProvider Clock { get; } = new(AsOfUtc);
++
++        protected override void ConfigureWebHost(IWebHostBuilder builder)
++        {
++            builder.UseEnvironment("Testing");
++            builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(
++                new Dictionary<string, string?>
++                {
++                    ["Jwt:Key"] = "integration-test-only-signing-key-32-bytes",
++                    ["Jwt:Issuer"] = "test-issuer",
++                    ["Jwt:Audience"] = "test-audience",
++                    ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=unused"
++                }));
++            builder.ConfigureTestServices(services =>
++            {
++                services.RemoveAll<DbContextOptions<AppDbContext>>();
++                services.RemoveAll<TimeProvider>();
++                services.AddSingleton<TimeProvider>(Clock);
++                services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase(_databaseName));
++            });
++        }
++
++        protected override void ConfigureClient(HttpClient client)
++        {
++            base.ConfigureClient(client);
++            using var scope = Services.CreateScope();
++            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
++            context.Database.EnsureCreated();
++            Seed(context);
++        }
++
++        private static void Seed(AppDbContext context)
++        {
++            context.Roles.Add(new Roles { RoleId = 1, RoleName = "Customer" });
++            context.Users.AddRange(
++                new Users { UserId = 1, RoleId = 1, FullName = "Private Owner Name", Email = "owner@example.test" },
++                new Users { UserId = 2, RoleId = 1, FullName = "Private Tenant Name", Email = "tenant@example.test" });
++            context.Properties.AddRange(
++                Property(1, "North_Star 100% Residence", "TP.HCM", "Thu Duc", "Linh Trung"),
++                Property(2, "River House", "TP.HCM", "Thu Duc", "Binh Tho"),
++                Property(3, "Unavailable House", "Ha Noi", "Ba Dinh", "Cong Vi"),
++                Property(5, "NorthXStar Residence", "Ha Noi", "Cau Giay", "Dich Vong"));
++            context.RoomTypes.AddRange(
++                RoomType(100, "Economy", 500_000m),
++                RoomType(101, "Economy", 2_000_000m),
++                RoomType(102, "Studio", 3_000_000m),
++                RoomType(103, "One Bedroom", 4_000_000m),
++                RoomType(104, "Studio", 1_500_000m),
++                RoomType(201, "Loft", 4_000_000m),
++                RoomType(202, "Loft", 3_000_000m),
++                RoomType(203, "Economy", 2_000_000m),
++                RoomType(204, "Economy", 2_200_000m),
++                RoomType(205, "Economy", 2_400_000m),
++                RoomType(206, "Economy", 2_500_000m),
++                RoomType(301, "Unknown", 1_000_000m),
++                RoomType(302, "Unknown", 1_100_000m),
++                RoomType(501, "Loft", 4_000_000m));
++            context.Rooms.AddRange(
++                Room(100, 1, 100, "Available"),
++                Room(101, 1, 101, "Available"),
++                Room(102, 1, 102, "Available"),
++                Room(103, 1, 103, "Available"),
++                Room(104, 1, 104, "Available"),
++                Room(201, 2, 201, "Available"),
++                Room(202, 2, 202, "Available"),
++                Room(203, 2, 203, "Reserved"),
++                Room(204, 2, 204, "Occupied"),
++                Room(205, 2, 205, "Maintenance"),
++                Room(206, 2, 206, "FutureRoomStatus"),
++                Room(301, 3, 301, "Available"),
++                Room(302, 3, 302, "Available"),
++                Room(501, 5, 501, "Available"));
++            context.Amenities.AddRange(
++                new Amenities { AmenityId = 1, Name = "Wi-Fi" },
++                new Amenities { AmenityId = 2, Name = "Air conditioning" },
++                new Amenities { AmenityId = 3, Name = "Parking" },
++                new Amenities { AmenityId = 4, Name = "Elevator" },
++                new Amenities { AmenityId = 5, Name = "Security" },
++                new Amenities { AmenityId = 6, Name = "Laundry" });
++            context.SaveChanges();
++
++            context.Bookings.AddRange(
++                Booking(1, 100, "Deposited", AsOfUtc.AddDays(-2)),
++                Booking(2, 101, "Pending", AsOfUtc.AddMinutes(1)),
++                Booking(3, 102, "Cancelled", AsOfUtc.AddDays(-1)),
++                Booking(4, 102, "Cancelled", AsOfUtc.AddDays(-1)),
++                Booking(5, 104, "Pending", AsOfUtc),
++                Booking(6, 201, "Cancelled", AsOfUtc.AddDays(-1)),
++                Booking(7, 301, "FutureBookingStatus", AsOfUtc.AddDays(1)));
++            context.Contracts.AddRange(
++                Contract(1, 202, "Active", AsOfUtc.AddDays(30), AsOfUtc.AddDays(60)),
++                Contract(2, 302, "FutureContractStatus", AsOfUtc.AddDays(-60), AsOfUtc.AddDays(-30)));
++            context.RoomAmenities.AddRange(
++                new RoomAmenities { RoomId = 102, AmenityId = 1 },
++                new RoomAmenities { RoomId = 103, AmenityId = 2 },
++                new RoomAmenities { RoomId = 201, AmenityId = 1 },
++                new RoomAmenities { RoomId = 201, AmenityId = 2 },
++                new RoomAmenities { RoomId = 201, AmenityId = 3 },
++                new RoomAmenities { RoomId = 201, AmenityId = 4 },
++                new RoomAmenities { RoomId = 201, AmenityId = 5 },
++                new RoomAmenities { RoomId = 201, AmenityId = 6 });
++            context.RoomImages.AddRange(
++                new RoomImages { RoomImageId = 1, RoomId = 102, IsPrimary = true, ImageUrl = "https://storage.example.test/object/sign/room.jpg?token=private-token" },
++                new RoomImages { RoomImageId = 2, RoomId = 201, IsPrimary = true, ImageUrl = "https://storage.example.test/object/sign/room.jpg?token=private-token" },
++                new RoomImages { RoomImageId = 3, RoomId = 201, IsPrimary = true, ImageUrl = "https://storage.example.test/object/sign/room-duplicate.jpg?token=private-token" });
++            context.SaveChanges();
++        }
++
++        private static Property Property(int id, string name, string city, string district, string ward) => new()
++        {
++            PropertyId = id,
++            OwnerId = 1,
++            PropertyName = name,
++            AddressText = "Sample Road",
++            City = city,
++            District = district,
++            Ward = ward
++        };
++
++        private static RoomTypes RoomType(int id, string name, decimal price) => new()
++        {
++            RoomTypeId = id,
++            TypeName = name,
++            Price = price
++        };
++
++        private static Rooms Room(int id, int propertyId, int roomTypeId, string status) => new()
++        {
++            RoomId = id,
++            PropertyId = propertyId,
++            RoomTypeId = roomTypeId,
++            RoomCode = $"R{id}",
++            AreaSqm = 20m,
++            Status = status
++        };
++
++        private static Bookings Booking(int id, int roomId, string status, DateTimeOffset expiry) => new()
++        {
++            BookingId = id,
++            RoomId = roomId,
++            CustomerId = 2,
++            Status = status,
++            ExpiryDate = expiry.UtcDateTime
++        };
++
++        private static Contracts Contract(int id, int roomId, string status, DateTimeOffset startsAt, DateTimeOffset endsAt) => new()
++        {
++            ContractId = id,
++            RoomId = roomId,
++            CustomerId = 2,
++            Status = status,
++            StartDate = DateOnly.FromDateTime(startsAt.UtcDateTime),
++            EndDate = DateOnly.FromDateTime(endsAt.UtcDateTime)
++        };
++    }
++
++    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
++    {
++        public int ReadCount { get; private set; }
++
++        public override DateTimeOffset GetUtcNow()
++        {
++            ReadCount++;
++            return utcNow;
++        }
++    }
++
++}
+diff --git a/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
+new file mode 100644
+index 0000000..04de0cf
+--- /dev/null
++++ b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
+@@ -0,0 +1,130 @@
++using System.Data.Common;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Diagnostics;
++using Npgsql;
++using PRN232.Application.DTOs;
++using PRN232.Infrastructure.Data;
++using PRN232.Infrastructure.Repositories;
++using Xunit;
++
++namespace PRN232.Application.Tests;
++
++public sealed class PublicPropertyListingPostgreSqlTests
++{
++    [PostgreSqlFact]
++    public async Task Listing_query_executes_on_postgresql_with_a_read_only_session()
++    {
++        var configuredConnection = Environment.GetEnvironmentVariable("PRN232_TEST_POSTGRES_CONNECTION")!;
++        var connectionBuilder = new NpgsqlConnectionStringBuilder(configuredConnection)
++        {
++            Pooling = false,
++            Timeout = 8,
++            CommandTimeout = 20
++        };
++        await using var connection = new NpgsqlConnection(connectionBuilder.ConnectionString);
++        await connection.OpenAsync();
++        await using (var command = new NpgsqlCommand(
++            "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY",
++            connection))
++        {
++            await command.ExecuteNonQueryAsync();
++        }
++        await using (var command = new NpgsqlCommand("SHOW default_transaction_read_only", connection))
++        {
++            Assert.Equal("on", await command.ExecuteScalarAsync());
++        }
++
++        var sqlCapture = new SqlCaptureInterceptor();
++        var options = new DbContextOptionsBuilder<AppDbContext>()
++            .UseNpgsql(connection)
++            .AddInterceptors(sqlCapture)
++            .Options;
++        await using var context = new AppDbContext(options);
++        var repository = new PublicPropertyListingRepository(context);
++        var nowUtc = DateTimeOffset.UtcNow;
++
++        var page = await repository.GetPageAsync(
++            new PublicPropertySearchCriteria(
++                null,
++                null,
++                null,
++                null,
++                null,
++                null,
++                null,
++                [],
++                "price_asc",
++                1,
++                2,
++                0),
++            nowUtc,
++            CancellationToken.None);
++
++        Assert.InRange(page.Items.Count, 0, 2);
++        Assert.True(page.TotalCount >= page.Items.Count);
++        Assert.All(page.Items, item =>
++        {
++            Assert.True(item.AvailableRoomCount > 0);
++            Assert.NotNull(item.StartingPrice);
++            Assert.Null(item.PrimaryImageUrl);
++        });
++        Assert.Equal(3, sqlCapture.Commands.Count);
++        var generatedSql = string.Join(Environment.NewLine, sqlCapture.Commands);
++        Assert.Contains("NOT EXISTS", generatedSql, StringComparison.OrdinalIgnoreCase);
++        Assert.Contains("COUNT(", generatedSql, StringComparison.OrdinalIgnoreCase);
++        Assert.Contains("MIN(", generatedSql, StringComparison.OrdinalIgnoreCase);
++        Assert.Contains("LIMIT", generatedSql, StringComparison.OrdinalIgnoreCase);
++        Assert.Contains("OFFSET", generatedSql, StringComparison.OrdinalIgnoreCase);
++        Assert.Contains("RoomAmenities", generatedSql, StringComparison.Ordinal);
++        Assert.DoesNotContain("RoomImages", generatedSql, StringComparison.Ordinal);
++        Assert.DoesNotContain("CustomerId", generatedSql, StringComparison.Ordinal);
++        Assert.DoesNotContain("OwnerId", generatedSql, StringComparison.Ordinal);
++
++        var filteredPage = await repository.GetPageAsync(
++            new PublicPropertySearchCriteria(
++                "phase2b-read-only-no-match-20261019%_",
++                "phase2b-no-match",
++                null,
++                null,
++                0m,
++                100_000_000m,
++                "phase2b-no-room-type",
++                [1],
++                "price_desc",
++                1,
++                1,
++                0),
++            nowUtc,
++            CancellationToken.None);
++
++        Assert.InRange(filteredPage.Items.Count, 0, 1);
++        Assert.True(filteredPage.TotalCount >= filteredPage.Items.Count);
++        Assert.Equal(6, sqlCapture.Commands.Count);
++    }
++
++    private sealed class SqlCaptureInterceptor : DbCommandInterceptor
++    {
++        public List<string> Commands { get; } = [];
++
++        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
++            DbCommand command,
++            CommandEventData eventData,
++            InterceptionResult<DbDataReader> result,
++            CancellationToken cancellationToken = default)
++        {
++            Commands.Add(command.CommandText);
++            return ValueTask.FromResult(result);
++        }
++    }
++}
++
++public sealed class PostgreSqlFactAttribute : FactAttribute
++{
++    public PostgreSqlFactAttribute()
++    {
++        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PRN232_TEST_POSTGRES_CONNECTION")))
++        {
++            Skip = "Set PRN232_TEST_POSTGRES_CONNECTION to an isolated PostgreSQL test database, or use the approved read-only verification path.";
++        }
++    }
++}

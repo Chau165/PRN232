@@ -1,9 +1,10 @@
 import { useState } from "react"
+import { useNavigate } from "react-router"
+import { useOptionalAuth } from "@/auth/AuthContext"
 import Icon from "@/components/common/Icon"
 import { notifications } from "@/data/customer"
 import { routes } from "@/constants/routes"
 import type { CurrentUser } from "@/types/user"
-import { endMockSession } from "@/utils/authMock"
 
 type ManagementHeaderProps = {
   user: CurrentUser
@@ -16,6 +17,9 @@ export default function ManagementHeader({
   title,
   onMenu,
 }: ManagementHeaderProps) {
+  const auth = useOptionalAuth()
+  const navigate = useNavigate()
+  const currentUser = auth?.user ?? user
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const unread = notifications.filter((item) => !item.read).length
@@ -95,14 +99,14 @@ export default function ManagementHeader({
             className="flex items-center gap-2 rounded-xl bg-slate-50 py-1.5 pl-1.5 pr-3 text-left hover:bg-slate-100"
           >
             <span className="grid h-8 w-8 place-items-center rounded-full bg-[#dff0ed] text-[11px] font-bold text-[#087775]">
-              {user.role === "ADMIN" ? "CT" : "NA"}
+              {currentUser.name.trim().split(/\s+/).map((part) => part[0] ?? "").join("").slice(0, 2).toUpperCase()}
             </span>
             <span className="hidden sm:block">
               <strong className="block text-[12px] text-slate-700">
-                {user.name}
+                {currentUser.name}
               </strong>
               <span className="block text-[10px] font-semibold text-[#087775]">
-                {user.role}
+                {currentUser.role}
               </span>
             </span>
             <Icon name="chevron" size={14} />
@@ -123,8 +127,8 @@ export default function ManagementHeader({
               <button
                 role="menuitem"
                 onClick={() => {
-                  endMockSession()
-                  window.location.assign(routes.home)
+                  auth?.logout()
+                  navigate(routes.home, { replace: true })
                 }}
                 className="block w-full rounded-xl px-4 py-3 text-left text-[14px] font-semibold text-rose-600 hover:bg-rose-50"
               >

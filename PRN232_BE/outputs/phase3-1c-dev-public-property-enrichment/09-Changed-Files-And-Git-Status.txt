@@ -1,0 +1,21 @@
+Phase 3.1C-DEV — source baseline và git status
+
+Repository root: C:\PRN232
+Working directory: C:\PRN232\PRN232_BE
+HEAD trước và sau: 897b0374bf057767b495b296217fbfb3f72a190e
+Pre-task git status: 87 entries (captured trước khi sửa source).
+Ngay sau implementation, trước khi tạo reports: 88 entries; diff baseline chỉ thêm Phase31CPropertyDetailPostgreSqlTests.cs.
+Sau khi tạo gói report: 89 entries; hai path mới so baseline là test file nêu trên và output directory phase3-1c-dev-public-property-enrichment.
+Không có baseline status path nào bị xóa. Các sửa đổi trước đó của Phase 2A–3.1B và FE vẫn nguyên trạng. Không stage/commit/push/deploy.
+
+Phase-only source delta (đối chiếu với snapshot file trước task):
+- PRN232_BE/PRN232.Api/Program.cs — feature flag DI, mặc định false.
+- PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs — DTO additive.
+- PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs — method enriched.
+- PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs — flag branch, UTC/local date.
+- PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs — scoped server projections.
+- PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs — in-memory contract/rate boundary fixture update.
+- PRN232_BE/PRN232.Application.Tests/Phase31CPropertyDetailPostgreSqlTests.cs — test PostgreSQL mới.
+
+Các file ngoài danh sách là sửa đổi có từ trước, không thuộc patch phase-only. Không có file FE, controller, migration, entity hoặc DbContext thay đổi bởi Phase 3.1C-DEV.
+Phase-only patch: git apply --check và apply trên scratch baseline thành công; 7 file sau apply trùng với source workspace sau chuẩn hóa line endings. Patch có 753 additions và 12 deletions. Scratch patch check nằm ngoài repository.

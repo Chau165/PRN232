@@ -1,0 +1,56 @@
+PHASE 3 ONLY — CHANGED FILES AND GIT STATUS
+
+Baseline:
+- FE was clean before Phase 3.
+- BE already contained Phase 2 work at baseline. Current BE status matches the saved baseline: True.
+- This report and patch include FE Phase 3 changes only. No BE paths are included.
+
+Verification:
+- Current FE status entries: 43.
+- Patch artifact is listed in git status; it is intentionally excluded from its own patch to avoid self-reference.
+- No commit, push or deploy was performed.
+
+Current git status --short --untracked-files=all -- PRN232_FE:
+ M PRN232_FE/.gitignore
+ M PRN232_FE/README.md
+ M PRN232_FE/package.json
+ M PRN232_FE/pnpm-lock.yaml
+ M PRN232_FE/src/components/home/FilterChips.tsx
+ M PRN232_FE/src/components/home/HeroSearch.tsx
+ M PRN232_FE/src/components/home/HorizontalPropertyCard.tsx
+ M PRN232_FE/src/components/home/MapSection.tsx
+ M PRN232_FE/src/components/home/ResultsHeader.tsx
+ M PRN232_FE/src/components/home/SearchSection.tsx
+ D PRN232_FE/src/components/home/SelectControl.tsx
+ D PRN232_FE/src/components/property/NeighborhoodMap.tsx
+ M PRN232_FE/src/components/room/AvailableRooms.tsx
+ M PRN232_FE/src/components/room/RoomDetailModal.tsx
+ D PRN232_FE/src/components/room/ViewingScheduleModal.tsx
+ M PRN232_FE/src/constants/routes.ts
+ D PRN232_FE/src/data/properties.ts
+ D PRN232_FE/src/data/propertyDetails.ts
+ M PRN232_FE/src/pages/AvailableRoomsPage/AvailableRoomsPage.tsx
+ M PRN232_FE/src/pages/HomePage/HomePage.tsx
+ M PRN232_FE/src/pages/PropertyDetailPage/PropertyDetailPage.tsx
+ M PRN232_FE/src/vite-env.d.ts
+ M PRN232_FE/tsconfig.json
+ M PRN232_FE/vite.config.ts
+?? PRN232_FE/.env.example
+?? PRN232_FE/outputs/phase3-public-browsing-integration/01-FE-To-Public-API-Mapping.md
+?? PRN232_FE/outputs/phase3-public-browsing-integration/02-Implementation-Report.md
+?? PRN232_FE/outputs/phase3-public-browsing-integration/03-API-Client-Routing-And-Config.md
+?? PRN232_FE/outputs/phase3-public-browsing-integration/04-Test-Matrix-And-UAT.md
+?? PRN232_FE/outputs/phase3-public-browsing-integration/05-Security-Booking-And-Owner-Gates.md
+?? PRN232_FE/outputs/phase3-public-browsing-integration/06-Changed-Files-And-Git-Status.txt
+?? PRN232_FE/outputs/phase3-public-browsing-integration/07-Phase3-Only-Diff.patch
+?? PRN232_FE/outputs/phase3-public-browsing-integration/08-Phase3-Readiness-And-Next-Steps.md
+?? PRN232_FE/src/api/publicBrowsingApi.ts
+?? PRN232_FE/src/hooks/usePublicApiResource.ts
+?? PRN232_FE/src/utils/publicApiDisplay.ts
+?? PRN232_FE/src/utils/publicFormatting.ts
+?? PRN232_FE/src/utils/publicQueryState.ts
+?? PRN232_FE/tests/publicBrowsingApi.test.ts
+?? PRN232_FE/tests/publicHome.test.tsx
+?? PRN232_FE/tests/publicPropertyPages.test.tsx
+?? PRN232_FE/tests/setup.ts
+?? PRN232_FE/vitest.config.ts

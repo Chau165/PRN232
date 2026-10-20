@@ -1,0 +1,56 @@
+PHASE 2B CHANGE INVENTORY
+Repository: C:\PRN232\PRN232_BE
+
+Phase 2B implementation (included in 07-Diff.patch)
+Modified tracked:
+  PRN232.Api/Program.cs — two scoped DI registrations for the public listing service and repository.
+
+New source and tests:
+  PRN232.Api/Controllers/PublicPropertiesController.cs
+  PRN232.Application/DTOs/PublicPropertyListingDto.cs
+  PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
+  PRN232.Application/Interfaces/IPublicPropertyListingService.cs
+  PRN232.Application/Services/PublicPropertyListingService.cs
+  PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+  PRN232.Application.Tests/PublicPropertyListingApiTests.cs
+  PRN232.Application.Tests/PublicPropertyListingPostgreSqlTests.cs
+
+Phase 2B reports (excluded from 07-Diff.patch):
+  outputs/phase2b-public-property-listing/01-API-Contract.md
+  outputs/phase2b-public-property-listing/02-Implementation-Report.md
+  outputs/phase2b-public-property-listing/03-PostgreSQL-Verification.md
+  outputs/phase2b-public-property-listing/04-Security-And-Legacy-Route-Gate.md
+  outputs/phase2b-public-property-listing/05-Test-Matrix.md
+  outputs/phase2b-public-property-listing/06-Changed-Files.txt
+  outputs/phase2b-public-property-listing/07-Diff.patch
+
+Pre-existing work preserved; not attributable to Phase 2B and excluded from 07-Diff.patch
+Modified tracked Phase 2A files:
+  PRN232.Application/Interfaces/IRoomRepository.cs
+  PRN232.Application/Interfaces/IRoomService.cs
+  PRN232.Application/Services/RoomService.cs
+  PRN232.Application/Services/RoomStatuses.cs
+  PRN232.Infrastructure/Repositories/RoomRepository.cs
+
+New Phase 2A files:
+  PRN232.Application.Tests/RoomAvailabilityTests.cs
+  PRN232.Application/DTOs/RoomAvailabilityDto.cs
+  PRN232.Application/Services/BookingStatuses.cs
+  PRN232.Application/Services/ContractStatuses.cs
+  PRN232.Application/Services/RoomRentabilityPolicy.cs
+  PRN232.Infrastructure/Repositories/RoomAvailabilityQueries.cs
+
+Other pre-existing working-tree items preserved:
+  .codegraph/.gitignore — pre-existing local CodeGraph change.
+  outputs/phase1-public-browsing/ — prior phase report artifacts.
+  outputs/phase1-5-business-rules/ — prior phase report artifacts.
+  outputs/phase2a-room-availability/ — prior phase report artifacts.
+  PRN232.Application.Tests/TestResults/95e787a4-2f0e-4e3e-945c-85b8dff4db18/coverage.cobertura.xml — existing test result dated 2026-10-14.
+  PRN232.Application.Tests/TestResults/9afa3cfe-465d-41cc-9f51-347a3026c999/coverage.cobertura.xml — existing test result dated 2026-10-14.
+  PRN232.Application.Tests/TestResults/bf016a7c-ed6b-43b0-8618-78e6150df357/coverage.cobertura.xml — existing test result dated 2026-10-14.
+
+Phase 2B verification output generated during this work (kept in place; excluded from 07-Diff.patch):
+  PRN232.Application.Tests/TestResults/2698b7b2-61dd-4e5b-98a1-0a1de57d1798/coverage.cobertura.xml
+  PRN232.Application.Tests/TestResults/3fb4f6e1-ea78-4ecc-8adb-bb2a1427f504/coverage.cobertura.xml
+
+No frontend source, legacy route, database schema/data, migration, or credential was changed. No file was staged or committed; no push was made.

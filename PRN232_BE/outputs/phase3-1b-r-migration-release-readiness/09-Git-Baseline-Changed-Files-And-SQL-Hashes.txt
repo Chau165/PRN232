@@ -1,0 +1,44 @@
+Phase 3.1B-R — Git baseline, artifact inventory, SHA-256
+Captured: 2026-10-19, working directory C:\PRN232\PRN232_BE
+Repository root: C:\PRN232
+Branch: main
+HEAD: 897b0374bf057767b495b296217fbfb3f72a190e
+
+Git preservation check
+- Before baseline: 170 status entries, recorded outside the repo at %TEMP%\prn232-phase31br-before-status.txt.
+- After reports/SQL, before this file and the phase patch: 183 entries; 0 previous status entries removed; 13 new output paths.
+- The phase adds this report and 11-Phase3-1B-R-Only-Diff.patch, for 15 added status paths total when complete.
+- Existing staged/unstaged/untracked entries were not reset or staged. No commit, push or deploy occurred.
+- No BE/FE source path changed by this phase; existing frontend dirty paths remain as at baseline.
+- The Gate B candidate SQL path already appeared as untracked at baseline. This phase amended its candidate contents (schema-qualified index-name syntax corrected; live Logs RLS guard added). Git status alone did not contain a baseline content hash; therefore the old candidate bytes cannot be independently reconstructed. The final candidate hash below is the reviewed handoff identity.
+
+New phase output inventory (the candidate file above was present before this phase's status baseline)
+- 01-Executive-Decision-And-Status.md
+- 02-Live-ReadOnly-Schema-Equivalence-Matrix.md
+- 03-Gate-B-Reconciliation-Design-And-Owner-Choices.md
+- 04-Gates-CDE-Migration-Review.md
+- 05-Production-Backup-PITR-Restore-And-Approval-Checklist.md
+- 06-Isolated-PostgreSQL-Replay-And-Regression.md
+- 07-Release-Runbook-Gate-B-C-D-E.md
+- 08-Security-Compatibility-And-Remaining-Billing-Gates.md
+- 09-Git-Baseline-Changed-Files-And-SQL-Hashes.txt
+- 10-Phase3-1C-Readiness.md
+- SQL_REVIEW/00-Live-READ-ONLY-Preflight.sql
+- SQL_REVIEW/01-Gate-B-Maintenance-Reconciliation-REVIEW-ONLY.sql
+- SQL_REVIEW/02-Postflight-READ-ONLY.sql
+- SQL_REVIEW/03-Production-Gates-CDE-Manifest.md
+- 11-Phase3-1B-R-Only-Diff.patch
+
+Reviewed source and review SQL SHA-256
+489146ec406a8a036c39982298b9affc07d31b2aef7078bfd7d9e6a97bc171a8  CODING_STANDARDS.md
+09fc88d4d0696c061c1e6f28bee88d7011cbae83704119de786f06fc4f081efa  PRN232.Infrastructure/Migrations/20261013192052_ReconcileMaintenanceReportsAndLogNullability.cs
+a82bc610a949e5f49ed76a60f60fec0ee6bf3c75053bdcd3c1fb46ce5cf75e0a  PRN232.Infrastructure/Migrations/20261003142421_InitialCreate.cs
+288a69ac9addb45ea1bb81ec71f28a9d49783ff30fca84e45caa0b988069c726  PRN232.Infrastructure/Migrations/AppDbContextModelSnapshot.cs
+7390649de04ed4e2b2220ac3b8ae0ac6a6e9f414feb41d3911ba51727d87d33a  outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/01-AddPropertyDescriptionAndAmenities.sql
+8247c5208f02095cd288e4aa1c271b6e20f041a6c92712ccba3791ae759a509e  outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/02-AddPropertyServiceRates.sql
+225902a76a91ed7f548318fc60efeaf14204ed634d91266d6155992c9d6cbc85  outputs/phase3-1b-property-rates-invoice-snapshot/SQL_REVIEW/03-AddInvoiceDetailBillingSnapshot.sql
+5d4ff9aabad3113efc835854494ba485a996c3ae3816fd443e75085632a2216f  outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/00-Live-READ-ONLY-Preflight.sql
+d3dad4a20ab58aad4fbc374aa52a0508bd977f13ee5530475165d3104a1c0701  outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/01-Gate-B-Maintenance-Reconciliation-REVIEW-ONLY.sql
+b020d7ee0b1f1994d77e0177e67453a4bc1b5c2145f3ac78992268d867dfad4c  outputs/phase3-1b-r-migration-release-readiness/SQL_REVIEW/02-Postflight-READ-ONLY.sql
+
+The phase patch is a review artifact snapshot containing only this phase's report/review files; viewing it does not modify project source.

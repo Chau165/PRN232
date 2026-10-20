@@ -53,6 +53,24 @@ public class RoomRepository : IRoomRepository
                 r.RoomImages.Where(i => i.IsPrimary).Select(i => i.ImageUrl).FirstOrDefault()))
             .FirstOrDefaultAsync();
 
+    public Task<List<RentableRoomDto>> GetRentableRoomsAsync(DateTimeOffset asOfUtc) =>
+        RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc)
+            .OrderBy(room => room.RoomId)
+            .Select(room => new RentableRoomDto(
+                room.RoomId,
+                room.PropertyId,
+                room.RoomTypeId,
+                room.RoomType!.TypeName,
+                room.RoomType.Price,
+                room.RoomCode,
+                room.AreaSqm))
+            .ToListAsync();
+
+    public Task<List<PropertyAvailabilityDto>> GetPropertyAvailabilityAsync(DateTimeOffset asOfUtc) =>
+        RoomAvailabilityQueries
+            .GetPropertyAvailability(_context.Properties, _context.Rooms, asOfUtc)
+            .ToListAsync();
+
     public Task<Rooms?> GetEntityByIdAsync(int id) =>
         _context.Rooms.FirstOrDefaultAsync(r => r.RoomId == id);
 

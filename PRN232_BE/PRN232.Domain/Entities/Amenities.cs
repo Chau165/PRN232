@@ -6,4 +6,5 @@ public class Amenities
     public string Name { get; set; } = string.Empty;
 
     public ICollection<RoomAmenities> RoomAmenities { get; set; } = new List<RoomAmenities>();
+    public ICollection<PropertyAmenities> PropertyAmenities { get; set; } = new List<PropertyAmenities>();
 }

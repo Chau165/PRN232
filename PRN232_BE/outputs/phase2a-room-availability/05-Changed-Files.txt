@@ -1,0 +1,36 @@
+PRN232 Phase 2A — changed and untracked file inventory
+Repository root: C:\PRN232
+
+Changed tracked source:
+- PRN232_BE/PRN232.Application/Interfaces/IRoomRepository.cs
+- PRN232_BE/PRN232.Application/Interfaces/IRoomService.cs
+- PRN232_BE/PRN232.Application/Services/RoomService.cs
+- PRN232_BE/PRN232.Application/Services/RoomStatuses.cs
+- PRN232_BE/PRN232.Infrastructure/Repositories/RoomRepository.cs
+
+New source and tests:
+- PRN232_BE/PRN232.Application/DTOs/RoomAvailabilityDto.cs
+- PRN232_BE/PRN232.Application/Services/BookingStatuses.cs
+- PRN232_BE/PRN232.Application/Services/ContractStatuses.cs
+- PRN232_BE/PRN232.Application/Services/RoomRentabilityPolicy.cs
+- PRN232_BE/PRN232.Infrastructure/Repositories/RoomAvailabilityQueries.cs
+- PRN232_BE/PRN232.Application.Tests/RoomAvailabilityTests.cs
+
+New Phase 2A reports:
+- PRN232_BE/outputs/phase2a-room-availability/01-Approved-Business-Rules.md
+- PRN232_BE/outputs/phase2a-room-availability/02-Implementation-Report.md
+- PRN232_BE/outputs/phase2a-room-availability/03-Booking-Write-Contract-And-Concurrency.md
+- PRN232_BE/outputs/phase2a-room-availability/04-Phase2B-API-Contract-And-Security-Gate.md
+- PRN232_BE/outputs/phase2a-room-availability/05-Changed-Files.txt
+- PRN232_BE/outputs/phase2a-room-availability/06-Diff.patch
+
+Generated coverage outputs from the requested test runs; excluded from 06-Diff.patch:
+- PRN232_BE/PRN232.Application.Tests/TestResults/2698b7b2-61dd-4e5b-98a1-0a1de57d1798/coverage.cobertura.xml
+- PRN232_BE/PRN232.Application.Tests/TestResults/3fb4f6e1-ea78-4ecc-8adb-bb2a1427f504/coverage.cobertura.xml
+
+Pre-existing changes preserved, not produced by Phase 2A:
+- PRN232_BE/.codegraph/.gitignore (modified when this task began)
+- PRN232_BE/outputs/phase1-public-browsing/ (untracked when this task began)
+- PRN232_BE/outputs/phase1-5-business-rules/ (untracked when this task began)
+
+Not changed: frontend, database/schema/data, migrations, existing API controllers, Auth, Maintenance, Notification, and RoomType pricing schema. No commit or push was created.

@@ -4,13 +4,15 @@ import InvoiceDetailDrawer from "@/components/customer/InvoiceDetailDrawer"
 import InvoiceComplaintModal from "@/components/customer/InvoiceComplaintModal"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
-import { currentRoom, invoices, payments, profile } from "@/data/customer"
+import { currentRoom, invoices, payments } from "@/data/customer"
 import type { Invoice } from "@/types/customer"
 import { createInvoiceComplaint } from "@/utils/invoiceComplaints"
+import { getCurrentUser } from "@/utils/managementAuth"
 
 type BillTab = "unpaid" | "paid" | "all"
 
 export default function MyBillsPage() {
+  const currentUser = getCurrentUser()
   const [tab, setTab] = useState<BillTab>("unpaid")
   const [selected, setSelected] = useState<Invoice | null>(null)
   const [complaintInvoice, setComplaintInvoice] = useState<Invoice | null>(null)
@@ -146,7 +148,7 @@ export default function MyBillsPage() {
               propertyId: "sunrise-residence",
               propertyName: currentRoom.propertyName,
               roomCode: currentRoom.roomCode,
-              tenantName: profile.fullName,
+              tenantName: currentUser.name,
             })
             setComplaintInvoice(null)
             setToast("Khiếu nại của bạn đã được gửi")
