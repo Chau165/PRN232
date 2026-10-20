@@ -18,13 +18,17 @@ public class PropertiesController : ControllerBase
         _propertyService = propertyService;
     }
 
-    // GET /api/properties — browse công khai, không cần login.
-    // GET /api/properties?ownerId=5 — Manager xem khu trọ của riêng mình.
+    // GET /api/properties?ownerId= — route QUẢN LÝ (Admin/Manager), KHÔNG public.
+    // Trả PropertyDto đầy đủ (gồm OwnerId/OwnerName) nên phải auth — browsing công khai
+    // cho khách đã chuyển qua PublicPropertiesController (api/public/properties), dùng
+    // DTO allow-list riêng không có thông tin chủ sở hữu (fix D9 — audit bảo mật).
     [HttpGet]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<IEnumerable<PropertyDto>>> GetAll([FromQuery] int? ownerId) =>
         Ok(await _propertyService.GetAllAsync(ownerId));
 
     [HttpGet("{id:int}")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<PropertyDto>> GetById(int id)
     {
         var property = await _propertyService.GetByIdAsync(id);
