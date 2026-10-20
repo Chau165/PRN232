@@ -38,6 +38,26 @@ public sealed class PublicPropertiesController : ControllerBase
         }
     }
 
+    [HttpGet("by-area")]
+    [ProducesResponseType(typeof(IReadOnlyList<PublicPropertyAreaCardDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<IReadOnlyList<PublicPropertyAreaCardDto>>> GetByArea(
+        [FromQuery] PublicPropertyAreaQueryDto query,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _propertyListingService.GetByAreaAsync(query, cancellationToken));
+        }
+        catch (PublicPropertyQueryValidationException exception)
+        {
+            return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                [exception.Field] = [exception.Message]
+            }));
+        }
+    }
+
     [HttpGet("{id:int}")]
     [ProducesResponseType(typeof(PublicPropertyDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

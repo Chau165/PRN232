@@ -13,4 +13,14 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .gallery-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 4px; }
 .gallery-main { grid-row: span 2; }
 .room-amenity { border-radius: 999px; background: #f3f7f7; padding: 5px 9px; font-size: 11px; font-weight: 600; color: #64748b; }
+.leaflet-container { font-family: inherit; }
+.area-property-marker { border: 0; background: transparent; }
+.area-property-marker__card { display: block; width: 142px; overflow: hidden; border: 2px solid #fff; border-radius: 12px; background: #fff; box-shadow: 0 3px 12px rgba(15, 45, 48, .24); transition: transform .15s ease, border-color .15s ease; }
+.area-property-marker--selected .area-property-marker__card { transform: translateY(-2px); border-color: #087775; }
+.area-property-marker__photo { display: grid; height: 48px; place-items: center; overflow: hidden; background: #e8f5f2; }
+.area-property-marker__image { display: block; width: 100%; height: 48px; object-fit: cover; }
+.area-property-marker__placeholder { display: grid; width: 100%; height: 48px; place-items: center; color: #087775; }
+.area-property-marker__placeholder svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+.area-property-marker__price { display: block; overflow: hidden; padding: 4px 5px 5px; color: #087775; font-size: 11px; font-weight: 800; line-height: 16px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.area-property-popup .leaflet-popup-content { margin: 12px; }
 @media (max-width: 900px) { .grid-cols-\[242px_1fr_218px\] { grid-template-columns: 190px 1fr; } .grid-cols-\[242px_1fr_218px\] > :last-child { grid-column: span 2; border-left: 0; border-top: 1px solid #f1f5f9; } }

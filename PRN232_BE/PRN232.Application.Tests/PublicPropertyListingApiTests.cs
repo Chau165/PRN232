@@ -64,6 +64,14 @@ public sealed class PublicPropertyListingApiTests
         Assert.False(operation.TryGetProperty("security", out _));
         Assert.True(operation.GetProperty("responses").TryGetProperty("200", out _));
         Assert.True(operation.GetProperty("responses").TryGetProperty("400", out _));
+
+        var areaOperation = document.RootElement
+            .GetProperty("paths")
+            .GetProperty("/api/public/properties/by-area")
+            .GetProperty("get");
+        Assert.False(areaOperation.TryGetProperty("security", out _));
+        Assert.True(areaOperation.GetProperty("responses").TryGetProperty("200", out _));
+        Assert.True(areaOperation.GetProperty("responses").TryGetProperty("400", out _));
     }
 
     [Fact]
@@ -219,6 +227,108 @@ public sealed class PublicPropertyListingApiTests
 
         Assert.Empty(document.RootElement.GetProperty("items").EnumerateArray());
         Assert.Equal(0, document.RootElement.GetProperty("totalCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task Anonymous_area_search_normalizes_location_names_and_returns_only_rentable_property_data()
+    {
+        using var factory = new PublicPropertiesApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var first = await context.Properties.SingleAsync(property => property.PropertyId == 1);
+            first.District = "Quận Gò Vấp";
+            first.City = "TP. Hồ Chí Minh";
+            first.Ward = "Phường Linh Trung";
+            first.Latitude = 10.8231m;
+            first.Longitude = 106.7624m;
+            first.PrimaryImageUrl = "https://images.example.test/property-1.jpg";
+
+            var second = await context.Properties.SingleAsync(property => property.PropertyId == 2);
+            second.District = "Go Vap";
+            second.City = "Ho Chi Minh City";
+            second.Ward = "Bình Thọ";
+            second.Latitude = 10.8500m;
+            second.Longitude = 106.7700m;
+            var unavailable = await context.Properties.SingleAsync(property => property.PropertyId == 3);
+            unavailable.City = "TP. Hồ Chí Minh";
+            await context.SaveChangesAsync();
+        }
+
+        using var response = await client.GetAsync(
+            "/api/public/properties/by-area?city=Ho%20Chi%20Minh%20City&district=Go%20Vap");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var properties = document.RootElement.EnumerateArray().ToArray();
+        Assert.Equal(new[] { 1, 2 }, properties.Select(property => property.GetProperty("propertyId").GetInt32()));
+        Assert.Equal(
+            new[] { "addressText", "availableRoomCount", "city", "district", "latitude", "longitude", "primaryImageUrl", "propertyId", "propertyName", "startingPrice", "ward" },
+            properties[0].EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+        Assert.Equal(3, properties[0].GetProperty("availableRoomCount").GetInt32());
+        Assert.Equal(1_500_000m, properties[0].GetProperty("startingPrice").GetDecimal());
+        Assert.Equal(10.8231m, properties[0].GetProperty("latitude").GetDecimal());
+        Assert.Equal(106.7624m, properties[0].GetProperty("longitude").GetDecimal());
+        Assert.Equal("https://images.example.test/property-1.jpg", properties[0].GetProperty("primaryImageUrl").GetString());
+        Assert.Equal(1, properties[1].GetProperty("availableRoomCount").GetInt32());
+        Assert.Equal(4_000_000m, properties[1].GetProperty("startingPrice").GetDecimal());
+        Assert.DoesNotContain("ownerId", document.RootElement.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ownerName", document.RootElement.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("booking", document.RootElement.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("contract", document.RootElement.GetRawText(), StringComparison.OrdinalIgnoreCase);
+
+        using var wardResponse = await client.GetAsync(
+            "/api/public/properties/by-area?city=TP.HCM&district=Quận%20Gò%20Vấp&ward=Linh%20Trung");
+        Assert.Equal(HttpStatusCode.OK, wardResponse.StatusCode);
+        using var wardDocument = JsonDocument.Parse(await wardResponse.Content.ReadAsStringAsync());
+        Assert.Equal(new[] { 1 }, wardDocument.RootElement.EnumerateArray()
+            .Select(property => property.GetProperty("propertyId").GetInt32()));
+    }
+
+    [Fact]
+    public async Task Anonymous_area_search_supports_city_only_and_returns_empty_array_when_area_has_no_rentable_property()
+    {
+        using var factory = new PublicPropertiesApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            foreach (var property in await context.Properties.Where(property => property.PropertyId != 5).ToListAsync())
+            {
+                property.City = "Thành phố Hồ Chí Minh";
+            }
+            await context.SaveChangesAsync();
+        }
+
+        using var cityResponse = await client.GetAsync(
+            "/api/public/properties/by-area?city=Ho%20Chi%20Minh%20City");
+        Assert.Equal(HttpStatusCode.OK, cityResponse.StatusCode);
+        using var cityDocument = JsonDocument.Parse(await cityResponse.Content.ReadAsStringAsync());
+        Assert.Equal(new[] { 1, 2 }, cityDocument.RootElement.EnumerateArray()
+            .Select(property => property.GetProperty("propertyId").GetInt32()));
+
+        using var emptyResponse = await client.GetAsync(
+            "/api/public/properties/by-area?city=Can%20Tho");
+        Assert.Equal(HttpStatusCode.OK, emptyResponse.StatusCode);
+        using var emptyDocument = JsonDocument.Parse(await emptyResponse.Content.ReadAsStringAsync());
+        Assert.Equal(JsonValueKind.Array, emptyDocument.RootElement.ValueKind);
+        Assert.Empty(emptyDocument.RootElement.EnumerateArray());
+    }
+
+    [Theory]
+    [InlineData("/api/public/properties/by-area")]
+    [InlineData("/api/public/properties/by-area?district=%20&city=%20")]
+    public async Task Area_search_requires_at_least_one_nonblank_location(string path)
+    {
+        using var factory = new PublicPropertiesApiFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync(path);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(document.RootElement.TryGetProperty("errors", out _));
     }
 
     [Fact]

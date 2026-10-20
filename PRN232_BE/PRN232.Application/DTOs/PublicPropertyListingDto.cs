@@ -15,6 +15,13 @@ public sealed class PublicPropertyQueryDto
     public int? PageSize { get; set; }
 }
 
+public sealed class PublicPropertyAreaQueryDto
+{
+    public string? City { get; set; }
+    public string? District { get; set; }
+    public string? Ward { get; set; }
+}
+
 public sealed record PublicPropertySearchCriteria(
     string? Keyword,
     string? City,
@@ -34,6 +41,24 @@ public sealed record PublicPropertyPageDto(
     int TotalCount,
     int Page,
     int PageSize);
+
+public sealed record PublicPropertyAreaSearchCriteria(
+    string? City,
+    string? District,
+    string? Ward);
+
+public sealed record PublicPropertyAreaCardDto(
+    int PropertyId,
+    string PropertyName,
+    string AddressText,
+    string Ward,
+    string District,
+    string City,
+    decimal Latitude,
+    decimal Longitude,
+    string? PrimaryImageUrl,
+    int AvailableRoomCount,
+    decimal? StartingPrice);
 
 public sealed record PublicPropertyCardDto(
     int PropertyId,

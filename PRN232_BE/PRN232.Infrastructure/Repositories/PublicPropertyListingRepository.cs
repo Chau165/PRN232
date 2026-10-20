@@ -2,6 +2,7 @@ using System.Data;
 using Microsoft.EntityFrameworkCore;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.Services;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
 
@@ -132,6 +133,71 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
         }
 
         return new PublicPropertyPageDto(items, totalCount, criteria.Page, criteria.PageSize);
+    }
+
+    public async Task<IReadOnlyList<PublicPropertyAreaCardDto>> GetByAreaAsync(
+        PublicPropertyAreaSearchCriteria criteria,
+        DateTimeOffset asOfUtc,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = _context.Database.IsRelational()
+            ? await _context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken)
+            : null;
+
+        var rentableRooms = RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc);
+        var propertyRows = await _context.Properties
+            .AsNoTracking()
+            .Where(property => rentableRooms.Any(room => room.PropertyId == property.PropertyId))
+            .OrderBy(property => property.PropertyId)
+            .Select(property => new
+            {
+                property.PropertyId,
+                property.PropertyName,
+                property.AddressText,
+                property.Ward,
+                property.District,
+                property.City,
+                property.Latitude,
+                property.Longitude,
+                property.PrimaryImageUrl,
+                AvailableRoomCount = rentableRooms
+                    .Where(room => room.PropertyId == property.PropertyId)
+                    .Select(room => room.RoomId)
+                    .Distinct()
+                    .Count(),
+                StartingPrice = rentableRooms
+                    .Where(room => room.PropertyId == property.PropertyId)
+                    .Select(room => (decimal?)room.RoomType!.Price)
+                    .Min()
+            })
+            .ToListAsync(cancellationToken);
+
+        // Normalize the already allowlisted rentable-property projection without relying on a database-specific unaccent extension.
+        var items = propertyRows
+            .Where(property =>
+                (criteria.City is null || PublicAreaNameNormalizer.Normalize(property.City) == criteria.City) &&
+                (criteria.District is null || PublicAreaNameNormalizer.Normalize(property.District) == criteria.District) &&
+                (criteria.Ward is null || PublicAreaNameNormalizer.Normalize(property.Ward) == criteria.Ward))
+            .Select(property => new PublicPropertyAreaCardDto(
+                property.PropertyId,
+                property.PropertyName,
+                property.AddressText,
+                property.Ward,
+                property.District,
+                property.City,
+                property.Latitude,
+                property.Longitude,
+                property.PrimaryImageUrl,
+                property.AvailableRoomCount,
+                property.StartingPrice))
+            .ToArray();
+
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        return items;
     }
 
     public Task<PublicPropertyDetailDto?> GetDetailAsync(

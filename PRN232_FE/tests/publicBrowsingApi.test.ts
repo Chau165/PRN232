@@ -6,6 +6,7 @@ import {
   PublicApiError,
   type PublicPage,
   type PublicPropertyCard,
+  type PublicPropertyAreaCard,
   type PublicRoomDetail,
 } from "@/api/publicBrowsingApi"
 import {
@@ -106,6 +107,52 @@ describe("public browsing API client", () => {
     expect(url.pathname).toBe("/api/public/properties")
     expect(url.searchParams.get("page")).toBe("1")
     expect(new Headers(init?.headers).has("Authorization")).toBe(false)
+  })
+
+  it("loads every rentable property for the requested area without radius parameters", async () => {
+    const properties: PublicPropertyAreaCard[] = [
+      {
+        propertyId: 42,
+        propertyName: "Residence từ API",
+        addressText: "12 Đường Mẫu",
+        ward: "Phường Sáu",
+        district: "Quận Gò Vấp",
+        city: "TP. Hồ Chí Minh",
+        latitude: 10.8231,
+        longitude: 106.7624,
+        primaryImageUrl: "https://images.example.test/property.jpg",
+        availableRoomCount: 3,
+        startingPrice: 2850000,
+      },
+    ]
+    const fetchMock = createFetchMock(properties)
+    const client = createPublicApiClient("/api", fetchMock)
+
+    await expect(
+      client.listPropertiesByArea({
+        city: " TP. Hồ Chí Minh ",
+        district: " Quận Gò Vấp ",
+      }),
+    ).resolves.toEqual(properties)
+
+    const [input, init] = fetchMock.mock.calls[0]
+    const url = new URL(String(input), "http://localhost")
+    expect(url.pathname).toBe("/api/public/properties/by-area")
+    expect(url.searchParams.get("city")).toBe("TP. Hồ Chí Minh")
+    expect(url.searchParams.get("district")).toBe("Quận Gò Vấp")
+    expect(url.searchParams.has("radius")).toBe(false)
+    expect(url.searchParams.has("ward")).toBe(false)
+    expect(new Headers(init?.headers).has("Authorization")).toBe(false)
+    expect(init?.credentials).toBe("omit")
+  })
+
+  it("rejects an area request without a nonblank location before making a request", async () => {
+    const fetchMock = createFetchMock([])
+    const client = createPublicApiClient("/api", fetchMock)
+
+    await expect(client.listPropertiesByArea({ city: "  ", district: "" }))
+      .rejects.toMatchObject({ kind: "validation" })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it("does not duplicate an existing /api prefix and forwards abort signals", async () => {

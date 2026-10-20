@@ -51,6 +51,12 @@ public sealed class PublicPropertyListingServiceTests
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
+        public Task<IReadOnlyList<PublicPropertyAreaCardDto>> GetByAreaAsync(
+            PublicPropertyAreaSearchCriteria criteria,
+            DateTimeOffset asOfUtc,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
         public Task<PublicPropertyDetailDto?> GetDetailAsync(
             int propertyId,
             DateTimeOffset asOfUtc,

@@ -1,0 +1,2191 @@
+diff --git a/PRN232_BE/PRN232.Api/Controllers/PublicPropertiesController.cs b/PRN232_BE/PRN232.Api/Controllers/PublicPropertiesController.cs
+index 805f2b9..2afb9f2 100644
+--- a/PRN232_BE/PRN232.Api/Controllers/PublicPropertiesController.cs
++++ b/PRN232_BE/PRN232.Api/Controllers/PublicPropertiesController.cs
+@@ -38,6 +38,26 @@ public sealed class PublicPropertiesController : ControllerBase
+         }
+     }
+ 
++    [HttpGet("by-area")]
++    [ProducesResponseType(typeof(IReadOnlyList<PublicPropertyAreaCardDto>), StatusCodes.Status200OK)]
++    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
++    public async Task<ActionResult<IReadOnlyList<PublicPropertyAreaCardDto>>> GetByArea(
++        [FromQuery] PublicPropertyAreaQueryDto query,
++        CancellationToken cancellationToken)
++    {
++        try
++        {
++            return Ok(await _propertyListingService.GetByAreaAsync(query, cancellationToken));
++        }
++        catch (PublicPropertyQueryValidationException exception)
++        {
++            return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
++            {
++                [exception.Field] = [exception.Message]
++            }));
++        }
++    }
++
+     [HttpGet("{id:int}")]
+     [ProducesResponseType(typeof(PublicPropertyDetailDto), StatusCodes.Status200OK)]
+     [ProducesResponseType(StatusCodes.Status404NotFound)]
+diff --git a/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs
+index 958efb4..d7a0d0a 100644
+--- a/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs
++++ b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingApiTests.cs
+@@ -64,6 +64,14 @@ public sealed class PublicPropertyListingApiTests
+         Assert.False(operation.TryGetProperty("security", out _));
+         Assert.True(operation.GetProperty("responses").TryGetProperty("200", out _));
+         Assert.True(operation.GetProperty("responses").TryGetProperty("400", out _));
++
++        var areaOperation = document.RootElement
++            .GetProperty("paths")
++            .GetProperty("/api/public/properties/by-area")
++            .GetProperty("get");
++        Assert.False(areaOperation.TryGetProperty("security", out _));
++        Assert.True(areaOperation.GetProperty("responses").TryGetProperty("200", out _));
++        Assert.True(areaOperation.GetProperty("responses").TryGetProperty("400", out _));
+     }
+ 
+     [Fact]
+@@ -221,6 +229,108 @@ public sealed class PublicPropertyListingApiTests
+         Assert.Equal(0, document.RootElement.GetProperty("totalCount").GetInt32());
+     }
+ 
++    [Fact]
++    public async Task Anonymous_area_search_normalizes_location_names_and_returns_only_rentable_property_data()
++    {
++        using var factory = new PublicPropertiesApiFactory();
++        using var client = factory.CreateClient();
++        using (var scope = factory.Services.CreateScope())
++        {
++            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
++            var first = await context.Properties.SingleAsync(property => property.PropertyId == 1);
++            first.District = "Quận Gò Vấp";
++            first.City = "TP. Hồ Chí Minh";
++            first.Ward = "Phường Linh Trung";
++            first.Latitude = 10.8231m;
++            first.Longitude = 106.7624m;
++            first.PrimaryImageUrl = "https://images.example.test/property-1.jpg";
++
++            var second = await context.Properties.SingleAsync(property => property.PropertyId == 2);
++            second.District = "Go Vap";
++            second.City = "Ho Chi Minh City";
++            second.Ward = "Bình Thọ";
++            second.Latitude = 10.8500m;
++            second.Longitude = 106.7700m;
++            var unavailable = await context.Properties.SingleAsync(property => property.PropertyId == 3);
++            unavailable.City = "TP. Hồ Chí Minh";
++            await context.SaveChangesAsync();
++        }
++
++        using var response = await client.GetAsync(
++            "/api/public/properties/by-area?city=Ho%20Chi%20Minh%20City&district=Go%20Vap");
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
++        var properties = document.RootElement.EnumerateArray().ToArray();
++        Assert.Equal(new[] { 1, 2 }, properties.Select(property => property.GetProperty("propertyId").GetInt32()));
++        Assert.Equal(
++            new[] { "addressText", "availableRoomCount", "city", "district", "latitude", "longitude", "primaryImageUrl", "propertyId", "propertyName", "startingPrice", "ward" },
++            properties[0].EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
++        Assert.Equal(3, properties[0].GetProperty("availableRoomCount").GetInt32());
++        Assert.Equal(1_500_000m, properties[0].GetProperty("startingPrice").GetDecimal());
++        Assert.Equal(10.8231m, properties[0].GetProperty("latitude").GetDecimal());
++        Assert.Equal(106.7624m, properties[0].GetProperty("longitude").GetDecimal());
++        Assert.Equal("https://images.example.test/property-1.jpg", properties[0].GetProperty("primaryImageUrl").GetString());
++        Assert.Equal(1, properties[1].GetProperty("availableRoomCount").GetInt32());
++        Assert.Equal(4_000_000m, properties[1].GetProperty("startingPrice").GetDecimal());
++        Assert.DoesNotContain("ownerId", document.RootElement.GetRawText(), StringComparison.OrdinalIgnoreCase);
++        Assert.DoesNotContain("ownerName", document.RootElement.GetRawText(), StringComparison.OrdinalIgnoreCase);
++        Assert.DoesNotContain("booking", document.RootElement.GetRawText(), StringComparison.OrdinalIgnoreCase);
++        Assert.DoesNotContain("contract", document.RootElement.GetRawText(), StringComparison.OrdinalIgnoreCase);
++
++        using var wardResponse = await client.GetAsync(
++            "/api/public/properties/by-area?city=TP.HCM&district=Quận%20Gò%20Vấp&ward=Linh%20Trung");
++        Assert.Equal(HttpStatusCode.OK, wardResponse.StatusCode);
++        using var wardDocument = JsonDocument.Parse(await wardResponse.Content.ReadAsStringAsync());
++        Assert.Equal(new[] { 1 }, wardDocument.RootElement.EnumerateArray()
++            .Select(property => property.GetProperty("propertyId").GetInt32()));
++    }
++
++    [Fact]
++    public async Task Anonymous_area_search_supports_city_only_and_returns_empty_array_when_area_has_no_rentable_property()
++    {
++        using var factory = new PublicPropertiesApiFactory();
++        using var client = factory.CreateClient();
++        using (var scope = factory.Services.CreateScope())
++        {
++            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
++            foreach (var property in await context.Properties.Where(property => property.PropertyId != 5).ToListAsync())
++            {
++                property.City = "Thành phố Hồ Chí Minh";
++            }
++            await context.SaveChangesAsync();
++        }
++
++        using var cityResponse = await client.GetAsync(
++            "/api/public/properties/by-area?city=Ho%20Chi%20Minh%20City");
++        Assert.Equal(HttpStatusCode.OK, cityResponse.StatusCode);
++        using var cityDocument = JsonDocument.Parse(await cityResponse.Content.ReadAsStringAsync());
++        Assert.Equal(new[] { 1, 2 }, cityDocument.RootElement.EnumerateArray()
++            .Select(property => property.GetProperty("propertyId").GetInt32()));
++
++        using var emptyResponse = await client.GetAsync(
++            "/api/public/properties/by-area?city=Can%20Tho");
++        Assert.Equal(HttpStatusCode.OK, emptyResponse.StatusCode);
++        using var emptyDocument = JsonDocument.Parse(await emptyResponse.Content.ReadAsStringAsync());
++        Assert.Equal(JsonValueKind.Array, emptyDocument.RootElement.ValueKind);
++        Assert.Empty(emptyDocument.RootElement.EnumerateArray());
++    }
++
++    [Theory]
++    [InlineData("/api/public/properties/by-area")]
++    [InlineData("/api/public/properties/by-area?district=%20&city=%20")]
++    public async Task Area_search_requires_at_least_one_nonblank_location(string path)
++    {
++        using var factory = new PublicPropertiesApiFactory();
++        using var client = factory.CreateClient();
++
++        using var response = await client.GetAsync(path);
++
++        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
++        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
++        Assert.True(document.RootElement.TryGetProperty("errors", out _));
++    }
++
+     [Fact]
+     public async Task Anonymous_property_detail_returns_allowlisted_phase2a_aggregates_without_mutating_state()
+     {
+diff --git a/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingServiceTests.cs b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingServiceTests.cs
+index 97ecf49..ccef0c8 100644
+--- a/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingServiceTests.cs
++++ b/PRN232_BE/PRN232.Application.Tests/PublicPropertyListingServiceTests.cs
+@@ -51,6 +51,12 @@ public sealed class PublicPropertyListingServiceTests
+             CancellationToken cancellationToken) =>
+             throw new NotSupportedException();
+ 
++        public Task<IReadOnlyList<PublicPropertyAreaCardDto>> GetByAreaAsync(
++            PublicPropertyAreaSearchCriteria criteria,
++            DateTimeOffset asOfUtc,
++            CancellationToken cancellationToken) =>
++            throw new NotSupportedException();
++
+         public Task<PublicPropertyDetailDto?> GetDetailAsync(
+             int propertyId,
+             DateTimeOffset asOfUtc,
+diff --git a/PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs b/PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs
+index c3135c8..7eee2c1 100644
+--- a/PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs
++++ b/PRN232_BE/PRN232.Application/DTOs/PublicPropertyListingDto.cs
+@@ -15,6 +15,13 @@ public sealed class PublicPropertyQueryDto
+     public int? PageSize { get; set; }
+ }
+ 
++public sealed class PublicPropertyAreaQueryDto
++{
++    public string? City { get; set; }
++    public string? District { get; set; }
++    public string? Ward { get; set; }
++}
++
+ public sealed record PublicPropertySearchCriteria(
+     string? Keyword,
+     string? City,
+@@ -35,6 +42,24 @@ public sealed record PublicPropertyPageDto(
+     int Page,
+     int PageSize);
+ 
++public sealed record PublicPropertyAreaSearchCriteria(
++    string? City,
++    string? District,
++    string? Ward);
++
++public sealed record PublicPropertyAreaCardDto(
++    int PropertyId,
++    string PropertyName,
++    string AddressText,
++    string Ward,
++    string District,
++    string City,
++    decimal Latitude,
++    decimal Longitude,
++    string? PrimaryImageUrl,
++    int AvailableRoomCount,
++    decimal? StartingPrice);
++
+ public sealed record PublicPropertyCardDto(
+     int PropertyId,
+     string PropertyName,
+diff --git a/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs b/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
+index 8605956..32fda86 100644
+--- a/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
++++ b/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingRepository.cs
+@@ -11,6 +11,11 @@ public interface IPublicPropertyListingRepository
+         DateTimeOffset asOfUtc,
+         CancellationToken cancellationToken);
+ 
++    Task<IReadOnlyList<PublicPropertyAreaCardDto>> GetByAreaAsync(
++        PublicPropertyAreaSearchCriteria criteria,
++        DateTimeOffset asOfUtc,
++        CancellationToken cancellationToken);
++
+     Task<PublicPropertyDetailDto?> GetDetailAsync(
+         int propertyId,
+         DateTimeOffset asOfUtc,
+diff --git a/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingService.cs b/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingService.cs
+index a1249b7..9f70318 100644
+--- a/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingService.cs
++++ b/PRN232_BE/PRN232.Application/Interfaces/IPublicPropertyListingService.cs
+@@ -6,6 +6,10 @@ public interface IPublicPropertyListingService
+ {
+     Task<PublicPropertyPageDto> GetAllAsync(PublicPropertyQueryDto query, CancellationToken cancellationToken);
+ 
++    Task<IReadOnlyList<PublicPropertyAreaCardDto>> GetByAreaAsync(
++        PublicPropertyAreaQueryDto query,
++        CancellationToken cancellationToken);
++
+     Task<PublicPropertyDetailDto?> GetDetailAsync(int propertyId, CancellationToken cancellationToken);
+ 
+     Task<PublicPropertyRoomPageDto?> GetRoomsAsync(
+diff --git a/PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs b/PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs
+index 099a0f4..b37eb2c 100644
+--- a/PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs
++++ b/PRN232_BE/PRN232.Application/Services/PublicPropertyListingService.cs
+@@ -47,6 +47,25 @@ public sealed class PublicPropertyListingService : IPublicPropertyListingService
+         return await _repository.GetPageAsync(criteria, asOfUtc, cancellationToken);
+     }
+ 
++    public Task<IReadOnlyList<PublicPropertyAreaCardDto>> GetByAreaAsync(
++        PublicPropertyAreaQueryDto query,
++        CancellationToken cancellationToken)
++    {
++        var criteria = new PublicPropertyAreaSearchCriteria(
++            NormalizeAreaFilter(query.City, "city"),
++            NormalizeAreaFilter(query.District, "district"),
++            NormalizeAreaFilter(query.Ward, "ward"));
++        if (criteria.City is null && criteria.District is null && criteria.Ward is null)
++        {
++            throw new PublicPropertyQueryValidationException(
++                "district",
++                "Provide at least one nonblank city, district, or ward.");
++        }
++
++        var asOfUtc = _timeProvider.GetUtcNow().ToUniversalTime();
++        return _repository.GetByAreaAsync(criteria, asOfUtc, cancellationToken);
++    }
++
+     public async Task<PublicPropertyDetailDto?> GetDetailAsync(
+         int propertyId,
+         CancellationToken cancellationToken)
+@@ -172,6 +191,23 @@ public sealed class PublicPropertyListingService : IPublicPropertyListingService
+ 
+     private static string? NormalizeText(string? value) =>
+         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
++
++    private static string? NormalizeAreaFilter(string? value, string field)
++    {
++        if (string.IsNullOrWhiteSpace(value)) return null;
++        if (value.Trim().Length > 120)
++        {
++            throw new PublicPropertyQueryValidationException(field, "Area name must not exceed 120 characters.");
++        }
++
++        var normalized = PublicAreaNameNormalizer.Normalize(value);
++        if (normalized.Length == 0)
++        {
++            throw new PublicPropertyQueryValidationException(field, "Area name must contain a place name.");
++        }
++
++        return normalized;
++    }
+ }
+ 
+ public sealed class PublicPropertyQueryValidationException(string field, string message) : Exception(message)
+diff --git a/PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs b/PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+index 1f37c91..17201e6 100644
+--- a/PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
++++ b/PRN232_BE/PRN232.Infrastructure/Repositories/PublicPropertyListingRepository.cs
+@@ -2,6 +2,7 @@ using System.Data;
+ using Microsoft.EntityFrameworkCore;
+ using PRN232.Application.DTOs;
+ using PRN232.Application.Interfaces;
++using PRN232.Application.Services;
+ using PRN232.Domain.Entities;
+ using PRN232.Infrastructure.Data;
+ 
+@@ -134,6 +135,71 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
+         return new PublicPropertyPageDto(items, totalCount, criteria.Page, criteria.PageSize);
+     }
+ 
++    public async Task<IReadOnlyList<PublicPropertyAreaCardDto>> GetByAreaAsync(
++        PublicPropertyAreaSearchCriteria criteria,
++        DateTimeOffset asOfUtc,
++        CancellationToken cancellationToken)
++    {
++        await using var transaction = _context.Database.IsRelational()
++            ? await _context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken)
++            : null;
++
++        var rentableRooms = RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc);
++        var propertyRows = await _context.Properties
++            .AsNoTracking()
++            .Where(property => rentableRooms.Any(room => room.PropertyId == property.PropertyId))
++            .OrderBy(property => property.PropertyId)
++            .Select(property => new
++            {
++                property.PropertyId,
++                property.PropertyName,
++                property.AddressText,
++                property.Ward,
++                property.District,
++                property.City,
++                property.Latitude,
++                property.Longitude,
++                property.PrimaryImageUrl,
++                AvailableRoomCount = rentableRooms
++                    .Where(room => room.PropertyId == property.PropertyId)
++                    .Select(room => room.RoomId)
++                    .Distinct()
++                    .Count(),
++                StartingPrice = rentableRooms
++                    .Where(room => room.PropertyId == property.PropertyId)
++                    .Select(room => (decimal?)room.RoomType!.Price)
++                    .Min()
++            })
++            .ToListAsync(cancellationToken);
++
++        // Normalize the already allowlisted rentable-property projection without relying on a database-specific unaccent extension.
++        var items = propertyRows
++            .Where(property =>
++                (criteria.City is null || PublicAreaNameNormalizer.Normalize(property.City) == criteria.City) &&
++                (criteria.District is null || PublicAreaNameNormalizer.Normalize(property.District) == criteria.District) &&
++                (criteria.Ward is null || PublicAreaNameNormalizer.Normalize(property.Ward) == criteria.Ward))
++            .Select(property => new PublicPropertyAreaCardDto(
++                property.PropertyId,
++                property.PropertyName,
++                property.AddressText,
++                property.Ward,
++                property.District,
++                property.City,
++                property.Latitude,
++                property.Longitude,
++                property.PrimaryImageUrl,
++                property.AvailableRoomCount,
++                property.StartingPrice))
++            .ToArray();
++
++        if (transaction is not null)
++        {
++            await transaction.CommitAsync(cancellationToken);
++        }
++
++        return items;
++    }
++
+     public Task<PublicPropertyDetailDto?> GetDetailAsync(
+         int propertyId,
+         DateTimeOffset asOfUtc,
+diff --git a/PRN232_FE/package.json b/PRN232_FE/package.json
+index 8059709..57197cd 100644
+--- a/PRN232_FE/package.json
++++ b/PRN232_FE/package.json
+@@ -13,13 +13,16 @@
+     "typecheck": "tsc --noEmit"
+   },
+   "dependencies": {
++    "leaflet": "^1.9.4",
+     "react": "^19.0.0",
+     "react-dom": "^19.0.0",
++    "react-leaflet": "^5.0.0",
+     "react-router": "^8.3.1"
+   },
+   "devDependencies": {
+     "@tailwindcss/vite": "^4.0.0",
+     "@testing-library/react": "^16.3.3",
++    "@types/leaflet": "^1.9.22",
+     "@types/node": "^22.0.0",
+     "@types/react": "^19.0.0",
+     "@types/react-dom": "^19.0.0",
+diff --git a/PRN232_FE/pnpm-lock.yaml b/PRN232_FE/pnpm-lock.yaml
+index d4c88af..786b301 100644
+--- a/PRN232_FE/pnpm-lock.yaml
++++ b/PRN232_FE/pnpm-lock.yaml
+@@ -8,12 +8,18 @@ importers:
+ 
+   .:
+     dependencies:
++      leaflet:
++        specifier: ^1.9.4
++        version: 1.9.4
+       react:
+         specifier: ^19.0.0
+         version: 19.2.4
+       react-dom:
+         specifier: ^19.0.0
+         version: 19.2.4(react@19.2.4)
++      react-leaflet:
++        specifier: ^5.0.0
++        version: 5.0.0(leaflet@1.9.4)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+       react-router:
+         specifier: ^8.3.1
+         version: 8.3.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+@@ -24,6 +30,9 @@ importers:
+       '@testing-library/react':
+         specifier: ^16.3.3
+         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
++      '@types/leaflet':
++        specifier: ^1.9.22
++        version: 1.9.22
+       '@types/node':
+         specifier: ^22.0.0
+         version: 22.19.17
+@@ -224,6 +233,13 @@ packages:
+     cpu: [x64]
+     os: [win32]
+ 
++  '@react-leaflet/core@3.0.0':
++    resolution: {integrity: sha512-3EWmekh4Nz+pGcr+xjf0KNyYfC3U2JjnkWsh0zcqaexYqmmB5ZhH37kz41JXGmKzpaMZCnPofBBm64i+YrEvGQ==}
++    peerDependencies:
++      leaflet: ^1.9.0
++      react: ^19.0.0
++      react-dom: ^19.0.0
++
+   '@rolldown/binding-android-arm64@1.0.0-rc.12':
+     resolution: {integrity: sha512-pv1y2Fv0JybcykuiiD3qBOBdz6RteYojRFY1d+b95WVuzx211CRh+ytI/+9iVyWQ6koTh5dawe4S/yRfOFjgaA==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+@@ -453,6 +469,12 @@ packages:
+   '@types/estree@1.0.9':
+     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
+ 
++  '@types/geojson@7946.0.16':
++    resolution: {integrity: sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==}
++
++  '@types/leaflet@1.9.22':
++    resolution: {integrity: sha512-h3lhECYEKDasG7LFHu+GiHqAvsgLuQvlJvVZzJDGONo3sEL+wUOqSFLnwkZlK0qVxnxbuGFW8iBlJNYs5wgndA==}
++
+   '@types/node@22.19.17':
+     resolution: {integrity: sha512-wGdMcf+vPYM6jikpS/qhg6WiqSV/OhG+jeeHT/KlVqxYfD40iYJf9/AE1uQxVWFvU7MipKRkRv8NSHiCGgPr8Q==}
+ 
+@@ -622,6 +644,9 @@ packages:
+       canvas:
+         optional: true
+ 
++  leaflet@1.9.4:
++    resolution: {integrity: sha512-nxS1ynzJOmOlHp+iL3FyWqK89GtNL8U8rvlMOsQdTTssxZwCXh8N2NB3GDQOL+YR3XnWyZAxwQixURb+FA74PA==}
++
+   lightningcss-android-arm64@1.32.0:
+     resolution: {integrity: sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==}
+     engines: {node: '>= 12.0.0'}
+@@ -764,6 +789,13 @@ packages:
+   react-is@17.0.2:
+     resolution: {integrity: sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==}
+ 
++  react-leaflet@5.0.0:
++    resolution: {integrity: sha512-CWbTpr5vcHw5bt9i4zSlPEVQdTVcML390TjeDG0cK59z1ylexpqC6M1PJFjV8jD7CF+ACBFsLIDs6DRMoLEofw==}
++    peerDependencies:
++      leaflet: ^1.9.0
++      react: ^19.0.0
++      react-dom: ^19.0.0
++
+   react-router@8.3.1:
+     resolution: {integrity: sha512-TEOpiO2g0TJHEOJeRVv4amUFun9v1npCKszvcquNvzETUtJ8udV86ah5eFoHT7g26bsBvT6EiIhqulR8eDF++A==}
+     engines: {node: '>=22.22.0'}
+@@ -1110,6 +1142,12 @@ snapshots:
+   '@oxfmt/win32-x64@0.2.0':
+     optional: true
+ 
++  '@react-leaflet/core@3.0.0(leaflet@1.9.4)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
++    dependencies:
++      leaflet: 1.9.4
++      react: 19.2.4
++      react-dom: 19.2.4(react@19.2.4)
++
+   '@rolldown/binding-android-arm64@1.0.0-rc.12':
+     optional: true
+ 
+@@ -1266,6 +1304,12 @@ snapshots:
+ 
+   '@types/estree@1.0.9': {}
+ 
++  '@types/geojson@7946.0.16': {}
++
++  '@types/leaflet@1.9.22':
++    dependencies:
++      '@types/geojson': 7946.0.16
++
+   '@types/node@22.19.17':
+     dependencies:
+       undici-types: 6.21.0
+@@ -1425,6 +1469,8 @@ snapshots:
+     transitivePeerDependencies:
+       - '@noble/hashes'
+ 
++  leaflet@1.9.4: {}
++
+   lightningcss-android-arm64@1.32.0:
+     optional: true
+ 
+@@ -1540,6 +1586,13 @@ snapshots:
+ 
+   react-is@17.0.2: {}
+ 
++  react-leaflet@5.0.0(leaflet@1.9.4)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
++    dependencies:
++      '@react-leaflet/core': 3.0.0(leaflet@1.9.4)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
++      leaflet: 1.9.4
++      react: 19.2.4
++      react-dom: 19.2.4(react@19.2.4)
++
+   react-router@8.3.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+     dependencies:
+       cookie-es: 3.1.1
+diff --git a/PRN232_FE/src/api/publicBrowsingApi.ts b/PRN232_FE/src/api/publicBrowsingApi.ts
+index 2ffd8fe..8be0690 100644
+--- a/PRN232_FE/src/api/publicBrowsingApi.ts
++++ b/PRN232_FE/src/api/publicBrowsingApi.ts
+@@ -23,6 +23,26 @@ export interface PublicPropertyCard {
+   startingPrice: number | null
+ }
+ 
++export interface PublicPropertyAreaCard {
++  propertyId: number
++  propertyName: string
++  addressText: string
++  ward: string
++  district: string
++  city: string
++  latitude: number
++  longitude: number
++  primaryImageUrl: string | null
++  availableRoomCount: number
++  startingPrice: number | null
++}
++
++export interface PublicPropertyAreaQuery {
++  city?: string
++  district?: string
++  ward?: string
++}
++
+ export interface PublicPropertyDetail {
+   propertyId: number
+   propertyName: string
+@@ -533,6 +553,27 @@ export function createPublicApiClient(
+     ): Promise<PublicPage<PublicPropertyCard>> {
+       return get("/public/properties", buildPropertyListParams(query), signal)
+     },
++    async listPropertiesByArea(
++      query: PublicPropertyAreaQuery,
++      signal?: AbortSignal,
++    ): Promise<PublicPropertyAreaCard[]> {
++      const params = new URLSearchParams()
++      const city = optionalText(query.city)
++      const district = optionalText(query.district)
++      const ward = optionalText(query.ward)
++
++      if (city) params.set("city", city)
++      if (district) params.set("district", district)
++      if (ward) params.set("ward", ward)
++      if (!city && !district && !ward) {
++        throw validationError(
++          "district",
++          "Hãy cung cấp ít nhất thành phố, quận/huyện hoặc phường/xã.",
++        )
++      }
++
++      return get("/public/properties/by-area", params, signal)
++    },
+     async getProperty(
+       propertyId: number,
+       signal?: AbortSignal,
+diff --git a/PRN232_FE/src/components/home/MapSection.tsx b/PRN232_FE/src/components/home/MapSection.tsx
+index 7f526d0..8ecf34e 100644
+--- a/PRN232_FE/src/components/home/MapSection.tsx
++++ b/PRN232_FE/src/components/home/MapSection.tsx
+@@ -1,21 +1,334 @@
++import { lazy, Suspense, useEffect, useRef, useState } from "react"
++import { Link } from "react-router"
++
++import { publicApi } from "@/api/publicBrowsingApi"
++import type { PublicPropertyAreaCard } from "@/api/publicBrowsingApi"
++import { propertyDetailPath } from "@/constants/routes"
++import {
++  AreaDiscoveryError,
++  buildGoogleMapsDirectionsUrl,
++  discoverCurrentArea,
++  type AreaDiscoveryResult,
++  type AreaDiscoveryStep,
++} from "@/utils/areaDiscovery"
++import { formatVnd } from "@/utils/publicFormatting"
++
++const AreaPropertyMap = lazy(() => import("@/components/home/AreaPropertyMap"))
++
++type MapSectionState =
++  | { status: "idle" }
++  | { status: "loading"; step: AreaDiscoveryStep }
++  | { status: "error"; error: AreaDiscoveryError }
++  | { status: "success"; result: AreaDiscoveryResult }
++  | { status: "empty"; result: AreaDiscoveryResult }
++
++function areaName(result: AreaDiscoveryResult): string {
++  const { area, matchedLevel } = result
++  if (matchedLevel === "district" && area.district) return area.district
++  if (matchedLevel === "ward" && area.ward) return area.ward
++  return area.city ?? area.district ?? area.ward ?? "khu vực hiện tại"
++}
++
++function safePropertyImageUrl(value: string | null): string | null {
++  const imageUrl = value?.trim()
++  if (!imageUrl) return null
++  if (imageUrl.startsWith("/")) return imageUrl
++  try {
++    const parsed = new URL(imageUrl)
++    return parsed.protocol === "http:" || parsed.protocol === "https:"
++      ? parsed.toString()
++      : null
++  } catch {
++    return null
++  }
++}
++
++function PropertyAreaCard({
++  property,
++  selected,
++  onSelect,
++}: {
++  property: PublicPropertyAreaCard
++  selected: boolean
++  onSelect: (propertyId: number) => void
++}) {
++  const imageUrl = safePropertyImageUrl(property.primaryImageUrl)
++  const directionsUrl = buildGoogleMapsDirectionsUrl(property)
++  const hasCoordinates =
++    Number.isFinite(property.latitude) &&
++    Number.isFinite(property.longitude) &&
++    property.latitude >= -90 &&
++    property.latitude <= 90 &&
++    property.longitude >= -180 &&
++    property.longitude <= 180 &&
++    (property.latitude !== 0 || property.longitude !== 0)
++
++  return (
++    <article
++      data-testid={`area-property-${property.propertyId}`}
++      className={`overflow-hidden rounded-xl border bg-white transition ${
++        selected
++          ? "border-[#087775] shadow-[0_8px_24px_rgba(8,119,117,.12)]"
++          : "border-slate-200 hover:border-slate-300"
++      }`}
++    >
++      <button
++        type="button"
++        aria-label={`Chọn ${property.propertyName}`}
++        aria-current={selected ? "true" : undefined}
++        onClick={() => onSelect(property.propertyId)}
++        className="block w-full text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#087775]"
++      >
++        {imageUrl ? (
++          <img
++            src={imageUrl}
++            alt={`Ảnh ${property.propertyName}`}
++            loading="lazy"
++            className="h-36 w-full bg-slate-100 object-cover"
++          />
++        ) : (
++          <div className="grid h-36 w-full place-items-center bg-[#eef6f5] text-[12px] font-medium text-slate-500">
++            Chưa có ảnh khu trọ
++          </div>
++        )}
++        <div className="space-y-2 p-4">
++          <h3 className="line-clamp-1 font-bold text-slate-900">
++            {property.propertyName}
++          </h3>
++          <p className="line-clamp-2 min-h-10 text-xs leading-5 text-slate-600">
++            {[property.addressText, property.ward, property.district, property.city]
++              .filter(Boolean)
++              .join(", ")}
++          </p>
++          <div className="flex items-end justify-between gap-3">
++            <span className="text-xs font-medium text-slate-500">
++              {property.availableRoomCount} phòng đang cho thuê
++            </span>
++            <span className="shrink-0 text-right text-sm font-extrabold text-[#087775]">
++              {formatVnd(property.startingPrice)}
++              <span className="ml-1 text-[10px] font-medium text-slate-500">giá từ</span>
++            </span>
++          </div>
++        </div>
++      </button>
++      <div className="flex items-center gap-2 border-t border-slate-100 px-4 py-3">
++        <Link
++          to={propertyDetailPath(property.propertyId)}
++          className="rounded-lg bg-[#087775] px-3 py-2 text-xs font-bold text-white hover:bg-[#066a68]"
++        >
++          Xem chi tiết
++        </Link>
++        {directionsUrl && (
++          <a
++            href={directionsUrl}
++            target="_blank"
++            rel="noopener noreferrer"
++            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
++          >
++            Chỉ đường
++          </a>
++        )}
++      </div>
++      {selected && !hasCoordinates && (
++        <p role="status" className="border-t border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800">
++          Khu trọ chưa có tọa độ để căn bản đồ.
++        </p>
++      )}
++    </article>
++  )
++}
++
+ export default function MapSection() {
++  const [state, setState] = useState<MapSectionState>({ status: "idle" })
++  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null)
++  const requestId = useRef(0)
++  const activeRequest = useRef<AbortController | null>(null)
++
++  useEffect(
++    () => () => {
++      requestId.current += 1
++      activeRequest.current?.abort()
++    },
++    [],
++  )
++
++  async function discoverArea() {
++    activeRequest.current?.abort()
++    const controller = new AbortController()
++    activeRequest.current = controller
++    const currentRequest = ++requestId.current
++    setSelectedPropertyId(null)
++    setState({ status: "loading", step: "location" })
++
++    try {
++      const result = await discoverCurrentArea({
++        geolocation: navigator.geolocation ?? null,
++        fetchImplementation: fetch,
++        listPropertiesByArea: (query, signal) =>
++          publicApi.listPropertiesByArea(query, signal),
++        signal: controller.signal,
++        onProgress: (step) => {
++          if (requestId.current === currentRequest) {
++            setState({ status: "loading", step })
++          }
++        },
++      })
++
++      if (requestId.current !== currentRequest) return
++      setState({
++        status: result.properties.length > 0 ? "success" : "empty",
++        result,
++      })
++    } catch (error) {
++      if (controller.signal.aborted || requestId.current !== currentRequest) return
++      setState({
++        status: "error",
++        error:
++          error instanceof AreaDiscoveryError
++            ? error
++            : new AreaDiscoveryError(
++                "area-api",
++                "Không tải được danh sách khu trọ. Vui lòng thử lại.",
++              ),
++      })
++    } finally {
++      if (requestId.current === currentRequest) activeRequest.current = null
++    }
++  }
++
++  const isLoading = state.status === "loading"
++  const result = state.status === "success" || state.status === "empty"
++    ? state.result
++    : null
++  const mapProperties = result?.properties.filter(
++    (property) =>
++      Number.isFinite(property.latitude) &&
++      Number.isFinite(property.longitude) &&
++      property.latitude >= -90 &&
++      property.latitude <= 90 &&
++      property.longitude >= -180 &&
++      property.longitude <= 180 &&
++      (property.latitude !== 0 || property.longitude !== 0),
++  ) ?? []
++
+   return (
+     <section id="khu-vuc" className="scroll-mt-24">
+       <div className="mx-auto max-w-[1180px] px-6 pb-20 pt-4 lg:pt-8">
+-        <div className="mb-6">
+-          <p className="text-[11px] font-bold uppercase tracking-[.16em] text-[#087775]">
+-            Khám phá khu vực
+-          </p>
+-          <h2 className="mt-1 font-display text-[27px] font-bold tracking-[-.04em] text-slate-900">
+-            Khu Vực
+-          </h2>
+-          <p className="mt-1 text-[13px] text-slate-500">
+-            Bản đồ chưa khả dụng cho dữ liệu công khai hiện tại.
+-          </p>
+-        </div>
+-        <div className="grid min-h-32 place-items-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 text-center text-[13px] text-slate-500">
+-          Vị trí chính xác và bản đồ không được cung cấp bởi API public.
++        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
++          <div>
++            <p className="text-[11px] font-bold uppercase tracking-[.16em] text-[#087775]">
++              Khám phá khu vực
++            </p>
++            <h2 className="mt-1 font-display text-[27px] font-bold tracking-[-.04em] text-slate-900">
++              Khu trọ quanh bạn
++            </h2>
++            <p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-500">
++              Dùng vị trí hiện tại để tìm các khu trọ trong cùng quận/huyện. Kết quả không lọc theo bán kính.
++            </p>
++          </div>
++          <button
++            type="button"
++            onClick={discoverArea}
++            disabled={isLoading}
++            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#087775] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#066a68] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#087775] disabled:cursor-wait disabled:opacity-60"
++          >
++            {isLoading ? "Đang xác định khu vực..." : "Tìm khu trọ quanh tôi"}
++          </button>
+         </div>
++
++        {isLoading && (
++          <p role="status" className="rounded-xl bg-white px-5 py-7 text-center text-sm text-slate-600">
++            {state.step === "location" && "Đang xin quyền và lấy vị trí hiện tại..."}
++            {state.step === "reverse-geocode" && "Đang xác định phường, quận và thành phố..."}
++            {state.step === "properties" && "Đang tải khu trọ trong khu vực..."}
++          </p>
++        )}
++
++        {state.status === "error" && (
++          <div role="alert" className="rounded-xl border border-rose-100 bg-white px-5 py-5 text-sm text-rose-700">
++            <p>{state.error.message}</p>
++            <button
++              type="button"
++              onClick={discoverArea}
++              className="mt-3 rounded-lg bg-[#087775] px-4 py-2 text-xs font-bold text-white hover:bg-[#066a68]"
++            >
++              Thử lại
++            </button>
++          </div>
++        )}
++
++        {state.status === "idle" && (
++          <div className="rounded-2xl border border-slate-200 bg-white px-5 py-7 text-center">
++            <p className="text-sm text-slate-600">
++              Cho phép trình duyệt dùng vị trí để tìm khu trọ trong khu vực của bạn.
++            </p>
++            <p className="mt-2 text-xs leading-5 text-slate-500">
++              Tọa độ được gửi đến dịch vụ bản đồ để xác định khu vực; ứng dụng không lưu tọa độ này.
++            </p>
++          </div>
++        )}
++
++        {result && (
++          <div className="space-y-5">
++            <div className="flex flex-wrap items-center justify-between gap-3">
++              <div>
++                <h3 className="font-bold text-slate-900">Khu trọ tại {areaName(result)}</h3>
++                <p className="mt-1 text-xs text-slate-500">
++                  {result.properties.length} khu trọ có phòng đang cho thuê
++                </p>
++              </div>
++              {result.usedCityFallback && result.area.city && (
++                <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
++                  Không có kết quả trong {result.area.district ?? result.area.ward}; đang hiển thị toàn {result.area.city}.
++                </p>
++              )}
++            </div>
++
++            {state.status === "empty" ? (
++              <p className="rounded-xl bg-white px-5 py-8 text-center text-sm text-slate-600">
++                Chưa có khu trọ đang cho thuê tại {areaName(result)}.
++              </p>
++            ) : (
++              <>
++                <Suspense
++                  fallback={
++                    <p role="status" className="rounded-xl bg-white px-5 py-7 text-center text-sm text-slate-600">
++                      Đang tải bản đồ...
++                    </p>
++                  }
++                >
++                  <AreaPropertyMap
++                    properties={result.properties}
++                    center={result.coordinates}
++                    selectedPropertyId={selectedPropertyId}
++                    onSelect={setSelectedPropertyId}
++                  />
++                </Suspense>
++                {mapProperties.length < result.properties.length && (
++                  <p role="status" className="-mt-3 text-xs text-amber-700">
++                    Một số khu trọ chưa có tọa độ hợp lệ để đặt marker; thông tin vẫn có trong danh sách.
++                  </p>
++                )}
++                <section aria-label={`Danh sách khu trọ tại ${areaName(result)}`}>
++                  <div className="mb-3 flex items-baseline justify-between gap-3">
++                    <h3 className="text-base font-bold text-slate-900">Danh sách khu trọ</h3>
++                    <span className="text-xs text-slate-500">{result.properties.length} kết quả</span>
++                  </div>
++                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
++                    {result.properties.map((property) => (
++                      <PropertyAreaCard
++                        key={property.propertyId}
++                        property={property}
++                        selected={property.propertyId === selectedPropertyId}
++                        onSelect={setSelectedPropertyId}
++                      />
++                    ))}
++                  </div>
++                </section>
++              </>
++            )}
++          </div>
++        )}
+       </div>
+     </section>
+   )
+diff --git a/PRN232_FE/src/index.css b/PRN232_FE/src/index.css
+index 4b03de3..0f43b68 100644
+--- a/PRN232_FE/src/index.css
++++ b/PRN232_FE/src/index.css
+@@ -13,4 +13,14 @@ button, a { -webkit-tap-highlight-color: transparent; }
+ .gallery-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 4px; }
+ .gallery-main { grid-row: span 2; }
+ .room-amenity { border-radius: 999px; background: #f3f7f7; padding: 5px 9px; font-size: 11px; font-weight: 600; color: #64748b; }
++.leaflet-container { font-family: inherit; }
++.area-property-marker { border: 0; background: transparent; }
++.area-property-marker__card { display: block; width: 142px; overflow: hidden; border: 2px solid #fff; border-radius: 12px; background: #fff; box-shadow: 0 3px 12px rgba(15, 45, 48, .24); transition: transform .15s ease, border-color .15s ease; }
++.area-property-marker--selected .area-property-marker__card { transform: translateY(-2px); border-color: #087775; }
++.area-property-marker__photo { display: grid; height: 48px; place-items: center; overflow: hidden; background: #e8f5f2; }
++.area-property-marker__image { display: block; width: 100%; height: 48px; object-fit: cover; }
++.area-property-marker__placeholder { display: grid; width: 100%; height: 48px; place-items: center; color: #087775; }
++.area-property-marker__placeholder svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
++.area-property-marker__price { display: block; overflow: hidden; padding: 4px 5px 5px; color: #087775; font-size: 11px; font-weight: 800; line-height: 16px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
++.area-property-popup .leaflet-popup-content { margin: 12px; }
+ @media (max-width: 900px) { .grid-cols-\[242px_1fr_218px\] { grid-template-columns: 190px 1fr; } .grid-cols-\[242px_1fr_218px\] > :last-child { grid-column: span 2; border-left: 0; border-top: 1px solid #f1f5f9; } }
+diff --git a/PRN232_FE/src/vite-env.d.ts b/PRN232_FE/src/vite-env.d.ts
+index 13d757e..ee160d0 100644
+--- a/PRN232_FE/src/vite-env.d.ts
++++ b/PRN232_FE/src/vite-env.d.ts
+@@ -1,5 +1,8 @@
+ interface ImportMetaEnv {
+   readonly VITE_API_BASE_URL?: string
++  readonly VITE_REVERSE_GEOCODING_URL?: string
++  readonly VITE_PUBLIC_MAP_TILE_URL?: string
++  readonly VITE_PUBLIC_MAP_ATTRIBUTION?: string
+ }
+ 
+ interface ImportMeta {
+diff --git a/PRN232_FE/tests/publicBrowsingApi.test.ts b/PRN232_FE/tests/publicBrowsingApi.test.ts
+index 979a367..64808e2 100644
+--- a/PRN232_FE/tests/publicBrowsingApi.test.ts
++++ b/PRN232_FE/tests/publicBrowsingApi.test.ts
+@@ -6,6 +6,7 @@ import {
+   PublicApiError,
+   type PublicPage,
+   type PublicPropertyCard,
++  type PublicPropertyAreaCard,
+   type PublicRoomDetail,
+ } from "@/api/publicBrowsingApi"
+ import {
+@@ -108,6 +109,52 @@ describe("public browsing API client", () => {
+     expect(new Headers(init?.headers).has("Authorization")).toBe(false)
+   })
+ 
++  it("loads every rentable property for the requested area without radius parameters", async () => {
++    const properties: PublicPropertyAreaCard[] = [
++      {
++        propertyId: 42,
++        propertyName: "Residence từ API",
++        addressText: "12 Đường Mẫu",
++        ward: "Phường Sáu",
++        district: "Quận Gò Vấp",
++        city: "TP. Hồ Chí Minh",
++        latitude: 10.8231,
++        longitude: 106.7624,
++        primaryImageUrl: "https://images.example.test/property.jpg",
++        availableRoomCount: 3,
++        startingPrice: 2850000,
++      },
++    ]
++    const fetchMock = createFetchMock(properties)
++    const client = createPublicApiClient("/api", fetchMock)
++
++    await expect(
++      client.listPropertiesByArea({
++        city: " TP. Hồ Chí Minh ",
++        district: " Quận Gò Vấp ",
++      }),
++    ).resolves.toEqual(properties)
++
++    const [input, init] = fetchMock.mock.calls[0]
++    const url = new URL(String(input), "http://localhost")
++    expect(url.pathname).toBe("/api/public/properties/by-area")
++    expect(url.searchParams.get("city")).toBe("TP. Hồ Chí Minh")
++    expect(url.searchParams.get("district")).toBe("Quận Gò Vấp")
++    expect(url.searchParams.has("radius")).toBe(false)
++    expect(url.searchParams.has("ward")).toBe(false)
++    expect(new Headers(init?.headers).has("Authorization")).toBe(false)
++    expect(init?.credentials).toBe("omit")
++  })
++
++  it("rejects an area request without a nonblank location before making a request", async () => {
++    const fetchMock = createFetchMock([])
++    const client = createPublicApiClient("/api", fetchMock)
++
++    await expect(client.listPropertiesByArea({ city: "  ", district: "" }))
++      .rejects.toMatchObject({ kind: "validation" })
++    expect(fetchMock).not.toHaveBeenCalled()
++  })
++
+   it("does not duplicate an existing /api prefix and forwards abort signals", async () => {
+     const fetchMock = createFetchMock({
+       items: [],
+diff --git a/PRN232_FE/tests/publicHome.test.tsx b/PRN232_FE/tests/publicHome.test.tsx
+index 2d19acc..4ce5977 100644
+--- a/PRN232_FE/tests/publicHome.test.tsx
++++ b/PRN232_FE/tests/publicHome.test.tsx
+@@ -89,7 +89,10 @@ describe("public Home browsing", () => {
+     ).toBe("/property/42")
+     expect(screen.queryByText(/1,2 km|Cách bạn|\/ tháng/)).toBeNull()
+     expect(screen.queryByText("Sunrise Residence")).toBeNull()
+-    expect(screen.getByText(/Bản đồ chưa khả dụng/)).toBeTruthy()
++    expect(
++      screen.getByRole("button", { name: "Tìm khu trọ quanh tôi" }),
++    ).toBeTruthy()
++    expect(screen.queryByText(/Bản đồ chưa khả dụng/)).toBeNull()
+ 
+     const url = requestUrl(fetchMock)
+     expect(url.pathname).toBe("/api/public/properties")
+diff --git a/PRN232_BE/PRN232.Application/Services/PublicAreaNameNormalizer.cs b/PRN232_BE/PRN232.Application/Services/PublicAreaNameNormalizer.cs
+new file mode 100644
+index 0000000..3c8430c
+--- /dev/null
++++ b/PRN232_BE/PRN232.Application/Services/PublicAreaNameNormalizer.cs
+@@ -0,0 +1,90 @@
++using System.Globalization;
++using System.Text;
++
++namespace PRN232.Application.Services;
++
++public static class PublicAreaNameNormalizer
++{
++    private static readonly string[][] Prefixes =
++    [
++        ["thanh", "pho"],
++        ["thi", "xa"],
++        ["province", "of"],
++        ["city", "of"],
++        ["quan"],
++        ["district"],
++        ["huyen"],
++        ["phuong"],
++        ["ward"],
++        ["commune"],
++        ["xa"],
++        ["tinh"],
++        ["province"],
++        ["city"],
++        ["tp"],
++        ["q"],
++        ["p"]
++    ];
++
++    private static readonly HashSet<string> Suffixes = new(StringComparer.Ordinal)
++    {
++        "city", "province", "district", "ward"
++    };
++
++    public static string Normalize(string? value)
++    {
++        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
++
++        var decomposed = value.Trim().Normalize(NormalizationForm.FormD).ToLowerInvariant();
++        var characters = new StringBuilder(decomposed.Length);
++        foreach (var character in decomposed)
++        {
++            if (CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.NonSpacingMark)
++            {
++                continue;
++            }
++
++            var normalizedCharacter = character == 'đ' ? 'd' : character;
++            characters.Append(char.IsLetterOrDigit(normalizedCharacter) ? normalizedCharacter : ' ');
++        }
++
++        var tokens = characters.ToString()
++            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
++            .ToList();
++        RemovePrefixes(tokens);
++        while (tokens.Count > 1 && Suffixes.Contains(tokens[^1]))
++        {
++            tokens.RemoveAt(tokens.Count - 1);
++        }
++
++        var normalized = string.Join(' ', tokens);
++        return normalized switch
++        {
++            "hcm" or "tphcm" or "saigon" or "sai gon" => "ho chi minh",
++            "hanoi" => "ha noi",
++            "danang" => "da nang",
++            _ => normalized
++        };
++    }
++
++    private static void RemovePrefixes(List<string> tokens)
++    {
++        var removedPrefix = true;
++        while (removedPrefix && tokens.Count > 1)
++        {
++            removedPrefix = false;
++            foreach (var prefix in Prefixes)
++            {
++                if (tokens.Count <= prefix.Length ||
++                    !tokens.Take(prefix.Length).SequenceEqual(prefix, StringComparer.Ordinal))
++                {
++                    continue;
++                }
++
++                tokens.RemoveRange(0, prefix.Length);
++                removedPrefix = true;
++                break;
++            }
++        }
++    }
++}
+diff --git a/PRN232_FE/src/components/home/AreaPropertyMap.tsx b/PRN232_FE/src/components/home/AreaPropertyMap.tsx
+new file mode 100644
+index 0000000..445949c
+--- /dev/null
++++ b/PRN232_FE/src/components/home/AreaPropertyMap.tsx
+@@ -0,0 +1,244 @@
++import { useEffect, useRef, useState } from "react"
++
++import L, { type Marker as LeafletMarker } from "leaflet"
++import {
++  CircleMarker,
++  MapContainer,
++  Marker,
++  Popup,
++  TileLayer,
++  useMap,
++} from "react-leaflet"
++import { Link } from "react-router"
++import "leaflet/dist/leaflet.css"
++
++import type { PublicPropertyAreaCard } from "@/api/publicBrowsingApi"
++import { propertyDetailPath } from "@/constants/routes"
++import { formatVnd } from "@/utils/publicFormatting"
++import {
++  buildGoogleMapsDirectionsUrl,
++  type AreaCoordinates,
++} from "@/utils/areaDiscovery"
++
++interface AreaPropertyMapProps {
++  properties: PublicPropertyAreaCard[]
++  center: AreaCoordinates
++  selectedPropertyId: number | null
++  onSelect: (propertyId: number) => void
++}
++
++function hasMapCoordinates(property: PublicPropertyAreaCard): boolean {
++  return (
++    Number.isFinite(property.latitude) &&
++    Number.isFinite(property.longitude) &&
++    property.latitude >= -90 &&
++    property.latitude <= 90 &&
++    property.longitude >= -180 &&
++    property.longitude <= 180 &&
++    (property.latitude !== 0 || property.longitude !== 0)
++  )
++}
++
++function escapeHtml(value: string): string {
++  return value.replace(/[&<>"']/g, (character) => {
++    const escaped: Record<string, string> = {
++      "&": "&amp;",
++      "<": "&lt;",
++      ">": "&gt;",
++      '"': "&quot;",
++      "'": "&#39;",
++    }
++    return escaped[character] ?? character
++  })
++}
++
++function safeImageUrl(value: string | null): string | null {
++  const imageUrl = value?.trim()
++  if (!imageUrl) return null
++  if (imageUrl.startsWith("/")) return imageUrl
++
++  try {
++    const parsed = new URL(imageUrl)
++    return parsed.protocol === "https:" || parsed.protocol === "http:"
++      ? parsed.toString()
++      : null
++  } catch {
++    return null
++  }
++}
++
++function markerIcon(
++  property: PublicPropertyAreaCard,
++  selected: boolean,
++): L.DivIcon {
++  const imageUrl = safeImageUrl(property.primaryImageUrl)
++  const image = imageUrl
++    ? `<img class="area-property-marker__image" src="${escapeHtml(imageUrl)}" alt="" loading="lazy" />`
++    : `<span class="area-property-marker__placeholder" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5M5.5 9.5v11h13v-11M9 20.5v-7h6v7" /></svg></span>`
++
++  return L.divIcon({
++    className: `area-property-marker${selected ? " area-property-marker--selected" : ""}`,
++    html: `<span class="area-property-marker__card"><span class="area-property-marker__photo">${image}</span><span class="area-property-marker__price">${escapeHtml(formatVnd(property.startingPrice))}</span></span>`,
++    iconSize: [142, 78],
++    iconAnchor: [71, 78],
++    popupAnchor: [0, -74],
++  })
++}
++
++function MapViewport({
++  properties,
++  center,
++  selectedPropertyId,
++  markerRefs,
++}: AreaPropertyMapProps & {
++  markerRefs: React.MutableRefObject<Map<number, LeafletMarker>>
++}) {
++  const map = useMap()
++
++  useEffect(() => {
++    if (selectedPropertyId !== null) return
++
++    const points: L.LatLngTuple[] = [
++      [center.latitude, center.longitude],
++      ...properties
++        .filter(hasMapCoordinates)
++        .map((property): L.LatLngTuple => [property.latitude, property.longitude]),
++    ]
++    map.fitBounds(points, { padding: [44, 44], maxZoom: 14 })
++  }, [center, map, properties, selectedPropertyId])
++
++  useEffect(() => {
++    if (selectedPropertyId === null) return
++    const property = properties.find((item) => item.propertyId === selectedPropertyId)
++    if (!property || !hasMapCoordinates(property)) return
++
++    map.flyTo(
++      [property.latitude, property.longitude],
++      Math.max(map.getZoom(), 14),
++      { duration: 0.45 },
++    )
++    markerRefs.current.get(property.propertyId)?.openPopup()
++  }, [map, markerRefs, properties, selectedPropertyId])
++
++  return null
++}
++
++export default function AreaPropertyMap({
++  properties,
++  center,
++  selectedPropertyId,
++  onSelect,
++}: AreaPropertyMapProps) {
++  const markerRefs = useRef(new Map<number, LeafletMarker>())
++  const [tileError, setTileError] = useState(false)
++  const tileUrl =
++    import.meta.env.VITE_PUBLIC_MAP_TILE_URL ||
++    "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
++  const attribution =
++    import.meta.env.VITE_PUBLIC_MAP_ATTRIBUTION ||
++    '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>'
++
++  return (
++    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
++      <MapContainer
++        center={[center.latitude, center.longitude]}
++        zoom={13}
++        minZoom={5}
++        maxZoom={18}
++        scrollWheelZoom={false}
++        className="h-[390px] w-full sm:h-[470px]"
++      >
++        <MapViewport
++          properties={properties}
++          center={center}
++          selectedPropertyId={selectedPropertyId}
++          onSelect={onSelect}
++          markerRefs={markerRefs}
++        />
++        <TileLayer
++          url={tileUrl}
++          attribution={attribution}
++          eventHandlers={{ tileerror: () => setTileError(true) }}
++        />
++        <CircleMarker
++          center={[center.latitude, center.longitude]}
++          radius={8}
++          pathOptions={{ color: "#ffffff", fillColor: "#087775", fillOpacity: 1, weight: 3 }}
++        >
++          <Popup>Vị trí hiện tại của bạn</Popup>
++        </CircleMarker>
++        {properties.filter(hasMapCoordinates).map((property) => {
++          const selected = property.propertyId === selectedPropertyId
++          const directionsUrl = buildGoogleMapsDirectionsUrl(property)
++          return (
++            <Marker
++              key={property.propertyId}
++              ref={(marker) => {
++                if (marker) markerRefs.current.set(property.propertyId, marker)
++                else markerRefs.current.delete(property.propertyId)
++              }}
++              position={[property.latitude, property.longitude]}
++              icon={markerIcon(property, selected)}
++              title={`${property.propertyName} · ${formatVnd(property.startingPrice)}`}
++              alt={`${property.propertyName}, ${formatVnd(property.startingPrice)}`}
++              zIndexOffset={selected ? 1000 : 0}
++              eventHandlers={{ click: () => onSelect(property.propertyId) }}
++            >
++              <Popup className="area-property-popup" maxWidth={290} minWidth={250}>
++                <div className="space-y-2 p-1">
++                  <h3 className="font-bold text-slate-900">{property.propertyName}</h3>
++                  <p className="text-xs leading-5 text-slate-600">
++                    {[property.addressText, property.ward, property.district, property.city]
++                      .filter(Boolean)
++                      .join(", ")}
++                  </p>
++                  <p className="text-xs text-slate-600">
++                    Còn {property.availableRoomCount} phòng đang cho thuê
++                  </p>
++                  <p className="font-bold text-[#087775]">
++                    {formatVnd(property.startingPrice)}
++                    <span className="ml-1 text-xs font-medium text-slate-500">/tháng từ</span>
++                  </p>
++                  <div className="flex gap-2 pt-1">
++                    <Link
++                      to={propertyDetailPath(property.propertyId)}
++                      className="rounded-lg bg-[#087775] px-3 py-2 text-xs font-bold text-white hover:bg-[#066a68]"
++                    >
++                      Xem chi tiết
++                    </Link>
++                    {directionsUrl && (
++                      <a
++                        href={directionsUrl}
++                        target="_blank"
++                        rel="noopener noreferrer"
++                        className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
++                      >
++                        Chỉ đường
++                      </a>
++                    )}
++                  </div>
++                </div>
++              </Popup>
++            </Marker>
++          )
++        })}
++      </MapContainer>
++      {tileError && (
++        <p role="status" className="border-t border-slate-100 px-4 py-2 text-xs text-amber-700">
++          Nền bản đồ chưa tải được. Danh sách khu trọ vẫn sử dụng được.
++        </p>
++      )}
++      <p className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-2 text-[11px] text-slate-500">
++        <span>Bản đồ © OpenStreetMap contributors</span>
++        <a
++          href="https://www.openstreetmap.org/fixthemap"
++          target="_blank"
++          rel="noopener noreferrer"
++          className="font-semibold text-[#087775] hover:underline"
++        >
++          Báo lỗi bản đồ
++        </a>
++      </p>
++    </div>
++  )
++}
+diff --git a/PRN232_FE/src/utils/areaDiscovery.ts b/PRN232_FE/src/utils/areaDiscovery.ts
+new file mode 100644
+index 0000000..3114082
+--- /dev/null
++++ b/PRN232_FE/src/utils/areaDiscovery.ts
+@@ -0,0 +1,337 @@
++import type {
++  PublicPropertyAreaCard,
++  PublicPropertyAreaQuery,
++} from "@/api/publicBrowsingApi"
++
++export interface AreaCoordinates {
++  latitude: number
++  longitude: number
++}
++
++export interface ResolvedArea {
++  district?: string
++  ward?: string
++  city?: string
++}
++
++export type MatchedAreaLevel = "district" | "ward" | "city"
++export type AreaDiscoveryStep = "location" | "reverse-geocode" | "properties"
++export type AreaDiscoveryErrorKind =
++  | "location-unavailable"
++  | "permission-denied"
++  | "reverse-geocode"
++  | "area-api"
++
++export interface AreaDiscoveryResult {
++  coordinates: AreaCoordinates
++  area: ResolvedArea
++  matchedLevel: MatchedAreaLevel
++  usedCityFallback: boolean
++  properties: PublicPropertyAreaCard[]
++}
++
++interface DiscoverCurrentAreaOptions {
++  geolocation: Geolocation | null
++  fetchImplementation: typeof fetch
++  listPropertiesByArea: (
++    query: PublicPropertyAreaQuery,
++    signal?: AbortSignal,
++  ) => Promise<PublicPropertyAreaCard[]>
++  onProgress?: (step: AreaDiscoveryStep) => void
++  signal?: AbortSignal
++}
++
++interface ReverseGeocodeResponse {
++  address?: Record<string, unknown>
++}
++
++export class AreaDiscoveryError extends Error {
++  constructor(readonly kind: AreaDiscoveryErrorKind, message: string) {
++    super(message)
++    this.name = "AreaDiscoveryError"
++  }
++}
++
++function isAbortError(error: unknown): boolean {
++  return (
++    typeof error === "object" &&
++    error !== null &&
++    "name" in error &&
++    (error as { name?: unknown }).name === "AbortError"
++  )
++}
++
++function readLocationName(
++  address: Record<string, unknown>,
++  candidates: readonly string[],
++): string | undefined {
++  for (const candidate of candidates) {
++    const value = address[candidate]
++    if (typeof value === "string" && value.trim()) return value.trim()
++  }
++  return undefined
++}
++
++function areaFromReverseGeocode(response: unknown): ResolvedArea {
++  if (typeof response !== "object" || response === null || !("address" in response)) {
++    throw new AreaDiscoveryError(
++      "reverse-geocode",
++      "Không xác định được khu vực hiện tại từ vị trí.",
++    )
++  }
++
++  const address = (response as ReverseGeocodeResponse).address
++  if (!address || typeof address !== "object") {
++    throw new AreaDiscoveryError(
++      "reverse-geocode",
++      "Không xác định được khu vực hiện tại từ vị trí.",
++    )
++  }
++
++  const area: ResolvedArea = {
++    district: readLocationName(address, [
++      "city_district",
++      "district",
++      "county",
++      "state_district",
++    ]),
++    ward: readLocationName(address, [
++      "ward",
++      "suburb",
++      "quarter",
++      "neighbourhood",
++      "city_subdivision",
++    ]),
++    city: readLocationName(address, [
++      "city",
++      "town",
++      "municipality",
++      "province",
++      "state",
++    ]),
++  }
++
++  if (!area.district && !area.ward && !area.city) {
++    throw new AreaDiscoveryError(
++      "reverse-geocode",
++      "Không xác định được khu vực hiện tại từ vị trí.",
++    )
++  }
++
++  return area
++}
++
++function getCurrentCoordinates(geolocation: Geolocation | null): Promise<AreaCoordinates> {
++  if (!geolocation) {
++    return Promise.reject(
++      new AreaDiscoveryError(
++        "location-unavailable",
++        "Trình duyệt này không hỗ trợ lấy vị trí hiện tại.",
++      ),
++    )
++  }
++
++  return new Promise((resolve, reject) => {
++    geolocation.getCurrentPosition(
++      (position) => {
++        const { latitude, longitude } = position.coords
++        if (
++          !Number.isFinite(latitude) ||
++          !Number.isFinite(longitude) ||
++          latitude < -90 ||
++          latitude > 90 ||
++          longitude < -180 ||
++          longitude > 180
++        ) {
++          reject(
++            new AreaDiscoveryError(
++              "location-unavailable",
++              "Trình duyệt trả về vị trí không hợp lệ.",
++            ),
++          )
++          return
++        }
++        resolve({ latitude, longitude })
++      },
++      (error) => {
++        reject(
++          error.code === 1
++            ? new AreaDiscoveryError(
++                "permission-denied",
++                "Bạn đã từ chối quyền vị trí. Hãy bật quyền vị trí trong trình duyệt rồi thử lại.",
++              )
++            : new AreaDiscoveryError(
++                "location-unavailable",
++                "Không thể lấy vị trí hiện tại. Hãy kiểm tra dịch vụ vị trí rồi thử lại.",
++              ),
++        )
++      },
++      { enableHighAccuracy: false, maximumAge: 120_000, timeout: 15_000 },
++    )
++  })
++}
++
++async function reverseGeocode(
++  coordinates: AreaCoordinates,
++  fetchImplementation: typeof fetch,
++  signal?: AbortSignal,
++): Promise<ResolvedArea> {
++  const endpoint =
++    import.meta.env.VITE_REVERSE_GEOCODING_URL?.trim() ||
++    "https://nominatim.openstreetmap.org/reverse"
++  let url: URL
++  try {
++    url = new URL(endpoint)
++    if (url.protocol !== "https:" && url.protocol !== "http:") {
++      throw new Error("unsupported protocol")
++    }
++  } catch {
++    throw new AreaDiscoveryError(
++      "reverse-geocode",
++      "Cấu hình dịch vụ xác định khu vực không hợp lệ.",
++    )
++  }
++
++  url.searchParams.set("format", "jsonv2")
++  url.searchParams.set("lat", String(coordinates.latitude))
++  url.searchParams.set("lon", String(coordinates.longitude))
++  url.searchParams.set("zoom", "10")
++  url.searchParams.set("addressdetails", "1")
++
++  let response: Response
++  try {
++    response = await fetchImplementation(url.toString(), {
++      method: "GET",
++      headers: { Accept: "application/json", "Accept-Language": "vi" },
++      credentials: "omit",
++      cache: "default",
++      signal,
++    })
++  } catch (error) {
++    if (isAbortError(error)) throw error
++    throw new AreaDiscoveryError(
++      "reverse-geocode",
++      "Không thể kết nối dịch vụ xác định khu vực. Vui lòng thử lại.",
++    )
++  }
++
++  if (!response.ok) {
++    throw new AreaDiscoveryError(
++      "reverse-geocode",
++      "Không xác định được khu vực hiện tại vì dịch vụ đang tạm thời không khả dụng.",
++    )
++  }
++
++  try {
++    return areaFromReverseGeocode(await response.json())
++  } catch (error) {
++    if (error instanceof AreaDiscoveryError) throw error
++    throw new AreaDiscoveryError(
++      "reverse-geocode",
++      "Dữ liệu khu vực nhận được không hợp lệ.",
++    )
++  }
++}
++
++async function loadProperties(
++  query: PublicPropertyAreaQuery,
++  listPropertiesByArea: DiscoverCurrentAreaOptions["listPropertiesByArea"],
++  signal?: AbortSignal,
++): Promise<PublicPropertyAreaCard[]> {
++  try {
++    return await listPropertiesByArea(query, signal)
++  } catch (error) {
++    if (isAbortError(error)) throw error
++    throw new AreaDiscoveryError(
++      "area-api",
++      "Không tải được danh sách khu trọ. Vui lòng thử lại.",
++    )
++  }
++}
++
++export async function discoverCurrentArea({
++  geolocation,
++  fetchImplementation,
++  listPropertiesByArea,
++  onProgress,
++  signal,
++}: DiscoverCurrentAreaOptions): Promise<AreaDiscoveryResult> {
++  onProgress?.("location")
++  const coordinates = await getCurrentCoordinates(geolocation)
++
++  onProgress?.("reverse-geocode")
++  const area = await reverseGeocode(coordinates, fetchImplementation, signal)
++
++  const initialQuery: PublicPropertyAreaQuery = area.district
++    ? { district: area.district, ...(area.city ? { city: area.city } : {}) }
++    : area.ward
++      ? { ward: area.ward, ...(area.city ? { city: area.city } : {}) }
++      : { city: area.city }
++  const initialLevel: MatchedAreaLevel = area.district
++    ? "district"
++    : area.ward
++      ? "ward"
++      : "city"
++
++  onProgress?.("properties")
++  const areaProperties = await loadProperties(
++    initialQuery,
++    listPropertiesByArea,
++    signal,
++  )
++  if (areaProperties.length > 0 || !area.city || initialLevel === "city") {
++    return {
++      coordinates,
++      area,
++      matchedLevel: initialLevel,
++      usedCityFallback: false,
++      properties: areaProperties,
++    }
++  }
++
++  const cityProperties = await loadProperties(
++    { city: area.city },
++    listPropertiesByArea,
++    signal,
++  )
++  return {
++    coordinates,
++    area,
++    matchedLevel: "city",
++    usedCityFallback: true,
++    properties: cityProperties,
++  }
++}
++
++export function buildGoogleMapsDirectionsUrl(
++  property: Pick<
++    PublicPropertyAreaCard,
++    "latitude" | "longitude" | "addressText" | "ward" | "district" | "city"
++  >,
++): string | null {
++  const hasUsableCoordinates =
++    Number.isFinite(property.latitude) &&
++    Number.isFinite(property.longitude) &&
++    property.latitude >= -90 &&
++    property.latitude <= 90 &&
++    property.longitude >= -180 &&
++    property.longitude <= 180 &&
++    (property.latitude !== 0 || property.longitude !== 0)
++
++  const address = [
++    property.addressText,
++    property.ward,
++    property.district,
++    property.city,
++  ]
++    .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
++    .map((part) => part.trim())
++    .join(", ")
++  const destination = hasUsableCoordinates
++    ? `${property.latitude},${property.longitude}`
++    : address
++  if (!destination) return null
++
++  const parameters = new URLSearchParams({ api: "1", destination })
++  return `https://www.google.com/maps/dir/?${parameters.toString()}`
++}
+diff --git a/PRN232_FE/tests/areaDiscovery.test.ts b/PRN232_FE/tests/areaDiscovery.test.ts
+new file mode 100644
+index 0000000..849759f
+--- /dev/null
++++ b/PRN232_FE/tests/areaDiscovery.test.ts
+@@ -0,0 +1,222 @@
++import { describe, expect, it, vi } from "vitest"
++import {
++  AreaDiscoveryError,
++  buildGoogleMapsDirectionsUrl,
++  discoverCurrentArea,
++} from "@/utils/areaDiscovery"
++import type {
++  PublicPropertyAreaCard,
++  PublicPropertyAreaQuery,
++} from "@/api/publicBrowsingApi"
++
++function jsonResponse(body: unknown, status = 200): Response {
++  return new Response(JSON.stringify(body), {
++    status,
++    headers: { "Content-Type": "application/json" },
++  })
++}
++
++function locationPermission(
++  errorCode?: number,
++): Geolocation {
++  return {
++    getCurrentPosition: vi.fn((success, error) => {
++      if (errorCode !== undefined) {
++        error?.({ code: errorCode, message: "location unavailable" } as GeolocationPositionError)
++        return
++      }
++
++      success({
++        coords: { latitude: 10.8231, longitude: 106.7624 },
++      } as GeolocationPosition)
++    }),
++  } as unknown as Geolocation
++}
++
++function property(overrides: Partial<PublicPropertyAreaCard> = {}): PublicPropertyAreaCard {
++  return {
++    propertyId: 42,
++    propertyName: "Residence từ API",
++    addressText: "12 Đường Mẫu",
++    ward: "Phường Sáu",
++    district: "Quận Gò Vấp",
++    city: "TP. Hồ Chí Minh",
++    latitude: 10.8231,
++    longitude: 106.7624,
++    primaryImageUrl: null,
++    availableRoomCount: 3,
++    startingPrice: 2850000,
++    ...overrides,
++  }
++}
++
++describe("current-area property discovery", () => {
++  it("requests location, reverse-geocodes it, then loads the whole district", async () => {
++    const steps: string[] = []
++    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
++      jsonResponse({
++        address: {
++          city_district: "Quận Gò Vấp",
++          suburb: "Phường Sáu",
++          city: "TP. Hồ Chí Minh",
++        },
++      }),
++    )
++    const properties = [property()]
++    const listPropertiesByArea = vi
++      .fn<(query: PublicPropertyAreaQuery) => Promise<PublicPropertyAreaCard[]>>()
++      .mockResolvedValue(properties)
++
++    const result = await discoverCurrentArea({
++      geolocation: locationPermission(),
++      fetchImplementation: fetchMock,
++      listPropertiesByArea,
++      onProgress: (step) => steps.push(step),
++    })
++
++    expect(steps).toEqual(["location", "reverse-geocode", "properties"])
++    expect(result.coordinates).toEqual({ latitude: 10.8231, longitude: 106.7624 })
++    expect(result.area).toEqual({
++      district: "Quận Gò Vấp",
++      ward: "Phường Sáu",
++      city: "TP. Hồ Chí Minh",
++    })
++    expect(result.matchedLevel).toBe("district")
++    expect(result.usedCityFallback).toBe(false)
++    expect(result.properties).toEqual(properties)
++    expect(listPropertiesByArea).toHaveBeenCalledWith({
++      district: "Quận Gò Vấp",
++      city: "TP. Hồ Chí Minh",
++    }, undefined)
++    const reverseUrl = new URL(String(fetchMock.mock.calls[0][0]))
++    expect(reverseUrl.hostname).toBe("nominatim.openstreetmap.org")
++    expect(reverseUrl.searchParams.get("lat")).toBe("10.8231")
++    expect(reverseUrl.searchParams.get("lon")).toBe("106.7624")
++    expect(reverseUrl.searchParams.get("addressdetails")).toBe("1")
++  })
++
++  it("broadens from an empty district to the city without applying a radius", async () => {
++    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
++      jsonResponse({
++        address: {
++          district: "Gò Vấp",
++          city: "Thành phố Hồ Chí Minh",
++        },
++      }),
++    )
++    const properties = [property()]
++    const listPropertiesByArea = vi
++      .fn<(query: PublicPropertyAreaQuery) => Promise<PublicPropertyAreaCard[]>>()
++      .mockResolvedValueOnce([])
++      .mockResolvedValueOnce(properties)
++
++    const result = await discoverCurrentArea({
++      geolocation: locationPermission(),
++      fetchImplementation: fetchMock,
++      listPropertiesByArea,
++    })
++
++    expect(listPropertiesByArea).toHaveBeenNthCalledWith(1, {
++      district: "Gò Vấp",
++      city: "Thành phố Hồ Chí Minh",
++    }, undefined)
++    expect(listPropertiesByArea).toHaveBeenNthCalledWith(2, {
++      city: "Thành phố Hồ Chí Minh",
++    }, undefined)
++    expect(result.matchedLevel).toBe("city")
++    expect(result.usedCityFallback).toBe(true)
++    expect(result.properties).toEqual(properties)
++  })
++
++  it("uses ward and then city when the geocoder has no district", async () => {
++    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
++      jsonResponse({ address: { suburb: "Phường Sáu", city: "TP.HCM" } }),
++    )
++    const listPropertiesByArea = vi
++      .fn<(query: PublicPropertyAreaQuery) => Promise<PublicPropertyAreaCard[]>>()
++      .mockResolvedValueOnce([])
++      .mockResolvedValueOnce([property()])
++
++    const result = await discoverCurrentArea({
++      geolocation: locationPermission(),
++      fetchImplementation: fetchMock,
++      listPropertiesByArea,
++    })
++
++    expect(listPropertiesByArea).toHaveBeenNthCalledWith(1, {
++      ward: "Phường Sáu",
++      city: "TP.HCM",
++    }, undefined)
++    expect(listPropertiesByArea).toHaveBeenNthCalledWith(2, { city: "TP.HCM" }, undefined)
++    expect(result.matchedLevel).toBe("city")
++    expect(result.usedCityFallback).toBe(true)
++  })
++
++  it("reports denied location permission separately", async () => {
++    await expect(
++      discoverCurrentArea({
++        geolocation: locationPermission(1),
++        fetchImplementation: vi.fn<typeof fetch>(),
++        listPropertiesByArea: vi.fn(),
++      }),
++    ).rejects.toMatchObject<Partial<AreaDiscoveryError>>({ kind: "permission-denied" })
++  })
++
++  it("reports missing location and reverse-geocoding failures", async () => {
++    await expect(
++      discoverCurrentArea({
++        geolocation: null,
++        fetchImplementation: vi.fn<typeof fetch>(),
++        listPropertiesByArea: vi.fn(),
++      }),
++    ).rejects.toMatchObject({ kind: "location-unavailable" })
++
++    await expect(
++      discoverCurrentArea({
++        geolocation: locationPermission(),
++        fetchImplementation: vi.fn<typeof fetch>().mockResolvedValue(
++          jsonResponse({ error: "service unavailable" }, 503),
++        ),
++        listPropertiesByArea: vi.fn(),
++      }),
++    ).rejects.toMatchObject({ kind: "reverse-geocode" })
++  })
++
++  it("reports API failures and rejects locations without an area name", async () => {
++    const cityFetch = vi.fn<typeof fetch>().mockResolvedValue(
++      jsonResponse({ address: { city: "TP.HCM" } }),
++    )
++    await expect(
++      discoverCurrentArea({
++        geolocation: locationPermission(),
++        fetchImplementation: cityFetch,
++        listPropertiesByArea: vi.fn().mockRejectedValue(new Error("API unavailable")),
++      }),
++    ).rejects.toMatchObject({ kind: "area-api" })
++
++    await expect(
++      discoverCurrentArea({
++        geolocation: locationPermission(),
++        fetchImplementation: vi.fn<typeof fetch>().mockResolvedValue(
++          jsonResponse({ address: { road: "Unknown Road" } }),
++        ),
++        listPropertiesByArea: vi.fn(),
++      }),
++    ).rejects.toMatchObject({ kind: "reverse-geocode" })
++  })
++})
++
++describe("Google Maps directions", () => {
++  it("prefers valid coordinates and falls back to the complete address", () => {
++    expect(buildGoogleMapsDirectionsUrl(property())).toBe(
++      "https://www.google.com/maps/dir/?api=1&destination=10.8231%2C106.7624",
++    )
++    expect(
++      buildGoogleMapsDirectionsUrl(
++        property({ latitude: Number.NaN, longitude: Number.NaN }),
++      ),
++    ).toBe(
++      "https://www.google.com/maps/dir/?api=1&destination=12+%C4%90%C6%B0%E1%BB%9Dng+M%E1%BA%ABu%2C+Ph%C6%B0%E1%BB%9Dng+S%C3%A1u%2C+Qu%E1%BA%ADn+G%C3%B2+V%E1%BA%A5p%2C+TP.+H%E1%BB%93+Ch%C3%AD+Minh",
++    )
++  })
++})
+diff --git a/PRN232_FE/tests/mapSection.test.tsx b/PRN232_FE/tests/mapSection.test.tsx
+new file mode 100644
+index 0000000..901b16a
+--- /dev/null
++++ b/PRN232_FE/tests/mapSection.test.tsx
+@@ -0,0 +1,202 @@
++import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
++import { MemoryRouter } from "react-router"
++import { describe, expect, it, vi } from "vitest"
++import type { PublicPropertyAreaCard } from "@/api/publicBrowsingApi"
++import MapSection from "@/components/home/MapSection"
++
++vi.mock("@/components/home/AreaPropertyMap", async () => {
++  const { createElement } = await import("react")
++  return {
++    default: ({
++      properties,
++      selectedPropertyId,
++      onSelect,
++    }: {
++      properties: PublicPropertyAreaCard[]
++      selectedPropertyId: number | null
++      onSelect: (propertyId: number) => void
++    }) =>
++      createElement(
++        "div",
++        {
++          "data-testid": "area-map",
++          "data-selected-property": selectedPropertyId ?? "",
++          "data-property-count": properties.length,
++        },
++        ...properties.map((property) =>
++          createElement(
++            "button",
++            {
++              key: property.propertyId,
++              type: "button",
++              "aria-label": `Bản đồ: ${property.propertyName}`,
++              onClick: () => onSelect(property.propertyId),
++            },
++            property.propertyName,
++          ),
++        ),
++      ),
++  }
++})
++
++function property(
++  propertyId: number,
++  overrides: Partial<PublicPropertyAreaCard> = {},
++): PublicPropertyAreaCard {
++  return {
++    propertyId,
++    propertyName: `Residence ${propertyId} từ API`,
++    addressText: `${propertyId} Đường Mẫu`,
++    ward: "Phường Sáu",
++    district: "Quận Gò Vấp",
++    city: "TP. Hồ Chí Minh",
++    latitude: 10.8231 + propertyId / 100000,
++    longitude: 106.7624,
++    primaryImageUrl: null,
++    availableRoomCount: 3,
++    startingPrice: 2850000,
++    ...overrides,
++  }
++}
++
++function jsonResponse(body: unknown, status = 200): Response {
++  return new Response(JSON.stringify(body), {
++    status,
++    headers: { "Content-Type": "application/json" },
++  })
++}
++
++function stubGeolocation(getCurrentPosition: Geolocation["getCurrentPosition"]) {
++  const navigatorWithGeolocation = Object.create(navigator) as Navigator
++  Object.defineProperty(navigatorWithGeolocation, "geolocation", {
++    value: { getCurrentPosition },
++  })
++  vi.stubGlobal("navigator", navigatorWithGeolocation)
++}
++
++function grantLocationPermission() {
++  stubGeolocation((success) => {
++    success({
++      coords: { latitude: 10.8231, longitude: 106.7624 },
++    } as GeolocationPosition)
++  })
++}
++
++function renderMapSection() {
++  return render(
++    <MemoryRouter>
++      <MapSection />
++    </MemoryRouter>,
++  )
++}
++
++describe("public area map section", () => {
++  it("loads district properties from the browser location and keeps map and list selection in sync", async () => {
++    grantLocationPermission()
++    const properties = [property(42), property(43)]
++    const fetchMock = vi
++      .fn<typeof fetch>()
++      .mockResolvedValueOnce(
++        jsonResponse({
++          address: {
++            city_district: "Quận Gò Vấp",
++            suburb: "Phường Sáu",
++            city: "TP. Hồ Chí Minh",
++          },
++        }),
++      )
++      .mockResolvedValueOnce(jsonResponse(properties))
++    vi.stubGlobal("fetch", fetchMock)
++
++    renderMapSection()
++    fireEvent.click(screen.getByRole("button", { name: "Tìm khu trọ quanh tôi" }))
++
++    expect(
++      await screen.findByRole("heading", { name: "Khu trọ tại Quận Gò Vấp" }),
++    ).toBeTruthy()
++    expect((await screen.findByTestId("area-map")).getAttribute("data-property-count")).toBe("2")
++    const areaRequest = new URL(String(fetchMock.mock.calls[1][0]), window.location.origin)
++    expect(areaRequest.pathname).toBe("/api/public/properties/by-area")
++    expect(areaRequest.searchParams.get("district")).toBe("Quận Gò Vấp")
++    expect(areaRequest.searchParams.get("city")).toBe("TP. Hồ Chí Minh")
++    expect(areaRequest.searchParams.has("radius")).toBe(false)
++
++    fireEvent.click(screen.getByRole("button", { name: "Bản đồ: Residence 42 từ API" }))
++    expect(screen.getByRole("button", { name: "Chọn Residence 42 từ API" }).getAttribute("aria-current")).toBe("true")
++    expect((await screen.findByTestId("area-map")).getAttribute("data-selected-property")).toBe("42")
++
++    fireEvent.click(screen.getByRole("button", { name: "Chọn Residence 43 từ API" }))
++    expect((await screen.findByTestId("area-map")).getAttribute("data-selected-property")).toBe("43")
++    const selectedCard = within(screen.getByTestId("area-property-43"))
++    expect(selectedCard.getByRole("link", { name: "Xem chi tiết" }).getAttribute("href")).toBe("/property/43")
++    expect(selectedCard.getByRole("link", { name: "Chỉ đường" }).getAttribute("href")).toContain(
++      "https://www.google.com/maps/dir/?api=1&destination=",
++    )
++  })
++
++  it("shows a distinct loading state and a permission-denied state", async () => {
++    let rejectLocation: PositionErrorCallback | null | undefined
++    stubGeolocation((_success, error) => {
++      rejectLocation = error
++    })
++    const fetchMock = vi.fn<typeof fetch>()
++    vi.stubGlobal("fetch", fetchMock)
++
++    renderMapSection()
++    fireEvent.click(screen.getByRole("button", { name: "Tìm khu trọ quanh tôi" }))
++    expect(screen.getByRole("status").textContent?.toLowerCase()).toContain("vị trí")
++
++    rejectLocation?.({ code: 1, message: "denied" } as GeolocationPositionError)
++
++    expect((await screen.findByRole("alert")).textContent).toContain("quyền vị trí")
++    expect(fetchMock).not.toHaveBeenCalled()
++  })
++
++  it("shows reverse-geocoding errors without pretending the city was identified", async () => {
++    grantLocationPermission()
++    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}, 503)))
++
++    renderMapSection()
++    fireEvent.click(screen.getByRole("button", { name: "Tìm khu trọ quanh tôi" }))
++
++    expect((await screen.findByRole("alert")).textContent?.toLowerCase()).toContain(
++      "không xác định được khu vực",
++    )
++    expect(screen.queryByTestId("area-map")).toBeNull()
++  })
++
++  it("shows a no-property state for a successful empty area response", async () => {
++    grantLocationPermission()
++    vi.stubGlobal(
++      "fetch",
++      vi.fn<typeof fetch>()
++        .mockResolvedValueOnce(jsonResponse({ address: { city: "TP.HCM" } }))
++        .mockResolvedValueOnce(jsonResponse([])),
++    )
++
++    renderMapSection()
++    fireEvent.click(screen.getByRole("button", { name: "Tìm khu trọ quanh tôi" }))
++
++    expect(await screen.findByText(/Chưa có khu trọ đang cho thuê tại/)).toBeTruthy()
++    expect(screen.queryByTestId("area-map")).toBeNull()
++  })
++
++  it("shows an API error separately from location and geocoding errors", async () => {
++    grantLocationPermission()
++    vi.stubGlobal(
++      "fetch",
++      vi.fn<typeof fetch>()
++        .mockResolvedValueOnce(jsonResponse({ address: { city: "TP.HCM" } }))
++        .mockResolvedValueOnce(jsonResponse({ title: "Unavailable" }, 503)),
++    )
++
++    renderMapSection()
++    fireEvent.click(screen.getByRole("button", { name: "Tìm khu trọ quanh tôi" }))
++
++    await waitFor(() =>
++      expect(screen.getByRole("alert").textContent?.toLowerCase()).toContain(
++        "không tải được danh sách",
++      ),
++    )
++  })
++})

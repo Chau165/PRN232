@@ -23,6 +23,26 @@ export interface PublicPropertyCard {
   startingPrice: number | null
 }
 
+export interface PublicPropertyAreaCard {
+  propertyId: number
+  propertyName: string
+  addressText: string
+  ward: string
+  district: string
+  city: string
+  latitude: number
+  longitude: number
+  primaryImageUrl: string | null
+  availableRoomCount: number
+  startingPrice: number | null
+}
+
+export interface PublicPropertyAreaQuery {
+  city?: string
+  district?: string
+  ward?: string
+}
+
 export interface PublicPropertyDetail {
   propertyId: number
   propertyName: string
@@ -532,6 +552,27 @@ export function createPublicApiClient(
       signal?: AbortSignal,
     ): Promise<PublicPage<PublicPropertyCard>> {
       return get("/public/properties", buildPropertyListParams(query), signal)
+    },
+    async listPropertiesByArea(
+      query: PublicPropertyAreaQuery,
+      signal?: AbortSignal,
+    ): Promise<PublicPropertyAreaCard[]> {
+      const params = new URLSearchParams()
+      const city = optionalText(query.city)
+      const district = optionalText(query.district)
+      const ward = optionalText(query.ward)
+
+      if (city) params.set("city", city)
+      if (district) params.set("district", district)
+      if (ward) params.set("ward", ward)
+      if (!city && !district && !ward) {
+        throw validationError(
+          "district",
+          "Hãy cung cấp ít nhất thành phố, quận/huyện hoặc phường/xã.",
+        )
+      }
+
+      return get("/public/properties/by-area", params, signal)
     },
     async getProperty(
       propertyId: number,

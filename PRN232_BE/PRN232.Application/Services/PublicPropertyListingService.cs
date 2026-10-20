@@ -47,6 +47,25 @@ public sealed class PublicPropertyListingService : IPublicPropertyListingService
         return await _repository.GetPageAsync(criteria, asOfUtc, cancellationToken);
     }
 
+    public Task<IReadOnlyList<PublicPropertyAreaCardDto>> GetByAreaAsync(
+        PublicPropertyAreaQueryDto query,
+        CancellationToken cancellationToken)
+    {
+        var criteria = new PublicPropertyAreaSearchCriteria(
+            NormalizeAreaFilter(query.City, "city"),
+            NormalizeAreaFilter(query.District, "district"),
+            NormalizeAreaFilter(query.Ward, "ward"));
+        if (criteria.City is null && criteria.District is null && criteria.Ward is null)
+        {
+            throw new PublicPropertyQueryValidationException(
+                "district",
+                "Provide at least one nonblank city, district, or ward.");
+        }
+
+        var asOfUtc = _timeProvider.GetUtcNow().ToUniversalTime();
+        return _repository.GetByAreaAsync(criteria, asOfUtc, cancellationToken);
+    }
+
     public async Task<PublicPropertyDetailDto?> GetDetailAsync(
         int propertyId,
         CancellationToken cancellationToken)
@@ -172,6 +191,23 @@ public sealed class PublicPropertyListingService : IPublicPropertyListingService
 
     private static string? NormalizeText(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string? NormalizeAreaFilter(string? value, string field)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (value.Trim().Length > 120)
+        {
+            throw new PublicPropertyQueryValidationException(field, "Area name must not exceed 120 characters.");
+        }
+
+        var normalized = PublicAreaNameNormalizer.Normalize(value);
+        if (normalized.Length == 0)
+        {
+            throw new PublicPropertyQueryValidationException(field, "Area name must contain a place name.");
+        }
+
+        return normalized;
+    }
 }
 
 public sealed class PublicPropertyQueryValidationException(string field, string message) : Exception(message)

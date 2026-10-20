@@ -89,7 +89,10 @@ describe("public Home browsing", () => {
     ).toBe("/property/42")
     expect(screen.queryByText(/1,2 km|Cách bạn|\/ tháng/)).toBeNull()
     expect(screen.queryByText("Sunrise Residence")).toBeNull()
-    expect(screen.getByText(/Bản đồ chưa khả dụng/)).toBeTruthy()
+    expect(
+      screen.getByRole("button", { name: "Tìm khu trọ quanh tôi" }),
+    ).toBeTruthy()
+    expect(screen.queryByText(/Bản đồ chưa khả dụng/)).toBeNull()
 
     const url = requestUrl(fetchMock)
     expect(url.pathname).toBe("/api/public/properties")

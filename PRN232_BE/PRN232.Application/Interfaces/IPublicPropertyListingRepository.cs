@@ -11,6 +11,11 @@ public interface IPublicPropertyListingRepository
         DateTimeOffset asOfUtc,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<PublicPropertyAreaCardDto>> GetByAreaAsync(
+        PublicPropertyAreaSearchCriteria criteria,
+        DateTimeOffset asOfUtc,
+        CancellationToken cancellationToken);
+
     Task<PublicPropertyDetailDto?> GetDetailAsync(
         int propertyId,
         DateTimeOffset asOfUtc,
