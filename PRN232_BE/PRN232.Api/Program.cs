@@ -129,6 +129,8 @@ builder.Services.AddScoped<IPublicPropertyListingService>(serviceProvider =>
 });
 builder.Services.AddScoped<IEquipmentRepository, EquipmentRepository>();
 builder.Services.AddScoped<IEquipmentService, EquipmentService>();
+builder.Services.AddScoped<IBookingRepository, BookingRepository>();
+builder.Services.AddScoped<IBookingService, BookingService>();
 
 builder.Services.AddControllers(options =>
 {
