@@ -189,6 +189,44 @@ namespace PRN232.Infrastructure.Migrations
                     b.ToTable("IdentityDocuments");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.InvoiceComplaints", b =>
+                {
+                    b.Property<int>("ComplaintId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ComplaintId"));
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FeeType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("InvoiceId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("ComplaintId");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("InvoiceId");
+
+                    b.ToTable("InvoiceComplaints");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.InvoiceDetails", b =>
                 {
                     b.Property<int>("InvoiceDetailId")
@@ -922,6 +960,25 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("Customer");
 
                     b.Navigation("ReviewedByUser");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.InvoiceComplaints", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Users", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Invoices", "Invoice")
+                        .WithMany()
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("Invoice");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.InvoiceDetails", b =>
