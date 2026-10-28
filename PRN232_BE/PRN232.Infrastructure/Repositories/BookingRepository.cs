@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
@@ -48,23 +49,17 @@ public class BookingRepository : IBookingRepository
         return true;
     }
 
+    public Task<List<BookingDto>> GetAllAsync(int? customerId, int? ownerId, string? status) =>
+        InScope(customerId, ownerId)
+            .Where(booking => status == null || booking.Status == status)
+            .OrderByDescending(booking => booking.BookingId)
+            .Select(ToDto)
+            .ToListAsync();
+
     public Task<BookingDto?> GetByIdAsync(int bookingId, int? customerId, int? ownerId) =>
-        _context.Bookings
-            .AsNoTracking()
+        InScope(customerId, ownerId)
             .Where(booking => booking.BookingId == bookingId)
-            .Where(booking => customerId == null || booking.CustomerId == customerId)
-            .Where(booking => ownerId == null || booking.Room!.Property!.OwnerId == ownerId)
-            .Select(booking => new BookingDto(
-                booking.BookingId,
-                booking.RoomId,
-                booking.Room!.RoomCode,
-                booking.Room.PropertyId,
-                booking.Room.Property!.PropertyName,
-                booking.CustomerId,
-                booking.Customer!.FullName,
-                booking.DepositAmount,
-                booking.Status,
-                booking.ExpiryDate))
+            .Select(ToDto)
             .FirstOrDefaultAsync();
 
     public Task<bool> ExistsAsync(int bookingId) =>
@@ -110,4 +105,46 @@ public class BookingRepository : IBookingRepository
         await transaction.CommitAsync();
         return true;
     }
+
+    public async Task<bool> CancelAsync(int bookingId, string expectedStatus, Notifications? customerNotification)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+
+        // Chỉ huỷ khi trạng thái vẫn đúng như lúc service kiểm tra: nếu khách vừa thanh toán xong
+        // (Pending -> Deposited) thì câu UPDATE không khớp dòng nào và lần huỷ này bị từ chối.
+        var updated = await _context.Bookings
+            .Where(booking => booking.BookingId == bookingId && booking.Status == expectedStatus)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(booking => booking.Status, BookingStatuses.Cancelled));
+        if (updated == 0)
+        {
+            return false;
+        }
+
+        if (customerNotification is not null)
+        {
+            await _context.Notifications.AddAsync(customerNotification);
+            await _context.SaveChangesAsync();
+        }
+        await transaction.CommitAsync();
+        return true;
+    }
+
+    // Lọc dùng chung cho GetById và GetAll; tham số nào null thì không lọc theo tiêu chí đó.
+    private IQueryable<Bookings> InScope(int? customerId, int? ownerId) =>
+        _context.Bookings
+            .AsNoTracking()
+            .Where(booking => customerId == null || booking.CustomerId == customerId)
+            .Where(booking => ownerId == null || booking.Room!.Property!.OwnerId == ownerId);
+
+    private static readonly Expression<Func<Bookings, BookingDto>> ToDto = booking => new BookingDto(
+        booking.BookingId,
+        booking.RoomId,
+        booking.Room!.RoomCode,
+        booking.Room.PropertyId,
+        booking.Room.Property!.PropertyName,
+        booking.CustomerId,
+        booking.Customer!.FullName,
+        booking.DepositAmount,
+        booking.Status,
+        booking.ExpiryDate);
 }

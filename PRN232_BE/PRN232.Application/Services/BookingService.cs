@@ -47,6 +47,18 @@ public class BookingService : IBookingService
             ?? throw new InvalidOperationException("Created booking was not found.");
     }
 
+    public Task<List<BookingDto>> GetAllAsync(int userId, string role, string? status)
+    {
+        if (status is not null &&
+            status is not (BookingStatuses.Pending or BookingStatuses.Deposited or BookingStatuses.Cancelled))
+        {
+            throw new BookingBusinessRuleException("Status must be Pending, Deposited, or Cancelled.");
+        }
+
+        var (customerId, ownerId) = GetScope(userId, role);
+        return _repository.GetAllAsync(customerId, ownerId, status);
+    }
+
     public async Task<BookingDto?> GetByIdAsync(int id, int userId, string role)
     {
         var (customerId, ownerId) = GetScope(userId, role);
@@ -75,11 +87,11 @@ public class BookingService : IBookingService
         var now = _timeProvider.GetUtcNow();
         if (booking.Status != BookingStatuses.Pending)
         {
-            throw new BookingNotPayableException("Only pending bookings can be paid.");
+            throw new BookingStatusConflictException("Only pending bookings can be paid.");
         }
         if (booking.ExpiryDate <= now.UtcDateTime)
         {
-            throw new BookingNotPayableException("The payment window for this booking has expired.");
+            throw new BookingStatusConflictException("The payment window for this booking has expired.");
         }
 
         if (!await _paymentGateway.ChargeAsync(dto.PaymentMethod, booking.DepositAmount))
@@ -107,11 +119,42 @@ public class BookingService : IBookingService
         // có thể đã có một lần bấm thanh toán khác chạy xong trước.
         if (!await _repository.MarkDepositedAsync(id, now, now.Add(DepositHoldPeriod).UtcDateTime, payment, notification))
         {
-            throw new BookingNotPayableException("Only pending bookings can be paid.");
+            throw new BookingStatusConflictException("Only pending bookings can be paid.");
         }
 
         return await _repository.GetByIdAsync(id, customerId, null)
             ?? throw new InvalidOperationException("Paid booking was not found.");
+    }
+
+    public async Task<BookingDto> CancelAsync(int id, int userId, string role)
+    {
+        var booking = await GetByIdAsync(id, userId, role)
+            ?? throw new BookingNotFoundException("Booking does not exist.");
+        if (booking.Status == BookingStatuses.Cancelled)
+        {
+            throw new BookingStatusConflictException("Booking is already cancelled.");
+        }
+        // Khách chỉ tự huỷ được khi chưa trả cọc; booking đã cọc phải do quản lý/admin huỷ
+        // (hoàn cọc xử lý ngoài hệ thống vì thanh toán là giả lập).
+        if (role == RoleNames.Customer && booking.Status != BookingStatuses.Pending)
+        {
+            throw new BookingStatusConflictException("Paid bookings can only be cancelled by the property manager.");
+        }
+
+        var notification = role == RoleNames.Customer ? null : new Notifications
+        {
+            UserId = booking.CustomerId,
+            Title = $"Booking #{id} - Phòng {booking.RoomCode} đã bị huỷ",
+            Type = NotificationTypes.Booking,
+            IsRead = false
+        };
+        if (!await _repository.CancelAsync(id, booking.Status, notification))
+        {
+            throw new BookingStatusConflictException("Booking status has changed. Please reload and try again.");
+        }
+
+        return await _repository.GetByIdAsync(id, null, null)
+            ?? throw new InvalidOperationException("Cancelled booking was not found.");
     }
 
     // Customer chỉ thấy booking của mình, Manager chỉ thấy booking thuộc khu trọ mình sở hữu, Admin thấy tất cả.
@@ -132,6 +175,6 @@ public sealed class BookingAuthorizationException(string message) : Exception(me
 
 public sealed class BookingBusinessRuleException(string message) : Exception(message);
 
-public sealed class BookingNotPayableException(string message) : Exception(message);
+public sealed class BookingStatusConflictException(string message) : Exception(message);
 
 public sealed class BookingPaymentFailedException(string message) : Exception(message);

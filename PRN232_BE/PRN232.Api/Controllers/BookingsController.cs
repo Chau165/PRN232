@@ -21,6 +21,18 @@ public class BookingsController : ControllerBase
         _currentUser = currentUser;
     }
 
+    [HttpGet]
+    public async Task<ActionResult<IEnumerable<BookingDto>>> GetAll([FromQuery] string? status)
+    {
+        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        try { return Ok(await _bookingService.GetAllAsync(userId, role, status)); }
+        catch (BookingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (BookingBusinessRuleException exception)
+        {
+            return BadRequest(new ProblemDetails { Title = "Invalid booking filter", Detail = exception.Message });
+        }
+    }
+
     [HttpGet("{id:int}")]
     public async Task<ActionResult<BookingDto>> GetById(int id)
     {
@@ -72,7 +84,7 @@ public class BookingsController : ControllerBase
             return NotFound(new ProblemDetails { Title = "Booking not found", Detail = exception.Message });
         }
         catch (BookingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
-        catch (BookingNotPayableException exception)
+        catch (BookingStatusConflictException exception)
         {
             return Conflict(new ProblemDetails { Title = "Booking cannot be paid", Detail = exception.Message });
         }
@@ -80,6 +92,25 @@ public class BookingsController : ControllerBase
         {
             return StatusCode(StatusCodes.Status402PaymentRequired,
                 new ProblemDetails { Title = "Payment failed", Detail = exception.Message });
+        }
+    }
+
+    [HttpPost("{id:int}/cancel")]
+    public async Task<ActionResult<BookingDto>> Cancel(int id)
+    {
+        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        try
+        {
+            return Ok(await _bookingService.CancelAsync(id, userId, role));
+        }
+        catch (BookingNotFoundException exception)
+        {
+            return NotFound(new ProblemDetails { Title = "Booking not found", Detail = exception.Message });
+        }
+        catch (BookingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (BookingStatusConflictException exception)
+        {
+            return Conflict(new ProblemDetails { Title = "Booking cannot be cancelled", Detail = exception.Message });
         }
     }
 

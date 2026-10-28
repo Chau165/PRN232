@@ -7,9 +7,11 @@ public interface IBookingRepository
 {
     Task<BookingRoomDto?> GetRoomAsync(int roomId);
     Task<bool> AddIfRoomRentableAsync(Bookings booking, DateTimeOffset asOfUtc);
+    Task<List<BookingDto>> GetAllAsync(int? customerId, int? ownerId, string? status);
     Task<BookingDto?> GetByIdAsync(int bookingId, int? customerId, int? ownerId);
     Task<bool> ExistsAsync(int bookingId);
     Task<BookingPaymentDto?> GetForPaymentAsync(int bookingId);
     Task<bool> MarkDepositedAsync(
         int bookingId, DateTimeOffset asOfUtc, DateTime holdUntilUtc, Payments payment, Notifications notification);
+    Task<bool> CancelAsync(int bookingId, string expectedStatus, Notifications? customerNotification);
 }

@@ -25,6 +25,8 @@ public class BookingsApiTests
     [InlineData("GET", "/api/bookings/1")]
     [InlineData("POST", "/api/bookings")]
     [InlineData("POST", "/api/bookings/1/pay")]
+    [InlineData("GET", "/api/bookings")]
+    [InlineData("POST", "/api/bookings/1/cancel")]
     public async Task Anonymous_requests_require_authentication(string method, string path)
     {
         using var factory = new BookingsApiFactory();
@@ -187,6 +189,83 @@ public class BookingsApiTests
 
         Assert.Equal(HttpStatusCode.BadRequest, cash.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("customer@example.test", 1)]
+    [InlineData("other@example.test", 0)]
+    [InlineData("manager@example.test", 1)]
+    [InlineData("manager-b@example.test", 0)]
+    [InlineData("admin@example.test", 1)]
+    public async Task Booking_list_follows_customer_owner_and_admin_scope(string email, int expectedCount)
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "customer@example.test");
+        await CreateBookingAsync(client);
+
+        await LoginAsync(client, email);
+        var bookings = await client.GetFromJsonAsync<JsonElement>("/api/bookings");
+
+        Assert.Equal(expectedCount, bookings.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Booking_list_filters_by_status_and_rejects_unknown_status()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "customer@example.test");
+        await CreateBookingAsync(client);
+
+        var pending = await client.GetFromJsonAsync<JsonElement>("/api/bookings?status=Pending");
+        var deposited = await client.GetFromJsonAsync<JsonElement>("/api/bookings?status=Deposited");
+        var unknown = await client.GetAsync("/api/bookings?status=Expired");
+
+        Assert.Equal((1, 0), (pending.GetArrayLength(), deposited.GetArrayLength()));
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+    }
+
+    [Fact]
+    public async Task Customer_cancels_unpaid_booking_and_room_is_released()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "customer@example.test");
+        var bookingId = await CreateBookingAsync(client);
+
+        var response = await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Cancelled", body.GetProperty("status").GetString());
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync($"/api/bookings/{bookingId}/cancel", null)).StatusCode);
+        await LoginAsync(client, "other@example.test");
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/bookings", new { roomId = 1 })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Paid_booking_is_cancelled_by_owner_not_customer_and_customer_is_notified()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "customer@example.test");
+        var bookingId = await CreateBookingAsync(client);
+        await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new { paymentMethod = "VNPay" });
+
+        var byCustomer = await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
+        await LoginAsync(client, "manager-b@example.test");
+        var byOtherManager = await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
+        await LoginAsync(client, "manager@example.test");
+        var byOwner = await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
+
+        Assert.Equal(HttpStatusCode.Conflict, byCustomer.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, byOtherManager.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, byOwner.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal("Cancelled", (await context.Bookings.SingleAsync()).Status);
+        Assert.Equal(1, await context.Notifications.CountAsync(notification => notification.UserId == 10));
     }
 
     private static async Task<int> CreateBookingAsync(HttpClient client)

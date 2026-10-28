@@ -153,7 +153,7 @@ public class BookingServiceTests
         };
         var gateway = new FakePaymentGateway();
 
-        await Assert.ThrowsAsync<BookingNotPayableException>(() =>
+        await Assert.ThrowsAsync<BookingStatusConflictException>(() =>
             CreateService(repository, gateway).PayAsync(1, new PayBookingDto(PaymentMethods.MoMo), 42));
         Assert.Empty(gateway.Charges);
         Assert.Empty(repository.Deposits);
@@ -175,8 +175,99 @@ public class BookingServiceTests
     {
         var repository = new FakeBookingRepository { Booking = SampleBooking(customerId: 42), DepositSucceeds = false };
 
-        await Assert.ThrowsAsync<BookingNotPayableException>(() =>
+        await Assert.ThrowsAsync<BookingStatusConflictException>(() =>
             CreateService(repository).PayAsync(1, new PayBookingDto(PaymentMethods.MoMo), 42));
+    }
+
+    [Theory]
+    [InlineData(RoleNames.Customer, null, 42, null)]
+    [InlineData(RoleNames.Manager, BookingStatuses.Deposited, null, 42)]
+    [InlineData(RoleNames.Admin, BookingStatuses.Cancelled, null, null)]
+    public async Task GetAllAsync_scopes_list_by_role_and_passes_status(
+        string role, string? status, int? expectedCustomerId, int? expectedOwnerId)
+    {
+        var repository = new FakeBookingRepository { Booking = SampleBooking(customerId: 42) };
+
+        await CreateService(repository).GetAllAsync(42, role, status);
+
+        Assert.Equal((expectedCustomerId, expectedOwnerId), repository.LastScope);
+        Assert.Equal(status, repository.LastStatus);
+    }
+
+    [Theory]
+    [InlineData("pending")]
+    [InlineData("Expired")]
+    public async Task GetAllAsync_rejects_unknown_status(string status)
+    {
+        await Assert.ThrowsAsync<BookingBusinessRuleException>(() =>
+            CreateService(new FakeBookingRepository()).GetAllAsync(42, RoleNames.Admin, status));
+    }
+
+    [Fact]
+    public async Task CancelAsync_lets_customer_cancel_unpaid_booking_without_notification()
+    {
+        var repository = new FakeBookingRepository { Booking = SampleBooking(customerId: 42) };
+
+        var cancelled = await CreateService(repository).CancelAsync(1, 42, RoleNames.Customer);
+
+        var cancellation = Assert.Single(repository.Cancellations);
+        Assert.Equal((1, BookingStatuses.Pending), (cancellation.BookingId, cancellation.ExpectedStatus));
+        Assert.Null(cancellation.Notification);
+        Assert.Equal(BookingStatuses.Cancelled, cancelled.Status);
+    }
+
+    [Theory]
+    [InlineData(RoleNames.Manager)]
+    [InlineData(RoleNames.Admin)]
+    public async Task CancelAsync_lets_staff_cancel_paid_booking_and_notifies_customer(string role)
+    {
+        var repository = new FakeBookingRepository
+        {
+            Booking = SampleBooking(customerId: 10, BookingStatuses.Deposited), OwnerId = 42
+        };
+
+        await CreateService(repository).CancelAsync(1, 42, role);
+
+        var cancellation = Assert.Single(repository.Cancellations);
+        Assert.Equal(BookingStatuses.Deposited, cancellation.ExpectedStatus);
+        Assert.NotNull(cancellation.Notification);
+        Assert.Equal((10, NotificationTypes.Booking, false),
+            (cancellation.Notification.UserId, cancellation.Notification.Type, cancellation.Notification.IsRead));
+        Assert.Contains("A-101", cancellation.Notification.Title);
+    }
+
+    [Theory]
+    [InlineData(RoleNames.Customer, BookingStatuses.Deposited)]
+    [InlineData(RoleNames.Customer, BookingStatuses.Cancelled)]
+    [InlineData(RoleNames.Admin, BookingStatuses.Cancelled)]
+    public async Task CancelAsync_rejects_disallowed_status(string role, string status)
+    {
+        var repository = new FakeBookingRepository { Booking = SampleBooking(customerId: 42, status) };
+
+        await Assert.ThrowsAsync<BookingStatusConflictException>(() =>
+            CreateService(repository).CancelAsync(1, 42, role));
+        Assert.Empty(repository.Cancellations);
+    }
+
+    [Fact]
+    public async Task CancelAsync_rejects_missing_or_out_of_scope_booking()
+    {
+        var repository = new FakeBookingRepository { Booking = SampleBooking(customerId: 10) };
+
+        await Assert.ThrowsAsync<BookingNotFoundException>(() =>
+            CreateService(repository).CancelAsync(99, 42, RoleNames.Customer));
+        await Assert.ThrowsAsync<BookingAuthorizationException>(() =>
+            CreateService(repository).CancelAsync(1, 42, RoleNames.Customer));
+        Assert.Empty(repository.Cancellations);
+    }
+
+    [Fact]
+    public async Task CancelAsync_reports_conflict_when_status_changed_before_saving()
+    {
+        var repository = new FakeBookingRepository { Booking = SampleBooking(customerId: 42), CancelSucceeds = false };
+
+        await Assert.ThrowsAsync<BookingStatusConflictException>(() =>
+            CreateService(repository).CancelAsync(1, 42, RoleNames.Customer));
     }
 
     private static BookingService CreateService(FakeBookingRepository repository, FakePaymentGateway? gateway = null) =>
@@ -192,13 +283,16 @@ public class BookingServiceTests
         public BookingRoomDto? Room { get; init; }
         public bool RoomIsRentable { get; init; } = true;
         public bool DepositSucceeds { get; init; } = true;
+        public bool CancelSucceeds { get; init; } = true;
         public BookingDto? Booking { get; set; }
         public int OwnerId { get; init; } = 7;
         public List<Bookings> Added { get; } = [];
         public List<(int BookingId, DateTimeOffset AsOfUtc, DateTime HoldUntilUtc, Payments Payment,
             Notifications Notification)> Deposits { get; } = [];
+        public List<(int BookingId, string ExpectedStatus, Notifications? Notification)> Cancellations { get; } = [];
         public DateTimeOffset? LastAsOfUtc { get; private set; }
         public (int? CustomerId, int? OwnerId) LastScope { get; private set; }
+        public string? LastStatus { get; private set; }
 
         public Task<BookingRoomDto?> GetRoomAsync(int roomId) =>
             Task.FromResult(Room?.RoomId == roomId ? Room : null);
@@ -216,6 +310,13 @@ public class BookingServiceTests
             Booking = new BookingDto(booking.BookingId, booking.RoomId, "A-101", 1, "Sunrise", booking.CustomerId,
                 "Customer", booking.DepositAmount, booking.Status, booking.ExpiryDate);
             return Task.FromResult(true);
+        }
+
+        public Task<List<BookingDto>> GetAllAsync(int? customerId, int? ownerId, string? status)
+        {
+            LastScope = (customerId, ownerId);
+            LastStatus = status;
+            return Task.FromResult(Booking is null ? new List<BookingDto>() : [Booking]);
         }
 
         public Task<BookingDto?> GetByIdAsync(int bookingId, int? customerId, int? ownerId)
@@ -245,6 +346,18 @@ public class BookingServiceTests
 
             Deposits.Add((bookingId, asOfUtc, holdUntilUtc, payment, notification));
             Booking = Booking! with { Status = BookingStatuses.Deposited, ExpiryDate = holdUntilUtc };
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> CancelAsync(int bookingId, string expectedStatus, Notifications? customerNotification)
+        {
+            if (!CancelSucceeds)
+            {
+                return Task.FromResult(false);
+            }
+
+            Cancellations.Add((bookingId, expectedStatus, customerNotification));
+            Booking = Booking! with { Status = BookingStatuses.Cancelled };
             return Task.FromResult(true);
         }
     }
