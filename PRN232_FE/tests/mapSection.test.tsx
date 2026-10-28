@@ -153,17 +153,17 @@ describe("public area map section", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it("shows reverse-geocoding errors without pretending the city was identified", async () => {
+  it("shows reverse-geocoding errors and keeps the location marker visible", async () => {
     grantLocationPermission()
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}, 503)))
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(new TypeError("Failed to fetch")))
 
     renderMapSection()
     fireEvent.click(screen.getByRole("button", { name: "Tìm khu trọ quanh tôi" }))
 
     expect((await screen.findByRole("alert")).textContent?.toLowerCase()).toContain(
-      "không xác định được khu vực",
+      "không thể kết nối dịch vụ xác định khu vực",
     )
-    expect(await screen.findByTestId("area-map")).toBeTruthy()
+    expect((await screen.findByTestId("area-map")).getAttribute("data-has-user-location")).toBe("true")
   })
 
   it("keeps the map on the user location without requesting city-wide properties when district data is missing", async () => {

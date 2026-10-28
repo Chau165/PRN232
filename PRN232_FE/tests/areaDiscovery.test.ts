@@ -51,6 +51,46 @@ function property(overrides: Partial<PublicPropertyAreaCard> = {}): PublicProper
 }
 
 describe("current-area property discovery", () => {
+  it("uses Photon reverse geocoding and resolves its district and city fields", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        features: [{ properties: { district: "Gò Vấp", city: "Ho Chi Minh City" } }],
+      }),
+    )
+    const listPropertiesByArea = vi
+      .fn<(query: PublicPropertyAreaQuery) => Promise<PublicPropertyAreaCard[]>>()
+      .mockResolvedValue([property()])
+
+    const result = await discoverCurrentArea({
+      geolocation: locationPermission(),
+      fetchImplementation: fetchMock,
+      listPropertiesByArea,
+    })
+
+    expect(result.area).toEqual({ district: "Gò Vấp", city: "Ho Chi Minh City" })
+    expect(listPropertiesByArea).toHaveBeenCalledWith({
+      district: "Gò Vấp",
+      city: "Ho Chi Minh City",
+    }, undefined)
+    const reverseUrl = new URL(String(fetchMock.mock.calls[0][0]))
+    expect(reverseUrl.hostname).toBe("photon.komoot.io")
+    expect(reverseUrl.searchParams.has("format")).toBe(false)
+  })
+
+  it("keeps the user location visible on the map when reverse geocoding fails", async () => {
+    const onLocation = vi.fn()
+    await expect(
+      discoverCurrentArea({
+        geolocation: locationPermission(),
+        fetchImplementation: vi.fn<typeof fetch>().mockRejectedValue(new TypeError("Failed to fetch")),
+        listPropertiesByArea: vi.fn(),
+        onLocation,
+      }),
+    ).rejects.toMatchObject({ kind: "reverse-geocode" })
+
+    expect(onLocation).toHaveBeenCalledWith({ latitude: 10.8231, longitude: 106.7624 })
+  })
+
   it("requests location, reverse-geocodes it, then loads the whole district", async () => {
     const steps: string[] = []
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
@@ -88,11 +128,10 @@ describe("current-area property discovery", () => {
       city: "TP. Hồ Chí Minh",
     }, undefined)
     const reverseUrl = new URL(String(fetchMock.mock.calls[0][0]))
-    expect(reverseUrl.hostname).toBe("nominatim.openstreetmap.org")
+    expect(reverseUrl.hostname).toBe("photon.komoot.io")
     expect(reverseUrl.searchParams.get("lat")).toBe("10.8231")
     expect(reverseUrl.searchParams.get("lon")).toBe("106.7624")
-    expect(reverseUrl.searchParams.get("zoom")).toBe("14")
-    expect(reverseUrl.searchParams.get("addressdetails")).toBe("1")
+    expect(reverseUrl.searchParams.has("format")).toBe(false)
   })
 
   it("does not broaden an empty district result to the whole city", async () => {

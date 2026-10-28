@@ -117,6 +117,8 @@ builder.Services.AddScoped<IRoomTypeRepository, RoomTypeRepository>();
 builder.Services.AddScoped<IRoomTypeService, RoomTypeService>();
 builder.Services.AddScoped<IRoomRepository, RoomRepository>();
 builder.Services.AddScoped<IRoomService, RoomService>();
+builder.Services.AddScoped<IRentalRepository, RentalRepository>();
+builder.Services.AddScoped<IRentalService, RentalService>();
 builder.Services.AddScoped<IPublicPropertyListingRepository, PublicPropertyListingRepository>();
 builder.Services.AddScoped<IPublicPropertyListingService>(serviceProvider =>
 {

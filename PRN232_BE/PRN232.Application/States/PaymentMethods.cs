@@ -1,4 +1,4 @@
-namespace PRN232.Application.Services;
+namespace PRN232.Application.States;
 
 public static class PaymentMethods
 {

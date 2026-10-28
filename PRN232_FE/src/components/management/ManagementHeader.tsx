@@ -1,8 +1,8 @@
 import { useState } from "react"
 import { useNavigate } from "react-router"
 import { useOptionalAuth } from "@/auth/AuthContext"
+import { useCustomerNotificationsState } from "@/auth/CustomerNotificationsContext"
 import Icon from "@/components/common/Icon"
-import { notifications } from "@/data/customer"
 import { routes } from "@/constants/routes"
 import type { CurrentUser } from "@/types/user"
 
@@ -19,10 +19,11 @@ export default function ManagementHeader({
 }: ManagementHeaderProps) {
   const auth = useOptionalAuth()
   const navigate = useNavigate()
+  const notificationState = useCustomerNotificationsState()
   const currentUser = auth?.user ?? user
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
-  const unread = notifications.filter((item) => !item.read).length
+  const unread = notificationState.unreadCount
   return (
     <header className="relative flex min-h-[76px] items-center justify-between gap-4 border-b border-slate-100 bg-white px-5 py-3 lg:px-8">
       <div className="flex items-center gap-3">
@@ -50,7 +51,11 @@ export default function ManagementHeader({
       <div className="flex items-center gap-2">
         <div className="relative">
           <button
-            onClick={() => setNotificationsOpen((open) => !open)}
+            onClick={() => {
+              const opening = !notificationsOpen
+              setNotificationsOpen(opening)
+              if (opening) void notificationState.refresh()
+            }}
             aria-label="Thông báo"
             className="relative grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-50"
           >
@@ -67,23 +72,24 @@ export default function ManagementHeader({
                 <strong className="font-display text-[17px] text-slate-900">
                   Thông báo
                 </strong>
-                <a
-                  href={routes.notifications}
+                <button
+                  onClick={() => { setNotificationsOpen(false); navigate(routes.notifications) }}
                   className="text-[11px] font-semibold text-[#087775]"
                 >
-                  Customer portal
-                </a>
+                  Bảo trì
+                </button>
               </div>
-              {notifications.slice(0, 3).map((item) => (
-                <div
-                  key={item.id}
-                  className="rounded-lg px-2 py-2 hover:bg-slate-50"
-                >
-                  <p className="text-[12px] font-semibold text-slate-700">
-                    {item.title}
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-500">{item.date}</p>
-                </div>
+              {notificationState.loading && notificationState.notifications.length === 0 ? <p role="status" className="px-2 py-3 text-xs text-slate-500">Đang tải thông báo...</p> : notificationState.error ? <div role="alert" className="px-2 py-3 text-xs text-rose-600"><p>{notificationState.error}</p><button onClick={() => void notificationState.refresh()} className="mt-2 font-semibold">Thử lại</button></div> : notificationState.notifications.length === 0 ? <p className="px-2 py-3 text-xs text-slate-500">Bạn chưa có thông báo.</p> : notificationState.notifications.slice(0, 3).map((item) => (
+                <button key={item.notificationId} onClick={async () => {
+                  if (!item.isRead) {
+                    try { await notificationState.markRead(item.notificationId) } catch { return }
+                  }
+                  setNotificationsOpen(false)
+                  navigate(item.type === "Maintenance" ? routes.managementMaintenance : routes.notifications)
+                }} className={`block w-full rounded-lg px-2 py-2.5 text-left hover:bg-slate-50 ${item.isRead ? "" : "bg-teal-50/50"}`}>
+                  <p className="text-[12px] font-semibold text-slate-700">{item.title}</p>
+                  <p className="mt-1 text-[11px] text-slate-500">{item.type === "Maintenance" ? "Bảo trì / Sửa chữa" : item.type}</p>
+                </button>
               ))}
             </div>
           )}

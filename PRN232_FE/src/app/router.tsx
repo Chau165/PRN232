@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { createBrowserRouter } from "react-router"
+import { createBrowserRouter, Outlet } from "react-router"
 import { ProtectedRoute, GuestOnlyRoute } from "@/components/auth/ProtectedRoute"
 import type { AppRole } from "@/types/user"
 import HomePage from "@/pages/HomePage/HomePage"
@@ -31,6 +31,7 @@ import RegisterPage from "@/pages/RegisterPage/RegisterPage"
 import DepositPage from "@/pages/DepositPage/DepositPage"
 import PaymentSuccessPage from "@/pages/PaymentSuccessPage/PaymentSuccessPage"
 import { routes } from "@/constants/routes"
+import { CustomerNotificationsProvider } from "@/auth/CustomerNotificationsContext"
 
 const managementRoles: readonly AppRole[] = ["ADMIN", "MANAGER"]
 const adminOnly: readonly AppRole[] = ["ADMIN"]
@@ -40,11 +41,15 @@ function protectedElement(element: ReactNode, roles?: readonly AppRole[]) {
   return <ProtectedRoute roles={roles}>{element}</ProtectedRoute>
 }
 
+function AppLayout() {
+  return <CustomerNotificationsProvider><Outlet /></CustomerNotificationsProvider>
+}
+
 function guestElement(element: ReactNode) {
   return <GuestOnlyRoute>{element}</GuestOnlyRoute>
 }
 
-export const router = createBrowserRouter([
+export const router = createBrowserRouter([{ Component: AppLayout, children: [
   { path: routes.home, Component: HomePage },
   { path: routes.propertyDetail, Component: PropertyDetailPage },
   { path: routes.availableRooms, Component: AvailableRoomsPage },
@@ -52,7 +57,7 @@ export const router = createBrowserRouter([
   { path: routes.myContracts, element: protectedElement(<MyContractsPage />, customerOnly) },
   { path: routes.myBills, element: protectedElement(<MyBillsPage />, customerOnly) },
   { path: routes.myBookings, element: protectedElement(<MyBookingsPage />, customerOnly) },
-  { path: routes.notifications, element: protectedElement(<NotificationsPage />, customerOnly) },
+  { path: routes.notifications, element: protectedElement(<NotificationsPage />) },
   { path: routes.profile, element: protectedElement(<ProfilePage />) },
   { path: routes.managementDashboard, element: protectedElement(<ManagementDashboardPage />, managementRoles) },
   { path: routes.managementAreas, element: protectedElement(<ManagementAreasPage />, adminOnly) },
@@ -73,4 +78,4 @@ export const router = createBrowserRouter([
   { path: routes.register, element: guestElement(<RegisterPage />) },
   { path: routes.deposit, element: protectedElement(<DepositPage />, customerOnly) },
   { path: routes.paymentSuccess, element: protectedElement(<PaymentSuccessPage />, customerOnly) },
-])
+]}])

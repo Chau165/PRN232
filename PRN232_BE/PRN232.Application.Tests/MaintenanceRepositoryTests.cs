@@ -35,8 +35,8 @@ public class MaintenanceRepositoryTests
                 StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2027, 1, 1)
             });
         context.MaintenanceRequests.AddRange(
-            new MaintenanceRequests { RequestId = 1, ContractId = 1, Description = "A", Status = "Pending" },
-            new MaintenanceRequests { RequestId = 2, ContractId = 2, Description = "B", Status = "Pending" });
+            new MaintenanceRequests { RequestId = 1, ContractId = 1, Description = "A", Status = "Pending", AssignmentNote = "Internal note" },
+            new MaintenanceRequests { RequestId = 2, ContractId = 2, Description = "B", Status = "Pending", AssignmentNote = "Another internal note" });
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
 
@@ -44,6 +44,9 @@ public class MaintenanceRepositoryTests
 
         var request = Assert.Single(results);
         Assert.Equal((1, 10, "Customer A"), (request.RequestId, request.CustomerId, request.CustomerName));
+        Assert.Null(request.AssignmentNote);
+        var customerDetail = await new MaintenanceRepository(context).GetByIdAsync(1, 10, null);
+        Assert.Null(customerDetail!.AssignmentNote);
     }
 
     [Fact]
@@ -68,8 +71,8 @@ public class MaintenanceRepositoryTests
             new Contracts { ContractId = 1, CustomerId = 30, RoomId = 1 },
             new Contracts { ContractId = 2, CustomerId = 30, RoomId = 2 });
         context.MaintenanceRequests.AddRange(
-            new MaintenanceRequests { RequestId = 1, ContractId = 1, AssignedTo = 10, Description = "A", Status = "Approved" },
-            new MaintenanceRequests { RequestId = 2, ContractId = 2, AssignedTo = 20, Description = "B", Status = "Approved" });
+            new MaintenanceRequests { RequestId = 1, ContractId = 1, AssignedTo = 10, Description = "A", Status = "Approved", AssignmentNote = "For manager A" },
+            new MaintenanceRequests { RequestId = 2, ContractId = 2, AssignedTo = 20, Description = "B", Status = "Approved", AssignmentNote = "For manager B" });
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
 
@@ -81,5 +84,7 @@ public class MaintenanceRepositoryTests
 
         var request = Assert.Single(results);
         Assert.Equal(1, request.RequestId);
+        Assert.Equal("For manager A", request.AssignmentNote);
+        Assert.Equal("For manager A", (await repository.GetByIdAsync(1, null, 10))!.AssignmentNote);
     }
 }

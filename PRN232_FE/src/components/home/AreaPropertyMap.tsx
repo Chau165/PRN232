@@ -7,6 +7,7 @@ import {
   Marker,
   Popup,
   TileLayer,
+  Tooltip,
   useMap,
 } from "react-leaflet"
 import { Link } from "react-router"
@@ -146,7 +147,7 @@ export default function AreaPropertyMap({
   const [tileError, setTileError] = useState(false)
   const tileUrl =
     import.meta.env.VITE_PUBLIC_MAP_TILE_URL ||
-    "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    "https://tile.openstreetmap.de/{z}/{x}/{y}.png"
   const attribution =
     import.meta.env.VITE_PUBLIC_MAP_ATTRIBUTION ||
     '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>'
@@ -177,10 +178,12 @@ export default function AreaPropertyMap({
         {userLocation && (
           <CircleMarker
             center={[userLocation.latitude, userLocation.longitude]}
-            radius={8}
+            radius={10}
             pathOptions={{ color: "#ffffff", fillColor: "#087775", fillOpacity: 1, weight: 3 }}
           >
-            <Popup>Vị trí hiện tại của bạn</Popup>
+            <Tooltip permanent direction="top" offset={[0, -8]}>
+              Vị trí hiện tại của bạn
+            </Tooltip>
           </CircleMarker>
         )}
         {properties.filter(hasMapCoordinates).map((property) => {

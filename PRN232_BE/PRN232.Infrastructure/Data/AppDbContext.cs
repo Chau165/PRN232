@@ -63,6 +63,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<InvoiceDetails>().HasKey(x => x.InvoiceDetailId);
         modelBuilder.Entity<Payments>().HasKey(x => x.PaymentId);
         modelBuilder.Entity<MaintenanceRequests>().HasKey(x => x.RequestId);
+        modelBuilder.Entity<MaintenanceRequests>()
+            .Property(request => request.AssignmentNote)
+            .HasColumnType("text");
         modelBuilder.Entity<MaintenanceLogs>().HasKey(x => x.LogId);
         modelBuilder.Entity<MaintenanceReports>().HasKey(x => x.ReportId);
         modelBuilder.Entity<MaintenanceReportImages>().HasKey(x => x.ImageId);

@@ -44,6 +44,7 @@ interface DiscoverCurrentAreaOptions {
 
 interface ReverseGeocodeResponse {
   address?: Record<string, unknown>
+  features?: Array<{ properties?: Record<string, unknown> }>
 }
 
 export class AreaDiscoveryError extends Error {
@@ -74,14 +75,15 @@ function readLocationName(
 }
 
 function areaFromReverseGeocode(response: unknown): ResolvedArea {
-  if (typeof response !== "object" || response === null || !("address" in response)) {
+  if (typeof response !== "object" || response === null) {
     throw new AreaDiscoveryError(
       "reverse-geocode",
       "Không xác định được khu vực hiện tại từ vị trí.",
     )
   }
 
-  const address = (response as ReverseGeocodeResponse).address
+  const payload = response as ReverseGeocodeResponse
+  const address = payload.address ?? payload.features?.[0]?.properties
   if (!address || typeof address !== "object") {
     throw new AreaDiscoveryError(
       "reverse-geocode",
@@ -99,9 +101,9 @@ function areaFromReverseGeocode(response: unknown): ResolvedArea {
     ward: readLocationName(address, [
       "ward",
       "suburb",
+      "city_subdivision",
       "quarter",
       "neighbourhood",
-      "city_subdivision",
     ]),
     city: readLocationName(address, [
       "city",
@@ -179,7 +181,7 @@ async function reverseGeocode(
 ): Promise<ResolvedArea> {
   const endpoint =
     import.meta.env.VITE_REVERSE_GEOCODING_URL?.trim() ||
-    "https://nominatim.openstreetmap.org/reverse"
+    "https://photon.komoot.io/reverse"
   let url: URL
   try {
     url = new URL(endpoint)
@@ -193,12 +195,8 @@ async function reverseGeocode(
     )
   }
 
-  url.searchParams.set("format", "jsonv2")
   url.searchParams.set("lat", String(coordinates.latitude))
   url.searchParams.set("lon", String(coordinates.longitude))
-  // Zoom 10 only resolves to city level in Nominatim, which broadens a district search to the whole city.
-  url.searchParams.set("zoom", "14")
-  url.searchParams.set("addressdetails", "1")
 
   let response: Response
   try {
