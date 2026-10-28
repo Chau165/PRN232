@@ -49,6 +49,8 @@ namespace PRN232.Infrastructure.Migrations
                 name: "IX_ViewingSchedules_RoomId",
                 table: "ViewingSchedules",
                 column: "RoomId");
+
+            migrationBuilder.Sql("ALTER TABLE \"ViewingSchedules\" ENABLE ROW LEVEL SECURITY;");
         }
 
         /// <inheritdoc />

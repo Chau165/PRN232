@@ -20,6 +20,10 @@ CREATE INDEX "IX_ViewingSchedules_CustomerId" ON public."ViewingSchedules" ("Cus
 
 CREATE INDEX "IX_ViewingSchedules_RoomId" ON public."ViewingSchedules" ("RoomId");
 
+-- Same as every other app table: RLS on with no policies, so Supabase's public REST API
+-- cannot read or write it; the backend connects as a role that bypasses RLS.
+ALTER TABLE public."ViewingSchedules" ENABLE ROW LEVEL SECURITY;
+
 INSERT INTO public."__EFMigrationsHistory" ("MigrationId", "ProductVersion")
 VALUES ('20261028022644_AddViewingSchedules', '8.0.10');
 
