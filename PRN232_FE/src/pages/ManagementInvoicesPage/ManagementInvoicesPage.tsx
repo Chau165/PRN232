@@ -1,43 +1,28 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementDetailDrawer from "@/components/management/ManagementDetailDrawer"
 import ManagementPage from "@/components/management/ManagementPage"
 import CreateInvoiceModal from "@/components/management/CreateInvoiceModal"
+import InvoiceDetailDrawer from "@/components/customer/InvoiceDetailDrawer"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
+import { useAuth } from "@/auth/AuthContext"
+import { getInvoices, type InvoiceDto } from "@/api/invoicesApi"
 import { getCurrentUser } from "@/utils/managementAuth"
 import { getManagementScope } from "@/utils/managementScope"
 import {
   getInvoiceComplaints,
   updateInvoiceComplaintStatus,
 } from "@/utils/invoiceComplaints"
-import { createManagedInvoice } from "@/utils/managedInvoices"
+import { formatMonth, invoiceStatusDisplay } from "@/utils/invoiceDisplay"
+import { localToday } from "@/utils/managementContracts"
+import { formatVnd } from "@/utils/publicFormatting"
 import type {
   InvoiceComplaintStatus,
-  ManagedInvoice,
   ManagedInvoiceComplaint,
 } from "@/types/management"
 
 type InvoiceSection = "invoices" | "complaints"
-
-function invoiceTone(status: ManagedInvoice["status"]) {
-  return status === "PAID"
-    ? "green" as const
-    : status === "OVERDUE"
-      ? "rose" as const
-      : status === "DRAFT"
-        ? "slate" as const
-        : "amber" as const
-}
-function invoiceLabel(status: ManagedInvoice["status"]) {
-  return status === "PAID"
-    ? "ĐÃ THANH TOÁN"
-    : status === "OVERDUE"
-      ? "QUÁ HẠN"
-      : status === "DRAFT"
-        ? "BẢN NHÁP"
-        : "CHƯA THANH TOÁN"
-}
 
 function complaintTone(status: ManagedInvoiceComplaint["status"]) {
   return status === "ĐÃ XỬ LÝ" ? "green" as const : "amber" as const
@@ -53,59 +38,42 @@ const complaintStatuses: Array<{
 ]
 
 export default function ManagementInvoicesPage() {
-  const { invoices, properties, propertyIds, rooms } = getManagementScope(
-    getCurrentUser(),
-  )
+  const { accessToken } = useAuth()
+  // Khiếu nại vẫn là dữ liệu mock (bước 6 sẽ làm thật), nên vẫn lọc theo khu trọ của mock.
+  const { propertyIds } = getManagementScope(getCurrentUser())
   const complaints = getInvoiceComplaints().filter((complaint) =>
     propertyIds.includes(complaint.propertyId),
   )
-  const occupiedRooms = rooms
-    .filter((room) => room.status === "Đang thuê" && room.tenantName)
-    .map((room) => ({
-      ...room,
-      propertyName:
-        properties.find((property) => property.id === room.propertyId)?.name ?? "",
-    }))
+  const today = localToday()
   const [section, setSection] = useState<InvoiceSection>("invoices")
+  const [invoices, setInvoices] = useState<InvoiceDto[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [reload, setReload] = useState(0)
   const [creatingInvoice, setCreatingInvoice] = useState(false)
-  const [selectedInvoice, setSelectedInvoice] = useState<ManagedInvoice | null>(null)
+  const [selectedInvoice, setSelectedInvoice] = useState<InvoiceDto | null>(null)
   const [selectedComplaint, setSelectedComplaint] =
     useState<ManagedInvoiceComplaint | null>(null)
   const [, setComplaintsVersion] = useState(0)
   const [toast, setToast] = useState("")
-  const invoiceLineItems = selectedInvoice
-    ? [
-        { label: "Tiền phòng", amount: selectedInvoice.roomRent },
-        {
-          label:
-            selectedInvoice.electricityUsage !== undefined
-              ? `Điện (${selectedInvoice.electricityUsage} kWh × ${selectedInvoice.electricityRate?.toLocaleString("vi-VN")}đ)`
-              : "Điện",
-          amount: selectedInvoice.electricity,
-        },
-        {
-          label:
-            selectedInvoice.waterUsage !== undefined
-              ? `Nước (${selectedInvoice.waterUsage} m³ × ${selectedInvoice.waterRate?.toLocaleString("vi-VN")}đ)`
-              : "Nước",
-          amount: selectedInvoice.water,
-        },
-        { label: "Internet", amount: selectedInvoice.internet },
-        ...(selectedInvoice.parkingFee
-          ? [{ label: "Gửi xe", amount: selectedInvoice.parkingFee }]
-          : []),
-        ...(selectedInvoice.trashFee
-          ? [{ label: "Đổ rác", amount: selectedInvoice.trashFee }]
-          : []),
-        ...(selectedInvoice.additionalFees ?? []).map((fee) => ({
-          label: fee.name,
-          amount: fee.amount,
-        })),
-        ...(!selectedInvoice.parkingFee && !selectedInvoice.trashFee
-          ? [{ label: "Phí khác", amount: selectedInvoice.otherFees }]
-          : []),
-      ]
-    : []
+
+  useEffect(() => {
+    if (!accessToken) return
+    const controller = new AbortController()
+    setLoading(true)
+    setError(null)
+    getInvoices(accessToken, controller.signal)
+      .then(setInvoices)
+      .catch((loadError: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(loadError instanceof Error ? loadError.message : "Không thể tải danh sách hóa đơn.")
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+    return () => controller.abort()
+  }, [accessToken, reload])
 
   function changeComplaintStatus(status: InvoiceComplaintStatus) {
     if (!selectedComplaint || selectedComplaint.status === status) return
@@ -123,7 +91,7 @@ export default function ManagementInvoicesPage() {
   return (
     <ManagementPage
       title="Hóa đơn"
-      description="Tạo và theo dõi hóa đơn theo phòng, tự tính điện nước và các phí dịch vụ."
+      description="Ghi chỉ số điện nước và lập hóa đơn tháng theo biểu giá của từng khu trọ."
     >
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div
@@ -166,64 +134,51 @@ export default function ManagementInvoicesPage() {
         )}
       </div>
       {section === "invoices" ? (
-        <ManagementDataTable
-          headers={[
-            "Hóa đơn",
-            "Khu trọ / Phòng",
-            "Khách thuê",
-            "Kỳ",
-            "Tổng tiền",
-            "Trạng thái",
-            "Thao tác",
-          ]}
-        >
-          <div className="divide-y divide-slate-100">
-            {invoices.map((invoice) => (
-              <div
-                key={invoice.id}
-                className="grid gap-3 px-5 py-5 lg:grid-cols-[1.3fr_1.2fr_1fr_.7fr_1fr_1fr_1fr] lg:items-center"
-              >
-                <strong className="text-[13px] text-slate-700">
-                  {invoice.id}
-                </strong>
-                <span className="text-[13px] text-slate-600">
-                  {invoice.propertyName}
-                  <small className="block text-slate-400">
-                    Phòng {invoice.roomCode}
-                  </small>
-                </span>
-                <span className="text-[13px] text-slate-600">
-                  {invoice.tenantName}
-                </span>
-                <span className="text-[13px] text-slate-600">
-                  {invoice.period}
-                </span>
-                <span className="font-bold text-[#087775]">{invoice.total}</span>
-                <StatusBadge tone={invoiceTone(invoice.status)}>
-                  {invoiceLabel(invoice.status)}
-                </StatusBadge>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSelectedInvoice(invoice)}
-                    className="rounded-lg bg-slate-100 px-3 py-2 text-[12px] font-bold text-slate-600"
-                  >
-                    Xem
-                  </button>
-                  {invoice.status !== "PAID" && (
-                    <button
-                      onClick={() =>
-                        setToast("Hóa đơn đã được đánh dấu đã thanh toán mock")
-                      }
-                      className="rounded-lg bg-teal-50 px-3 py-2 text-[12px] font-bold text-[#087775]"
-                    >
-                      Đã thu
-                    </button>
-                  )}
+        <>
+          {loading && <p role="status" className="text-[14px] text-slate-500">Đang tải danh sách hóa đơn...</p>}
+          {!loading && error && (
+            <div role="alert" className="rounded-2xl bg-white p-6 text-center shadow-[0_3px_18px_rgba(16,65,67,.05)]">
+              <p className="text-[14px] text-slate-700">{error}</p>
+              <button type="button" onClick={() => setReload((value) => value + 1)} className="mt-4 rounded-lg bg-[#087775] px-4 py-2 text-[13px] font-bold text-white">
+                Thử lại
+              </button>
+            </div>
+          )}
+          {!loading && !error && (
+            <ManagementDataTable headers={["Hóa đơn", "Khu trọ / Phòng", "Khách thuê", "Kỳ", "Tổng tiền", "Trạng thái", "Thao tác"]}>
+              {invoices.length === 0 ? (
+                <p className="px-5 py-8 text-center text-[13px] text-slate-500">Chưa có hóa đơn nào.</p>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {invoices.map((invoice) => {
+                    const display = invoiceStatusDisplay(invoice, today)
+                    return (
+                      <div key={invoice.invoiceId} className="grid gap-3 px-5 py-5 lg:grid-cols-7 lg:items-center">
+                        <strong className="text-[13px] text-slate-700">HĐ #{invoice.invoiceId}</strong>
+                        <span className="text-[13px] text-slate-600">
+                          {invoice.propertyName}
+                          <small className="block text-slate-400">Phòng {invoice.roomCode}</small>
+                        </span>
+                        <span className="text-[13px] text-slate-600">{invoice.customerName}</span>
+                        <span className="text-[13px] text-slate-600">{formatMonth(invoice.invoiceMonth)}</span>
+                        <span className="font-bold text-[#087775]">{formatVnd(invoice.total)}</span>
+                        <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
+                        <div>
+                          <button
+                            onClick={() => setSelectedInvoice(invoice)}
+                            className="rounded-lg bg-slate-100 px-3 py-2 text-[12px] font-bold text-slate-600"
+                          >
+                            Xem
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-              </div>
-            ))}
-          </div>
-        </ManagementDataTable>
+              )}
+            </ManagementDataTable>
+          )}
+        </>
       ) : (
         <ManagementDataTable
           headers={[
@@ -289,34 +244,16 @@ export default function ManagementInvoicesPage() {
       )}
       {creatingInvoice && (
         <CreateInvoiceModal
-          rooms={occupiedRooms}
           onClose={() => setCreatingInvoice(false)}
-          onSubmit={(input) => {
-            const invoice = createManagedInvoice(input)
+          onCreated={(invoice) => {
+            setInvoices((items) => [invoice, ...items])
             setCreatingInvoice(false)
-            setToast(`Đã tạo hóa đơn ${invoice.id} thành công`)
+            setToast(`Đã tạo hóa đơn #${invoice.invoiceId} (${formatVnd(invoice.total)}) và báo cho khách.`)
           }}
         />
       )}
       {selectedInvoice && (
-        <ManagementDetailDrawer
-          title={`Hóa đơn ${selectedInvoice.period}`}
-          eyebrow={selectedInvoice.id}
-          onClose={() => setSelectedInvoice(null)}
-        >
-          <div className="divide-y divide-slate-100 rounded-xl bg-slate-50 px-5 text-[14px]">
-            {invoiceLineItems.map((item) => (
-              <div key={item.label} className="flex justify-between py-3.5">
-                <span className="text-slate-500">{item.label}</span>
-                <strong>{item.amount}</strong>
-              </div>
-            ))}
-            <div className="flex justify-between py-4">
-              <strong>Tổng cộng</strong>
-              <strong className="text-[#087775]">{selectedInvoice.total}</strong>
-            </div>
-          </div>
-        </ManagementDetailDrawer>
+        <InvoiceDetailDrawer invoice={selectedInvoice} onClose={() => setSelectedInvoice(null)} />
       )}
       {selectedComplaint && (
         <ManagementDetailDrawer

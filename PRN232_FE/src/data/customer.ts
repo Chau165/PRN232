@@ -1,10 +1,8 @@
 import { rooms } from "@/data/rooms"
 import type {
   Contract,
-  Invoice,
   MaintenanceRequest,
   Notification,
-  Payment,
   RoomRental,
 } from "@/types/customer"
 
@@ -57,50 +55,6 @@ export const contracts: Contract[] = [
   },
 ]
 
-export const invoices: Invoice[] = [
-  {
-    id: "INV-09-2026",
-    title: "Hóa đơn tháng 09/2026",
-    period: "09/2026",
-    items: [
-      { label: "Tiền phòng", amount: "3.800.000đ" },
-      { label: "Điện", amount: "350.000đ" },
-      { label: "Nước", amount: "120.000đ" },
-      { label: "Internet", amount: "100.000đ" },
-      { label: "Phí khác", amount: "50.000đ" },
-    ],
-    total: "4.420.000đ",
-    due: "05/10/2026",
-    status: "CHƯA THANH TOÁN",
-  },
-  {
-    id: "INV-08-2026",
-    title: "Hóa đơn tháng 08/2026",
-    period: "08/2026",
-    items: [
-      { label: "Tiền phòng", amount: "3.800.000đ" },
-      { label: "Điện", amount: "310.000đ" },
-      { label: "Nước", amount: "120.000đ" },
-      { label: "Internet", amount: "100.000đ" },
-      { label: "Phí khác", amount: "50.000đ" },
-    ],
-    total: "4.380.000đ",
-    due: "05/09/2026",
-    status: "ĐÃ THANH TOÁN",
-  },
-]
-
-export const payments: Payment[] = [
-  {
-    id: "PAY-08-2026",
-    invoiceId: "INV-08-2026",
-    title: "Hóa đơn tháng 08/2026",
-    paidAt: "03/09/2026",
-    amount: "4.380.000đ",
-    method: "Chuyển khoản ngân hàng",
-    status: "Thành công",
-  },
-]
 
 export const maintenanceRequests: MaintenanceRequest[] = [
   {
