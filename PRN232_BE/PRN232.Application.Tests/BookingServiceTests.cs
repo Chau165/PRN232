@@ -87,19 +87,116 @@ public class BookingServiceTests
             CreateService(repository).GetByIdAsync(1, 42, "Guest"));
     }
 
-    private static BookingService CreateService(FakeBookingRepository repository) =>
-        new(repository, new FixedTimeProvider(Now));
+    [Fact]
+    public async Task PayAsync_charges_deposit_records_payment_and_notifies_owner()
+    {
+        var repository = new FakeBookingRepository { Booking = SampleBooking(customerId: 42) };
+        var gateway = new FakePaymentGateway();
 
-    private static BookingDto SampleBooking(int customerId) =>
-        new(1, 5, "A-101", 1, "Sunrise", customerId, "Customer", 3_000_000m, "Pending", Now.UtcDateTime);
+        var paid = await CreateService(repository, gateway).PayAsync(1, new PayBookingDto(PaymentMethods.VNPay), 42);
+
+        Assert.Equal((PaymentMethods.VNPay, 3_000_000m), Assert.Single(gateway.Charges));
+        var deposit = Assert.Single(repository.Deposits);
+        Assert.Equal((1, Now, Now.AddDays(7).UtcDateTime), (deposit.BookingId, deposit.AsOfUtc, deposit.HoldUntilUtc));
+        Assert.Equal(DateTimeKind.Utc, deposit.HoldUntilUtc.Kind);
+        Assert.Equal((42, (int?)1, 3_000_000m, PaymentMethods.VNPay, PaymentStatuses.Success),
+            (deposit.Payment.UserId, deposit.Payment.BookingId, deposit.Payment.Amount,
+                deposit.Payment.PaymentMethod, deposit.Payment.Status));
+        Assert.Equal((7, NotificationTypes.Booking, false),
+            (deposit.Notification.UserId, deposit.Notification.Type, deposit.Notification.IsRead));
+        Assert.Contains("A-101", deposit.Notification.Title);
+        Assert.Equal(BookingStatuses.Deposited, paid.Status);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("Cash")]
+    [InlineData("vnpay")]
+    public async Task PayAsync_rejects_unsupported_payment_method(string method)
+    {
+        var repository = new FakeBookingRepository { Booking = SampleBooking(customerId: 42) };
+        var gateway = new FakePaymentGateway();
+
+        await Assert.ThrowsAsync<BookingBusinessRuleException>(() =>
+            CreateService(repository, gateway).PayAsync(1, new PayBookingDto(method), 42));
+        Assert.Empty(gateway.Charges);
+    }
+
+    [Fact]
+    public async Task PayAsync_rejects_missing_booking()
+    {
+        await Assert.ThrowsAsync<BookingNotFoundException>(() =>
+            CreateService(new FakeBookingRepository()).PayAsync(1, new PayBookingDto(PaymentMethods.MoMo), 42));
+    }
+
+    [Fact]
+    public async Task PayAsync_rejects_another_customers_booking()
+    {
+        var repository = new FakeBookingRepository { Booking = SampleBooking(customerId: 10) };
+        var gateway = new FakePaymentGateway();
+
+        await Assert.ThrowsAsync<BookingAuthorizationException>(() =>
+            CreateService(repository, gateway).PayAsync(1, new PayBookingDto(PaymentMethods.MoMo), 42));
+        Assert.Empty(gateway.Charges);
+    }
+
+    [Theory]
+    [InlineData(BookingStatuses.Deposited, 15)]
+    [InlineData(BookingStatuses.Cancelled, 15)]
+    [InlineData(BookingStatuses.Pending, 0)]
+    [InlineData(BookingStatuses.Pending, -1)]
+    public async Task PayAsync_rejects_booking_that_is_not_awaiting_payment(string status, int minutesLeft)
+    {
+        var repository = new FakeBookingRepository
+        {
+            Booking = SampleBooking(customerId: 42, status, Now.AddMinutes(minutesLeft).UtcDateTime)
+        };
+        var gateway = new FakePaymentGateway();
+
+        await Assert.ThrowsAsync<BookingNotPayableException>(() =>
+            CreateService(repository, gateway).PayAsync(1, new PayBookingDto(PaymentMethods.MoMo), 42));
+        Assert.Empty(gateway.Charges);
+        Assert.Empty(repository.Deposits);
+    }
+
+    [Fact]
+    public async Task PayAsync_does_not_record_deposit_when_gateway_declines()
+    {
+        var repository = new FakeBookingRepository { Booking = SampleBooking(customerId: 42) };
+
+        await Assert.ThrowsAsync<BookingPaymentFailedException>(() =>
+            CreateService(repository, new FakePaymentGateway { Succeeds = false })
+                .PayAsync(1, new PayBookingDto(PaymentMethods.MoMo), 42));
+        Assert.Empty(repository.Deposits);
+    }
+
+    [Fact]
+    public async Task PayAsync_reports_conflict_when_booking_changed_before_saving()
+    {
+        var repository = new FakeBookingRepository { Booking = SampleBooking(customerId: 42), DepositSucceeds = false };
+
+        await Assert.ThrowsAsync<BookingNotPayableException>(() =>
+            CreateService(repository).PayAsync(1, new PayBookingDto(PaymentMethods.MoMo), 42));
+    }
+
+    private static BookingService CreateService(FakeBookingRepository repository, FakePaymentGateway? gateway = null) =>
+        new(repository, gateway ?? new FakePaymentGateway(), new FixedTimeProvider(Now));
+
+    private static BookingDto SampleBooking(
+        int customerId, string status = BookingStatuses.Pending, DateTime? expiryDate = null) =>
+        new(1, 5, "A-101", 1, "Sunrise", customerId, "Customer", 3_000_000m, status,
+            expiryDate ?? Now.AddMinutes(15).UtcDateTime);
 
     private sealed class FakeBookingRepository : IBookingRepository
     {
         public BookingRoomDto? Room { get; init; }
         public bool RoomIsRentable { get; init; } = true;
+        public bool DepositSucceeds { get; init; } = true;
         public BookingDto? Booking { get; set; }
         public int OwnerId { get; init; } = 7;
         public List<Bookings> Added { get; } = [];
+        public List<(int BookingId, DateTimeOffset AsOfUtc, DateTime HoldUntilUtc, Payments Payment,
+            Notifications Notification)> Deposits { get; } = [];
         public DateTimeOffset? LastAsOfUtc { get; private set; }
         public (int? CustomerId, int? OwnerId) LastScope { get; private set; }
 
@@ -131,6 +228,37 @@ public class BookingServiceTests
         }
 
         public Task<bool> ExistsAsync(int bookingId) => Task.FromResult(Booking?.BookingId == bookingId);
+
+        public Task<BookingPaymentDto?> GetForPaymentAsync(int bookingId) =>
+            Task.FromResult(Booking?.BookingId == bookingId
+                ? new BookingPaymentDto(Booking.BookingId, Booking.CustomerId, OwnerId, Booking.RoomCode,
+                    Booking.DepositAmount, Booking.Status, Booking.ExpiryDate)
+                : null);
+
+        public Task<bool> MarkDepositedAsync(
+            int bookingId, DateTimeOffset asOfUtc, DateTime holdUntilUtc, Payments payment, Notifications notification)
+        {
+            if (!DepositSucceeds)
+            {
+                return Task.FromResult(false);
+            }
+
+            Deposits.Add((bookingId, asOfUtc, holdUntilUtc, payment, notification));
+            Booking = Booking! with { Status = BookingStatuses.Deposited, ExpiryDate = holdUntilUtc };
+            return Task.FromResult(true);
+        }
+    }
+
+    private sealed class FakePaymentGateway : IPaymentGateway
+    {
+        public bool Succeeds { get; init; } = true;
+        public List<(string Method, decimal Amount)> Charges { get; } = [];
+
+        public Task<bool> ChargeAsync(string paymentMethod, decimal amount)
+        {
+            Charges.Add((paymentMethod, amount));
+            return Task.FromResult(Succeeds);
+        }
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider

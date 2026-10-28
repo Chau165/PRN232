@@ -15,3 +15,14 @@ public record BookingDto(
 public record CreateBookingDto(int RoomId);
 
 public record BookingRoomDto(int RoomId, decimal MonthlyRent);
+
+public record PayBookingDto(string PaymentMethod);
+
+public record BookingPaymentDto(
+    int BookingId,
+    int CustomerId,
+    int OwnerId,
+    string RoomCode,
+    decimal DepositAmount,
+    string Status,
+    DateTime ExpiryDate);

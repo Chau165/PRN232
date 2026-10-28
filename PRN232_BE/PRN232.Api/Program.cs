@@ -15,6 +15,7 @@ using PRN232.Infrastructure.Security;
 using PRN232.Api.Security;
 using PRN232.Api.Swagger;
 using PRN232.Infrastructure.Storage;
+using PRN232.Infrastructure.PaymentGateways;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -131,6 +132,7 @@ builder.Services.AddScoped<IEquipmentRepository, EquipmentRepository>();
 builder.Services.AddScoped<IEquipmentService, EquipmentService>();
 builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 builder.Services.AddScoped<IBookingService, BookingService>();
+builder.Services.AddScoped<IPaymentGateway, MockPaymentGateway>();
 
 builder.Services.AddControllers(options =>
 {

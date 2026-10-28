@@ -24,6 +24,7 @@ public class BookingsApiTests
     [Theory]
     [InlineData("GET", "/api/bookings/1")]
     [InlineData("POST", "/api/bookings")]
+    [InlineData("POST", "/api/bookings/1/pay")]
     public async Task Anonymous_requests_require_authentication(string method, string path)
     {
         using var factory = new BookingsApiFactory();
@@ -108,14 +109,92 @@ public class BookingsApiTests
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
         await LoginAsync(client, "customer@example.test");
-        var created = await (await client.PostAsJsonAsync("/api/bookings", new { roomId = 1 }))
-            .Content.ReadFromJsonAsync<JsonElement>();
-        var bookingId = created.GetProperty("bookingId").GetInt32();
+        var bookingId = await CreateBookingAsync(client);
 
         await LoginAsync(client, email);
         var response = await client.GetAsync($"/api/bookings/{bookingId}");
 
         Assert.Equal(expected, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Customer_pays_deposit_through_mock_gateway_and_owner_is_notified()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "customer@example.test");
+        var bookingId = await CreateBookingAsync(client);
+
+        var response = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new { paymentMethod = "MoMo" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Deposited", body.GetProperty("status").GetString());
+        Assert.True(body.GetProperty("expiryDate").GetDateTime() > DateTime.UtcNow.AddDays(6));
+
+        using var scope = factory.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var payment = await context.Payments.SingleAsync();
+        Assert.Equal((10, (int?)bookingId, 3_000_000m, "MoMo", "Success"),
+            (payment.UserId, payment.BookingId, payment.Amount, payment.PaymentMethod, payment.Status));
+        var notification = await context.Notifications.SingleAsync();
+        Assert.Equal((7, "Booking", false), (notification.UserId, notification.Type, notification.IsRead));
+    }
+
+    [Fact]
+    public async Task Paid_booking_cannot_be_paid_again()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "customer@example.test");
+        var bookingId = await CreateBookingAsync(client);
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new { paymentMethod = "VNPay" })).StatusCode);
+
+        var second = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new { paymentMethod = "VNPay" });
+
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        Assert.Equal(1, await scope.ServiceProvider.GetRequiredService<AppDbContext>().Payments.CountAsync());
+    }
+
+    [Theory]
+    [InlineData("other@example.test")]
+    [InlineData("manager@example.test")]
+    public async Task Only_the_booking_customer_can_pay(string email)
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "customer@example.test");
+        var bookingId = await CreateBookingAsync(client);
+
+        await LoginAsync(client, email);
+        var response = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new { paymentMethod = "VNPay" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Unsupported_payment_method_or_unknown_booking_is_rejected()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "customer@example.test");
+        var bookingId = await CreateBookingAsync(client);
+
+        var cash = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new { paymentMethod = "Cash" });
+        var unknown = await client.PostAsJsonAsync("/api/bookings/999/pay", new { paymentMethod = "VNPay" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, cash.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+    }
+
+    private static async Task<int> CreateBookingAsync(HttpClient client)
+    {
+        using var response = await client.PostAsJsonAsync("/api/bookings", new { roomId = 1 });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("bookingId").GetInt32();
     }
 
     private static async Task LoginAsync(HttpClient client, string email)

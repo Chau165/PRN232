@@ -54,6 +54,35 @@ public class BookingsController : ControllerBase
         }
     }
 
+    [HttpPost("{id:int}/pay")]
+    [Authorize(Roles = RoleNames.Customer)]
+    public async Task<ActionResult<BookingDto>> Pay(int id, PayBookingDto dto)
+    {
+        if (!TryGetCurrentUser(out var userId, out _)) return Unauthorized();
+        try
+        {
+            return Ok(await _bookingService.PayAsync(id, dto, userId));
+        }
+        catch (BookingBusinessRuleException exception)
+        {
+            return BadRequest(new ProblemDetails { Title = "Invalid payment", Detail = exception.Message });
+        }
+        catch (BookingNotFoundException exception)
+        {
+            return NotFound(new ProblemDetails { Title = "Booking not found", Detail = exception.Message });
+        }
+        catch (BookingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (BookingNotPayableException exception)
+        {
+            return Conflict(new ProblemDetails { Title = "Booking cannot be paid", Detail = exception.Message });
+        }
+        catch (BookingPaymentFailedException exception)
+        {
+            return StatusCode(StatusCodes.Status402PaymentRequired,
+                new ProblemDetails { Title = "Payment failed", Detail = exception.Message });
+        }
+    }
+
     private bool TryGetCurrentUser(out int userId, out string role)
     {
         userId = _currentUser.UserId ?? 0;

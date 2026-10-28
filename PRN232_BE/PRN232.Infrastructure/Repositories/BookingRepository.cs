@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.Services;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
 
@@ -68,4 +69,45 @@ public class BookingRepository : IBookingRepository
 
     public Task<bool> ExistsAsync(int bookingId) =>
         _context.Bookings.AnyAsync(booking => booking.BookingId == bookingId);
+
+    public Task<BookingPaymentDto?> GetForPaymentAsync(int bookingId) =>
+        _context.Bookings
+            .AsNoTracking()
+            .Where(booking => booking.BookingId == bookingId)
+            .Select(booking => new BookingPaymentDto(
+                booking.BookingId,
+                booking.CustomerId,
+                booking.Room!.Property!.OwnerId,
+                booking.Room.RoomCode,
+                booking.DepositAmount,
+                booking.Status,
+                booking.ExpiryDate))
+            .FirstOrDefaultAsync();
+
+    public async Task<bool> MarkDepositedAsync(
+        int bookingId, DateTimeOffset asOfUtc, DateTime holdUntilUtc, Payments payment, Notifications notification)
+    {
+        var instantUtc = asOfUtc.UtcDateTime;
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+
+        // Điều kiện Pending + còn hạn nằm ngay trong câu UPDATE: hai lần thanh toán chạy song song thì
+        // lần sau không còn khớp dòng nào (0 dòng) nên một booking không thể được ghi nhận cọc hai lần.
+        var updated = await _context.Bookings
+            .Where(booking => booking.BookingId == bookingId &&
+                booking.Status == BookingStatuses.Pending &&
+                booking.ExpiryDate > instantUtc)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(booking => booking.Status, BookingStatuses.Deposited)
+                .SetProperty(booking => booking.ExpiryDate, holdUntilUtc));
+        if (updated == 0)
+        {
+            return false;
+        }
+
+        await _context.Payments.AddAsync(payment);
+        await _context.Notifications.AddAsync(notification);
+        await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return true;
+    }
 }
