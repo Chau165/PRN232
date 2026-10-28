@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   getInvoices: vi.fn(),
   previewInvoice: vi.fn(),
   createInvoice: vi.fn(),
+  payInvoice: vi.fn(),
+  recordCashPayment: vi.fn(),
   getUtilityReadings: vi.fn(),
   createUtilityReading: vi.fn(),
 }))
@@ -36,6 +38,7 @@ vi.mock("@/utils/managementScope", () => ({ getManagementScope: () => ({ propert
 vi.mock("@/api/contractsApi", () => ({ getContracts: mocks.getContracts }))
 vi.mock("@/api/invoicesApi", () => ({
   getInvoices: mocks.getInvoices, previewInvoice: mocks.previewInvoice, createInvoice: mocks.createInvoice,
+  payInvoice: mocks.payInvoice, recordCashPayment: mocks.recordCashPayment,
 }))
 vi.mock("@/api/utilityReadingsApi", () => ({
   getUtilityReadings: mocks.getUtilityReadings, createUtilityReading: mocks.createUtilityReading,
@@ -143,6 +146,22 @@ describe("ManagementInvoicesPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "+ Tạo hóa đơn" }))
     expect(screen.getByRole("dialog", { name: "Tạo hóa đơn tháng" })).toBeTruthy()
   })
+
+  it("records a cash payment only after the manager confirms", async () => {
+    mocks.getInvoices.mockResolvedValue([invoice()])
+    mocks.recordCashPayment.mockResolvedValue(invoice({ status: "Paid" }))
+    vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true)
+    render(<MemoryRouter><ManagementInvoicesPage /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Đã thu tiền mặt" }))
+    expect(mocks.recordCashPayment).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Đã thu tiền mặt" }))
+
+    await screen.findByText("Đã ghi nhận thanh toán hóa đơn #5 và báo cho khách.")
+    expect(mocks.recordCashPayment).toHaveBeenCalledWith("token", 5)
+    expect(screen.getByText("Đã thanh toán")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Đã thu tiền mặt" })).toBeNull()
+  })
 })
 
 describe("MyBillsPage", () => {
@@ -159,5 +178,25 @@ describe("MyBillsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết" }))
     expect(await screen.findByText("Hóa đơn tháng 09/2026")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Thanh toán" })).toBeNull()
+  })
+
+  it("pays an unpaid invoice through the mock gateway after choosing a method", async () => {
+    mocks.getInvoices.mockResolvedValue([invoice()])
+    mocks.payInvoice.mockResolvedValue(invoice({ status: "Paid" }))
+    render(<MemoryRouter><MyBillsPage /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Thanh toán" }))
+    const payButton = screen.getByRole("button", { name: /^Thanh toán 3\.355\.000/ })
+    fireEvent.click(payButton)
+    expect(screen.getByRole("alert").textContent).toBe("Vui lòng chọn phương thức thanh toán.")
+    expect(mocks.payInvoice).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByLabelText("MoMo"))
+    fireEvent.click(payButton)
+
+    await screen.findByText(/^Đã thanh toán hóa đơn tháng/)
+    expect(mocks.payInvoice).toHaveBeenCalledWith("token", 5, "MoMo")
+    expect(screen.queryByText("HĐ #5")).toBeNull()
   })
 })

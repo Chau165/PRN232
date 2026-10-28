@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
 import InvoiceDetailDrawer from "@/components/customer/InvoiceDetailDrawer"
+import PayInvoiceModal from "@/components/customer/PayInvoiceModal"
 import StatusBadge from "@/components/customer/StatusBadge"
+import Toast from "@/components/customer/Toast"
 import { useAuth } from "@/auth/AuthContext"
 import { getInvoices, type InvoiceDto } from "@/api/invoicesApi"
 import { formatMonth, invoiceStatusDisplay } from "@/utils/invoiceDisplay"
@@ -25,6 +27,8 @@ export default function MyBillsPage() {
   const [error, setError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
   const [selected, setSelected] = useState<InvoiceDto | null>(null)
+  const [paying, setPaying] = useState<InvoiceDto | null>(null)
+  const [toast, setToast] = useState("")
 
   useEffect(() => {
     if (!accessToken) return
@@ -101,18 +105,40 @@ export default function MyBillsPage() {
                   <p className="text-[13px] text-slate-400">Tổng cộng</p>
                   <p className="mt-1 text-[22px] font-bold text-[#087775]">{formatVnd(invoice.total)}</p>
                 </div>
-                <button
-                  onClick={() => setSelected(invoice)}
-                  className="rounded-lg bg-slate-100 px-3 py-2.5 text-[12px] font-bold text-slate-600"
-                >
-                  Xem chi tiết
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelected(invoice)}
+                    className="rounded-lg bg-slate-100 px-3 py-2.5 text-[12px] font-bold text-slate-600"
+                  >
+                    Xem chi tiết
+                  </button>
+                  {invoice.status !== "Paid" && (
+                    <button
+                      onClick={() => setPaying(invoice)}
+                      className="rounded-lg bg-[#087775] px-3 py-2.5 text-[12px] font-bold text-white"
+                    >
+                      Thanh toán
+                    </button>
+                  )}
+                </div>
               </div>
             </article>
           )
         })}
       </div>
       {selected && <InvoiceDetailDrawer invoice={selected} onClose={() => setSelected(null)} />}
+      {paying && (
+        <PayInvoiceModal
+          invoice={paying}
+          onClose={() => setPaying(null)}
+          onPaid={(paid) => {
+            setInvoices((items) => items.map((item) => (item.invoiceId === paid.invoiceId ? paid : item)))
+            setPaying(null)
+            setToast(`Đã thanh toán hóa đơn tháng ${formatMonth(paid.invoiceMonth)}.`)
+          }}
+        />
+      )}
+      {toast && <Toast message={toast} onClose={() => setToast("")} />}
     </CustomerPageShell>
   )
 }

@@ -7,7 +7,8 @@ import InvoiceDetailDrawer from "@/components/customer/InvoiceDetailDrawer"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
 import { useAuth } from "@/auth/AuthContext"
-import { getInvoices, type InvoiceDto } from "@/api/invoicesApi"
+import { getInvoices, recordCashPayment, type InvoiceDto } from "@/api/invoicesApi"
+import { bookingErrorMessage } from "@/utils/bookingDisplay"
 import { getCurrentUser } from "@/utils/managementAuth"
 import { getManagementScope } from "@/utils/managementScope"
 import {
@@ -52,6 +53,7 @@ export default function ManagementInvoicesPage() {
   const [reload, setReload] = useState(0)
   const [creatingInvoice, setCreatingInvoice] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceDto | null>(null)
+  const [recordingId, setRecordingId] = useState<number | null>(null)
   const [selectedComplaint, setSelectedComplaint] =
     useState<ManagedInvoiceComplaint | null>(null)
   const [, setComplaintsVersion] = useState(0)
@@ -74,6 +76,22 @@ export default function ManagementInvoicesPage() {
       })
     return () => controller.abort()
   }, [accessToken, reload])
+
+  // Khách trả tiền mặt tại khu trọ: quản lý xác nhận để hoá đơn chuyển sang đã thanh toán.
+  async function recordCash(invoice: InvoiceDto) {
+    if (!accessToken || recordingId !== null) return
+    if (!window.confirm(`Xác nhận đã thu ${formatVnd(invoice.total)} tiền mặt của ${invoice.customerName} cho hóa đơn tháng ${formatMonth(invoice.invoiceMonth)}?`)) return
+    setRecordingId(invoice.invoiceId)
+    try {
+      const paid = await recordCashPayment(accessToken, invoice.invoiceId)
+      setInvoices((items) => items.map((item) => (item.invoiceId === paid.invoiceId ? paid : item)))
+      setToast(`Đã ghi nhận thanh toán hóa đơn #${paid.invoiceId} và báo cho khách.`)
+    } catch (recordError) {
+      setToast(bookingErrorMessage(recordError, "Hóa đơn này đã được thanh toán, vui lòng tải lại trang."))
+    } finally {
+      setRecordingId(null)
+    }
+  }
 
   function changeComplaintStatus(status: InvoiceComplaintStatus) {
     if (!selectedComplaint || selectedComplaint.status === status) return
@@ -163,13 +181,22 @@ export default function ManagementInvoicesPage() {
                         <span className="text-[13px] text-slate-600">{formatMonth(invoice.invoiceMonth)}</span>
                         <span className="font-bold text-[#087775]">{formatVnd(invoice.total)}</span>
                         <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
-                        <div>
+                        <div className="flex flex-wrap gap-2">
                           <button
                             onClick={() => setSelectedInvoice(invoice)}
                             className="rounded-lg bg-slate-100 px-3 py-2 text-[12px] font-bold text-slate-600"
                           >
                             Xem
                           </button>
+                          {invoice.status !== "Paid" && (
+                            <button
+                              disabled={recordingId !== null}
+                              onClick={() => recordCash(invoice)}
+                              className="rounded-lg bg-teal-50 px-3 py-2 text-[12px] font-bold text-[#087775] disabled:opacity-50"
+                            >
+                              {recordingId === invoice.invoiceId ? "Đang ghi..." : "Đã thu tiền mặt"}
+                            </button>
+                          )}
                         </div>
                       </div>
                     )
