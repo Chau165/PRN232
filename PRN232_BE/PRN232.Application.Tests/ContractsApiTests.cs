@@ -130,10 +130,10 @@ public class ContractsApiTests
         Assert.Equal(expectedCount, contracts.GetArrayLength());
     }
 
-    private static Task<HttpResponseMessage> PostContractAsync(HttpClient client, int bookingId, DateOnly startDate, DateOnly endDate) =>
+    internal static Task<HttpResponseMessage> PostContractAsync(HttpClient client, int bookingId, DateOnly startDate, DateOnly endDate) =>
         client.PostAsJsonAsync("/api/contracts", new { bookingId, startDate, endDate });
 
-    private static async Task<int> CreatePaidBookingAsync(HttpClient client)
+    internal static async Task<int> CreatePaidBookingAsync(HttpClient client)
     {
         await LoginAsync(client, "customer@example.test");
         var created = await client.PostAsJsonAsync("/api/bookings", new { roomId = 1 });
