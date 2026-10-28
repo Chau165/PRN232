@@ -150,7 +150,7 @@ public class InvoicesApiTests
         }
     }
 
-    private static async Task<int> CreateInvoiceAsync(HttpClient client)
+    internal static async Task<int> CreateInvoiceAsync(HttpClient client)
     {
         var contractId = await CreateContractWithReadingAsync(client);
         var created = await client.PostAsJsonAsync("/api/invoices", new { contractId, invoiceMonth = ThisMonth, dueDate = DueDate });

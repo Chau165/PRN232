@@ -7,4 +7,5 @@ public static class NotificationTypes
     public const string Viewing = "Viewing";
     public const string Contract = "Contract";
     public const string Invoice = "Invoice";
+    public const string Complaint = "Complaint";
 }
