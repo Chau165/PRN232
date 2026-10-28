@@ -137,6 +137,8 @@ builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<IPaymentGateway, MockPaymentGateway>();
 builder.Services.AddScoped<IViewingScheduleRepository, ViewingScheduleRepository>();
 builder.Services.AddScoped<IViewingScheduleService, ViewingScheduleService>();
+builder.Services.AddScoped<IContractRepository, ContractRepository>();
+builder.Services.AddScoped<IContractService, ContractService>();
 
 builder.Services.AddControllers(options =>
 {

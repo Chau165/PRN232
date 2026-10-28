@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.Policies;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 
@@ -144,14 +145,8 @@ public class ViewingScheduleService : IViewingScheduleService
         }
     }
 
-    // Cùng quy tắc phạm vi với booking: Customer thấy của mình, Manager thấy khu trọ mình sở hữu, Admin thấy tất cả.
-    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role) => role switch
-    {
-        RoleNames.Customer => (userId, null),
-        RoleNames.Manager => (null, userId),
-        RoleNames.Admin => (null, null),
-        _ => throw new ViewingAuthorizationException("Your role cannot access viewing requests.")
-    };
+    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role) =>
+        AccessScope.For(userId, role) ?? throw new ViewingAuthorizationException("Your role cannot access viewing requests.");
 }
 
 public sealed class ViewingNotFoundException(string message) : Exception(message);

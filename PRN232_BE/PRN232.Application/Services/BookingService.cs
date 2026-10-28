@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.Policies;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 
@@ -135,6 +136,10 @@ public class BookingService : IBookingService
         {
             throw new BookingStatusConflictException("Booking is already cancelled.");
         }
+        if (booking.ContractId is not null)
+        {
+            throw new BookingStatusConflictException("This booking already has a contract and cannot be cancelled.");
+        }
         // Khách chỉ tự huỷ được khi chưa trả cọc; booking đã cọc phải do quản lý/admin huỷ
         // (hoàn cọc xử lý ngoài hệ thống vì thanh toán là giả lập).
         if (role == RoleNames.Customer && booking.Status != BookingStatuses.Pending)
@@ -158,14 +163,8 @@ public class BookingService : IBookingService
             ?? throw new InvalidOperationException("Cancelled booking was not found.");
     }
 
-    // Customer chỉ thấy booking của mình, Manager chỉ thấy booking thuộc khu trọ mình sở hữu, Admin thấy tất cả.
-    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role) => role switch
-    {
-        RoleNames.Customer => (userId, null),
-        RoleNames.Manager => (null, userId),
-        RoleNames.Admin => (null, null),
-        _ => throw new BookingAuthorizationException("Your role cannot access bookings.")
-    };
+    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role) =>
+        AccessScope.For(userId, role) ?? throw new BookingAuthorizationException("Your role cannot access bookings.");
 }
 
 public sealed class BookingNotFoundException(string message) : Exception(message);
