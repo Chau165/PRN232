@@ -26,6 +26,7 @@ export const routes = {
   login: "/login",
   register: "/register",
   deposit: "/deposit",
+  viewingRequest: "/viewing-request",
   paymentSuccess: "/payment-success",
 } as const
 

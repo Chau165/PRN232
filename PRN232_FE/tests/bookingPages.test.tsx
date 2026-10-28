@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   payBooking: vi.fn(),
   cancelBooking: vi.fn(),
   getRoom: vi.fn(),
+  getViewingSchedules: vi.fn(),
 }))
 
 vi.mock("@/auth/AuthContext", () => ({
@@ -35,6 +36,7 @@ vi.mock("@/api/bookingsApi", () => ({
   payBooking: mocks.payBooking,
   cancelBooking: mocks.cancelBooking,
 }))
+vi.mock("@/api/viewingSchedulesApi", () => ({ getViewingSchedules: mocks.getViewingSchedules }))
 vi.mock("@/api/publicBrowsingApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/publicBrowsingApi")>()),
   publicApi: { getRoom: mocks.getRoom },
@@ -74,6 +76,7 @@ beforeEach(() => {
   mocks.getBooking.mockResolvedValue(booking())
   mocks.payBooking.mockResolvedValue(booking({ status: "Deposited" }))
   mocks.getBookings.mockResolvedValue([])
+  mocks.getViewingSchedules.mockResolvedValue([])
 })
 
 describe("DepositPage", () => {
@@ -153,6 +156,18 @@ describe("MyBookingsPage", () => {
     expect(confirm).toHaveBeenCalledTimes(2)
     expect(mocks.cancelBooking).toHaveBeenCalledWith("customer-token", 7)
     expect(screen.queryByRole("button", { name: "Huỷ giữ phòng" })).toBeNull()
+  })
+
+  it("shows the customer's viewing requests above the deposit holds", async () => {
+    mocks.getViewingSchedules.mockResolvedValue([
+      { viewingId: 3, roomId: 501, roomCode: "A101", propertyId: 1, propertyName: "Sunrise", customerId: 10,
+        customerName: "Customer A", customerPhone: "0900", scheduledAt: null, status: "Pending" },
+    ])
+    renderAt("/my-bookings")
+
+    expect(await screen.findByText("Sunrise · Phòng A101")).toBeTruthy()
+    expect(screen.getByText("Thời gian: Chủ trọ sắp xếp")).toBeTruthy()
+    expect(screen.getByText("Chờ xác nhận")).toBeTruthy()
   })
 
   it("retries after a failed load", async () => {

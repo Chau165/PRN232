@@ -296,14 +296,12 @@ export default function RoomDetailModal({
               </section>
 
               <div className="mt-9 grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  disabled
-                  title="Đặt lịch xem trực tuyến chưa được hỗ trợ"
-                  className="cursor-not-allowed rounded-lg bg-slate-100 py-3.5 text-[13px] font-bold text-slate-400"
+                <Link
+                  to={`${routes.viewingRequest}?roomId=${room.roomId}`}
+                  className="rounded-lg bg-teal-50 py-3.5 text-center text-[13px] font-bold text-[#087775] hover:bg-teal-100"
                 >
-                  Đặt lịch xem chưa hỗ trợ
-                </button>
+                  Đặt lịch xem phòng
+                </Link>
                 <Link
                   to={`${routes.deposit}?roomId=${room.roomId}`}
                   className="rounded-lg bg-[#087775] py-3.5 text-center text-[13px] font-bold text-white hover:bg-[#066a68]"
