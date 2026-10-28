@@ -50,6 +50,8 @@ describe("Booking display helpers", () => {
     expect(label("Pending", "2026-10-28T11:45:00Z")).toBe("Hết hạn thanh toán")
     expect(label("Deposited", "2026-11-04T12:00:00Z")).toBe("Đã đặt cọc")
     expect(label("Cancelled", "2026-10-28T12:15:00Z")).toBe("Đã huỷ")
+    expect(bookingStatusDisplay({ status: "Deposited", expiryDate: "2026-11-04T12:00:00Z", contractId: 3 }, now).label)
+      .toBe("Đã lập hợp đồng")
   })
 
   it("replaces conflict details with the screen's own explanation", () => {

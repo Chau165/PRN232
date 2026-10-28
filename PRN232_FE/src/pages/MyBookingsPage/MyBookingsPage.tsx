@@ -85,8 +85,13 @@ export default function MyBookingsPage() {
                     </div>
                   )}
                 </div>
-                {booking.status === "Deposited" && (
+                {booking.status === "Deposited" && booking.contractId === null && (
                   <p className="mt-4 text-[13px] text-slate-500">Chủ trọ sẽ liên hệ để lập hợp đồng thuê.</p>
+                )}
+                {booking.contractId !== null && (
+                  <Link to={routes.myContracts} className="mt-4 inline-block text-[13px] font-semibold text-[#087775] hover:underline">
+                    Đã lập hợp đồng — xem trong Hợp đồng của tôi
+                  </Link>
                 )}
                 {awaitingPayment && (
                   <div className="mt-5 flex flex-wrap gap-3">

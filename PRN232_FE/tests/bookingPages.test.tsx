@@ -47,7 +47,7 @@ const inMinutes = (minutes: number) => new Date(Date.now() + minutes * 60_000).t
 const booking = (overrides: Partial<BookingDto> = {}): BookingDto => ({
   bookingId: 7, roomId: 501, roomCode: "A101", propertyId: 1, propertyName: "Sunrise",
   customerId: 10, customerName: "Customer A", depositAmount: 3_000_000, status: "Pending",
-  expiryDate: inMinutes(15),
+  expiryDate: inMinutes(15), customerPhone: "0900000000", contractId: null,
   ...overrides,
 })
 

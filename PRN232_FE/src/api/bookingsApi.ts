@@ -14,6 +14,8 @@ export interface BookingDto {
   depositAmount: number
   status: BookingStatus
   expiryDate: string
+  customerPhone: string
+  contractId: number | null
 }
 
 export function getBookings(accessToken: string, signal?: AbortSignal) {

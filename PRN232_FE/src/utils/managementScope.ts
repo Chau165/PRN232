@@ -10,11 +10,9 @@ import {
 } from "@/data/management"
 import { getAccessiblePropertyIds } from "@/utils/managementAuth"
 import type { CurrentUser } from "@/types/user"
-import { getCreatedContracts } from "@/utils/managementContracts"
 import { getManagedInvoices } from "@/utils/managedInvoices"
 
 export function getManagementScope(user: CurrentUser) {
-  const createdContracts = getCreatedContracts()
   const propertyIds = getAccessiblePropertyIds(
     user,
     managementProperties.map((property) => property.id),
@@ -32,10 +30,8 @@ export function getManagementScope(user: CurrentUser) {
     ),
     bookings: managedBookings.filter((booking) =>
       propertyIds.includes(booking.propertyId),
-    ).map((booking) => createdContracts.some((contract) => contract.bookingId === booking.id)
-      ? { ...booking, status: "Converted to Rental" as const }
-      : booking),
-    contracts: [...createdContracts, ...managedContracts].filter((contract) =>
+    ),
+    contracts: managedContracts.filter((contract) =>
       propertyIds.includes(contract.propertyId),
     ),
     invoices: getManagedInvoices().filter((invoice) =>
