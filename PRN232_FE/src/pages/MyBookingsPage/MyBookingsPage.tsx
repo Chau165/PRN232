@@ -1,53 +1,26 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Link } from "react-router"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
-import { useAuth } from "@/auth/AuthContext"
-import { cancelBooking, getBookings, type BookingDto } from "@/api/bookingsApi"
+import type { BookingDto } from "@/api/bookingsApi"
 import { routes } from "@/constants/routes"
+import { useBookings } from "@/hooks/useBookings"
 import { bookingErrorMessage, bookingStatusDisplay, formatDateTime, isBookingExpired } from "@/utils/bookingDisplay"
 import { formatVnd } from "@/utils/publicFormatting"
 
 export default function MyBookingsPage() {
-  const { accessToken } = useAuth()
-  const [bookings, setBookings] = useState<BookingDto[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [reload, setReload] = useState(0)
-  const [cancellingId, setCancellingId] = useState<number | null>(null)
+  const { bookings, loading, error, retry, cancel: cancelById, cancellingId } = useBookings()
   const [toast, setToast] = useState("")
 
-  useEffect(() => {
-    if (!accessToken) return
-    const controller = new AbortController()
-    setLoading(true)
-    setError(null)
-    getBookings(accessToken, controller.signal)
-      .then(setBookings)
-      .catch((fetchError: unknown) => {
-        if (!controller.signal.aborted) {
-          setError(fetchError instanceof Error ? fetchError.message : "Không thể tải danh sách booking.")
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
-      })
-    return () => controller.abort()
-  }, [accessToken, reload])
-
   const cancel = async (booking: BookingDto) => {
-    if (!accessToken || cancellingId !== null) return
+    if (cancellingId !== null) return
     if (!window.confirm(`Huỷ giữ phòng ${booking.roomCode}?`)) return
-    setCancellingId(booking.bookingId)
     try {
-      const cancelled = await cancelBooking(accessToken, booking.bookingId)
-      setBookings((items) => items.map((item) => (item.bookingId === cancelled.bookingId ? cancelled : item)))
+      const cancelled = await cancelById(booking.bookingId)
       setToast(`Đã huỷ giữ phòng ${cancelled.roomCode}.`)
     } catch (cancelError) {
       setToast(bookingErrorMessage(cancelError, "Booking vừa đổi trạng thái, vui lòng tải lại trang."))
-    } finally {
-      setCancellingId(null)
     }
   }
 
@@ -62,7 +35,7 @@ export default function MyBookingsPage() {
           <p className="text-sm text-slate-700">{error}</p>
           <button
             type="button"
-            onClick={() => setReload((value) => value + 1)}
+            onClick={retry}
             className="mt-4 rounded-lg bg-[#087775] px-4 py-2 text-sm font-semibold text-white"
           >
             Thử lại
