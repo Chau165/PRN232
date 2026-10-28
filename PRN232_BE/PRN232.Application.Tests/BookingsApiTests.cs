@@ -328,6 +328,19 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
         context.Rooms.AddRange(
             new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A101", Status = "Available" },
             new Rooms { RoomId = 2, PropertyId = 1, RoomTypeId = 1, RoomCode = "A102", Status = "Occupied" });
+        // Biểu giá cho test hoá đơn: điện và nước tính theo chỉ số, internet cố định theo phòng.
+        context.Services.AddRange(
+            new Service { ServiceId = 1, Name = "Electricity - per kWh" },
+            new Service { ServiceId = 2, Name = "Water - per m3" },
+            new Service { ServiceId = 3, Name = "Internet - monthly" });
+        context.RoomTypeServices.AddRange(
+            new RoomTypeServices { RoomTypeId = 1, ServiceId = 1 },
+            new RoomTypeServices { RoomTypeId = 1, ServiceId = 2 },
+            new RoomTypeServices { RoomTypeId = 1, ServiceId = 3 });
+        context.PropertyServiceRates.AddRange(
+            Rate(1, 1, 3_500m, "kwh", "usage"),
+            Rate(2, 2, 20_000m, "m3", "usage"),
+            Rate(3, 3, 100_000m, "room_month", "fixed_room"));
         context.SaveChanges();
     }
 
@@ -336,6 +349,13 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
         base.Dispose(disposing);
         if (disposing) _connection.Dispose();
     }
+
+    private static PropertyServiceRates Rate(int rateId, int serviceId, decimal price, string unitCode, string billingBasis) =>
+        new()
+        {
+            RateId = rateId, PropertyId = 1, ServiceId = serviceId, Price = price,
+            UnitCode = unitCode, BillingBasis = billingBasis, EffectiveFrom = new DateOnly(2000, 1, 1)
+        };
 
     private static Users User(int id, int roleId, string name, string email, string hash) =>
         new() { UserId = id, RoleId = roleId, FullName = name, Email = email, PasswordHash = hash, IsActive = true };

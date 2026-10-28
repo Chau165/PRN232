@@ -1,0 +1,153 @@
+using Microsoft.EntityFrameworkCore;
+using PRN232.Application.DTOs;
+using PRN232.Application.Interfaces;
+using PRN232.Domain.Entities;
+using PRN232.Infrastructure.Data;
+
+namespace PRN232.Infrastructure.Repositories;
+
+public class InvoiceRepository : IInvoiceRepository
+{
+    private readonly AppDbContext _context;
+
+    public InvoiceRepository(AppDbContext context)
+    {
+        _context = context;
+    }
+
+    public Task<InvoiceContractDto?> GetContractAsync(int contractId) =>
+        _context.Contracts
+            .AsNoTracking()
+            .Where(contract => contract.ContractId == contractId)
+            .Select(contract => new InvoiceContractDto(
+                contract.ContractId,
+                contract.Room!.Property!.OwnerId,
+                contract.CustomerId,
+                contract.Customer!.FullName,
+                contract.Room.RoomCode,
+                contract.Room.PropertyId,
+                contract.Room.Property.PropertyName,
+                contract.Room.RoomTypeId,
+                contract.MonthlyRent,
+                contract.Status,
+                contract.StartDate,
+                contract.EndDate))
+            .FirstOrDefaultAsync();
+
+    // Dịch vụ lấy theo loại phòng (giống danh sách dịch vụ trên trang phòng), giá lấy theo khu trọ
+    // với cùng điều kiện hiệu lực mà trang công khai dùng. Ghép trong bộ nhớ để chạy được cả trên SQLite.
+    public async Task<List<BillableServiceDto>> GetBillableServicesAsync(int propertyId, int roomTypeId, DateOnly month)
+    {
+        var services = await _context.RoomTypeServices
+            .AsNoTracking()
+            .Where(link => link.RoomTypeId == roomTypeId)
+            .OrderBy(link => link.ServiceId)
+            .Select(link => new { link.ServiceId, link.Service!.Name })
+            .ToListAsync();
+        var rates = await _context.PropertyServiceRates
+            .AsNoTracking()
+            .Where(rate => rate.PropertyId == propertyId &&
+                rate.EffectiveFrom <= month &&
+                (rate.EffectiveTo == null || rate.EffectiveTo > month))
+            .Select(rate => new { rate.ServiceId, rate.RateId, rate.Price, rate.UnitCode, rate.BillingBasis, rate.EffectiveFrom })
+            .ToListAsync();
+
+        return services
+            .Select(service =>
+            {
+                var rate = rates
+                    .Where(item => item.ServiceId == service.ServiceId)
+                    .OrderByDescending(item => item.EffectiveFrom)
+                    .FirstOrDefault();
+                return new BillableServiceDto(
+                    service.ServiceId, service.Name, rate?.RateId, rate?.Price, rate?.UnitCode, rate?.BillingBasis);
+            })
+            .ToList();
+    }
+
+    public async Task<MonthUsageDto?> GetUsageAsync(int contractId, DateOnly month)
+    {
+        var reading = await _context.UtilityReadings
+            .AsNoTracking()
+            .Where(item => item.ContractId == contractId && item.ReadingMonth == month)
+            .Select(item => new { item.ElectricStart, item.ElectricEnd, item.WaterStart, item.WaterEnd })
+            .FirstOrDefaultAsync();
+        return reading is null
+            ? null
+            : new MonthUsageDto(reading.ElectricEnd - reading.ElectricStart, reading.WaterEnd - reading.WaterStart);
+    }
+
+    public Task<bool> ExistsForMonthAsync(int contractId, DateOnly month) =>
+        _context.Invoices.AnyAsync(invoice => invoice.ContractId == contractId && invoice.InvoiceMonth == month);
+
+    public async Task<bool> AddIfAbsentAsync(Invoices invoice, Notifications customerNotification)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        if (_context.Database.IsNpgsql())
+        {
+            // Khoá hợp đồng để hai lần bấm "Tạo hoá đơn" cùng lúc không tạo ra hai hoá đơn cho một tháng.
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"Contracts\" WHERE \"ContractId\" = {invoice.ContractId} FOR UPDATE");
+        }
+
+        if (await ExistsForMonthAsync(invoice.ContractId, invoice.InvoiceMonth))
+        {
+            return false;
+        }
+
+        await _context.Invoices.AddAsync(invoice);
+        await _context.Notifications.AddAsync(customerNotification);
+        await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return true;
+    }
+
+    public async Task<List<InvoiceDto>> GetAllAsync(int? customerId, int? ownerId, int? contractId, string? status)
+    {
+        var invoices = await Project(InScope(customerId, ownerId)
+                .Where(invoice => contractId == null || invoice.ContractId == contractId)
+                .Where(invoice => status == null || invoice.Status == status)
+                .OrderByDescending(invoice => invoice.InvoiceMonth)
+                .ThenByDescending(invoice => invoice.InvoiceId))
+            .ToListAsync();
+        return invoices.Select(WithTotal).ToList();
+    }
+
+    public async Task<InvoiceDto?> GetByIdAsync(int invoiceId, int? customerId, int? ownerId)
+    {
+        var invoice = await Project(InScope(customerId, ownerId).Where(item => item.InvoiceId == invoiceId))
+            .FirstOrDefaultAsync();
+        return invoice is null ? null : WithTotal(invoice);
+    }
+
+    public Task<bool> ExistsAsync(int invoiceId) =>
+        _context.Invoices.AnyAsync(invoice => invoice.InvoiceId == invoiceId);
+
+    // Lọc dùng chung cho GetById và GetAll; tham số nào null thì không lọc theo tiêu chí đó.
+    private IQueryable<Invoices> InScope(int? customerId, int? ownerId) =>
+        _context.Invoices
+            .AsNoTracking()
+            .Where(invoice => customerId == null || invoice.Contract!.CustomerId == customerId)
+            .Where(invoice => ownerId == null || invoice.Contract!.Room!.Property!.OwnerId == ownerId);
+
+    private static IQueryable<InvoiceDto> Project(IQueryable<Invoices> invoices) =>
+        invoices.Select(invoice => new InvoiceDto(
+            invoice.InvoiceId,
+            invoice.ContractId,
+            invoice.Contract!.Room!.RoomCode,
+            invoice.Contract.Room.Property!.PropertyName,
+            invoice.Contract.Customer!.FullName,
+            invoice.InvoiceMonth,
+            invoice.DueDate,
+            invoice.Status,
+            0m,
+            invoice.InvoiceDetails
+                .OrderBy(detail => detail.InvoiceDetailId)
+                .Select(detail => new InvoiceLineDto(
+                    detail.ItemType, detail.Description, detail.Quantity, detail.UnitPrice, detail.UnitCode, detail.Amount))
+                .ToList()));
+
+    // Tổng tiền cộng trong bộ nhớ: bảng Invoices không có cột tổng, và SQLite không cộng được kiểu decimal.
+    private static InvoiceDto WithTotal(InvoiceDto invoice) =>
+        invoice with { Total = invoice.Lines.Sum(line => line.Amount) };
+}
