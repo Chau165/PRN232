@@ -110,16 +110,6 @@ export type MaintenanceRequestForm = {
 
 export type BookingStatus = "Pending" | "Deposit Paid" | "Confirmed" | "Cancelled" | "Converted to Rental"
 
-export type Booking = {
-  id: string
-  propertyName: string
-  roomCode: string
-  viewingDate: string
-  depositAmount: string
-  paymentStatus: "Chưa thanh toán" | "Đã thanh toán" | "Hoàn tiền"
-  bookingStatus: BookingStatus
-}
-
 export type Notification = {
   id: string
   title: string

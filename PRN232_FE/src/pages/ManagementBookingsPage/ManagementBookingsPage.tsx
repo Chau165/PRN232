@@ -1,123 +1,90 @@
 import { useState } from "react"
-import { Link } from "react-router"
-import { routes } from "@/constants/routes"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
-import ManagementDetailDrawer from "@/components/management/ManagementDetailDrawer"
 import ManagementPage from "@/components/management/ManagementPage"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
-import { getCurrentUser } from "@/utils/managementAuth"
-import { getManagementScope } from "@/utils/managementScope"
-import type { ManagedBooking } from "@/types/management"
+import type { BookingDto } from "@/api/bookingsApi"
+import { useBookings } from "@/hooks/useBookings"
+import { bookingErrorMessage, bookingStatusDisplay, formatDateTime } from "@/utils/bookingDisplay"
+import { formatVnd } from "@/utils/publicFormatting"
 
-function bookingTone(status: string) {
-  return status === "Confirmed" || status === "Converted to Rental"
-    ? "green" as const
-    : status === "Cancelled"
-      ? "rose" as const
-      : "amber" as const
-}
 export default function ManagementBookingsPage() {
-  const { bookings } = getManagementScope(getCurrentUser())
-  const [selected, setSelected] = useState<ManagedBooking | null>(null)
+  const { bookings, loading, error, retry, cancel: cancelById, cancellingId } = useBookings()
   const [toast, setToast] = useState("")
+
+  const cancel = async (booking: BookingDto) => {
+    if (cancellingId !== null) return
+    const question = booking.status === "Deposited"
+      ? `Khách ${booking.customerName} đã đặt cọc phòng ${booking.roomCode}. Huỷ sẽ nhả phòng và báo cho khách; việc hoàn cọc xử lý ngoài hệ thống. Tiếp tục?`
+      : `Huỷ booking #${booking.bookingId} của khách ${booking.customerName}?`
+    if (!window.confirm(question)) return
+    try {
+      await cancelById(booking.bookingId)
+      setToast(`Đã huỷ booking #${booking.bookingId} và thông báo cho khách.`)
+    } catch (cancelError) {
+      setToast(bookingErrorMessage(cancelError, "Booking vừa đổi trạng thái, vui lòng tải lại trang."))
+    }
+  }
+
   return (
     <ManagementPage
       title="Đặt phòng & Đặt cọc"
-      description="Theo dõi lịch xem phòng, tiền cọc và trạng thái chuyển đổi hợp đồng."
+      description="Theo dõi các phòng đang được giữ, tiền cọc và huỷ booking khi khách không tiếp tục thuê."
     >
-      <ManagementDataTable
-        headers={[
-          "Booking ID",
-          "Khách hàng",
-          "Khu trọ / Phòng",
-          "Ngày xem",
-          "Tiền cọc",
-          "Trạng thái",
-          "Thao tác",
-        ]}
-      >
-        <div className="divide-y divide-slate-100">
-          {bookings.map((booking) => (
-            <div
-              key={booking.id}
-              className="grid gap-3 px-5 py-5 lg:grid-cols-[1fr_1fr_1.2fr_1.2fr_1fr_1fr_1fr] lg:items-center"
-            >
-              <strong className="text-[13px] text-slate-700">
-                {booking.id}
-              </strong>
-              <span className="text-[13px] text-slate-600">
-                {booking.customerName}
-                <small className="block text-slate-400">
-                  {booking.occupants}
-                </small>
-              </span>
-              <span className="text-[13px] text-slate-600">
-                {booking.propertyName}
-                <small className="block text-slate-400">
-                  Phòng {booking.roomCode}
-                </small>
-              </span>
-              <span className="text-[13px] text-slate-600">
-                {booking.viewingDate}
-              </span>
-              <span className="font-semibold text-[#087775]">
-                {booking.deposit}
-              </span>
-              <StatusBadge tone={bookingTone(booking.status)}>
-                {booking.status}
-              </StatusBadge>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setSelected(booking)}
-                  className="rounded-lg bg-slate-100 px-3 py-2 text-[12px] font-bold text-slate-600"
-                >
-                  Xem
-                </button>
-                {booking.status === "Pending" && (
-                  <button
-                    onClick={() => setToast("Booking đã được xác nhận mock")}
-                    className="rounded-lg bg-teal-50 px-3 py-2 text-[12px] font-bold text-[#087775]"
-                  >
-                    Duyệt
-                  </button>
-                )}
-                {booking.status === "Confirmed" && (
-                  <Link
-                    to={`${routes.managementCreateContract}?booking=${encodeURIComponent(booking.id)}`}
-                    className="rounded-lg bg-[#087775] px-3 py-2 text-[12px] font-bold text-white hover:bg-[#066a68]"
-                  >
-                    Tạo hợp đồng
-                  </Link>
-                )}
-              </div>
-            </div>
-          ))}
+      {loading && <p role="status" className="text-[14px] text-slate-500">Đang tải danh sách booking...</p>}
+      {!loading && error && (
+        <div role="alert" className="rounded-2xl bg-white p-6 text-center shadow-[0_3px_18px_rgba(16,65,67,.05)]">
+          <p className="text-[14px] text-slate-700">{error}</p>
+          <button
+            type="button"
+            onClick={retry}
+            className="mt-4 rounded-lg bg-[#087775] px-4 py-2 text-[13px] font-bold text-white"
+          >
+            Thử lại
+          </button>
         </div>
-      </ManagementDataTable>
-      {selected && (
-        <ManagementDetailDrawer
-          title={`Booking ${selected.id}`}
-          onClose={() => setSelected(null)}
+      )}
+      {!loading && !error && (
+        <ManagementDataTable
+          headers={["Booking", "Khách hàng", "Khu trọ / Phòng", "Tiền cọc", "Giữ phòng đến", "Trạng thái", "Thao tác"]}
         >
-          <div className="space-y-3 rounded-xl bg-slate-50 p-4 text-[14px]">
-            <p>
-              Khách hàng: <strong>{selected.customerName}</strong>
-            </p>
-            <p>
-              Khu trọ: <strong>{selected.propertyName}</strong>
-            </p>
-            <p>
-              Phòng: <strong>{selected.roomCode}</strong>
-            </p>
-            <p>
-              Ngày xem: <strong>{selected.viewingDate}</strong>
-            </p>
-            <p>
-              Thanh toán: <strong>{selected.paymentStatus}</strong>
-            </p>
-          </div>
-        </ManagementDetailDrawer>
+          {bookings.length === 0 ? (
+            <p className="px-5 py-8 text-center text-[13px] text-slate-500">Chưa có booking nào.</p>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {bookings.map((booking) => {
+                const display = bookingStatusDisplay(booking)
+                return (
+                  <div key={booking.bookingId} className="grid gap-3 px-5 py-5 lg:grid-cols-7 lg:items-center">
+                    <strong className="text-[13px] text-slate-700">#{booking.bookingId}</strong>
+                    <span className="text-[13px] text-slate-600">{booking.customerName}</span>
+                    <span className="text-[13px] text-slate-600">
+                      {booking.propertyName}
+                      <small className="block text-slate-400">Phòng {booking.roomCode}</small>
+                    </span>
+                    <span className="font-semibold text-[#087775]">{formatVnd(booking.depositAmount)}</span>
+                    <span className="text-[13px] text-slate-600">
+                      {booking.status === "Cancelled" ? "—" : formatDateTime(booking.expiryDate)}
+                    </span>
+                    <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
+                    <div>
+                      {booking.status !== "Cancelled" && (
+                        <button
+                          type="button"
+                          onClick={() => cancel(booking)}
+                          disabled={cancellingId !== null}
+                          className="rounded-lg bg-rose-50 px-3 py-2 text-[12px] font-bold text-rose-700 disabled:opacity-60"
+                        >
+                          {cancellingId === booking.bookingId ? "Đang huỷ..." : "Huỷ booking"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </ManagementDataTable>
       )}
       {toast && <Toast message={toast} onClose={() => setToast("")} />}
     </ManagementPage>
