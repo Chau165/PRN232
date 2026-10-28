@@ -9,7 +9,8 @@ export function isBookingExpired(booking: BookingTiming, now = Date.now()) {
   return booking.status === "Pending" && Date.parse(booking.expiryDate) <= now
 }
 
-export function bookingStatusDisplay(booking: BookingTiming, now = Date.now()) {
+export function bookingStatusDisplay(booking: BookingTiming & { contractId?: number | null }, now = Date.now()) {
+  if (booking.contractId) return { label: "Đã lập hợp đồng", tone: "green" as const }
   if (booking.status === "Deposited") return { label: "Đã đặt cọc", tone: "teal" as const }
   if (booking.status === "Cancelled") return { label: "Đã huỷ", tone: "rose" as const }
   return isBookingExpired(booking, now)

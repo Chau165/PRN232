@@ -271,13 +271,26 @@ public class BookingServiceTests
             CreateService(repository).CancelAsync(1, 42, RoleNames.Customer));
     }
 
+    [Fact]
+    public async Task CancelAsync_rejects_booking_that_already_has_a_contract()
+    {
+        var repository = new FakeBookingRepository
+        {
+            Booking = SampleBooking(customerId: 10, BookingStatuses.Deposited) with { ContractId = 5 }
+        };
+
+        await Assert.ThrowsAsync<BookingStatusConflictException>(() =>
+            CreateService(repository).CancelAsync(1, 42, RoleNames.Admin));
+        Assert.Empty(repository.Cancellations);
+    }
+
     private static BookingService CreateService(FakeBookingRepository repository, FakePaymentGateway? gateway = null) =>
         new(repository, gateway ?? new FakePaymentGateway(), new FixedTimeProvider(Now));
 
     private static BookingDto SampleBooking(
         int customerId, string status = BookingStatuses.Pending, DateTime? expiryDate = null) =>
         new(1, 5, "A-101", 1, "Sunrise", customerId, "Customer", 3_000_000m, status,
-            expiryDate ?? Now.AddMinutes(15).UtcDateTime);
+            expiryDate ?? Now.AddMinutes(15).UtcDateTime, "0900000000", null);
 
     private sealed class FakeBookingRepository : IBookingRepository
     {
@@ -309,7 +322,7 @@ public class BookingServiceTests
             booking.BookingId = Added.Count + 1;
             Added.Add(booking);
             Booking = new BookingDto(booking.BookingId, booking.RoomId, "A-101", 1, "Sunrise", booking.CustomerId,
-                "Customer", booking.DepositAmount, booking.Status, booking.ExpiryDate);
+                "Customer", booking.DepositAmount, booking.Status, booking.ExpiryDate, "0900000000", null);
             return Task.FromResult(true);
         }
 

@@ -10,7 +10,9 @@ public record BookingDto(
     string CustomerName,
     decimal DepositAmount,
     string Status,
-    DateTime ExpiryDate);
+    DateTime ExpiryDate,
+    string CustomerPhone,
+    int? ContractId);
 
 public record CreateBookingDto(int RoomId);
 

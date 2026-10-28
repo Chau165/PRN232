@@ -1,9 +1,11 @@
 import { useState } from "react"
+import { Link } from "react-router"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementPage from "@/components/management/ManagementPage"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
 import type { BookingDto } from "@/api/bookingsApi"
+import { routes } from "@/constants/routes"
 import { useBookings } from "@/hooks/useBookings"
 import { bookingErrorMessage, bookingStatusDisplay, formatDateTime } from "@/utils/bookingDisplay"
 import { formatVnd } from "@/utils/publicFormatting"
@@ -67,8 +69,17 @@ export default function ManagementBookingsPage() {
                       {booking.status === "Cancelled" ? "—" : formatDateTime(booking.expiryDate)}
                     </span>
                     <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
-                    <div>
-                      {booking.status !== "Cancelled" && (
+                    {/* Booking đã lên hợp đồng thì không còn thao tác: BE cũng chặn huỷ trường hợp này. */}
+                    <div className="flex flex-wrap gap-2">
+                      {booking.status === "Deposited" && booking.contractId === null && (
+                        <Link
+                          to={`${routes.managementCreateContract}?bookingId=${booking.bookingId}`}
+                          className="rounded-lg bg-[#087775] px-3 py-2 text-[12px] font-bold text-white hover:bg-[#066a68]"
+                        >
+                          Tạo hợp đồng
+                        </Link>
+                      )}
+                      {booking.status !== "Cancelled" && booking.contractId === null && (
                         <button
                           type="button"
                           onClick={() => cancel(booking)}

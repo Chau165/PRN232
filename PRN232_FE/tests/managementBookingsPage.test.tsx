@@ -26,7 +26,7 @@ const inMinutes = (minutes: number) => new Date(Date.now() + minutes * 60_000).t
 const booking = (overrides: Partial<BookingDto> = {}): BookingDto => ({
   bookingId: 9, roomId: 1, roomCode: "A101", propertyId: 1, propertyName: "Sunrise",
   customerId: 10, customerName: "Nguyễn An", depositAmount: 3_000_000, status: "Deposited",
-  expiryDate: inMinutes(7 * 24 * 60),
+  expiryDate: inMinutes(7 * 24 * 60), customerPhone: "0908123456", contractId: null,
   ...overrides,
 })
 
@@ -39,6 +39,7 @@ beforeEach(() => {
     booking(),
     booking({ bookingId: 8, roomCode: "A102", status: "Pending", expiryDate: inMinutes(10) }),
     booking({ bookingId: 7, roomCode: "A103", status: "Cancelled" }),
+    booking({ bookingId: 6, roomCode: "A104", contractId: 3 }),
   ])
 })
 
@@ -52,6 +53,8 @@ describe("ManagementBookingsPage", () => {
     expect(mocks.getBookings).toHaveBeenCalledWith("manager-token", expect.any(AbortSignal))
     expect(screen.getByText("Đã đặt cọc")).toBeTruthy()
     expect(screen.getByText("Chờ thanh toán")).toBeTruthy()
+    expect(screen.getByText("Đã lập hợp đồng")).toBeTruthy()
+    expect(screen.getByRole("link", { name: "Tạo hợp đồng" }).getAttribute("href")).toBe("/management/contracts/new?bookingId=9")
     const cancelButtons = screen.getAllByRole("button", { name: "Huỷ booking" })
     expect(cancelButtons).toHaveLength(2)
 
@@ -64,6 +67,7 @@ describe("ManagementBookingsPage", () => {
     expect(mocks.cancelBooking).toHaveBeenCalledWith("manager-token", 9)
     expect(screen.getAllByText("Đã huỷ")).toHaveLength(2)
     expect(screen.getAllByRole("button", { name: "Huỷ booking" })).toHaveLength(1)
+    expect(screen.queryByRole("link", { name: "Tạo hợp đồng" })).toBeNull()
   })
 
   it("explains a conflict when the booking changed before cancelling", async () => {

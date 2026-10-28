@@ -109,11 +109,19 @@ public class BookingRepository : IBookingRepository
     public async Task<bool> CancelAsync(int bookingId, string expectedStatus, Notifications? customerNotification)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
+        if (_context.Database.IsNpgsql())
+        {
+            // Tạo hợp đồng cũng khoá dòng booking này, nên huỷ và lập hợp đồng không thể chạy chen nhau.
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"Bookings\" WHERE \"BookingId\" = {bookingId} FOR UPDATE");
+        }
 
         // Chỉ huỷ khi trạng thái vẫn đúng như lúc service kiểm tra: nếu khách vừa thanh toán xong
         // (Pending -> Deposited) thì câu UPDATE không khớp dòng nào và lần huỷ này bị từ chối.
+        // Booking đã lên hợp đồng thì không huỷ được nữa.
         var updated = await _context.Bookings
-            .Where(booking => booking.BookingId == bookingId && booking.Status == expectedStatus)
+            .Where(booking => booking.BookingId == bookingId && booking.Status == expectedStatus &&
+                booking.Contract == null)
             .ExecuteUpdateAsync(setters => setters.SetProperty(booking => booking.Status, BookingStatuses.Cancelled));
         if (updated == 0)
         {
@@ -146,5 +154,7 @@ public class BookingRepository : IBookingRepository
         booking.Customer!.FullName,
         booking.DepositAmount,
         booking.Status,
-        booking.ExpiryDate);
+        booking.ExpiryDate,
+        booking.Customer.PhoneNumber,
+        booking.Contract != null ? (int?)booking.Contract.ContractId : null);
 }
