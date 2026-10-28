@@ -143,6 +143,8 @@ builder.Services.AddScoped<IUtilityReadingRepository, UtilityReadingRepository>(
 builder.Services.AddScoped<IUtilityReadingService, UtilityReadingService>();
 builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
+builder.Services.AddScoped<IInvoiceComplaintRepository, InvoiceComplaintRepository>();
+builder.Services.AddScoped<IInvoiceComplaintService, InvoiceComplaintService>();
 
 builder.Services.AddControllers(options =>
 {

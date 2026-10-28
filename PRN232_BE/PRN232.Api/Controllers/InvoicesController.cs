@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Services;
+using PRN232.Application.States;
 
 namespace PRN232.Api.Controllers;
 
@@ -64,7 +65,23 @@ public class InvoicesController : ControllerBase
         });
     }
 
-    // Xem trước và tạo thật ném cùng các loại lỗi nên dùng chung một chỗ chuyển exception -> mã HTTP.
+    [HttpPost("{id:int}/pay")]
+    [Authorize(Roles = RoleNames.Customer)]
+    public async Task<ActionResult<InvoiceDto>> Pay(int id, PayInvoiceDto dto)
+    {
+        if (!TryGetCurrentUser(out var userId, out _)) return Unauthorized();
+        return await HandleAsync(async () => Ok(await _invoiceService.PayAsync(id, dto, userId)));
+    }
+
+    [HttpPost("{id:int}/record-cash")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<ActionResult<InvoiceDto>> RecordCash(int id)
+    {
+        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        return await HandleAsync(async () => Ok(await _invoiceService.RecordCashPaymentAsync(id, userId, role)));
+    }
+
+    // Các thao tác ghi đều ném cùng các loại lỗi nên dùng chung một chỗ chuyển exception -> mã HTTP.
     private async Task<ActionResult<InvoiceDto>> HandleAsync(Func<Task<ActionResult<InvoiceDto>>> action)
     {
         try
@@ -82,7 +99,12 @@ public class InvoicesController : ControllerBase
         catch (InvoiceAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
         catch (InvoiceConflictException exception)
         {
-            return Conflict(new ProblemDetails { Title = "Invoice cannot be created", Detail = exception.Message });
+            return Conflict(new ProblemDetails { Title = "Invoice conflict", Detail = exception.Message });
+        }
+        catch (InvoicePaymentFailedException exception)
+        {
+            return StatusCode(StatusCodes.Status402PaymentRequired,
+                new ProblemDetails { Title = "Payment failed", Detail = exception.Message });
         }
     }
 

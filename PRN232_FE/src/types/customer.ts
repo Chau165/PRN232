@@ -35,37 +35,6 @@ export type Contract = {
 
 export type InvoiceStatus = "CHƯA THANH TOÁN" | "ĐÃ THANH TOÁN"
 
-export type InvoiceItem = {
-  label: string
-  amount: string
-}
-
-export type Invoice = {
-  id: string
-  title: string
-  period: string
-  items: InvoiceItem[]
-  total: string
-  due: string
-  status: InvoiceStatus
-}
-
-export type InvoiceComplaintForm = {
-  invoiceId: string
-  feeType: string
-  content: string
-}
-
-export type Payment = {
-  id: string
-  invoiceId: string
-  title: string
-  paidAt: string
-  amount: string
-  method: string
-  status: "Thành công" | "Đang xử lý"
-}
-
 export type MaintenanceStatus = "ĐÃ GỬI" | "ĐÃ TIẾP NHẬN" | "ĐANG XỬ LÝ" | "HOÀN THÀNH"
 
 export type MaintenancePriority = "Bình thường" | "Quan trọng" | "Khẩn cấp"

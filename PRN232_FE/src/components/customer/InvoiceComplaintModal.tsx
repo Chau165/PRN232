@@ -1,27 +1,42 @@
 import { useState, type FormEvent } from "react"
-import type { Invoice, InvoiceComplaintForm } from "@/types/customer"
+import { useAuth } from "@/auth/AuthContext"
+import type { InvoiceDto } from "@/api/invoicesApi"
+import { createInvoiceComplaint, OTHER_FEE_TYPE, type InvoiceComplaintDto } from "@/api/invoiceComplaintsApi"
+import { bookingErrorMessage } from "@/utils/bookingDisplay"
+import { formatMonth, invoiceLineLabel } from "@/utils/invoiceDisplay"
+import { formatVnd } from "@/utils/publicFormatting"
 
 type InvoiceComplaintModalProps = {
-  invoice: Invoice
+  invoice: InvoiceDto
   onClose: () => void
-  onSubmit: (form: InvoiceComplaintForm) => void
+  onCreated: (complaint: InvoiceComplaintDto) => void
 }
 
-export default function InvoiceComplaintModal({
-  invoice,
-  onClose,
-  onSubmit,
-}: InvoiceComplaintModalProps) {
+const maxContentLength = 1000
+
+// Mỗi lựa chọn "loại phí" là một dòng có thật trên hoá đơn: gửi mô tả của dòng đó lên BE để BE đối chiếu.
+export default function InvoiceComplaintModal({ invoice, onClose, onCreated }: InvoiceComplaintModalProps) {
+  const { accessToken } = useAuth()
   const [feeType, setFeeType] = useState("")
   const [content, setContent] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    onSubmit({
-      invoiceId: invoice.id,
-      feeType,
-      content: content.trim(),
-    })
+    if (!accessToken || pending) return
+    if (!feeType || !content.trim()) {
+      setError("Vui lòng chọn loại phí và nhập nội dung khiếu nại.")
+      return
+    }
+    setPending(true)
+    setError(null)
+    try {
+      onCreated(await createInvoiceComplaint(accessToken, { invoiceId: invoice.invoiceId, feeType, content: content.trim() }))
+    } catch (createError) {
+      setError(bookingErrorMessage(createError, "Không thể gửi khiếu nại, vui lòng thử lại."))
+      setPending(false)
+    }
   }
 
   return (
@@ -34,13 +49,14 @@ export default function InvoiceComplaintModal({
     >
       <form
         onSubmit={submit}
+        noValidate
         className="w-full max-w-[540px] rounded-2xl bg-white p-7 shadow-2xl"
         aria-labelledby="invoice-complaint-title"
       >
         <div className="flex items-start justify-between gap-5">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[.16em] text-[#087775]">
-              {invoice.id}
+              HĐ #{invoice.invoiceId} · Tháng {formatMonth(invoice.invoiceMonth)}
             </p>
             <h2
               id="invoice-complaint-title"
@@ -67,28 +83,28 @@ export default function InvoiceComplaintModal({
           <label className="block text-[13px] font-semibold text-slate-700">
             Loại phí
             <select
-              required
               value={feeType}
-              onChange={(event) => setFeeType(event.target.value)}
+              onChange={(event) => { setFeeType(event.target.value); setError(null) }}
               className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-[14px] text-slate-700 outline-none focus:border-[#087775] focus:ring-2 focus:ring-[#087775]/15"
             >
               <option value="" disabled>
                 Chọn loại phí cần khiếu nại
               </option>
-              {invoice.items.map((item) => (
-                <option key={item.label} value={item.label}>
-                  {item.label} — {item.amount}
+              {invoice.lines.map((line) => (
+                <option key={line.description} value={line.description}>
+                  {invoiceLineLabel(line)} — {formatVnd(line.amount)}
                 </option>
               ))}
+              <option value={OTHER_FEE_TYPE}>Khác (khiếu nại chung)</option>
             </select>
           </label>
 
           <label className="block text-[13px] font-semibold text-slate-700">
             Nội dung khiếu nại
             <textarea
-              required
               value={content}
-              onChange={(event) => setContent(event.target.value)}
+              maxLength={maxContentLength}
+              onChange={(event) => { setContent(event.target.value); setError(null) }}
               rows={5}
               placeholder="Ví dụ: Chỉ số điện trên hóa đơn chưa đúng với chỉ số công tơ..."
               className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-[14px] leading-5 text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#087775] focus:ring-2 focus:ring-[#087775]/15"
@@ -96,6 +112,7 @@ export default function InvoiceComplaintModal({
           </label>
         </div>
 
+        {error && <p role="alert" className="mt-4 text-sm text-rose-600">{error}</p>}
         <div className="mt-7 grid grid-cols-2 gap-3">
           <button
             type="button"
@@ -106,9 +123,10 @@ export default function InvoiceComplaintModal({
           </button>
           <button
             type="submit"
-            className="rounded-lg bg-[#087775] py-3 text-[13px] font-bold text-white shadow-sm hover:bg-[#066a68]"
+            disabled={pending}
+            className="rounded-lg bg-[#087775] py-3 text-[13px] font-bold text-white shadow-sm hover:bg-[#066a68] disabled:opacity-60"
           >
-            Gửi khiếu nại
+            {pending ? "Đang gửi..." : "Gửi khiếu nại"}
           </button>
         </div>
       </form>

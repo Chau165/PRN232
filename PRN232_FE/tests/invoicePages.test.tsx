@@ -6,6 +6,7 @@ import ManagementInvoicesPage from "@/pages/ManagementInvoicesPage/ManagementInv
 import MyBillsPage from "@/pages/MyBillsPage/MyBillsPage"
 import type { ContractDto } from "@/api/contractsApi"
 import type { InvoiceDto } from "@/api/invoicesApi"
+import type { InvoiceComplaintDto } from "@/api/invoiceComplaintsApi"
 import type { UtilityReadingDto } from "@/api/utilityReadingsApi"
 import { defaultDueDate } from "@/utils/invoiceDisplay"
 import { localToday } from "@/utils/managementContracts"
@@ -15,8 +16,13 @@ const mocks = vi.hoisted(() => ({
   getInvoices: vi.fn(),
   previewInvoice: vi.fn(),
   createInvoice: vi.fn(),
+  payInvoice: vi.fn(),
+  recordCashPayment: vi.fn(),
   getUtilityReadings: vi.fn(),
   createUtilityReading: vi.fn(),
+  getInvoiceComplaints: vi.fn(),
+  createInvoiceComplaint: vi.fn(),
+  updateInvoiceComplaintStatus: vi.fn(),
 }))
 
 vi.mock("@/auth/AuthContext", () => ({
@@ -36,6 +42,13 @@ vi.mock("@/utils/managementScope", () => ({ getManagementScope: () => ({ propert
 vi.mock("@/api/contractsApi", () => ({ getContracts: mocks.getContracts }))
 vi.mock("@/api/invoicesApi", () => ({
   getInvoices: mocks.getInvoices, previewInvoice: mocks.previewInvoice, createInvoice: mocks.createInvoice,
+  payInvoice: mocks.payInvoice, recordCashPayment: mocks.recordCashPayment,
+}))
+vi.mock("@/api/invoiceComplaintsApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/invoiceComplaintsApi")>()),
+  getInvoiceComplaints: mocks.getInvoiceComplaints,
+  createInvoiceComplaint: mocks.createInvoiceComplaint,
+  updateInvoiceComplaintStatus: mocks.updateInvoiceComplaintStatus,
 }))
 vi.mock("@/api/utilityReadingsApi", () => ({
   getUtilityReadings: mocks.getUtilityReadings, createUtilityReading: mocks.createUtilityReading,
@@ -76,6 +89,14 @@ beforeEach(() => {
   mocks.previewInvoice.mockResolvedValue(invoice({ invoiceId: 0, status: "Preview" }))
   mocks.createInvoice.mockResolvedValue(invoice())
   mocks.getInvoices.mockResolvedValue([])
+  mocks.getInvoiceComplaints.mockResolvedValue([])
+})
+
+const complaint = (overrides: Partial<InvoiceComplaintDto> = {}): InvoiceComplaintDto => ({
+  complaintId: 3, invoiceId: 5, invoiceMonth: thisMonth, roomCode: "A101", propertyName: "Sunrise",
+  customerId: 10, customerName: "Nguyễn An", feeType: "Tiền phòng", content: "Giá phòng không đúng hợp đồng",
+  status: "New", createdAt: "2026-10-28T10:00:00Z",
+  ...overrides,
 })
 
 describe("CreateInvoiceModal", () => {
@@ -143,6 +164,22 @@ describe("ManagementInvoicesPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "+ Tạo hóa đơn" }))
     expect(screen.getByRole("dialog", { name: "Tạo hóa đơn tháng" })).toBeTruthy()
   })
+
+  it("records a cash payment only after the manager confirms", async () => {
+    mocks.getInvoices.mockResolvedValue([invoice()])
+    mocks.recordCashPayment.mockResolvedValue(invoice({ status: "Paid" }))
+    vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true)
+    render(<MemoryRouter><ManagementInvoicesPage /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Đã thu tiền mặt" }))
+    expect(mocks.recordCashPayment).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Đã thu tiền mặt" }))
+
+    await screen.findByText("Đã ghi nhận thanh toán hóa đơn #5 và báo cho khách.")
+    expect(mocks.recordCashPayment).toHaveBeenCalledWith("token", 5)
+    expect(screen.getByText("Đã thanh toán")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Đã thu tiền mặt" })).toBeNull()
+  })
 })
 
 describe("MyBillsPage", () => {
@@ -159,5 +196,65 @@ describe("MyBillsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết" }))
     expect(await screen.findByText("Hóa đơn tháng 09/2026")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Thanh toán" })).toBeNull()
+  })
+
+  it("pays an unpaid invoice through the mock gateway after choosing a method", async () => {
+    mocks.getInvoices.mockResolvedValue([invoice()])
+    mocks.payInvoice.mockResolvedValue(invoice({ status: "Paid" }))
+    render(<MemoryRouter><MyBillsPage /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Thanh toán" }))
+    const payButton = screen.getByRole("button", { name: /^Thanh toán 3\.355\.000/ })
+    fireEvent.click(payButton)
+    expect(screen.getByRole("alert").textContent).toBe("Vui lòng chọn phương thức thanh toán.")
+    expect(mocks.payInvoice).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByLabelText("MoMo"))
+    fireEvent.click(payButton)
+
+    await screen.findByText(/^Đã thanh toán hóa đơn tháng/)
+    expect(mocks.payInvoice).toHaveBeenCalledWith("token", 5, "MoMo")
+    expect(screen.queryByText("HĐ #5")).toBeNull()
+  })
+})
+
+describe("Invoice complaints", () => {
+  it("lets the tenant complain about a real invoice line and shows it under sent complaints", async () => {
+    mocks.getInvoices.mockResolvedValue([invoice()])
+    mocks.createInvoiceComplaint.mockResolvedValue(complaint())
+    render(<MemoryRouter><MyBillsPage /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Khiếu nại" }))
+    expect(screen.getByRole("option", { name: /^Điện \(50 kWh/ })).toBeTruthy()
+    expect(screen.getByRole("option", { name: "Khác (khiếu nại chung)" })).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Gửi khiếu nại" }))
+    expect(screen.getByRole("alert").textContent).toBe("Vui lòng chọn loại phí và nhập nội dung khiếu nại.")
+
+    fireEvent.change(screen.getByLabelText("Loại phí"), { target: { value: "Tiền phòng" } })
+    fireEvent.change(screen.getByLabelText("Nội dung khiếu nại"), { target: { value: "  Giá phòng không đúng hợp đồng  " } })
+    fireEvent.click(screen.getByRole("button", { name: "Gửi khiếu nại" }))
+
+    await screen.findByText("Khiếu nại của bạn đã được gửi tới chủ trọ.")
+    expect(mocks.createInvoiceComplaint).toHaveBeenCalledWith("token", {
+      invoiceId: 5, feeType: "Tiền phòng", content: "Giá phòng không đúng hợp đồng",
+    })
+    expect(screen.getByRole("heading", { name: "Khiếu nại đã gửi" })).toBeTruthy()
+    expect(screen.getByText("Mới")).toBeTruthy()
+  })
+
+  it("lets the manager move a complaint to resolved from the complaints tab", async () => {
+    mocks.getInvoiceComplaints.mockResolvedValue([complaint()])
+    mocks.updateInvoiceComplaintStatus.mockResolvedValue(complaint({ status: "Resolved" }))
+    render(<MemoryRouter><ManagementInvoicesPage /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Khiếu nại hóa đơn" }))
+    expect(screen.getByText("KN #3")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Xem" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Đã xử lý" }))
+
+    await screen.findByText("Đã cập nhật trạng thái khiếu nại và báo cho khách.")
+    expect(mocks.updateInvoiceComplaintStatus).toHaveBeenCalledWith("token", 3, "Resolved")
+    expect(screen.getByRole("button", { name: "Đã xử lý" }).getAttribute("aria-pressed")).toBe("true")
   })
 })

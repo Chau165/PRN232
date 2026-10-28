@@ -33,6 +33,7 @@ public class AppDbContext : DbContext
     public DbSet<Notifications> Notifications => Set<Notifications>();
     public DbSet<IdentityDocuments> IdentityDocuments => Set<IdentityDocuments>();
     public DbSet<ViewingSchedules> ViewingSchedules => Set<ViewingSchedules>();
+    public DbSet<InvoiceComplaints> InvoiceComplaints => Set<InvoiceComplaints>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -74,6 +75,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<IdentityDocuments>().HasKey(x => x.IdentityDocumentId);
         modelBuilder.Entity<PropertyServiceRates>().HasKey(x => x.RateId);
         modelBuilder.Entity<ViewingSchedules>().HasKey(x => x.ViewingId);
+        modelBuilder.Entity<InvoiceComplaints>().HasKey(x => x.ComplaintId);
 
         // ---- Users: multiple FKs to the same table, set Restrict to avoid
         // multiple-cascade-path errors ----
@@ -234,6 +236,15 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ViewingSchedules>()
             .HasOne(v => v.Customer).WithMany()
             .HasForeignKey(v => v.CustomerId).OnDelete(DeleteBehavior.Restrict);
+
+        // ---- InvoiceComplaints: giống ViewingSchedules, không thêm collection ngược vào entity khác;
+        // Restrict để không mất lịch sử khiếu nại khi xoá hoá đơn hay người dùng ----
+        modelBuilder.Entity<InvoiceComplaints>()
+            .HasOne(c => c.Invoice).WithMany()
+            .HasForeignKey(c => c.InvoiceId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<InvoiceComplaints>()
+            .HasOne(c => c.Customer).WithMany()
+            .HasForeignKey(c => c.CustomerId).OnDelete(DeleteBehavior.Restrict);
 
         // ---- decimal precision (Postgres cần khai precision/scale rõ ràng) ----
         foreach (var property in modelBuilder.Model.GetEntityTypes()

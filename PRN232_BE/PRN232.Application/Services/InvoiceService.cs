@@ -14,11 +14,13 @@ public class InvoiceService : IInvoiceService
     private static readonly CultureInfo Vietnamese = CultureInfo.GetCultureInfo("vi-VN");
 
     private readonly IInvoiceRepository _repository;
+    private readonly IPaymentGateway _paymentGateway;
     private readonly TimeProvider _timeProvider;
 
-    public InvoiceService(IInvoiceRepository repository, TimeProvider timeProvider)
+    public InvoiceService(IInvoiceRepository repository, IPaymentGateway paymentGateway, TimeProvider timeProvider)
     {
         _repository = repository;
+        _paymentGateway = paymentGateway;
         _timeProvider = timeProvider;
     }
 
@@ -69,6 +71,86 @@ public class InvoiceService : IInvoiceService
             throw new InvoiceAuthorizationException("You cannot access this invoice.");
         }
         return invoice;
+    }
+
+    // Khách tự thanh toán qua cổng giả lập (cùng cổng với tiền cọc ở bước đặt cọc).
+    public async Task<InvoiceDto> PayAsync(int id, PayInvoiceDto dto, int customerId)
+    {
+        if (!PaymentMethods.IsValid(dto.PaymentMethod))
+        {
+            throw new InvoiceBusinessRuleException("Payment method must be VNPay or MoMo.");
+        }
+
+        var invoice = await GetUnpaidForPaymentAsync(id);
+        if (invoice.CustomerId != customerId)
+        {
+            throw new InvoiceAuthorizationException("You cannot pay another customer's invoice.");
+        }
+        if (!await _paymentGateway.ChargeAsync(dto.PaymentMethod, invoice.Total))
+        {
+            throw new InvoicePaymentFailedException("The payment was declined.");
+        }
+
+        return await MarkPaidAsync(invoice, dto.PaymentMethod, invoice.OwnerId,
+            $"Phòng {invoice.RoomCode} đã thanh toán hoá đơn tháng {Period(invoice.InvoiceMonth)}");
+    }
+
+    // Quản lý ghi nhận khách đã trả tiền mặt tại khu trọ (thay cho nút "Đã thu" mock trước đây).
+    public async Task<InvoiceDto> RecordCashPaymentAsync(int id, int userId, string role)
+    {
+        if (role is not (RoleNames.Manager or RoleNames.Admin))
+        {
+            throw new InvoiceAuthorizationException("Only property managers can record cash payments.");
+        }
+
+        var invoice = await GetUnpaidForPaymentAsync(id);
+        if (role == RoleNames.Manager && invoice.OwnerId != userId)
+        {
+            throw new InvoiceAuthorizationException("You cannot record payments for this invoice.");
+        }
+
+        return await MarkPaidAsync(invoice, PaymentMethods.Cash, invoice.CustomerId,
+            $"Đã ghi nhận thanh toán tiền mặt hoá đơn tháng {Period(invoice.InvoiceMonth)} - Phòng {invoice.RoomCode}");
+    }
+
+    private async Task<InvoicePaymentDto> GetUnpaidForPaymentAsync(int id)
+    {
+        var invoice = await _repository.GetForPaymentAsync(id)
+            ?? throw new InvoiceNotFoundException("Invoice does not exist.");
+        if (invoice.Status == InvoiceStatuses.Paid)
+        {
+            throw new InvoiceConflictException("This invoice has already been paid.");
+        }
+        return invoice;
+    }
+
+    // Người trả luôn là khách thuê; số tiền là tổng các dòng do server tính, client không gửi số tiền.
+    private async Task<InvoiceDto> MarkPaidAsync(
+        InvoicePaymentDto invoice, string paymentMethod, int notifyUserId, string notificationTitle)
+    {
+        var payment = new Payments
+        {
+            UserId = invoice.CustomerId,
+            InvoiceId = invoice.InvoiceId,
+            Amount = invoice.Total,
+            PaymentMethod = paymentMethod,
+            Status = PaymentStatuses.Success
+        };
+        var notification = new Notifications
+        {
+            UserId = notifyUserId,
+            Title = notificationTitle,
+            Type = NotificationTypes.Invoice,
+            IsRead = false
+        };
+        // Repository chỉ chuyển sang Paid khi hoá đơn vẫn chưa thanh toán: hai lần trả cùng lúc thì chỉ một lần được ghi.
+        if (!await _repository.MarkPaidAsync(invoice.InvoiceId, payment, notification))
+        {
+            throw new InvoiceConflictException("This invoice has already been paid.");
+        }
+
+        return await _repository.GetByIdAsync(invoice.InvoiceId, null, null)
+            ?? throw new InvalidOperationException("Paid invoice was not found.");
     }
 
     private async Task<(InvoiceContractDto Contract, Invoices Invoice)> BuildAsync(CreateInvoiceDto dto, int userId, string role)
@@ -213,3 +295,5 @@ public sealed class InvoiceAuthorizationException(string message) : Exception(me
 public sealed class InvoiceBusinessRuleException(string message) : Exception(message);
 
 public sealed class InvoiceConflictException(string message) : Exception(message);
+
+public sealed class InvoicePaymentFailedException(string message) : Exception(message);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
+import PaymentMethodPicker from "@/components/customer/PaymentMethodPicker"
 import { useAuth } from "@/auth/AuthContext"
 import { createBooking, getBooking, payBooking, type BookingDto, type PaymentMethod } from "@/api/bookingsApi"
 import { publicApi } from "@/api/publicBrowsingApi"
@@ -10,7 +11,6 @@ import { bookingErrorMessage, formatDateTime, isBookingExpired } from "@/utils/b
 import { publicApiErrorMessage } from "@/utils/publicApiDisplay"
 import { formatVnd } from "@/utils/publicFormatting"
 
-const paymentMethods: PaymentMethod[] = ["VNPay", "MoMo"]
 
 // Bước 1 (?roomId=): giữ phòng bằng một booking Pending. Bước 2 (?bookingId=): thanh toán cọc
 // trong thời gian giữ phòng. Tách theo URL để tải lại trang ở bước 2 không tạo thêm booking mới.
@@ -146,28 +146,7 @@ function PayDepositStep({ bookingId }: { bookingId: number }) {
         ]}
         amount={booking.depositAmount}
       />
-      <fieldset>
-        <legend className="font-display text-lg font-bold text-slate-900">Phương thức thanh toán</legend>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          {paymentMethods.map((item) => (
-            <label
-              key={item}
-              className={`cursor-pointer rounded-xl border p-4 text-center text-sm font-semibold ${method === item ? "border-[#087775] bg-teal-50 text-[#087775]" : "border-slate-200 text-slate-600"}`}
-            >
-              <input
-                type="radio"
-                name="paymentMethod"
-                value={item}
-                checked={method === item}
-                onChange={() => setMethod(item)}
-                className="sr-only"
-              />
-              {item}
-            </label>
-          ))}
-        </div>
-        <p className="mt-2 text-xs text-slate-400">Cổng thanh toán giả lập cho đồ án, không trừ tiền thật.</p>
-      </fieldset>
+      <PaymentMethodPicker value={method} onChange={setMethod} />
       {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
       <button
         type="submit"
