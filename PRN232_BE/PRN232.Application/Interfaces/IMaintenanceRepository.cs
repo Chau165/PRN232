@@ -21,6 +21,7 @@ public interface IMaintenanceRepository
         string expectedStatus,
         string status,
         int? assignedTo,
+        string? assignmentNote,
         int? changedBy,
         DateTime changedAt,
         IReadOnlyCollection<Notifications>? notifications = null);

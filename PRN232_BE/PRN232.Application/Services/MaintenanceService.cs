@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.States;
 using PRN232.Domain.Entities;
 
 namespace PRN232.Application.Services;
@@ -90,7 +91,10 @@ public class MaintenanceService : IMaintenanceService
             ChangedBy = customerId,
             ChangedAt = _timeProvider.GetUtcNow().UtcDateTime
         }, requestId => _notificationService.BuildMaintenanceNotifications(
-            adminIds, $"Có yêu cầu bảo trì mới #{requestId} - Phòng {contract.RoomCode}"));
+                adminIds, $"Có yêu cầu bảo trì mới #{requestId} - Phòng {contract.RoomCode}")
+            .Concat(_notificationService.BuildMaintenanceNotifications(
+                [customerId], $"Bạn đã gửi yêu cầu sửa chữa #{requestId} cho phòng {contract.RoomCode}. Yêu cầu đang chờ duyệt."))
+            .ToArray());
 
         return await _repository.GetByIdAsync(request.RequestId, customerId, null)
             ?? throw new InvalidOperationException("Created maintenance request was not found.");
@@ -132,6 +136,14 @@ public class MaintenanceService : IMaintenanceService
             throw new MaintenanceAssigneeException("Assignee must be an active Manager.");
         }
 
+        var assignmentNote = string.IsNullOrWhiteSpace(dto.AssignmentNote)
+            ? null
+            : dto.AssignmentNote.Trim();
+        if (assignmentNote?.Length > 1000)
+        {
+            throw new MaintenanceBusinessRuleException("Assignment note must not exceed 1000 characters.");
+        }
+
         var contract = await _repository.GetContractAsync(request.ContractId)
             ?? throw new MaintenanceNotFoundException("Contract does not exist.");
         ValidateContractDate(contract);
@@ -148,7 +160,7 @@ public class MaintenanceService : IMaintenanceService
             .ToArray();
         var updated = await _repository.UpdateStatusAndAddLogAsync(
             id, MaintenanceRequestStatuses.Pending, MaintenanceRequestStatuses.Approved,
-            dto.AssignedTo, actorUserId, changedAt, notifications);
+            dto.AssignedTo, assignmentNote, actorUserId, changedAt, notifications);
         if (!updated)
         {
             throw new MaintenanceStatusTransitionException("Request status changed before the update completed.");

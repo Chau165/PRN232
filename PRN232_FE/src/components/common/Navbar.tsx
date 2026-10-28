@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useLocation, useNavigate } from "react-router"
 import { useOptionalAuth } from "@/auth/AuthContext"
 import Icon from "@/components/common/Icon"
-import { notifications } from "@/data/customer"
+import { useCustomerNotificationsState } from "@/auth/CustomerNotificationsContext"
 import { routes } from "@/constants/routes"
 import { scrollToHash } from "@/utils/scrollToHash"
 
@@ -10,13 +10,16 @@ export default function Navbar() {
   const location = useLocation()
   const navigate = useNavigate()
   const auth = useOptionalAuth()
+  const notificationState = useCustomerNotificationsState()
   const currentUser = auth?.user
   const authenticated = auth?.status === "authenticated" && currentUser !== null
+  const customer = authenticated && currentUser?.role === "CUSTOMER"
   const managementUser =
     currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER"
   const [profileOpen, setProfileOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
-  const unreadCount = notifications.filter((item) => !item.read).length
+  const unreadCount = notificationState.unreadCount
+  const [notificationActionError, setNotificationActionError] = useState<string | null>(null)
   const searchActive = location.hash === "#tim-phong"
   const areaActive = location.hash === "#khu-vuc"
   const customerRoomActive =
@@ -103,13 +106,15 @@ export default function Navbar() {
                 onClick={() => {
                   setNotificationsOpen((open) => !open)
                   setProfileOpen(false)
+                  setNotificationActionError(null)
+                  if (authenticated) void notificationState.refresh()
                 }}
                 className="relative grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-50"
               >
                 <span className="text-lg">◌</span>
                 {unreadCount > 0 && (
                   <span className="absolute right-1 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-[#087775] px-1 text-[9px] font-bold text-white">
-                    {unreadCount}
+                    {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
               </button>
@@ -181,37 +186,49 @@ export default function Navbar() {
                 </div>
               )}
               {notificationsOpen && (
-                <div className="absolute right-20 top-[66px] z-50 w-80 rounded-xl border border-slate-100 bg-white p-3 shadow-[0_10px_30px_rgba(16,65,67,.14)]">
+                <div className="absolute right-0 top-[66px] z-50 w-80 rounded-xl border border-slate-100 bg-white p-3 shadow-[0_10px_30px_rgba(16,65,67,.14)]">
                   <div className="flex items-center justify-between px-2 pb-2">
                     <p className="font-display text-[17px] font-bold text-slate-900">
                       Thông báo
                     </p>
-                    <a
-                      href={routes.notifications}
+                    <button
+                      onClick={() => { setNotificationsOpen(false); navigate(routes.notifications) }}
                       className="text-[11px] font-semibold text-[#087775]"
                     >
                       Xem tất cả
-                    </a>
+                    </button>
                   </div>
-                  {notifications.slice(0, 3).map((item) => (
-                    <a
-                      key={item.id}
-                      href={item.href ?? routes.notifications}
-                      className={`block rounded-lg px-2 py-2.5 hover:bg-slate-50 ${
-                        item.read ? "" : "bg-teal-50/50"
-                      }`}
+                {notificationState.loading && notificationState.notifications.length === 0 ? (
+                    <p role="status" className="px-2 py-3 text-[12px] text-slate-500">Đang tải thông báo...</p>
+                  ) : notificationState.error ? (
+                    <div className="px-2 py-3 text-[12px] text-rose-600">
+                      <p>{notificationState.error}</p>
+                      <button onClick={() => void notificationState.refresh()} className="mt-2 font-semibold">Thử lại</button>
+                    </div>
+                  ) : notificationState.notifications.length === 0 ? (
+                    <p className="px-2 py-3 text-[12px] text-slate-500">Bạn chưa có thông báo.</p>
+                  ) : notificationState.notifications.slice(0, 3).map((item) => (
+                    <button
+                      key={item.notificationId}
+                      onClick={async () => {
+                        if (!item.isRead) {
+                          try { await notificationState.markRead(item.notificationId) } catch (error) {
+                            setNotificationActionError(error instanceof Error ? error.message : "Không thể đánh dấu đã đọc.")
+                            return
+                          }
+                        }
+                        setNotificationsOpen(false)
+                        setNotificationActionError(null)
+                        navigate(item.type === "Maintenance" ? (customer ? `${routes.myRoom}?tab=maintenance` : routes.managementMaintenance) : routes.notifications)
+                      }}
+                      className={`block w-full rounded-lg px-2 py-2.5 text-left hover:bg-slate-50 ${item.isRead ? "" : "bg-teal-50/50"}`}
                     >
-                      <p className="text-[12px] font-semibold text-slate-700">
-                        {item.title}
-                      </p>
-                      <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-500">
-                        {item.body}
-                      </p>
-                      <p className="mt-1 text-[10px] text-slate-400">
-                        {item.date}
-                      </p>
-                    </a>
+                      <p className="text-[12px] font-semibold text-slate-700">{item.title}</p>
+                      <p className="mt-1 text-[11px] text-slate-500">{item.type === "Maintenance" ? "Bảo trì / Sửa chữa" : item.type}</p>
+                    </button>
                   ))}
+                  {notificationActionError && <p role="alert" className="px-2 pt-2 text-[11px] text-rose-600">{notificationActionError}</p>}
+                  {authenticated && notificationState.notifications.length > 0 && <button onClick={() => { setNotificationsOpen(false); navigate(routes.notifications) }} className="mt-2 w-full border-t border-slate-100 px-2 pt-3 text-left text-[11px] font-semibold text-[#087775]">Xem tất cả</button>}
                 </div>
               )}
             </>

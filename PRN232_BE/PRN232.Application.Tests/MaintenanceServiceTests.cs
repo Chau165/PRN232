@@ -1,6 +1,7 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Services;
+using PRN232.Application.States;
 using PRN232.Domain.Entities;
 using Xunit;
 
@@ -28,7 +29,9 @@ public class MaintenanceServiceTests
         Assert.Equal(1, repository.AddCount);
         Assert.Equal((null, "Pending", 42),
             (Assert.Single(repository.Logs).OldStatus, repository.Logs[0].NewStatus, repository.Logs[0].ChangedBy));
-        Assert.Equal("Có yêu cầu bảo trì mới #1 - Phòng A-12", Assert.Single(repository.GeneratedNotifications).Title);
+        Assert.Collection(repository.GeneratedNotifications,
+            notification => Assert.Equal("Có yêu cầu bảo trì mới #1 - Phòng A-12", notification.Title),
+            notification => Assert.Equal("Bạn đã gửi yêu cầu sửa chữa #1 cho phòng A-12. Yêu cầu đang chờ duyệt.", notification.Title));
     }
 
     [Fact]
@@ -369,6 +372,49 @@ public class MaintenanceServiceTests
         Assert.Equal(("Pending", "Approved", 99), (log.OldStatus, log.NewStatus, log.ChangedBy));
         Assert.Equal(DateTimeKind.Utc, log.ChangedAt.Kind);
         Assert.Equal(1, repository.AtomicUpdateCount);
+        Assert.Null(repository.LastAssignmentNote);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_trims_assignment_note_and_accepts_legacy_request_without_note()
+    {
+        var repository = ValidRequest("Pending", assignedTo: null);
+        repository.ActiveUsers[7] = new MaintenanceUserAssignmentDto(true, RoleNames.Manager);
+
+        var updated = await CreateService(repository).UpdateAsync(1,
+            new UpdateMaintenanceRequestDto(7, "  Prepare parts.  "), 99, RoleNames.Admin);
+
+        Assert.Equal("Prepare parts.", updated!.AssignmentNote);
+        Assert.Equal("Prepare parts.", repository.LastAssignmentNote);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("  \t  ")]
+    public async Task UpdateAsync_normalizes_missing_or_whitespace_assignment_note_to_null(string? note)
+    {
+        var repository = ValidRequest("Pending", assignedTo: null);
+        repository.ActiveUsers[7] = new MaintenanceUserAssignmentDto(true, RoleNames.Manager);
+
+        var updated = await CreateService(repository).UpdateAsync(1,
+            new UpdateMaintenanceRequestDto(7, note), 99, RoleNames.Admin);
+
+        Assert.Null(updated!.AssignmentNote);
+        Assert.Null(repository.LastAssignmentNote);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_rejects_assignment_note_over_1000_trimmed_characters()
+    {
+        var repository = ValidRequest("Pending", assignedTo: null);
+        repository.ActiveUsers[7] = new MaintenanceUserAssignmentDto(true, RoleNames.Manager);
+
+        await Assert.ThrowsAsync<MaintenanceBusinessRuleException>(() => CreateService(repository).UpdateAsync(1,
+            new UpdateMaintenanceRequestDto(7, $" {new string('x', 1001)} "), 99, RoleNames.Admin));
+
+        Assert.Equal("Pending", repository.State!.Status);
+        Assert.Empty(repository.Logs);
+        Assert.Equal(0, repository.AtomicUpdateCount);
     }
 
     [Fact]
@@ -607,6 +653,7 @@ public class MaintenanceServiceTests
         public List<Notifications> GeneratedNotifications { get; } = new();
         public int AddCount { get; private set; }
         public int AtomicUpdateCount { get; private set; }
+        public string? LastAssignmentNote { get; private set; }
         public bool FailAtomicUpdate { get; set; }
         public bool FailReportCompletion { get; set; }
         public MaintenanceReports? SavedReport { get; private set; }
@@ -654,7 +701,8 @@ public class MaintenanceServiceTests
         }
 
         public Task<bool> UpdateStatusAndAddLogAsync(int requestId, string expectedStatus, string status,
-            int? assignedTo, int? changedBy, DateTime changedAt, IReadOnlyCollection<Notifications>? notifications = null)
+            int? assignedTo, string? assignmentNote, int? changedBy, DateTime changedAt,
+            IReadOnlyCollection<Notifications>? notifications = null)
         {
             if (FailAtomicUpdate)
             {
@@ -671,6 +719,8 @@ public class MaintenanceServiceTests
 
             Logs.Add(new MaintenanceLogDto(Logs.Count + 1, requestId, State.Status, status, changedBy,
                 null, changedAt));
+            LastAssignmentNote = assignmentNote;
+            _assignmentNote = assignmentNote;
             State = State with { Status = status, AssignedTo = assignedTo ?? State.AssignedTo };
             AtomicUpdateCount++;
             return Task.FromResult(true);
@@ -710,11 +760,13 @@ public class MaintenanceServiceTests
             Images = [new MaintenanceReportImages { ImageUrl = "maintenance/1/evidence.png" }]
         };
 
-        private static MaintenanceRequestDto ToDto(MaintenanceRequestStateDto state) => new(
+        private string? _assignmentNote;
+
+        private MaintenanceRequestDto ToDto(MaintenanceRequestStateDto state) => new(
             state.RequestId, "broken", state.Status, state.ContractId, 42, "Customer", 12, "A-12",
             state.EquipmentId, state.EquipmentId.HasValue ? "AC" : null,
             state.EquipmentId.HasValue ? "Working" : null, state.AssignedTo,
-            state.AssignedTo.HasValue ? "Staff" : null);
+            state.AssignedTo.HasValue ? "Staff" : null, _assignmentNote);
     }
 
     private sealed class FakeImageStorage : IMaintenanceReportImageStorage

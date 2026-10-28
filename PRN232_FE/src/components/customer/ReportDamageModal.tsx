@@ -1,54 +1,29 @@
 import { useState } from "react"
-import type {
-  MaintenancePriority,
-  MaintenanceRequestForm,
-} from "@/types/customer"
+import type { RentalEquipment } from "@/api/rentalsApi"
 
 type ReportDamageModalProps = {
   roomCode: string
-  equipment: string[]
+  equipment: RentalEquipment[]
+  pending: boolean
+  error: string | null
   onClose: () => void
-  onSubmit: (form: MaintenanceRequestForm) => void
+  onSubmit: (form: { equipmentId: number | null; description: string }) => Promise<void>
 }
-
-const categories = [
-  "Máy lạnh",
-  "Điện",
-  "Nước",
-  "Cửa",
-  "Nhà vệ sinh",
-  "Thiết bị",
-  "Khác",
-]
-const priorities: MaintenancePriority[] = [
-  "Bình thường",
-  "Quan trọng",
-  "Khẩn cấp",
-]
 
 export default function ReportDamageModal({
   roomCode,
   equipment,
+  pending,
+  error,
   onClose,
   onSubmit,
 }: ReportDamageModalProps) {
-  const [category, setCategory] = useState(categories[0])
-  const [relatedEquipment, setRelatedEquipment] = useState("")
-  const [title, setTitle] = useState("")
+  const [equipmentId, setEquipmentId] = useState("")
   const [description, setDescription] = useState("")
-  const [priority, setPriority] = useState<MaintenancePriority>("Bình thường")
-  const [imageName, setImageName] = useState("")
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
-    onSubmit({
-      category,
-      relatedEquipment,
-      title,
-      description,
-      priority,
-      imageName,
-    })
+    await onSubmit({ equipmentId: equipmentId ? Number(equipmentId) : null, description })
   }
 
   return (
@@ -69,8 +44,9 @@ export default function ReportDamageModal({
           <button
             type="button"
             onClick={onClose}
+            disabled={pending}
             aria-label="Đóng"
-            className="grid h-8 w-8 place-items-center rounded-full bg-slate-50 text-lg text-slate-500"
+            className="grid h-8 w-8 place-items-center rounded-full bg-slate-50 text-lg text-slate-500 disabled:opacity-50"
           >
             ×
           </button>
@@ -85,40 +61,18 @@ export default function ReportDamageModal({
             />
           </label>
           <label className="block text-[13px] font-semibold text-slate-700">
-            Loại sự cố
-            <select
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
-              className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-[14px] outline-none focus:border-[#087775]"
-            >
-              {categories.map((item) => (
-                <option key={item}>{item}</option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-[13px] font-semibold text-slate-700">
             Thiết bị liên quan{" "}
             <span className="font-normal text-slate-400">(không bắt buộc)</span>
             <select
-              value={relatedEquipment}
-              onChange={(event) => setRelatedEquipment(event.target.value)}
+              value={equipmentId}
+              onChange={(event) => setEquipmentId(event.target.value)}
               className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-[14px] outline-none focus:border-[#087775]"
             >
               <option value="">Chọn thiết bị</option>
               {equipment.map((item) => (
-                <option key={item}>{item}</option>
+                <option key={item.equipmentId} value={item.equipmentId}>{item.name}</option>
               ))}
             </select>
-          </label>
-          <label className="block text-[13px] font-semibold text-slate-700">
-            Tiêu đề sự cố
-            <input
-              required
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Ví dụ: Máy lạnh không hoạt động"
-              className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-[14px] outline-none placeholder:text-slate-400 focus:border-[#087775]"
-            />
           </label>
           <label className="block text-[13px] font-semibold text-slate-700">
             Mô tả chi tiết
@@ -131,62 +85,24 @@ export default function ReportDamageModal({
               className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-[14px] outline-none placeholder:text-slate-400 focus:border-[#087775]"
             />
           </label>
-          <label className="block text-[13px] font-semibold text-slate-700">
-            Hình ảnh{" "}
-            <span className="font-normal text-slate-400">(không bắt buộc)</span>
-            <span className="mt-2 flex h-20 cursor-pointer items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-[13px] text-slate-500 hover:border-[#087775] hover:text-[#087775]">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(event) =>
-                  setImageName(event.target.files?.[0]?.name ?? "")
-                }
-                className="sr-only"
-              />
-              {imageName || "Tải ảnh lên để mô tả rõ hơn"}
-            </span>
-          </label>
-          <fieldset>
-            <legend className="text-[13px] font-semibold text-slate-700">
-              Mức độ ưu tiên
-            </legend>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {priorities.map((item) => (
-                <label
-                  key={item}
-                  className={`cursor-pointer rounded-full px-3 py-1.5 text-[12px] font-semibold ${
-                    priority === item
-                      ? "bg-[#087775] text-white"
-                      : "bg-slate-100 text-slate-500"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="priority"
-                    value={item}
-                    checked={priority === item}
-                    onChange={() => setPriority(item)}
-                    className="sr-only"
-                  />
-                  {item}
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          <p className="text-[12px] text-slate-500">API hiện tại chưa hỗ trợ ảnh báo hỏng hoặc mức độ ưu tiên.</p>
+          {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}
         </div>
         <div className="mt-7 grid grid-cols-2 gap-3">
           <button
             type="button"
             onClick={onClose}
+            disabled={pending}
             className="rounded-lg bg-slate-100 py-3 text-[13px] font-bold text-slate-600 hover:bg-slate-200"
           >
             Hủy
           </button>
           <button
             type="submit"
-            className="rounded-lg bg-[#087775] py-3 text-[13px] font-bold text-white shadow-sm hover:bg-[#066a68]"
+            disabled={pending}
+            className="rounded-lg bg-[#087775] py-3 text-[13px] font-bold text-white shadow-sm hover:bg-[#066a68] disabled:cursor-wait disabled:opacity-60"
           >
-            Gửi báo cáo
+            {pending ? "Đang gửi..." : "Gửi báo cáo"}
           </button>
         </div>
       </form>

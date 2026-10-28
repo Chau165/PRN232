@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace PRN232.Application.Services;
+namespace PRN232.Application.Normalizers;
 
 public static class PublicAreaNameNormalizer
 {

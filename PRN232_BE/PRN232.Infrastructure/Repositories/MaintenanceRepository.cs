@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
-using PRN232.Application.Services;
+using PRN232.Application.States;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
 
@@ -37,7 +37,8 @@ public class MaintenanceRepository : IMaintenanceRepository
                 r.Equipment == null ? null : r.Equipment.Name,
                 r.Equipment == null ? null : r.Equipment.Status,
                 r.AssignedTo,
-                r.AssignedToUser == null ? null : r.AssignedToUser.FullName))
+                r.AssignedToUser == null ? null : r.AssignedToUser.FullName,
+                customerId.HasValue ? null : r.AssignmentNote))
             .ToListAsync();
 
     public async Task<MaintenanceRequestDto?> GetByIdAsync(int id, int? customerId, int? assignedManagerId) =>
@@ -59,7 +60,8 @@ public class MaintenanceRepository : IMaintenanceRepository
                 r.Equipment == null ? null : r.Equipment.Name,
                 r.Equipment == null ? null : r.Equipment.Status,
                 r.AssignedTo,
-                r.AssignedToUser == null ? null : r.AssignedToUser.FullName))
+                r.AssignedToUser == null ? null : r.AssignedToUser.FullName,
+                customerId.HasValue ? null : r.AssignmentNote))
             .FirstOrDefaultAsync();
 
     public async Task<MaintenanceRequestStateDto?> GetStateByIdAsync(int id, int? assignedManagerId) =>
@@ -115,6 +117,7 @@ public class MaintenanceRepository : IMaintenanceRepository
         string expectedStatus,
         string status,
         int? assignedTo,
+        string? assignmentNote,
         int? changedBy,
         DateTime changedAt,
         IReadOnlyCollection<Notifications>? notifications = null)
@@ -125,7 +128,8 @@ public class MaintenanceRepository : IMaintenanceRepository
             .Where(r => r.RequestId == requestId && r.Status == expectedStatus)
             .ExecuteUpdateAsync(update => update
                 .SetProperty(r => r.Status, status)
-                .SetProperty(r => r.AssignedTo, assignedTo));
+                .SetProperty(r => r.AssignedTo, assignedTo)
+                .SetProperty(r => r.AssignmentNote, assignmentNote));
 
         if (updatedCount == 0)
         {

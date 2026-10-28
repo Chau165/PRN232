@@ -31,6 +31,33 @@ public class MaintenanceTransactionTests
     }
 
     [Fact]
+    public async Task Creation_commits_customer_confirmation_and_admin_notifications_with_request_and_log()
+    {
+        using var factory = new MaintenanceApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await new MaintenanceRepository(context).AddWithInitialLogAsync(
+                new MaintenanceRequests { ContractId = 1, Description = "Broken", Status = "Pending" },
+                new MaintenanceLogs { NewStatus = "Pending", ChangedBy = 10, ChangedAt = DateTime.UtcNow },
+                requestId =>
+                [
+                    new Notifications { UserId = 9, Title = $"Admin request #{requestId}", Type = "Maintenance", IsRead = false },
+                    new Notifications { UserId = 10, Title = $"Customer confirmation #{requestId}", Type = "Maintenance", IsRead = false }
+                ]);
+        }
+
+        using var verification = factory.Services.CreateScope();
+        var stored = verification.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(5, await stored.MaintenanceRequests.CountAsync());
+        Assert.Equal(1, await stored.MaintenanceLogs.CountAsync(log => log.RequestId == 5));
+        Assert.Equal(new[] { 9, 10 }, await stored.Notifications.OrderBy(notification => notification.UserId)
+            .Select(notification => notification.UserId).ToArrayAsync());
+        Assert.All(await stored.Notifications.ToArrayAsync(), notification => Assert.False(notification.IsRead));
+    }
+
+    [Fact]
     public async Task Creation_rolls_back_request_and_log_when_notification_cannot_be_saved()
     {
         using var factory = new MaintenanceApiFactory();
@@ -42,7 +69,11 @@ public class MaintenanceTransactionTests
             await Assert.ThrowsAsync<DbUpdateException>(() => new MaintenanceRepository(context).AddWithInitialLogAsync(
                 new MaintenanceRequests { ContractId = 1, Description = "Broken", Status = "Pending" },
                 new MaintenanceLogs { NewStatus = "Pending", ChangedBy = 10, ChangedAt = DateTime.UtcNow },
-                _ => [new Notifications { UserId = 9, Title = "new request", Type = "Maintenance" }]));
+                _ =>
+                [
+                    new Notifications { UserId = 9, Title = "new request for admin", Type = "Maintenance" },
+                    new Notifications { UserId = 10, Title = "request confirmation for customer", Type = "Maintenance" }
+                ]));
         }
         using var verification = factory.Services.CreateScope();
         var stored = verification.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -61,14 +92,41 @@ public class MaintenanceTransactionTests
             var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             await RejectInsertAsync(context, "MaintenanceLogs");
             await Assert.ThrowsAsync<DbUpdateException>(() => new MaintenanceRepository(context)
-                .UpdateStatusAndAddLogAsync(3, "Pending", "Approved", 7, 9, DateTime.UtcNow));
+                .UpdateStatusAndAddLogAsync(3, "Pending", "Approved", 7, "rollback note", 9, DateTime.UtcNow));
         }
         using var verification = factory.Services.CreateScope();
         var stored = verification.ServiceProvider.GetRequiredService<AppDbContext>();
         var request = await stored.MaintenanceRequests.SingleAsync(r => r.RequestId == 3);
         Assert.Equal("Pending", request.Status);
         Assert.Null(request.AssignedTo);
+        Assert.Null(request.AssignmentNote);
         Assert.Empty(await stored.MaintenanceLogs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Assignment_status_guard_allows_only_one_approval_note_log_and_notification_set()
+    {
+        using var factory = new MaintenanceApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var repository = new MaintenanceRepository(context);
+            Assert.True(await repository.UpdateStatusAndAddLogAsync(3, "Pending", "Approved", 7,
+                "first admin note", 9, DateTime.UtcNow,
+                [new Notifications { UserId = 10, Title = "approved", Type = "Maintenance" }]));
+            Assert.False(await repository.UpdateStatusAndAddLogAsync(3, "Pending", "Approved", 8,
+                "stale admin note", 12, DateTime.UtcNow,
+                [new Notifications { UserId = 10, Title = "duplicate approval", Type = "Maintenance" }]));
+        }
+
+        using var verification = factory.Services.CreateScope();
+        var stored = verification.ServiceProvider.GetRequiredService<AppDbContext>();
+        var request = (await stored.MaintenanceRequests.FindAsync(3))!;
+        Assert.Equal(("Approved", 7, "first admin note"),
+            (request.Status, request.AssignedTo, request.AssignmentNote));
+        Assert.Single(await stored.MaintenanceLogs.ToListAsync());
+        Assert.Single(await stored.Notifications.ToListAsync());
     }
 
     [Fact]
@@ -81,7 +139,7 @@ public class MaintenanceTransactionTests
             var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             await RejectInsertAsync(context, "Notifications");
             await Assert.ThrowsAsync<DbUpdateException>(() => new MaintenanceRepository(context)
-                .UpdateStatusAndAddLogAsync(3, "Pending", "Approved", 7, 9, DateTime.UtcNow,
+                .UpdateStatusAndAddLogAsync(3, "Pending", "Approved", 7, "rollback note", 9, DateTime.UtcNow,
                     [new Notifications { UserId = 10, Title = "approved", Type = "Maintenance" }]));
         }
         using var verification = factory.Services.CreateScope();
@@ -89,6 +147,7 @@ public class MaintenanceTransactionTests
         var request = await stored.MaintenanceRequests.FindAsync(3);
         Assert.Equal("Pending", request!.Status);
         Assert.Null(request.AssignedTo);
+        Assert.Null(request.AssignmentNote);
         Assert.Empty(await stored.MaintenanceLogs.ToListAsync());
         Assert.Empty(await stored.Notifications.ToListAsync());
     }

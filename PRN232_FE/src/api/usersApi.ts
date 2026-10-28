@@ -26,6 +26,17 @@ export interface PropertyDto {
   roomCount: number
 }
 
+export interface MaintenanceRoomDto {
+  roomId: number
+  propertyId: number
+  propertyName: string
+  roomCode: string
+}
+
+export function getMaintenanceRooms(accessToken: string, signal?: AbortSignal) {
+  return apiRequest<MaintenanceRoomDto[]>("/rooms", { accessToken, signal, cache: "no-store" })
+}
+
 export function getCurrentUser(accessToken: string) {
   return apiRequest<BackendUserDto>("/users/me", { accessToken })
 }

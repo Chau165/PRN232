@@ -13,11 +13,12 @@ public record MaintenanceRequestDto(
     string? EquipmentName,
     string? EquipmentStatus,
     int? AssignedTo,
-    string? AssignedStaffName);
+    string? AssignedStaffName,
+    string? AssignmentNote = null);
 
 public record CreateMaintenanceRequestDto(int ContractId, int? EquipmentId, string Description);
 
-public record UpdateMaintenanceRequestDto(int? AssignedTo);
+public record UpdateMaintenanceRequestDto(int? AssignedTo, string? AssignmentNote = null);
 
 public record MaintenanceLogDto(
     int LogId,

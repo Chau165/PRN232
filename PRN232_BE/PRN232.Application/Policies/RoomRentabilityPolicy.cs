@@ -1,7 +1,8 @@
 using System.Linq.Expressions;
+using PRN232.Application.States;
 using PRN232.Domain.Entities;
 
-namespace PRN232.Application.Services;
+namespace PRN232.Application.Policies;
 
 public static class RoomRentabilityPolicy
 {

@@ -8,6 +8,7 @@ public class MaintenanceRequests
     public int? AssignedTo { get; set; }
     public string Description { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+    public string? AssignmentNote { get; set; }
 
     public Contracts? Contract { get; set; }
     public Equipments? Equipment { get; set; }
