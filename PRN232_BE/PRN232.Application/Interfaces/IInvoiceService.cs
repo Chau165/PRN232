@@ -8,4 +8,6 @@ public interface IInvoiceService
     Task<InvoiceDto> CreateAsync(CreateInvoiceDto dto, int userId, string role);
     Task<List<InvoiceDto>> GetAllAsync(int userId, string role, int? contractId, string? status);
     Task<InvoiceDto?> GetByIdAsync(int id, int userId, string role);
+    Task<InvoiceDto> PayAsync(int id, PayInvoiceDto dto, int customerId);
+    Task<InvoiceDto> RecordCashPaymentAsync(int id, int userId, string role);
 }

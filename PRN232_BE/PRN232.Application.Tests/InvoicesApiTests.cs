@@ -21,6 +21,8 @@ public class InvoicesApiTests
     [InlineData("GET", "/api/invoices")]
     [InlineData("POST", "/api/invoices")]
     [InlineData("POST", "/api/invoices/preview")]
+    [InlineData("POST", "/api/invoices/1/pay")]
+    [InlineData("POST", "/api/invoices/1/record-cash")]
     public async Task Anonymous_requests_require_authentication(string method, string path)
     {
         using var factory = new BookingsApiFactory();
@@ -98,6 +100,62 @@ public class InvoicesApiTests
         var response = await client.PostAsJsonAsync("/api/invoices", new { contractId, invoiceMonth = ThisMonth, dueDate = DueDate });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Tenant_pays_online_once_and_the_owner_is_notified()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        var invoiceId = await CreateInvoiceAsync(client);
+
+        await LoginAsync(client, "other@example.test");
+        var byOtherTenant = await client.PostAsJsonAsync($"/api/invoices/{invoiceId}/pay", new { paymentMethod = "MoMo" });
+        await LoginAsync(client, "customer@example.test");
+        var paid = await client.PostAsJsonAsync($"/api/invoices/{invoiceId}/pay", new { paymentMethod = "MoMo" });
+        var again = await client.PostAsJsonAsync($"/api/invoices/{invoiceId}/pay", new { paymentMethod = "MoMo" });
+        await LoginAsync(client, "manager@example.test");
+        var cashAfterPaid = await client.PostAsync($"/api/invoices/{invoiceId}/record-cash", null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, byOtherTenant.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, paid.StatusCode);
+        Assert.Equal("Paid", (await paid.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString());
+        Assert.Equal((HttpStatusCode.Conflict, HttpStatusCode.Conflict), (again.StatusCode, cashAfterPaid.StatusCode));
+        using var scope = factory.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var payment = await context.Payments.SingleAsync(item => item.InvoiceId == invoiceId);
+        Assert.Equal((10, 3_355_000m, "MoMo", "Success"), (payment.UserId, payment.Amount, payment.PaymentMethod, payment.Status));
+        Assert.Equal(1, await context.Notifications.CountAsync(notification => notification.UserId == 7 && notification.Type == "Invoice"));
+    }
+
+    [Theory]
+    [InlineData("manager-b@example.test", HttpStatusCode.Forbidden)]
+    [InlineData("customer@example.test", HttpStatusCode.Forbidden)]
+    [InlineData("manager@example.test", HttpStatusCode.OK)]
+    public async Task Only_the_owner_or_an_admin_records_cash(string email, HttpStatusCode expected)
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        var invoiceId = await CreateInvoiceAsync(client);
+
+        await LoginAsync(client, email);
+        var response = await client.PostAsync($"/api/invoices/{invoiceId}/record-cash", null);
+
+        Assert.Equal(expected, response.StatusCode);
+        if (expected == HttpStatusCode.OK)
+        {
+            using var scope = factory.Services.CreateScope();
+            var payment = await scope.ServiceProvider.GetRequiredService<AppDbContext>().Payments.SingleAsync(item => item.InvoiceId == invoiceId);
+            Assert.Equal(("Cash", 10), (payment.PaymentMethod, payment.UserId));
+        }
+    }
+
+    private static async Task<int> CreateInvoiceAsync(HttpClient client)
+    {
+        var contractId = await CreateContractWithReadingAsync(client);
+        var created = await client.PostAsJsonAsync("/api/invoices", new { contractId, invoiceMonth = ThisMonth, dueDate = DueDate });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        return (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("invoiceId").GetInt32();
     }
 
     // Hợp đồng bắt đầu hôm nay; chỉ số tháng này 100 -> 150 kWh và 10 -> 14 m3. Kết thúc ở tài khoản chủ khu trọ.

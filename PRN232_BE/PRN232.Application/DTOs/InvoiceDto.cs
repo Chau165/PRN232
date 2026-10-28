@@ -47,3 +47,14 @@ public record BillableServiceDto(
     string? BillingBasis);
 
 public record MonthUsageDto(decimal ElectricUsage, decimal WaterUsage);
+
+public record PayInvoiceDto(string PaymentMethod);
+
+public record InvoicePaymentDto(
+    int InvoiceId,
+    int CustomerId,
+    int OwnerId,
+    string RoomCode,
+    DateOnly InvoiceMonth,
+    string Status,
+    decimal Total);

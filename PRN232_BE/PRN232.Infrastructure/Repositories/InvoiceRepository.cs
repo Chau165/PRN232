@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.States;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
 
@@ -122,6 +123,49 @@ public class InvoiceRepository : IInvoiceRepository
 
     public Task<bool> ExistsAsync(int invoiceId) =>
         _context.Invoices.AnyAsync(invoice => invoice.InvoiceId == invoiceId);
+
+    public async Task<InvoicePaymentDto?> GetForPaymentAsync(int invoiceId)
+    {
+        var invoice = await _context.Invoices
+            .AsNoTracking()
+            .Where(item => item.InvoiceId == invoiceId)
+            .Select(item => new
+            {
+                item.InvoiceId,
+                item.Contract!.CustomerId,
+                item.Contract.Room!.Property!.OwnerId,
+                item.Contract.Room.RoomCode,
+                item.InvoiceMonth,
+                item.Status,
+                Amounts = item.InvoiceDetails.Select(detail => detail.Amount).ToList()
+            })
+            .FirstOrDefaultAsync();
+        // Tổng tiền cộng trong bộ nhớ, cùng lý do với WithTotal bên dưới.
+        return invoice is null
+            ? null
+            : new InvoicePaymentDto(invoice.InvoiceId, invoice.CustomerId, invoice.OwnerId, invoice.RoomCode,
+                invoice.InvoiceMonth, invoice.Status, invoice.Amounts.Sum());
+    }
+
+    public async Task<bool> MarkPaidAsync(int invoiceId, Payments payment, Notifications notification)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+
+        // Điều kiện "chưa Paid" nằm ngay trong câu UPDATE: hai lần trả cùng lúc thì lần sau không khớp dòng nào.
+        var updated = await _context.Invoices
+            .Where(invoice => invoice.InvoiceId == invoiceId && invoice.Status != InvoiceStatuses.Paid)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(invoice => invoice.Status, InvoiceStatuses.Paid));
+        if (updated == 0)
+        {
+            return false;
+        }
+
+        await _context.Payments.AddAsync(payment);
+        await _context.Notifications.AddAsync(notification);
+        await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return true;
+    }
 
     // Lọc dùng chung cho GetById và GetAll; tham số nào null thì không lọc theo tiêu chí đó.
     private IQueryable<Invoices> InScope(int? customerId, int? ownerId) =>
