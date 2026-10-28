@@ -598,7 +598,7 @@ describe("public property detail and room listing", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  it("fetches fresh room details by RoomId and keeps unsupported actions inactive", async () => {
+  it("fetches fresh room details by RoomId, links deposit and keeps viewing inactive", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
       const url = new URL(String(input), window.location.origin)
       if (url.pathname === "/api/public/properties/17")
@@ -646,9 +646,9 @@ describe("public property detail and room listing", () => {
     expect(within(dialog).queryByText("R-501")).toBeNull()
     expect(
       within(dialog)
-        .getByRole("button", { name: /Đặt cọc trực tuyến/ })
-        .hasAttribute("disabled"),
-    ).toBe(true)
+        .getByRole("link", { name: "Đặt cọc giữ phòng" })
+        .getAttribute("href"),
+    ).toBe("/deposit?roomId=501")
     expect(
       within(dialog)
         .getByRole("button", { name: /Đặt lịch xem/ })
@@ -698,10 +698,13 @@ describe("public property detail and room listing", () => {
       within(dialog).getByText("Chưa có thông tin dịch vụ công khai."),
     ).toBeTruthy()
 
+    const depositLink = within(dialog).getByRole("link", {
+      name: "Đặt cọc giữ phòng",
+    })
     closeButton.focus()
-    fireEvent.keyDown(dialog, { key: "Tab" })
-    expect(document.activeElement).toBe(closeButton)
     fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true })
+    expect(document.activeElement).toBe(depositLink)
+    fireEvent.keyDown(dialog, { key: "Tab" })
     expect(document.activeElement).toBe(closeButton)
 
     const backdrop = dialog.parentElement

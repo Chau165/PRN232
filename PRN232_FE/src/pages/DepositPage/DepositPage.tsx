@@ -1,98 +1,210 @@
-import { useState } from "react"
-import { useSearchParams } from "react-router"
+import { useEffect, useState } from "react"
+import { Link, useNavigate, useSearchParams } from "react-router"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
-import { routes } from "@/constants/routes"
-import { rooms } from "@/data/rooms"
-import { getCurrentUser } from "@/utils/managementAuth"
+import { useAuth } from "@/auth/AuthContext"
+import { createBooking, getBooking, payBooking, type BookingDto, type PaymentMethod } from "@/api/bookingsApi"
+import { publicApi } from "@/api/publicBrowsingApi"
+import { usePublicApiResource } from "@/hooks/usePublicApiResource"
+import { parsePositiveRouteId, routes } from "@/constants/routes"
+import { bookingErrorMessage, formatDateTime, isBookingExpired } from "@/utils/bookingDisplay"
+import { publicApiErrorMessage } from "@/utils/publicApiDisplay"
+import { formatVnd } from "@/utils/publicFormatting"
 
+const paymentMethods: PaymentMethod[] = ["VNPay", "MoMo"]
+
+// Bước 1 (?roomId=): giữ phòng bằng một booking Pending. Bước 2 (?bookingId=): thanh toán cọc
+// trong thời gian giữ phòng. Tách theo URL để tải lại trang ở bước 2 không tạo thêm booking mới.
 export default function DepositPage() {
   const [params] = useSearchParams()
-  const room = rooms.find((item) => item.code === params.get("room")) ?? rooms[0]
-  const user = getCurrentUser()
-  const maxOccupants = Number(room.occupants.match(/\d+/)?.[0] ?? 1)
-  const [companionOpen, setCompanionOpen] = useState(false)
-  const [companions, setCompanions] = useState<Array<{ name: string; phone: string }>>([])
-  const [moveInDate, setMoveInDate] = useState("")
-  const [ownerDecides, setOwnerDecides] = useState(false)
-  const [payment, setPayment] = useState("")
-  const [submitted, setSubmitted] = useState(false)
-
-  const submit = (event: React.FormEvent) => {
-    event.preventDefault()
-    setSubmitted(true)
-    if (payment && (moveInDate || ownerDecides) && (!companionOpen || companions.every((companion) => companion.name.trim()))) {
-      window.location.assign(routes.paymentSuccess)
-    }
-  }
+  const bookingId = parsePositiveRouteId(params.get("bookingId") ?? undefined)
+  const roomId = parsePositiveRouteId(params.get("roomId") ?? undefined)
 
   return (
-    <CustomerPageShell title="Đặt cọc giữ phòng" description={`Phòng ${room.code} · Sunrise Residence`}>
-      <form onSubmit={submit} className="max-w-2xl space-y-6 rounded-2xl bg-white p-7 shadow-[0_5px_24px_rgba(16,65,67,.08)]">
-        <div className="rounded-xl bg-teal-50 p-4 text-sm text-[#087775]">
-          Tiền cọc cần thanh toán: <strong>{room.price}</strong> (tương đương 1 tháng tiền thuê)
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <ReadOnly label="Họ và tên" value={user.name} />
-          <ReadOnly label="Số điện thoại" value={user.phone} />
-        </div>
-        {maxOccupants > 1 && (
-          <section>
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-display text-lg font-bold text-slate-900">Thông tin người ở cùng <span className="text-sm font-normal text-slate-400">(nếu có)</span></h2>
-              {companionOpen && (
-                <button type="button" onClick={() => { setCompanions([]); setCompanionOpen(false) }} className="text-xs font-semibold text-rose-600 hover:underline">Xoá tất cả</button>
-              )}
-            </div>
-            {!companionOpen ? (
-              <button type="button" onClick={() => setCompanionOpen(true)} className="mt-3 rounded-lg border border-dashed border-[#087775] px-4 py-3 text-sm font-semibold text-[#087775] hover:bg-teal-50">+ Thêm người ở cùng</button>
-            ) : (
-              <>
-                <div className="mt-3 space-y-4">
-                  {companions.map((companion, index) => (
-                    <div key={index} className="rounded-xl border border-slate-100 p-4">
-                      <div className="mb-3 flex items-center justify-between">
-                        <p className="text-xs font-bold uppercase tracking-[.12em] text-[#087775]">Người ở cùng {index + 1}</p>
-                        <button type="button" onClick={() => setCompanions(companions.filter((_, itemIndex) => itemIndex !== index))} className="text-xs font-semibold text-rose-600 hover:underline">Xoá</button>
-                      </div>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <Field label="Họ và tên" value={companion.name} onChange={(value) => setCompanions(companions.map((item, itemIndex) => itemIndex === index ? { ...item, name: value } : item))} placeholder="Nhập họ tên người ở cùng" />
-                        <Field label="Số điện thoại (không bắt buộc)" value={companion.phone} onChange={(value) => setCompanions(companions.map((item, itemIndex) => itemIndex === index ? { ...item, phone: value } : item))} placeholder="Nhập số điện thoại" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <p className="mt-2 text-xs text-slate-400">Phòng này cho phép tối đa {maxOccupants} người, bao gồm bạn.</p>
-                {companions.length < maxOccupants - 1 && <button type="button" onClick={() => setCompanions([...companions, { name: "", phone: "" }])} className="mt-3 rounded-lg border border-dashed border-[#087775] px-4 py-2.5 text-sm font-semibold text-[#087775] hover:bg-teal-50">+ Thêm người ở cùng</button>}
-                {companions.length > 0 && <button type="button" onClick={() => setCompanionOpen(false)} className="ml-3 mt-3 text-xs font-semibold text-[#087775] hover:underline">Lưu thông tin</button>}
-              </>
-            )}
-          </section>
+    <CustomerPageShell title="Đặt cọc giữ phòng" description="Tiền cọc tương đương 1 tháng tiền thuê.">
+      <div className="max-w-2xl rounded-2xl bg-white p-7 shadow-[0_5px_24px_rgba(16,65,67,.08)]">
+        {bookingId ? (
+          <PayDepositStep bookingId={bookingId} />
+        ) : roomId ? (
+          <HoldRoomStep roomId={roomId} />
+        ) : (
+          <Notice message="Không tìm thấy phòng cần đặt cọc." />
         )}
-        <section>
-          <h2 className="font-display text-lg font-bold text-slate-900">Ngày nhận phòng mong muốn</h2>
-          <div className="mt-3 flex flex-col gap-3">
-            <label className="flex items-center gap-2 text-sm text-slate-600"><input type="radio" checked={!ownerDecides} onChange={() => setOwnerDecides(false)} /> Tự chọn ngày</label>
-            {!ownerDecides && <input type="date" required={!ownerDecides} value={moveInDate} onChange={(event) => setMoveInDate(event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm" />}
-            <label className="flex items-center gap-2 text-sm text-slate-600"><input type="radio" checked={ownerDecides} onChange={() => setOwnerDecides(true)} /> Để chủ trọ quyết định ngày nhận phòng</label>
-          </div>
-        </section>
-        <section>
-          <h2 className="font-display text-lg font-bold text-slate-900">Phương thức thanh toán</h2>
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {["MoMo", "Chuyển khoản"].map((method) => <label key={method} className={`cursor-pointer rounded-xl border p-4 text-center text-sm font-semibold ${payment === method ? "border-[#087775] bg-teal-50 text-[#087775]" : "border-slate-200 text-slate-600"}`}><input type="radio" name="payment" value={method} checked={payment === method} onChange={(event) => setPayment(event.target.value)} className="sr-only" />{method}</label>)}
-          </div>
-        </section>
-        {submitted && (!payment || (!moveInDate && !ownerDecides) || (companionOpen && companions.some((companion) => !companion.name.trim()))) && <p className="text-sm text-rose-600">Vui lòng hoàn tất ngày nhận phòng, phương thức thanh toán và họ tên người ở cùng nếu đã thêm.</p>}
-        <button type="submit" className="w-full rounded-lg bg-[#087775] py-3.5 text-sm font-bold text-white hover:bg-[#066a68]">Thanh toán {room.price}</button>
-      </form>
+      </div>
     </CustomerPageShell>
   )
 }
 
-function ReadOnly({ label, value }: { label: string; value: string }) {
-  return <label className="block text-sm font-semibold text-slate-700">{label}<input value={value} readOnly className="mt-2 h-11 w-full rounded-xl border border-transparent bg-slate-50 px-3.5 text-sm text-slate-600" /></label>
+function HoldRoomStep({ roomId }: { roomId: number }) {
+  const { accessToken, user } = useAuth()
+  const navigate = useNavigate()
+  const resource = usePublicApiResource(String(roomId), (signal) => publicApi.getRoom(roomId, signal))
+  const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
+
+  if (resource.status === "loading") return <p role="status" className="text-sm text-slate-500">Đang tải thông tin phòng...</p>
+  if (resource.status === "error") {
+    return (
+      <Notice
+        message={resource.error.kind === "not-found" ? "Phòng hiện không còn trống để đặt cọc." : publicApiErrorMessage(resource.error)}
+      />
+    )
+  }
+
+  const room = resource.data
+  const holdRoom = async () => {
+    if (!accessToken || pending) return
+    setPending(true)
+    setError(null)
+    try {
+      const booking = await createBooking(accessToken, room.roomId)
+      navigate(`${routes.deposit}?bookingId=${booking.bookingId}`, { replace: true })
+    } catch (holdError) {
+      setError(bookingErrorMessage(holdError, "Phòng vừa được người khác giữ hoặc không còn trống."))
+      setPending(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Summary
+        rows={[
+          ["Khu trọ", room.property.propertyName],
+          ["Phòng", `${room.roomCode} · ${room.roomType.roomTypeName}`],
+          ["Người đặt", user ? `${user.name} · ${user.phone}` : ""],
+        ]}
+        amount={room.baseRent}
+      />
+      <p className="text-sm text-slate-500">Sau khi giữ phòng, bạn có 15 phút để thanh toán tiền cọc.</p>
+      {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+      <button
+        type="button"
+        onClick={holdRoom}
+        disabled={pending}
+        className="w-full rounded-lg bg-[#087775] py-3.5 text-sm font-bold text-white hover:bg-[#066a68] disabled:opacity-60"
+      >
+        {pending ? "Đang giữ phòng..." : "Giữ phòng và thanh toán cọc"}
+      </button>
+    </div>
+  )
 }
 
-function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder: string }) {
-  return <label className="block text-sm font-semibold text-slate-700">{label}<input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3.5 text-sm outline-none focus:border-[#087775]" /></label>
+function PayDepositStep({ bookingId }: { bookingId: number }) {
+  const { accessToken } = useAuth()
+  const navigate = useNavigate()
+  const [booking, setBooking] = useState<BookingDto | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [method, setMethod] = useState<PaymentMethod | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
+
+  useEffect(() => {
+    if (!accessToken) return
+    const controller = new AbortController()
+    getBooking(accessToken, bookingId, controller.signal)
+      .then(setBooking)
+      .catch((fetchError: unknown) => {
+        if (!controller.signal.aborted) {
+          setLoadError(fetchError instanceof Error ? fetchError.message : "Không thể tải thông tin đặt cọc.")
+        }
+      })
+    return () => controller.abort()
+  }, [accessToken, bookingId])
+
+  if (loadError) return <Notice message={loadError} />
+  if (!booking) return <p role="status" className="text-sm text-slate-500">Đang tải thông tin đặt cọc...</p>
+  if (booking.status === "Deposited") return <Notice message="Booking này đã được thanh toán cọc." />
+  if (booking.status === "Cancelled") return <Notice message="Booking này đã bị huỷ." />
+  if (isBookingExpired(booking)) {
+    return <Notice message="Đã quá thời gian giữ phòng. Vui lòng đặt lại nếu phòng vẫn còn trống." />
+  }
+
+  const pay = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!accessToken || pending) return
+    if (!method) {
+      setError("Vui lòng chọn phương thức thanh toán.")
+      return
+    }
+    setPending(true)
+    setError(null)
+    try {
+      await payBooking(accessToken, booking.bookingId, method)
+      navigate(routes.paymentSuccess, { replace: true })
+    } catch (payError) {
+      setError(bookingErrorMessage(payError, "Booking đã hết thời gian giữ phòng hoặc đã được thanh toán."))
+      setPending(false)
+    }
+  }
+
+  return (
+    <form onSubmit={pay} className="space-y-6">
+      <Summary
+        rows={[
+          ["Khu trọ", booking.propertyName],
+          ["Phòng", booking.roomCode],
+          ["Giữ phòng đến", formatDateTime(booking.expiryDate)],
+        ]}
+        amount={booking.depositAmount}
+      />
+      <fieldset>
+        <legend className="font-display text-lg font-bold text-slate-900">Phương thức thanh toán</legend>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          {paymentMethods.map((item) => (
+            <label
+              key={item}
+              className={`cursor-pointer rounded-xl border p-4 text-center text-sm font-semibold ${method === item ? "border-[#087775] bg-teal-50 text-[#087775]" : "border-slate-200 text-slate-600"}`}
+            >
+              <input
+                type="radio"
+                name="paymentMethod"
+                value={item}
+                checked={method === item}
+                onChange={() => setMethod(item)}
+                className="sr-only"
+              />
+              {item}
+            </label>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-slate-400">Cổng thanh toán giả lập cho đồ án, không trừ tiền thật.</p>
+      </fieldset>
+      {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+      <button
+        type="submit"
+        disabled={pending}
+        className="w-full rounded-lg bg-[#087775] py-3.5 text-sm font-bold text-white hover:bg-[#066a68] disabled:opacity-60"
+      >
+        {pending ? "Đang thanh toán..." : `Thanh toán ${formatVnd(booking.depositAmount)}`}
+      </button>
+    </form>
+  )
+}
+
+function Summary({ rows, amount }: { rows: Array<[string, string]>; amount: number }) {
+  return (
+    <div className="space-y-4">
+      <dl className="grid gap-3 text-sm sm:grid-cols-2">
+        {rows.filter(([, value]) => value).map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-slate-400">{label}</dt>
+            <dd className="mt-1 font-semibold text-slate-700">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="rounded-xl bg-teal-50 p-4 text-sm text-[#087775]">
+        Tiền cọc cần thanh toán: <strong>{formatVnd(amount)}</strong>
+      </div>
+    </div>
+  )
+}
+
+function Notice({ message }: { message: string }) {
+  return (
+    <div className="text-center">
+      <p role="alert" className="text-[15px] font-semibold text-slate-700">{message}</p>
+      <Link to={routes.myBookings} className="mt-4 inline-block text-sm font-semibold text-[#087775] hover:underline">
+        Xem booking của tôi
+      </Link>
+    </div>
+  )
 }

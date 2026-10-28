@@ -1,6 +1,5 @@
 import { rooms } from "@/data/rooms"
 import type {
-  Booking,
   Contract,
   Invoice,
   MaintenanceRequest,
@@ -138,27 +137,6 @@ export const maintenanceRequests: MaintenanceRequest[] = [
       { label: "Đang xử lý", date: "11/09/2026", done: true },
       { label: "Hoàn thành", date: "12/09/2026", done: true },
     ],
-  },
-]
-
-export const bookings: Booking[] = [
-  {
-    id: "BK-2026-0018",
-    propertyName: "Sunrise Residence",
-    roomCode: "A203",
-    viewingDate: "25/07/2026 · 10:00",
-    depositAmount: "7.600.000đ",
-    paymentStatus: "Đã thanh toán",
-    bookingStatus: "Converted to Rental",
-  },
-  {
-    id: "BK-2026-0012",
-    propertyName: "Nhà trọ Mộc Miên",
-    roomCode: "B204",
-    viewingDate: "20/07/2026 · 14:30",
-    depositAmount: "0đ",
-    paymentStatus: "Hoàn tiền",
-    bookingStatus: "Cancelled",
   },
 ]
 
