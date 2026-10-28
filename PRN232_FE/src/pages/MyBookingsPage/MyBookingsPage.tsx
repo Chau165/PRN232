@@ -6,8 +6,10 @@ import Toast from "@/components/customer/Toast"
 import type { BookingDto } from "@/api/bookingsApi"
 import { routes } from "@/constants/routes"
 import { useBookings } from "@/hooks/useBookings"
+import { useViewingSchedules } from "@/hooks/useViewingSchedules"
 import { bookingErrorMessage, bookingStatusDisplay, formatDateTime, isBookingExpired } from "@/utils/bookingDisplay"
 import { formatVnd } from "@/utils/publicFormatting"
+import { viewingStatusDisplay, viewingTimeLabel } from "@/utils/viewingDisplay"
 
 export default function MyBookingsPage() {
   const { bookings, loading, error, retry, cancel: cancelById, cancellingId } = useBookings()
@@ -26,9 +28,11 @@ export default function MyBookingsPage() {
 
   return (
     <CustomerPageShell
-      title="Lịch sử đặt cọc"
-      description="Theo dõi các phòng bạn đang giữ, tiền cọc và trạng thái thanh toán."
+      title="Lịch xem & đặt cọc"
+      description="Theo dõi lịch hẹn xem phòng, các phòng bạn đang giữ, tiền cọc và trạng thái thanh toán."
     >
+      <MyViewings />
+      <h2 className="mb-4 mt-10 font-display text-[22px] font-bold text-slate-900">Đặt cọc giữ phòng</h2>
       {loading && <p role="status" className="text-sm text-slate-500">Đang tải danh sách booking...</p>}
       {!loading && error && (
         <div role="alert" className="rounded-2xl bg-white p-6 text-center shadow-[0_3px_18px_rgba(16,65,67,.07)]">
@@ -109,5 +113,48 @@ export default function MyBookingsPage() {
       )}
       {toast && <Toast message={toast} onClose={() => setToast("")} />}
     </CustomerPageShell>
+  )
+}
+
+function MyViewings() {
+  const { viewings, loading, error, retry } = useViewingSchedules()
+
+  return (
+    <section>
+      <h2 className="mb-4 font-display text-[22px] font-bold text-slate-900">Lịch xem phòng</h2>
+      {loading && <p role="status" className="text-sm text-slate-500">Đang tải lịch xem phòng...</p>}
+      {!loading && error && (
+        <div role="alert" className="rounded-2xl bg-white p-6 text-center shadow-[0_3px_18px_rgba(16,65,67,.07)]">
+          <p className="text-sm text-slate-700">{error}</p>
+          <button type="button" onClick={retry} className="mt-4 rounded-lg bg-[#087775] px-4 py-2 text-sm font-semibold text-white">
+            Tải lại lịch xem
+          </button>
+        </div>
+      )}
+      {!loading && !error && viewings.length === 0 && (
+        <p className="rounded-2xl bg-white p-6 text-center text-sm text-slate-500 shadow-[0_3px_18px_rgba(16,65,67,.07)]">
+          Bạn chưa đặt lịch xem phòng nào.
+        </p>
+      )}
+      {!loading && !error && viewings.length > 0 && (
+        <div className="space-y-3">
+          {viewings.map((viewing) => {
+            const display = viewingStatusDisplay(viewing)
+            return (
+              <article
+                key={viewing.viewingId}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-5 shadow-[0_3px_18px_rgba(16,65,67,.07)]"
+              >
+                <div>
+                  <p className="font-semibold text-slate-800">{viewing.propertyName} · Phòng {viewing.roomCode}</p>
+                  <p className="mt-1 text-[13px] text-slate-500">Thời gian: {viewingTimeLabel(viewing)}</p>
+                </div>
+                <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
+              </article>
+            )
+          })}
+        </div>
+      )}
+    </section>
   )
 }

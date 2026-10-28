@@ -29,6 +29,7 @@ import LoginPage from "@/pages/LoginPage/LoginPage"
 import PropertyDetailPage from "@/pages/PropertyDetailPage/PropertyDetailPage"
 import RegisterPage from "@/pages/RegisterPage/RegisterPage"
 import DepositPage from "@/pages/DepositPage/DepositPage"
+import ViewingRequestPage from "@/pages/ViewingRequestPage/ViewingRequestPage"
 import PaymentSuccessPage from "@/pages/PaymentSuccessPage/PaymentSuccessPage"
 import { routes } from "@/constants/routes"
 import { CustomerNotificationsProvider } from "@/auth/CustomerNotificationsContext"
@@ -77,5 +78,6 @@ export const router = createBrowserRouter([{ Component: AppLayout, children: [
   { path: routes.login, element: guestElement(<LoginPage />) },
   { path: routes.register, element: guestElement(<RegisterPage />) },
   { path: routes.deposit, element: protectedElement(<DepositPage />, customerOnly) },
+  { path: routes.viewingRequest, element: protectedElement(<ViewingRequestPage />, customerOnly) },
   { path: routes.paymentSuccess, element: protectedElement(<PaymentSuccessPage />, customerOnly) },
 ]}])

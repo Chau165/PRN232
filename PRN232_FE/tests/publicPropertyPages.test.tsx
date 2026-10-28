@@ -598,7 +598,7 @@ describe("public property detail and room listing", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  it("fetches fresh room details by RoomId, links deposit and keeps viewing inactive", async () => {
+  it("fetches fresh room details by RoomId and links viewing and deposit by RoomId", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
       const url = new URL(String(input), window.location.origin)
       if (url.pathname === "/api/public/properties/17")
@@ -651,9 +651,9 @@ describe("public property detail and room listing", () => {
     ).toBe("/deposit?roomId=501")
     expect(
       within(dialog)
-        .getByRole("button", { name: /Đặt lịch xem/ })
-        .hasAttribute("disabled"),
-    ).toBe(true)
+        .getByRole("link", { name: "Đặt lịch xem phòng" })
+        .getAttribute("href"),
+    ).toBe("/viewing-request?roomId=501")
     expect(dialog.querySelector("img")).toBeNull()
     expect(requestUrl(fetchMock, 2).pathname).toBe("/api/public/rooms/501")
 

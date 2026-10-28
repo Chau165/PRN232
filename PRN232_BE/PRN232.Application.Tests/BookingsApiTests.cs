@@ -276,7 +276,7 @@ public class BookingsApiTests
         return body.GetProperty("bookingId").GetInt32();
     }
 
-    private static async Task LoginAsync(HttpClient client, string email)
+    internal static async Task LoginAsync(HttpClient client, string email)
     {
         using var response = await client.PostAsJsonAsync("/api/auth/login", new { email, password = Password });
         response.EnsureSuccessStatusCode();
