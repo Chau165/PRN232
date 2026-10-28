@@ -498,10 +498,10 @@ namespace PRN232.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.Property<decimal>("Latitude")
-                        .HasColumnType("decimal(18,2)");
+                        .HasColumnType("decimal(9,6)");
 
                     b.Property<decimal>("Longitude")
-                        .HasColumnType("decimal(18,2)");
+                        .HasColumnType("decimal(9,6)");
 
                     b.Property<int>("OwnerId")
                         .HasColumnType("integer");

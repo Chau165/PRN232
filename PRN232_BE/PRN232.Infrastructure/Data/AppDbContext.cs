@@ -247,6 +247,10 @@ public class AppDbContext : DbContext
             .Property(detail => detail.Quantity)
             .HasColumnType("numeric(18,4)");
 
+        // ---- Toạ độ cần 6 chữ số thập phân (~0,1 m); decimal(18,2) ở vòng lặp trên chỉ chính xác ~1 km ----
+        modelBuilder.Entity<Property>().Property(property => property.Latitude).HasColumnType("decimal(9,6)");
+        modelBuilder.Entity<Property>().Property(property => property.Longitude).HasColumnType("decimal(9,6)");
+
         base.OnModelCreating(modelBuilder);
     }
 }
