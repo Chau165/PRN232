@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react"
-import { createUser } from "@/api/usersApi"
+import { createUser } from "@/services/userService"
 import type { BackendUserDto } from "@/types/auth"
 
 export default function CreateManagerModal({

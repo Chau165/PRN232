@@ -1,4 +1,4 @@
-import type { PublicPropertyRoomCard } from "@/api/publicBrowsingApi"
+import type { PublicPropertyRoomCard } from "@/types/publicBrowsing"
 
 import { formatVnd } from "@/utils/publicFormatting"
 

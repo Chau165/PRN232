@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import CreateContractPage from "@/pages/CreateContractPage/CreateContractPage"
 import ManagementContractsPage from "@/pages/ManagementContractsPage/ManagementContractsPage"
 import { ApiError } from "@/api/apiClient"
-import type { BookingDto } from "@/api/bookingsApi"
-import type { ContractDto } from "@/api/contractsApi"
+import type { BookingDto } from "@/types/booking"
+import type { ContractDto } from "@/types/contract"
 import { addContractMonths, localToday } from "@/utils/managementContracts"
 
 const mocks = vi.hoisted(() => ({
@@ -20,8 +20,8 @@ vi.mock("@/auth/AuthContext", () => ({
 vi.mock("@/components/management/ManagementPage", () => ({
   default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
 }))
-vi.mock("@/api/bookingsApi", () => ({ getBooking: mocks.getBooking }))
-vi.mock("@/api/contractsApi", () => ({ getContracts: mocks.getContracts, createContract: mocks.createContract }))
+vi.mock("@/services/bookingService", () => ({ getBooking: mocks.getBooking }))
+vi.mock("@/services/contractService", () => ({ getContracts: mocks.getContracts, createContract: mocks.createContract }))
 
 const booking = (overrides: Partial<BookingDto> = {}): BookingDto => ({
   bookingId: 9, roomId: 1, roomCode: "A101", propertyId: 1, propertyName: "Sunrise",

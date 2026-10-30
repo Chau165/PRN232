@@ -4,7 +4,7 @@ import {
   buildRoomListParams,
   PublicApiError,
   publicApi,
-} from "@/api/publicBrowsingApi"
+} from "@/services/publicBrowsingService"
 import Footer from "@/components/common/Footer"
 import Navbar from "@/components/common/Navbar"
 import AvailableRooms from "@/components/room/AvailableRooms"

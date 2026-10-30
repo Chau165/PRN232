@@ -1,4 +1,4 @@
-import { PublicApiError } from "@/api/publicBrowsingApi"
+import { PublicApiError } from "@/services/publicBrowsingService"
 
 export function publicApiErrorMessage(error: PublicApiError): string {
   if (error.kind === "network")

@@ -1,6 +1,6 @@
 import { Link } from "react-router"
 
-import type { PublicPropertyCard } from "@/api/publicBrowsingApi"
+import type { PublicPropertyCard } from "@/types/publicBrowsing"
 
 import Icon from "@/components/common/Icon"
 

@@ -8,8 +8,8 @@ import {
   getUsers,
   updateUserRole,
   updateUserStatus,
-  type RoleDto,
-} from "@/api/usersApi"
+} from "@/services/userService"
+import type { RoleDto } from "@/types/user"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementPage from "@/components/management/ManagementPage"
 import StatusBadge from "@/components/customer/StatusBadge"

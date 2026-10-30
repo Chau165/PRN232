@@ -1,4 +1,4 @@
-import type { InvoiceDto, InvoiceLineDto } from "@/api/invoicesApi"
+import type { InvoiceDto, InvoiceLineDto } from "@/types/invoice"
 import { formatVnd } from "@/utils/publicFormatting"
 
 const unitLabels: Record<string, string> = { kwh: "kWh", m3: "m³", room_month: "phòng" }

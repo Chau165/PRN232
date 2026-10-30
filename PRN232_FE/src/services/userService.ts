@@ -1,37 +1,11 @@
 import { apiRequest } from "@/api/apiClient"
 import type { BackendUserDto } from "@/types/auth"
-
-export interface RoleDto {
-  roleId: number
-  roleName: string
-}
-
-export interface CreateUserRequestDto {
-  fullName: string
-  email: string
-  password: string
-  phoneNumber: string
-  roleId: number
-}
-
-export interface PropertyDto {
-  propertyId: number
-  ownerId: number
-  ownerName: string
-  propertyName: string
-  addressText: string
-  ward: string
-  district: string
-  city: string
-  roomCount: number
-}
-
-export interface MaintenanceRoomDto {
-  roomId: number
-  propertyId: number
-  propertyName: string
-  roomCode: string
-}
+import type {
+  CreateUserRequestDto,
+  MaintenanceRoomDto,
+  PropertyDto,
+  RoleDto,
+} from "@/types/user"
 
 export function getMaintenanceRooms(accessToken: string, signal?: AbortSignal) {
   return apiRequest<MaintenanceRoomDto[]>("/rooms", { accessToken, signal, cache: "no-store" })
@@ -48,7 +22,7 @@ export function updateCurrentUser(
   return apiRequest<BackendUserDto>("/users/me", {
     method: "PUT",
     accessToken,
-    body: JSON.stringify(request),
+    json: request,
   })
 }
 
@@ -59,7 +33,7 @@ export function changeCurrentPassword(
   return apiRequest<void>("/users/me/password", {
     method: "PUT",
     accessToken,
-    body: JSON.stringify(request),
+    json: request,
   })
 }
 
@@ -82,7 +56,7 @@ export function createUser(accessToken: string, request: CreateUserRequestDto) {
   return apiRequest<BackendUserDto>("/users", {
     method: "POST",
     accessToken,
-    body: JSON.stringify(request),
+    json: request,
   })
 }
 
@@ -94,7 +68,7 @@ export function updateUserRole(
   return apiRequest<BackendUserDto>(`/users/${encodeURIComponent(userId)}/role`, {
     method: "PUT",
     accessToken,
-    body: JSON.stringify({ roleId }),
+    json: { roleId },
   })
 }
 
@@ -106,7 +80,7 @@ export function updateUserStatus(
   return apiRequest<BackendUserDto>(`/users/${encodeURIComponent(userId)}/status`, {
     method: "PUT",
     accessToken,
-    body: JSON.stringify({ isActive }),
+    json: { isActive },
   })
 }
 

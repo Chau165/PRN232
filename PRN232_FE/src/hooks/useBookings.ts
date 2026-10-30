@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/auth/AuthContext"
-import { cancelBooking, getBookings, type BookingDto } from "@/api/bookingsApi"
+import { cancelBooking, getBookings } from "@/services/bookingService"
+import type { BookingDto } from "@/types/booking"
 
 // Dùng chung cho trang của khách và trang quản lý: BE tự lọc danh sách theo role của token.
 export function useBookings() {

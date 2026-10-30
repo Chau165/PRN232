@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { ApiError } from "@/api/apiClient"
-import { cancelBooking, createBooking, getBooking, getBookings, payBooking } from "@/api/bookingsApi"
+import { cancelBooking, createBooking, getBooking, getBookings, payBooking } from "@/services/bookingService"
 import { bookingErrorMessage, bookingStatusDisplay, isBookingExpired } from "@/utils/bookingDisplay"
 
 function response(body: unknown, status = 200) {

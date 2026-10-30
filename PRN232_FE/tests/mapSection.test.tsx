@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router"
 import { describe, expect, it, vi } from "vitest"
-import type { PublicPropertyAreaCard } from "@/api/publicBrowsingApi"
+import type { PublicPropertyAreaCard } from "@/types/publicBrowsing"
 import MapSection from "@/components/home/MapSection"
 
 vi.mock("@/components/home/AreaPropertyMap", async () => {

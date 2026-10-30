@@ -1,14 +1,18 @@
 import { describe, expect, it, vi } from "vitest"
 import {
-  buildPropertyListParams,
-  buildRoomListParams,
   createPublicApiClient,
   PublicApiError,
-  type PublicPage,
-  type PublicPropertyCard,
-  type PublicPropertyAreaCard,
-  type PublicRoomDetail,
-} from "@/api/publicBrowsingApi"
+} from "@/services/publicBrowsingService"
+import {
+  buildPropertyListParams,
+  buildRoomListParams,
+} from "@/utils/publicBrowsingQuery"
+import type {
+  PublicPage,
+  PublicPropertyCard,
+  PublicPropertyAreaCard,
+  PublicRoomDetail,
+} from "@/types/publicBrowsing"
 import {
   availableRoomsPath,
   parsePositiveRouteId,
@@ -271,6 +275,24 @@ describe("public browsing API client", () => {
       kind: "network",
     })
     await expect(abortClient.listProperties()).rejects.toBe(abortError)
+  })
+
+  it("preserves an aborted signal and reports malformed successful JSON as unexpected", async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const abortError = new TypeError("aborted")
+    const abortFetch = vi.fn<typeof fetch>().mockRejectedValue(abortError)
+    const abortClient = createPublicApiClient("/api", abortFetch)
+    await expect(abortClient.listProperties({}, controller.signal)).rejects.toBe(abortError)
+
+    const malformedClient = createPublicApiClient(
+      "/api",
+      vi.fn<typeof fetch>().mockResolvedValue(new Response("not-json", { status: 200 })),
+    )
+    await expect(malformedClient.listProperties()).rejects.toMatchObject({
+      kind: "unexpected",
+      status: 200,
+    })
   })
 
   it("does not send a request for invalid IDs or filters", async () => {

@@ -1,22 +1,5 @@
 import { apiRequest } from "@/api/apiClient"
-
-export type BookingStatus = "Pending" | "Deposited" | "Cancelled"
-export type PaymentMethod = "VNPay" | "MoMo"
-
-export interface BookingDto {
-  bookingId: number
-  roomId: number
-  roomCode: string
-  propertyId: number
-  propertyName: string
-  customerId: number
-  customerName: string
-  depositAmount: number
-  status: BookingStatus
-  expiryDate: string
-  customerPhone: string
-  contractId: number | null
-}
+import type { BookingDto, PaymentMethod } from "@/types/booking"
 
 export function getBookings(accessToken: string, signal?: AbortSignal) {
   return apiRequest<BookingDto[]>("/bookings", { accessToken, signal, cache: "no-store" })

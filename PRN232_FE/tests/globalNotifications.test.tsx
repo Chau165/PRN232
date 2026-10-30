@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   markNotificationRead: vi.fn(),
   notifications: [] as Array<{ notificationId: number; title: string; type: string; isRead: boolean }>,
 }))
-vi.mock("@/api/notificationsApi", () => ({
+vi.mock("@/services/notificationService", () => ({
   getNotifications: mocks.getNotifications,
   markNotificationRead: mocks.markNotificationRead,
 }))

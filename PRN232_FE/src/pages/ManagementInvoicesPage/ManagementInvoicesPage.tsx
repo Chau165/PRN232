@@ -7,13 +7,13 @@ import InvoiceDetailDrawer from "@/components/customer/InvoiceDetailDrawer"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
 import { useAuth } from "@/auth/AuthContext"
-import { getInvoices, recordCashPayment, type InvoiceDto } from "@/api/invoicesApi"
+import { getInvoices, recordCashPayment } from "@/services/invoiceService"
+import type { InvoiceDto } from "@/types/invoice"
 import {
   getInvoiceComplaints,
   updateInvoiceComplaintStatus,
-  type ComplaintStatus,
-  type InvoiceComplaintDto,
-} from "@/api/invoiceComplaintsApi"
+} from "@/services/invoiceComplaintService"
+import type { ComplaintStatus, InvoiceComplaintDto } from "@/types/invoiceComplaint"
 import { bookingErrorMessage } from "@/utils/bookingDisplay"
 import { complaintStatusDisplay, complaintStatuses, formatComplaintDate } from "@/utils/complaintDisplay"
 import { formatMonth, invoiceStatusDisplay } from "@/utils/invoiceDisplay"

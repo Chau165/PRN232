@@ -1,5 +1,5 @@
 import { ApiError } from "@/api/apiClient"
-import type { BookingDto } from "@/api/bookingsApi"
+import type { BookingDto } from "@/types/booking"
 
 type BookingTiming = Pick<BookingDto, "status" | "expiryDate">
 

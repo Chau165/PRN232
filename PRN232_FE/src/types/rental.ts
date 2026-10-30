@@ -1,5 +1,3 @@
-import { apiRequest } from "@/api/apiClient"
-
 export interface RentalEquipment {
   equipmentId: number
   name: string
@@ -31,12 +29,4 @@ export interface Rental {
   images: string[]
   equipments: RentalEquipment[]
   amenities: RentalAmenity[]
-}
-
-export function getCurrentRentals(accessToken: string, signal?: AbortSignal) {
-  return apiRequest<Rental[]>("/me/rentals", { accessToken, signal, cache: "no-store" })
-}
-
-export function getRentalHistory(accessToken: string, signal?: AbortSignal) {
-  return apiRequest<Rental[]>("/me/rentals/history", { accessToken, signal, cache: "no-store" })
 }

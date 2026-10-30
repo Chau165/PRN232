@@ -5,13 +5,14 @@ import {
   assignMaintenanceRequest,
   getMaintenanceLogs,
   getMaintenanceRequest,
+  getMaintenanceReport,
   getMaintenanceRequests,
   submitMaintenanceReport,
-  type MaintenanceLogDto,
-  type MaintenanceRequestDto,
-} from "@/api/maintenanceApi"
-import { getMaintenanceRooms, getRoles, getUsers, type MaintenanceRoomDto } from "@/api/usersApi"
+} from "@/services/maintenanceService"
+import { getMaintenanceRooms, getRoles, getUsers } from "@/services/userService"
 import type { BackendUserDto } from "@/types/auth"
+import type { MaintenanceLogDto, MaintenanceReportDto, MaintenanceRequestDto } from "@/types/maintenance"
+import type { MaintenanceRoomDto } from "@/types/user"
 import MaintenanceManagementDrawer from "@/components/management/MaintenanceManagementDrawer"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementPage from "@/components/management/ManagementPage"
@@ -51,6 +52,10 @@ export default function ManagementMaintenancePage() {
   const [managers, setManagers] = useState<BackendUserDto[]>([])
   const [managerRoleId, setManagerRoleId] = useState<number | null>(null)
   const [selected, setSelected] = useState<MaintenanceDetail | null>(null)
+  const [report, setReport] = useState<MaintenanceReportDto | null>(null)
+  const [reportLoading, setReportLoading] = useState(false)
+  const [reportNotFound, setReportNotFound] = useState(false)
+  const [reportError, setReportError] = useState("")
   const [filterStatus, setFilterStatus] = useState<StatusFilter>("all")
   const [filterProperty, setFilterProperty] = useState("all")
   const [filterRoom, setFilterRoom] = useState("all")
@@ -69,6 +74,7 @@ export default function ManagementMaintenancePage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const requestVersion = useRef(0)
   const detailVersion = useRef(0)
+  const detailController = useRef<AbortController | null>(null)
   const actionLock = useRef(false)
   const tokenRef = useRef(accessToken)
   tokenRef.current = accessToken
@@ -89,11 +95,17 @@ export default function ManagementMaintenancePage() {
   }, [accessToken])
 
   useEffect(() => {
+    detailVersion.current++
+    detailController.current?.abort()
+    detailController.current = null
     setRequests([])
     setRooms([])
     setManagers([])
     setManagerRoleId(null)
     setSelected(null)
+    setReport(null)
+    setReportError("")
+    setReportNotFound(false)
     setError("")
     if (!accessToken) {
       setLoading(false)
@@ -130,6 +142,8 @@ export default function ManagementMaintenancePage() {
     }, 30_000)
     return () => {
       controller.abort()
+      detailController.current?.abort()
+      detailVersion.current++
       requestVersion.current++
       window.clearInterval(timer)
       window.removeEventListener("focus", refreshWhenActive)
@@ -160,7 +174,14 @@ export default function ManagementMaintenancePage() {
   async function openRequest(requestId: number) {
     if (!accessToken) return
     const version = ++detailVersion.current
+    detailController.current?.abort()
+    const controller = new AbortController()
+    detailController.current = controller
     setDetailError("")
+    setReport(null)
+    setReportLoading(false)
+    setReportNotFound(false)
+    setReportError("")
     setActionError("")
     setDetailLoading(true)
     setAssignmentManager("")
@@ -170,24 +191,57 @@ export default function ManagementMaintenancePage() {
     setSelected(null)
     try {
       const [detail, logs] = await Promise.all([
-        getMaintenanceRequest(accessToken, requestId),
-        getMaintenanceLogs(accessToken, requestId),
+        getMaintenanceRequest(accessToken, requestId, controller.signal),
+        getMaintenanceLogs(accessToken, requestId, controller.signal),
       ])
-      if (version === detailVersion.current) setSelected({ ...detail, logs })
+      if (controller.signal.aborted || version !== detailVersion.current) return
+      setSelected({ ...detail, logs })
+      if (detail.status === "Completed" && (isAdmin || user?.role === "MANAGER")) {
+        await loadReport(requestId, version, controller.signal)
+      }
     } catch (cause) {
-      if (version === detailVersion.current) setDetailError(apiFailure(cause))
+      if (!controller.signal.aborted && version === detailVersion.current) setDetailError(apiFailure(cause))
     } finally {
-      if (version === detailVersion.current) setDetailLoading(false)
+      if (!controller.signal.aborted && version === detailVersion.current) setDetailLoading(false)
     }
   }
 
-  async function reloadSelected(requestId: number) {
+  async function loadReport(requestId: number, version = detailVersion.current, signal = detailController.current?.signal) {
+    if (!accessToken || !(isAdmin || user?.role === "MANAGER")) return
+    setReport(null)
+    setReportNotFound(false)
+    setReportError("")
+    setReportLoading(true)
+    try {
+      const result = await getMaintenanceReport(accessToken, requestId, signal)
+      if (!signal?.aborted && version === detailVersion.current) setReport(result)
+    } catch (cause) {
+      if (signal?.aborted || version !== detailVersion.current) return
+      if (cause instanceof ApiError && cause.status === 404) setReportNotFound(true)
+      else setReportError(`Không thể tải báo cáo: ${apiFailure(cause)}`)
+    } finally {
+      if (!signal?.aborted && version === detailVersion.current) setReportLoading(false)
+    }
+  }
+
+  async function reloadSelected(requestId: number, expectedVersion: number) {
     if (!accessToken) return
+    if (detailVersion.current !== expectedVersion) return
+    const version = expectedVersion
+    const signal = detailController.current?.signal
     const [detail, logs] = await Promise.all([
-      getMaintenanceRequest(accessToken, requestId),
-      getMaintenanceLogs(accessToken, requestId),
+      getMaintenanceRequest(accessToken, requestId, signal),
+      getMaintenanceLogs(accessToken, requestId, signal),
     ])
+    if (signal?.aborted || version !== detailVersion.current) return
     setSelected({ ...detail, logs })
+    if (detail.status === "Completed" && (isAdmin || user?.role === "MANAGER")) {
+      await loadReport(requestId, version, signal)
+    } else {
+      setReport(null)
+      setReportNotFound(false)
+      setReportError("")
+    }
   }
 
   async function assignRequest() {
@@ -205,10 +259,11 @@ export default function ManagementMaintenancePage() {
     setSubmitting(true)
     setActionError("")
     const requestId = selected.requestId
+    const selectedVersion = detailVersion.current
     try {
       await assignMaintenanceRequest(accessToken, requestId, { assignedTo, assignmentNote })
       setToast("Đã phân công Manager thành công.")
-      try { await Promise.all([refreshRequests(), reloadSelected(requestId)]) } catch (cause) { setDetailError(apiFailure(cause)) }
+      try { await Promise.all([refreshRequests(), reloadSelected(requestId, selectedVersion)]) } catch (cause) { if (detailVersion.current === selectedVersion) setDetailError(apiFailure(cause)) }
     } catch (cause) {
       setActionError(apiFailure(cause))
     } finally {
@@ -235,12 +290,13 @@ export default function ManagementMaintenancePage() {
     setSubmitting(true)
     setActionError("")
     const requestId = selected.requestId
+    const selectedVersion = detailVersion.current
     try {
       await submitMaintenanceReport(accessToken, requestId, form)
       setToast("Báo cáo hoàn thành đã được gửi.")
       setReportDescription("")
       setReportImages([])
-      try { await Promise.all([refreshRequests(), reloadSelected(requestId)]) } catch (cause) { setDetailError(apiFailure(cause)) }
+      try { await Promise.all([refreshRequests(), reloadSelected(requestId, selectedVersion)]) } catch (cause) { if (detailVersion.current === selectedVersion) setDetailError(apiFailure(cause)) }
     } catch (cause) {
       setActionError(apiFailure(cause))
     } finally {
@@ -277,7 +333,7 @@ export default function ManagementMaintenancePage() {
         request={selected}
         propertyName={roomById.get(selected.roomId)?.propertyName ?? null}
         detailLoading={detailLoading}
-        onClose={() => { detailVersion.current++; setSelected(null) }}
+         onClose={() => { detailVersion.current++; detailController.current?.abort(); setSelected(null); setReport(null) }}
         managers={isAdmin ? managers : []}
         managerRoleLoading={isAdmin && managerRoleId === null}
         canAssign={isAdmin}
@@ -292,8 +348,13 @@ export default function ManagementMaintenancePage() {
         onAssign={() => void assignRequest()}
         onReportDescriptionChange={setReportDescription}
         onReportImagesChange={setReportImages}
-        onComplete={() => void completeRequest()}
-      />}
+         onComplete={() => void completeRequest()}
+         report={report}
+         reportLoading={reportLoading}
+         reportNotFound={reportNotFound}
+         reportError={reportError}
+         onRetryReport={() => void loadReport(selected.requestId)}
+       />}
       {toast && <Toast message={toast} onClose={() => setToast("")} />}
     </ManagementPage>
   )

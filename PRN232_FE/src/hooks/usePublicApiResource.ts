@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { PublicApiError } from "@/api/publicBrowsingApi"
+import { PublicApiError } from "@/services/publicBrowsingService"
 
 export type PublicResourceState<T> =
   | { status: "loading" }

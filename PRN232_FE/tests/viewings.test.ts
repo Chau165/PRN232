@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { approveViewingSchedule, createViewingSchedule, getViewingSchedules, rejectViewingSchedule } from "@/api/viewingSchedulesApi"
+import { approveViewingSchedule, createViewingSchedule, getViewingSchedules, rejectViewingSchedule } from "@/services/viewingScheduleService"
 import { localInputToIso, toLocalInput, viewingStatusDisplay, viewingTimeLabel } from "@/utils/viewingDisplay"
 
 function response(body: unknown) {

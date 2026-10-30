@@ -9,8 +9,10 @@ import Toast from "@/components/customer/Toast"
 import Icon from "@/components/common/Icon"
 import { useAuth } from "@/auth/AuthContext"
 import { useCustomerNotificationsState } from "@/auth/CustomerNotificationsContext"
-import { createMaintenanceRequest, getMaintenanceLogs, getMaintenanceRequest, getMaintenanceRequests, type MaintenanceLogDto, type MaintenanceRequestDto } from "@/api/maintenanceApi"
-import { getCurrentRentals, getRentalHistory, type Rental } from "@/api/rentalsApi"
+import { createMaintenanceRequest, getMaintenanceLogs, getMaintenanceRequest, getMaintenanceRequests } from "@/services/maintenanceService"
+import { getCurrentRentals, getRentalHistory } from "@/services/rentalService"
+import type { MaintenanceLogDto, MaintenanceRequestDto } from "@/types/maintenance"
+import type { Rental } from "@/types/rental"
 
 type Tab = "current" | "history" | "maintenance"
 

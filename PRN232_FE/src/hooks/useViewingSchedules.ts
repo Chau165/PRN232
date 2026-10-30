@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/auth/AuthContext"
-import { getViewingSchedules, type ViewingScheduleDto } from "@/api/viewingSchedulesApi"
+import { getViewingSchedules } from "@/services/viewingScheduleService"
+import type { ViewingScheduleDto } from "@/types/viewingSchedule"
 
 // Giống useBookings: BE tự lọc danh sách theo role của token (khách / chủ trọ / admin).
 export function useViewingSchedules() {

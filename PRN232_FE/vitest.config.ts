@@ -17,7 +17,12 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "lcov"],
       reportsDirectory: "./coverage/phase3",
-      include: ["src/api/publicBrowsingApi.ts", "src/constants/routes.ts"],
+      include: [
+        "src/api/apiClient.ts",
+        "src/services/publicBrowsingService.ts",
+        "src/utils/publicBrowsingQuery.ts",
+        "src/constants/routes.ts",
+      ],
       thresholds: {
         lines: 80,
         statements: 80,

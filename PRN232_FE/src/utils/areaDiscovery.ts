@@ -1,7 +1,7 @@
 import type {
   PublicPropertyAreaCard,
   PublicPropertyAreaQuery,
-} from "@/api/publicBrowsingApi"
+} from "@/types/publicBrowsing"
 
 export interface AreaCoordinates {
   latitude: number

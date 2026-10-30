@@ -7,7 +7,7 @@ import {
 import type {
   PublicPropertyAreaCard,
   PublicPropertyAreaQuery,
-} from "@/api/publicBrowsingApi"
+} from "@/types/publicBrowsing"
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

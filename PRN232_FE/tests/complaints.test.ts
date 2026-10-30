@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { createInvoiceComplaint, getInvoiceComplaints, updateInvoiceComplaintStatus } from "@/api/invoiceComplaintsApi"
+import { createInvoiceComplaint, getInvoiceComplaints, updateInvoiceComplaintStatus } from "@/services/invoiceComplaintService"
 import { complaintStatusDisplay } from "@/utils/complaintDisplay"
 
 function response(body: unknown) {

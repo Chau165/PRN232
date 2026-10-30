@@ -17,7 +17,7 @@ import type {
   PublicPropertyRoomCard,
   PublicPropertyServiceRate,
   PublicRoomDetail,
-} from "@/api/publicBrowsingApi"
+} from "@/types/publicBrowsing"
 
 function property(
   propertyId: number,

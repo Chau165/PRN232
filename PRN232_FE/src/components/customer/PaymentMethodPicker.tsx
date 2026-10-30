@@ -1,4 +1,4 @@
-import type { PaymentMethod } from "@/api/bookingsApi"
+import type { PaymentMethod } from "@/types/booking"
 
 const paymentMethods: PaymentMethod[] = ["VNPay", "MoMo"]
 

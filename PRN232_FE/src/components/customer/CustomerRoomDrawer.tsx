@@ -1,4 +1,4 @@
-import type { Rental } from "@/api/rentalsApi"
+import type { Rental } from "@/types/rental"
 import PortalDrawer from "@/components/customer/PortalDrawer"
 
 type CustomerRoomDrawerProps = {

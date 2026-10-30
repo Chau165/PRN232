@@ -4,7 +4,7 @@ import type {
   PublicPage,
   PublicPropertyCard,
   PublicPropertyListQuery,
-} from "@/api/publicBrowsingApi"
+} from "@/types/publicBrowsing"
 
 import Icon from "@/components/common/Icon"
 

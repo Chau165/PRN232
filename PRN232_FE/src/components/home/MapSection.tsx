@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react"
 
-import { publicApi } from "@/api/publicBrowsingApi"
-import type { PublicPropertyAreaCard } from "@/api/publicBrowsingApi"
+import { publicApi } from "@/services/publicBrowsingService"
+import type { PublicPropertyAreaCard } from "@/types/publicBrowsing"
 import {
   AreaDiscoveryError,
   discoverCurrentArea,

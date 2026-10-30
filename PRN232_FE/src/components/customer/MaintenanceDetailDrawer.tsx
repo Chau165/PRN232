@@ -1,4 +1,4 @@
-import type { MaintenanceLogDto, MaintenanceRequestDto } from "@/api/maintenanceApi"
+import type { MaintenanceLogDto, MaintenanceRequestDto } from "@/types/maintenance"
 import PortalDrawer from "@/components/customer/PortalDrawer"
 import StatusBadge from "@/components/customer/StatusBadge"
 

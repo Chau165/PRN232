@@ -165,15 +165,16 @@ public class MaintenanceRequestsController : ControllerBase
     }
 
     [HttpGet("{id:int}/reports")]
-    [Authorize(Roles = RoleNames.Admin)]
+    [Authorize(Roles = RoleNames.Admin + "," + RoleNames.Manager)]
     public async Task<ActionResult<MaintenanceReportDto>> GetReport(int id)
     {
         if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
         try
         {
-            var report = await _maintenanceService.GetReportAsync(id, role);
+            var report = await _maintenanceService.GetReportAsync(id, userId, role);
             return report is null ? NotFound() : Ok(report);
         }
+        catch (MaintenanceAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
         catch (HttpRequestException)
         {
             return StatusCode(StatusCodes.Status502BadGateway,

@@ -13,7 +13,7 @@ import {
 import { Link } from "react-router"
 import "leaflet/dist/leaflet.css"
 
-import type { PublicPropertyAreaCard } from "@/api/publicBrowsingApi"
+import type { PublicPropertyAreaCard } from "@/types/publicBrowsing"
 import { propertyDetailPath } from "@/constants/routes"
 import { formatVnd } from "@/utils/publicFormatting"
 import {

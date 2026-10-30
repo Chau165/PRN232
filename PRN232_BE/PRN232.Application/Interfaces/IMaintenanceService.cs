@@ -10,5 +10,5 @@ public interface IMaintenanceService
     Task<MaintenanceRequestDto?> UpdateAsync(int id, UpdateMaintenanceRequestDto dto, int actorUserId, string role);
     Task<List<MaintenanceLogDto>?> GetLogsAsync(int id, int userId, string role);
     Task<MaintenanceReportDto> CreateReportAsync(int id, CreateMaintenanceReportDto dto, int managerId, string role);
-    Task<MaintenanceReportDto?> GetReportAsync(int id, string role);
+    Task<MaintenanceReportDto?> GetReportAsync(int id, int userId, string role);
 }

@@ -4,8 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import DepositPage from "@/pages/DepositPage/DepositPage"
 import MyBookingsPage from "@/pages/MyBookingsPage/MyBookingsPage"
 import { ApiError } from "@/api/apiClient"
-import type { BookingDto } from "@/api/bookingsApi"
-import { PublicApiError, type PublicRoomDetail } from "@/api/publicBrowsingApi"
+import type { BookingDto } from "@/types/booking"
+import { PublicApiError } from "@/services/publicBrowsingService"
+import type { PublicRoomDetail } from "@/types/publicBrowsing"
 
 const mocks = vi.hoisted(() => ({
   getBookings: vi.fn(),
@@ -29,16 +30,16 @@ vi.mock("@/auth/CustomerNotificationsContext", () => ({
     notifications: [], unreadCount: 0, loading: false, error: null, refresh: vi.fn(), markRead: vi.fn(),
   }),
 }))
-vi.mock("@/api/bookingsApi", () => ({
+vi.mock("@/services/bookingService", () => ({
   getBookings: mocks.getBookings,
   getBooking: mocks.getBooking,
   createBooking: mocks.createBooking,
   payBooking: mocks.payBooking,
   cancelBooking: mocks.cancelBooking,
 }))
-vi.mock("@/api/viewingSchedulesApi", () => ({ getViewingSchedules: mocks.getViewingSchedules }))
-vi.mock("@/api/publicBrowsingApi", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/api/publicBrowsingApi")>()),
+vi.mock("@/services/viewingScheduleService", () => ({ getViewingSchedules: mocks.getViewingSchedules }))
+vi.mock("@/services/publicBrowsingService", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/services/publicBrowsingService")>()),
   publicApi: { getRoom: mocks.getRoom },
 }))
 

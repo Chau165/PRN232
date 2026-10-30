@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { getNotifications, markNotificationRead, type NotificationDto } from "@/api/notificationsApi"
+import { getNotifications, markNotificationRead } from "@/services/notificationService"
+import type { NotificationDto } from "@/types/notification"
 
 export interface NotificationToast {
   notification: NotificationDto

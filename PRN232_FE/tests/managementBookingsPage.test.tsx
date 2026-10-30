@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import ManagementBookingsPage from "@/pages/ManagementBookingsPage/ManagementBookingsPage"
 import { ApiError } from "@/api/apiClient"
-import type { BookingDto } from "@/api/bookingsApi"
+import type { BookingDto } from "@/types/booking"
 
 const mocks = vi.hoisted(() => ({
   getBookings: vi.fn(),
@@ -16,7 +16,7 @@ vi.mock("@/auth/AuthContext", () => ({
 vi.mock("@/components/management/ManagementPage", () => ({
   default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
 }))
-vi.mock("@/api/bookingsApi", () => ({
+vi.mock("@/services/bookingService", () => ({
   getBookings: mocks.getBookings,
   cancelBooking: mocks.cancelBooking,
 }))

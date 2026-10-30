@@ -264,7 +264,6 @@ public class MaintenanceFlowApiTests
     [InlineData("manager@example.test", "PATCH", "/api/maintenance-requests/3")]
     [InlineData("admin@example.test", "POST", "/api/maintenance-requests/1/reports")]
     [InlineData("customer@example.test", "POST", "/api/maintenance-requests/1/reports")]
-    [InlineData("manager@example.test", "GET", "/api/maintenance-requests/4/reports")]
     [InlineData("customer@example.test", "GET", "/api/maintenance-requests/4/reports")]
     public async Task Role_authorization_uses_target_jwt(string email, string method, string path)
     {
@@ -274,6 +273,46 @@ public class MaintenanceFlowApiTests
         using var request = new HttpRequestMessage(new HttpMethod(method), path);
         request.Content = method == "POST" ? ReportForm() : JsonContent.Create(new { assignedTo = 7 });
         Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(request)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Get_report_allows_admin_and_assigned_manager_but_denies_other_manager_and_customer_before_signing()
+    {
+        using var factory = new MaintenanceApiFactory();
+        using var client = factory.CreateClient();
+
+        await LoginAsync(client, "manager@example.test");
+        var managerReport = await client.GetFromJsonAsync<JsonElement>("/api/maintenance-requests/4/reports");
+        Assert.Equal("Existing report", managerReport.GetProperty("description").GetString());
+        Assert.StartsWith("https://storage.test/", managerReport.GetProperty("images")[0].GetProperty("imageUrl").GetString());
+        Assert.Equal(1, factory.Storage.SigningCount);
+
+        await LoginAsync(client, "manager-b@example.test");
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/maintenance-requests/4/reports")).StatusCode);
+        Assert.Equal(1, factory.Storage.SigningCount);
+
+        await LoginAsync(client, "customer@example.test");
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.GetAsync("/api/maintenance-requests/4/reports")).StatusCode);
+        Assert.Equal(1, factory.Storage.SigningCount);
+
+        await LoginAsync(client, "admin@example.test");
+        var adminReport = await client.GetFromJsonAsync<JsonElement>("/api/maintenance-requests/4/reports");
+        Assert.Equal("Existing report", adminReport.GetProperty("description").GetString());
+        Assert.Equal(2, factory.Storage.SigningCount);
+    }
+
+    [Fact]
+    public async Task Get_report_returns_not_found_for_assigned_manager_when_report_does_not_exist()
+    {
+        using var factory = new MaintenanceApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "manager@example.test");
+
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/maintenance-requests/1/reports")).StatusCode);
+        Assert.Equal(0, factory.Storage.SigningCount);
     }
 
     [Theory]
@@ -423,6 +462,9 @@ public class MaintenanceFlowApiTests
         Assert.Equal(7, reviewed.GetProperty("reportedBy").GetInt32());
         Assert.True(reviewed.GetProperty("createdAt").GetDateTime() > DateTime.UtcNow.AddMinutes(-5));
         Assert.StartsWith("https://storage.test/", reviewed.GetProperty("images")[0].GetProperty("imageUrl").GetString());
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", managerToken);
+        var managerReviewed = await client.GetFromJsonAsync<JsonElement>($"/api/maintenance-requests/{id}/reports");
+        Assert.Equal("Repaired and tested", managerReviewed.GetProperty("description").GetString());
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", customerToken);
         var customerNotifications = await client.GetFromJsonAsync<JsonElement>("/api/notifications");
         Assert.Equal(new[]
@@ -729,6 +771,7 @@ internal sealed class TestReportImageStorage : IMaintenanceReportImageStorage
 {
     public int UploadCount { get; private set; }
     public int DeleteCount { get; private set; }
+    public int SigningCount { get; private set; }
     public bool FailUpload { get; set; }
     public bool FailSigning { get; set; }
     public Task<string> UploadAsync(int requestId, MaintenanceReportImageInput image)
@@ -739,6 +782,7 @@ internal sealed class TestReportImageStorage : IMaintenanceReportImageStorage
     }
     public Task<string> GetReadUrlAsync(string path)
     {
+        SigningCount++;
         if (FailSigning) throw new HttpRequestException("Test signing failure");
         return Task.FromResult($"https://storage.test/{path}?signed=test");
     }

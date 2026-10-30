@@ -1,47 +1,10 @@
 import { apiRequest } from "@/api/apiClient"
-
-export interface MaintenanceRequestDto {
-  requestId: number
-  description: string
-  status: "Pending" | "Approved" | "Completed"
-  contractId: number
-  customerId: number
-  customerName: string | null
-  roomId: number
-  roomCode: string | null
-  equipmentId: number | null
-  equipmentName: string | null
-  equipmentStatus: string | null
-  assignedTo: number | null
-  assignedStaffName: string | null
-  assignmentNote?: string | null
-}
-
-export interface MaintenanceReportDto {
-  reportId: number
-  requestId: number
-  description: string
-  reportedBy: number
-  reportedByName: string | null
-  createdAt: string
-  images: Array<{ imageId: number; imageUrl: string }>
-}
-
-export interface MaintenanceLogDto {
-  logId: number
-  requestId: number
-  oldStatus: string | null
-  newStatus: string
-  changedBy: number | null
-  changedByName: string | null
-  changedAt: string
-}
-
-export interface CreateMaintenanceRequest {
-  contractId: number
-  equipmentId: number | null
-  description: string
-}
+import type {
+  CreateMaintenanceRequest,
+  MaintenanceLogDto,
+  MaintenanceReportDto,
+  MaintenanceRequestDto,
+} from "@/types/maintenance"
 
 export function getMaintenanceRequests(accessToken: string, signal?: AbortSignal) {
   return apiRequest<MaintenanceRequestDto[]>("/maintenance-requests", { accessToken, signal, cache: "no-store" })
@@ -55,6 +18,10 @@ export function getMaintenanceLogs(accessToken: string, requestId: number, signa
   return apiRequest<MaintenanceLogDto[]>(`/maintenance-requests/${requestId}/logs`, { accessToken, signal, cache: "no-store" })
 }
 
+export function getMaintenanceReport(accessToken: string, requestId: number, signal?: AbortSignal) {
+  return apiRequest<MaintenanceReportDto>(`/maintenance-requests/${requestId}/reports`, { accessToken, signal, cache: "no-store" })
+}
+
 export function assignMaintenanceRequest(
   accessToken: string,
   requestId: number,
@@ -63,7 +30,7 @@ export function assignMaintenanceRequest(
   return apiRequest<MaintenanceRequestDto>(`/maintenance-requests/${requestId}`, {
     accessToken,
     method: "PATCH",
-    body: JSON.stringify(assignment),
+    json: assignment,
   })
 }
 
@@ -79,11 +46,15 @@ export function submitMaintenanceReport(
   })
 }
 
-export function createMaintenanceRequest(accessToken: string, request: CreateMaintenanceRequest, signal?: AbortSignal) {
+export function createMaintenanceRequest(
+  accessToken: string,
+  request: CreateMaintenanceRequest,
+  signal?: AbortSignal,
+) {
   return apiRequest<MaintenanceRequestDto>("/maintenance-requests", {
     accessToken,
     signal,
     method: "POST",
-    body: JSON.stringify(request),
+    json: request,
   })
 }

@@ -274,12 +274,25 @@ public class MaintenanceService : IMaintenanceService
         }
     }
 
-    public async Task<MaintenanceReportDto?> GetReportAsync(int id, string role)
+    public async Task<MaintenanceReportDto?> GetReportAsync(int id, int userId, string role)
     {
-        if (role != RoleNames.Admin)
+        if (role == RoleNames.Manager)
         {
-            throw new MaintenanceAuthorizationException("Only Admins can view completion reports.");
+            var assignedRequest = await _repository.GetStateByIdAsync(id, userId);
+            if (assignedRequest is null)
+            {
+                if (await _repository.RequestExistsAsync(id))
+                {
+                    throw new MaintenanceAuthorizationException("This request is not assigned to you.");
+                }
+                return null;
+            }
         }
+        else if (role != RoleNames.Admin)
+        {
+            throw new MaintenanceAuthorizationException("Only Admins and assigned Managers can view completion reports.");
+        }
+
         var report = await _repository.GetReportAsync(id);
         if (report is null)
         {

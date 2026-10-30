@@ -6,9 +6,9 @@ import {
   getUser,
   getUsers,
   updateUserStatus,
-  type PropertyDto,
-} from "@/api/usersApi"
+} from "@/services/userService"
 import type { BackendUserDto } from "@/types/auth"
+import type { PropertyDto } from "@/types/user"
 import CreateManagerModal from "@/components/management/CreateManagerModal"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementPage from "@/components/management/ManagementPage"

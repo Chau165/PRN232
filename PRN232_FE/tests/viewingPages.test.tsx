@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import ViewingRequestPage from "@/pages/ViewingRequestPage/ViewingRequestPage"
 import ManagementViewingsPage from "@/pages/ManagementViewingsPage/ManagementViewingsPage"
 import { ApiError } from "@/api/apiClient"
-import type { ViewingScheduleDto } from "@/api/viewingSchedulesApi"
-import type { PublicRoomDetail } from "@/api/publicBrowsingApi"
+import type { ViewingScheduleDto } from "@/types/viewingSchedule"
+import type { PublicRoomDetail } from "@/types/publicBrowsing"
 
 const mocks = vi.hoisted(() => ({
   getViewingSchedules: vi.fn(),
@@ -27,14 +27,14 @@ vi.mock("@/auth/CustomerNotificationsContext", () => ({
 vi.mock("@/components/management/ManagementPage", () => ({
   default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
 }))
-vi.mock("@/api/viewingSchedulesApi", () => ({
+vi.mock("@/services/viewingScheduleService", () => ({
   getViewingSchedules: mocks.getViewingSchedules,
   createViewingSchedule: mocks.createViewingSchedule,
   approveViewingSchedule: mocks.approveViewingSchedule,
   rejectViewingSchedule: mocks.rejectViewingSchedule,
 }))
-vi.mock("@/api/publicBrowsingApi", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/api/publicBrowsingApi")>()),
+vi.mock("@/services/publicBrowsingService", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/services/publicBrowsingService")>()),
   publicApi: { getRoom: mocks.getRoom },
 }))
 

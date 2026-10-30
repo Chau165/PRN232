@@ -1,7 +1,7 @@
 import type {
   PublicPropertyListQuery,
   PublicRoomListQuery,
-} from "@/api/publicBrowsingApi"
+} from "@/types/publicBrowsing"
 
 export interface PropertySearchDraft {
   keyword: string

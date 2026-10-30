@@ -8,9 +8,8 @@ import {
   type ReactNode,
 } from "react"
 import { ApiError, setUnauthorizedHandler } from "@/api/apiClient"
-import * as authApi from "@/api/authApi"
-import * as usersApi from "@/api/usersApi"
-import { getCurrentUser as fetchCurrentUser } from "@/api/usersApi"
+import * as authService from "@/services/authService"
+import * as userService from "@/services/userService"
 import { mapBackendUser, type AuthResponseDto } from "@/types/auth"
 import type { CurrentUser } from "@/types/user"
 import { setCurrentUserSnapshot } from "@/auth/currentUserStore"
@@ -134,7 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setState({ status: "loading" })
-    void fetchCurrentUser(session.accessToken)
+    void userService.getCurrentUser(session.accessToken)
       .then((dto) => {
         if (!active) return
         const user = mapBackendUser(dto)
@@ -201,7 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string) => {
-      return establishSession(await authApi.login({ email, password }))
+      return establishSession(await authService.login({ email, password }))
     },
     [establishSession],
   )
@@ -212,7 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: string
       password: string
       phoneNumber: string
-    }) => establishSession(await authApi.register(input)),
+    }) => establishSession(await authService.register(input)),
     [establishSession],
   )
 
@@ -223,7 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateProfile = useCallback(
     async (input: { fullName: string; phoneNumber: string }) => {
       if (state.status !== "authenticated") throw new ApiError("Bạn cần đăng nhập lại.", { status: 401 })
-      const dto = await usersApi.updateCurrentUser(state.accessToken, input)
+      const dto = await userService.updateCurrentUser(state.accessToken, input)
       const storedSession = readStoredSession()
       if (
         !storedSession ||
@@ -248,7 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const changePassword = useCallback(
     async (input: { currentPassword: string; newPassword: string }) => {
       if (state.status !== "authenticated") throw new ApiError("Bạn cần đăng nhập lại.", { status: 401 })
-      await usersApi.changeCurrentPassword(state.accessToken, input)
+      await userService.changeCurrentPassword(state.accessToken, input)
     },
     [state],
   )

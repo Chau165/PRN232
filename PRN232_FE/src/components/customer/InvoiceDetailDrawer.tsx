@@ -1,4 +1,4 @@
-import type { InvoiceDto } from "@/api/invoicesApi"
+import type { InvoiceDto } from "@/types/invoice"
 import PortalDrawer from "@/components/customer/PortalDrawer"
 import StatusBadge from "@/components/customer/StatusBadge"
 import { formatContractDate, localToday } from "@/utils/managementContracts"

@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode }
 import { useLocation, useNavigate } from "react-router"
 import { useAuth } from "@/auth/AuthContext"
 import { useCustomerNotifications } from "@/hooks/useCustomerNotifications"
-import type { NotificationDto } from "@/api/notificationsApi"
+import type { NotificationDto } from "@/types/notification"
 import { routes } from "@/constants/routes"
 
 type CustomerNotificationsState = ReturnType<typeof useCustomerNotifications>

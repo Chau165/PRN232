@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
 import StatusBadge from "@/components/customer/StatusBadge"
 import { useAuth } from "@/auth/AuthContext"
-import { getCurrentRentals, getRentalHistory, type Rental } from "@/api/rentalsApi"
+import { getCurrentRentals, getRentalHistory } from "@/services/rentalService"
+import type { Rental } from "@/types/rental"
 
 export default function MyContractsPage() {
   const { accessToken } = useAuth()

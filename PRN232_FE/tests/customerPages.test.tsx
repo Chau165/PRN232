@@ -5,9 +5,9 @@ import MyRoomPage from "@/pages/MyRoomPage/MyRoomPage"
 import MyContractsPage from "@/pages/MyContractsPage/MyContractsPage"
 import NotificationsPage from "@/pages/NotificationsPage/NotificationsPage"
 import Navbar from "@/components/common/Navbar"
-import type { Rental } from "@/api/rentalsApi"
-import type { MaintenanceRequestDto } from "@/api/maintenanceApi"
-import type { NotificationDto } from "@/api/notificationsApi"
+import type { Rental } from "@/types/rental"
+import type { MaintenanceRequestDto } from "@/types/maintenance"
+import type { NotificationDto } from "@/types/notification"
 import { useCustomerNotifications } from "@/hooks/useCustomerNotifications"
 
 const mocks = vi.hoisted(() => ({
@@ -35,17 +35,17 @@ vi.mock("@/auth/CustomerNotificationsContext", () => ({
     refresh: mocks.refreshNotifications, markRead: mocks.markRead,
   }),
 }))
-vi.mock("@/api/rentalsApi", () => ({
+vi.mock("@/services/rentalService", () => ({
   getCurrentRentals: mocks.getCurrentRentals,
   getRentalHistory: mocks.getRentalHistory,
 }))
-vi.mock("@/api/maintenanceApi", () => ({
+vi.mock("@/services/maintenanceService", () => ({
   getMaintenanceRequests: mocks.getMaintenanceRequests,
   getMaintenanceRequest: mocks.getMaintenanceRequest,
   getMaintenanceLogs: mocks.getMaintenanceLogs,
   createMaintenanceRequest: mocks.createMaintenanceRequest,
 }))
-vi.mock("@/api/notificationsApi", () => ({
+vi.mock("@/services/notificationService", () => ({
   getNotifications: mocks.getNotifications,
   markNotificationRead: mocks.markNotificationRead,
 }))

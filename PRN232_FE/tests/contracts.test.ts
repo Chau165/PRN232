@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { createContract, getContracts } from "@/api/contractsApi"
+import { createContract, getContracts } from "@/services/contractService"
 
 function response(body: unknown) {
   return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } })

@@ -251,18 +251,29 @@ public class MaintenanceServiceTests
     }
 
     [Fact]
-    public async Task GetReportAsync_is_admin_only_and_returns_temporary_read_urls()
+    public async Task GetReportAsync_allows_admin_and_assigned_manager_only_before_signing_urls()
     {
         var repository = ValidRequest("Completed", assignedTo: 7);
         repository.SeedReport();
-        var service = new MaintenanceService(repository, new FakeNotificationService(), new FakeImageStorage(), new FixedTimeProvider(DateTimeOffset.UtcNow));
+        var storage = new FakeImageStorage();
+        var service = new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow));
 
-        var report = await service.GetReportAsync(1, RoleNames.Admin);
+        var report = await service.GetReportAsync(1, 99, RoleNames.Admin);
 
         Assert.Single(report!.Images);
         Assert.StartsWith("https://storage.test/", report.Images[0].ImageUrl);
+        Assert.Equal(1, storage.SignCount);
+
+        report = await service.GetReportAsync(1, 7, RoleNames.Manager);
+        Assert.Single(report!.Images);
+        Assert.Equal(2, storage.SignCount);
+
         await Assert.ThrowsAsync<MaintenanceAuthorizationException>(() =>
-            service.GetReportAsync(1, RoleNames.Manager));
+            service.GetReportAsync(1, 8, RoleNames.Manager));
+        await Assert.ThrowsAsync<MaintenanceAuthorizationException>(() =>
+            service.GetReportAsync(1, 42, RoleNames.Customer));
+        Assert.Equal(2, storage.SignCount);
+        Assert.Equal(2, repository.ReportReadCount);
     }
 
     [Fact]
@@ -659,6 +670,7 @@ public class MaintenanceServiceTests
         public MaintenanceReports? SavedReport { get; private set; }
         public bool RequestExists { get; set; } = true;
         public bool CustomerOwnsContract { get; set; } = true;
+        public int ReportReadCount { get; private set; }
         public (int? CustomerId, string? Status, int? AssignedTo) LastFilters { get; private set; }
 
         public Task<List<MaintenanceRequestDto>> GetAllAsync(int? customerId, int? assignedManagerId, string? status, int? assignedTo)
@@ -733,11 +745,15 @@ public class MaintenanceServiceTests
 
         public Task<int?> GetApprovingAdminIdAsync(int requestId) => Task.FromResult<int?>(9);
 
-        public Task<MaintenanceReportDto?> GetReportAsync(int requestId) => Task.FromResult<MaintenanceReportDto?>(SavedReport is null || SavedReport.RequestId != requestId
-            ? null
-            : new MaintenanceReportDto(SavedReport.ReportId, SavedReport.RequestId, SavedReport.Description,
-                SavedReport.ReportedBy, "Manager", SavedReport.CreatedAt,
-                SavedReport.Images.Select((image, index) => new MaintenanceReportImageDto(index + 1, image.ImageUrl)).ToList()));
+        public Task<MaintenanceReportDto?> GetReportAsync(int requestId)
+        {
+            ReportReadCount++;
+            return Task.FromResult<MaintenanceReportDto?>(SavedReport is null || SavedReport.RequestId != requestId
+                ? null
+                : new MaintenanceReportDto(SavedReport.ReportId, SavedReport.RequestId, SavedReport.Description,
+                    SavedReport.ReportedBy, "Manager", SavedReport.CreatedAt,
+                    SavedReport.Images.Select((image, index) => new MaintenanceReportImageDto(index + 1, image.ImageUrl)).ToList()));
+        }
         public Task<bool> ReportExistsAsync(int requestId) => Task.FromResult(SavedReport?.RequestId == requestId);
         public Task<bool> CompleteWithReportAsync(int requestId, MaintenanceReports report, int changedBy, DateTime changedAt, IReadOnlyCollection<Notifications>? notifications = null)
         {
@@ -773,6 +789,7 @@ public class MaintenanceServiceTests
     {
         public int UploadCount { get; private set; }
         public int DeleteCount { get; private set; }
+        public int SignCount { get; private set; }
         public bool FailUpload { get; set; }
         public Task<string> UploadAsync(int requestId, MaintenanceReportImageInput image)
         {
@@ -780,7 +797,11 @@ public class MaintenanceServiceTests
             if (FailUpload) throw new HttpRequestException("Storage unavailable");
             return Task.FromResult($"{requestId}/{image.FileName}");
         }
-        public Task<string> GetReadUrlAsync(string objectPath) => Task.FromResult($"https://storage.test/{objectPath}");
+        public Task<string> GetReadUrlAsync(string objectPath)
+        {
+            SignCount++;
+            return Task.FromResult($"https://storage.test/{objectPath}");
+        }
         public Task DeleteAsync(string objectPath)
         {
             DeleteCount++;

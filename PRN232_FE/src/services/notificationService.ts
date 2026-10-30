@@ -1,11 +1,5 @@
 import { apiRequest } from "@/api/apiClient"
-
-export interface NotificationDto {
-  notificationId: number
-  title: string
-  type: string
-  isRead: boolean
-}
+import type { NotificationDto } from "@/types/notification"
 
 export function getNotifications(accessToken: string, signal?: AbortSignal, isRead?: boolean) {
   const query = isRead === undefined ? "" : `?isRead=${isRead}`
@@ -16,6 +10,6 @@ export function markNotificationRead(accessToken: string, notificationId: number
   return apiRequest<void>(`/notifications/${notificationId}`, {
     accessToken,
     method: "PATCH",
-    body: JSON.stringify({ isRead: true }),
+    json: { isRead: true },
   })
 }

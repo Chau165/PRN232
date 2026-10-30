@@ -1,34 +1,6 @@
 import { apiRequest } from "@/api/apiClient"
-import type { PaymentMethod } from "@/api/bookingsApi"
-
-export interface InvoiceLineDto {
-  itemType: string
-  description: string
-  quantity: number | null
-  unitPrice: number | null
-  unitCode: string | null
-  amount: number
-}
-
-export interface InvoiceDto {
-  // Bản xem trước có invoiceId = 0 và status = "Preview".
-  invoiceId: number
-  contractId: number
-  roomCode: string
-  propertyName: string
-  customerName: string
-  invoiceMonth: string
-  dueDate: string
-  status: string
-  total: number
-  lines: InvoiceLineDto[]
-}
-
-export interface InvoiceRequest {
-  contractId: number
-  invoiceMonth: string
-  dueDate: string
-}
+import type { PaymentMethod } from "@/types/booking"
+import type { InvoiceDto, InvoiceRequest } from "@/types/invoice"
 
 export function getInvoices(accessToken: string, signal?: AbortSignal) {
   return apiRequest<InvoiceDto[]>("/invoices", { accessToken, signal, cache: "no-store" })

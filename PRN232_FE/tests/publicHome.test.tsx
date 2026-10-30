@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter, Route, Routes } from "react-router"
 import { describe, expect, it, vi } from "vitest"
 import HomePage from "@/pages/HomePage/HomePage"
-import type { PublicPage, PublicPropertyCard } from "@/api/publicBrowsingApi"
+import type { PublicPage, PublicPropertyCard } from "@/types/publicBrowsing"
 
 function property(
   overrides: Partial<PublicPropertyCard> = {},

@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react"
 
 import { useLocation, useNavigate } from "react-router"
 
-import { publicApi } from "@/api/publicBrowsingApi"
+import { publicApi } from "@/services/publicBrowsingService"
 
 import Footer from "@/components/common/Footer"
 

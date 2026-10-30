@@ -6,8 +6,8 @@ import {
 import { Link } from "react-router"
 import {
   publicApi,
-  type PublicPropertyServiceRate,
-} from "@/api/publicBrowsingApi"
+} from "@/services/publicBrowsingService"
+import type { PublicPropertyServiceRate } from "@/types/publicBrowsing"
 import { usePublicApiResource } from "@/hooks/usePublicApiResource"
 import { routes } from "@/constants/routes"
 import { publicApiErrorMessage } from "@/utils/publicApiDisplay"

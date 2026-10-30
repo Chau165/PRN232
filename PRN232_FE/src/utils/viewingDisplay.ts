@@ -1,4 +1,4 @@
-import type { ViewingScheduleDto } from "@/api/viewingSchedulesApi"
+import type { ViewingScheduleDto } from "@/types/viewingSchedule"
 import { formatDateTime } from "@/utils/bookingDisplay"
 
 export function viewingStatusDisplay(viewing: Pick<ViewingScheduleDto, "status">) {

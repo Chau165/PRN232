@@ -1,5 +1,3 @@
-import { apiRequest } from "@/api/apiClient"
-
 export interface UtilityReadingDto {
   readingId: number
   contractId: number
@@ -24,12 +22,4 @@ export interface CreateUtilityReadingRequest {
   // Chỉ cần cho lần ghi đầu tiên của hợp đồng; các tháng sau BE tự nối tiếp tháng trước.
   electricStart: number | null
   waterStart: number | null
-}
-
-export function getUtilityReadings(accessToken: string, contractId: number, signal?: AbortSignal) {
-  return apiRequest<UtilityReadingDto[]>(`/utility-readings?contractId=${contractId}`, { accessToken, signal, cache: "no-store" })
-}
-
-export function createUtilityReading(accessToken: string, request: CreateUtilityReadingRequest) {
-  return apiRequest<UtilityReadingDto>("/utility-readings", { accessToken, method: "POST", body: JSON.stringify(request) })
 }

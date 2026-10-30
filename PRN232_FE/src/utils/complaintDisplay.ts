@@ -1,4 +1,4 @@
-import type { ComplaintStatus } from "@/api/invoiceComplaintsApi"
+import type { ComplaintStatus } from "@/types/invoiceComplaint"
 
 export const complaintStatuses: Array<{ value: ComplaintStatus; label: string }> = [
   { value: "New", label: "Mới" },

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
-import { createInvoice, getInvoices, payInvoice, previewInvoice, recordCashPayment } from "@/api/invoicesApi"
-import { createUtilityReading, getUtilityReadings } from "@/api/utilityReadingsApi"
+import { createInvoice, getInvoices, payInvoice, previewInvoice, recordCashPayment } from "@/services/invoiceService"
+import { createUtilityReading, getUtilityReadings } from "@/services/utilityReadingService"
 import { defaultDueDate, formatMonth, invoiceLineLabel, invoiceStatusDisplay } from "@/utils/invoiceDisplay"
 
 function response(body: unknown) {

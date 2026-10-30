@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router"
-import { PublicApiError, publicApi } from "@/api/publicBrowsingApi"
+import { PublicApiError, publicApi } from "@/services/publicBrowsingService"
 import Footer from "@/components/common/Footer"
 import Icon, { type IconName } from "@/components/common/Icon"
 import Navbar from "@/components/common/Navbar"

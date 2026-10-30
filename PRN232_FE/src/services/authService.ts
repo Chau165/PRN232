@@ -8,13 +8,13 @@ import type {
 export function login(request: LoginRequestDto) {
   return apiRequest<AuthResponseDto>("/auth/login", {
     method: "POST",
-    body: JSON.stringify(request),
+    json: request,
   })
 }
 
 export function register(request: RegisterRequestDto) {
   return apiRequest<AuthResponseDto>("/auth/register", {
     method: "POST",
-    body: JSON.stringify(request),
+    json: request,
   })
 }

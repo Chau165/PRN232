@@ -4,10 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import CreateInvoiceModal from "@/components/management/CreateInvoiceModal"
 import ManagementInvoicesPage from "@/pages/ManagementInvoicesPage/ManagementInvoicesPage"
 import MyBillsPage from "@/pages/MyBillsPage/MyBillsPage"
-import type { ContractDto } from "@/api/contractsApi"
-import type { InvoiceDto } from "@/api/invoicesApi"
-import type { InvoiceComplaintDto } from "@/api/invoiceComplaintsApi"
-import type { UtilityReadingDto } from "@/api/utilityReadingsApi"
+import type { ContractDto } from "@/types/contract"
+import type { InvoiceDto } from "@/types/invoice"
+import type { InvoiceComplaintDto } from "@/types/invoiceComplaint"
+import type { UtilityReadingDto } from "@/types/utilityReading"
 import { defaultDueDate } from "@/utils/invoiceDisplay"
 import { localToday } from "@/utils/managementContracts"
 
@@ -39,18 +39,18 @@ vi.mock("@/components/management/ManagementPage", () => ({
 }))
 vi.mock("@/utils/managementAuth", () => ({ getCurrentUser: () => ({ id: "7", name: "Manager", role: "MANAGER" }) }))
 vi.mock("@/utils/managementScope", () => ({ getManagementScope: () => ({ propertyIds: [] }) }))
-vi.mock("@/api/contractsApi", () => ({ getContracts: mocks.getContracts }))
-vi.mock("@/api/invoicesApi", () => ({
+vi.mock("@/services/contractService", () => ({ getContracts: mocks.getContracts }))
+vi.mock("@/services/invoiceService", () => ({
   getInvoices: mocks.getInvoices, previewInvoice: mocks.previewInvoice, createInvoice: mocks.createInvoice,
   payInvoice: mocks.payInvoice, recordCashPayment: mocks.recordCashPayment,
 }))
-vi.mock("@/api/invoiceComplaintsApi", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/api/invoiceComplaintsApi")>()),
+vi.mock("@/services/invoiceComplaintService", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/services/invoiceComplaintService")>()),
   getInvoiceComplaints: mocks.getInvoiceComplaints,
   createInvoiceComplaint: mocks.createInvoiceComplaint,
   updateInvoiceComplaintStatus: mocks.updateInvoiceComplaintStatus,
 }))
-vi.mock("@/api/utilityReadingsApi", () => ({
+vi.mock("@/services/utilityReadingService", () => ({
   getUtilityReadings: mocks.getUtilityReadings, createUtilityReading: mocks.createUtilityReading,
 }))
 
