@@ -16,18 +16,20 @@ public class InvoiceComplaintRepository : IInvoiceComplaintRepository
         _context = context;
     }
 
-    public Task<ComplaintInvoiceReadModel?> GetInvoiceAsync(int invoiceId) =>
-        _context.Invoices
+    public Task<ComplaintInvoiceReadModel?> GetInvoiceAsync(int invoiceId)
+    {
+        return _context.Invoices
             .AsNoTracking()
             .Where(invoice => invoice.InvoiceId == invoiceId)
             .Select(invoice => new ComplaintInvoiceReadModel(
-                invoice.InvoiceId,
-                invoice.Contract!.CustomerId,
-                invoice.Contract.Room!.Property!.OwnerId,
-                invoice.Contract.Room.RoomCode,
-                invoice.InvoiceMonth,
-                invoice.InvoiceDetails.Select(detail => detail.Description).ToList()))
+            invoice.InvoiceId,
+            invoice.Contract!.CustomerId,
+            invoice.Contract.Room!.Property!.OwnerId,
+            invoice.Contract.Room.RoomCode,
+            invoice.InvoiceMonth,
+            invoice.InvoiceDetails.Select(detail => detail.Description).ToList()))
             .FirstOrDefaultAsync();
+    }
 
     public async Task AddAsync(InvoiceComplaints complaint, Notifications ownerNotification)
     {
@@ -36,21 +38,27 @@ public class InvoiceComplaintRepository : IInvoiceComplaintRepository
         await _context.SaveChangesAsync();
     }
 
-    public Task<List<InvoiceComplaintReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status) =>
-        InScope(customerId, ownerId)
+    public Task<List<InvoiceComplaintReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status)
+    {
+        return InScope(customerId, ownerId)
             .Where(complaint => status == null || complaint.Status == status)
             .OrderByDescending(complaint => complaint.ComplaintId)
             .Select(ToReadModel)
             .ToListAsync();
+    }
 
-    public Task<InvoiceComplaintReadModel?> GetByIdAsync(int complaintId, int? customerId, int? ownerId) =>
-        InScope(customerId, ownerId)
+    public Task<InvoiceComplaintReadModel?> GetByIdAsync(int complaintId, int? customerId, int? ownerId)
+    {
+        return InScope(customerId, ownerId)
             .Where(complaint => complaint.ComplaintId == complaintId)
             .Select(ToReadModel)
             .FirstOrDefaultAsync();
+    }
 
-    public Task<bool> ExistsAsync(int complaintId) =>
-        _context.InvoiceComplaints.AnyAsync(complaint => complaint.ComplaintId == complaintId);
+    public Task<bool> ExistsAsync(int complaintId)
+    {
+        return _context.InvoiceComplaints.AnyAsync(complaint => complaint.ComplaintId == complaintId);
+    }
 
     public async Task UpdateStatusAsync(int complaintId, string status, Notifications customerNotification)
     {
@@ -64,11 +72,13 @@ public class InvoiceComplaintRepository : IInvoiceComplaintRepository
     }
 
     // Lọc dùng chung cho GetById và GetAll; tham số nào null thì không lọc theo tiêu chí đó.
-    private IQueryable<InvoiceComplaints> InScope(int? customerId, int? ownerId) =>
-        _context.InvoiceComplaints
+    private IQueryable<InvoiceComplaints> InScope(int? customerId, int? ownerId)
+    {
+        return _context.InvoiceComplaints
             .AsNoTracking()
             .Where(complaint => customerId == null || complaint.CustomerId == customerId)
             .Where(complaint => ownerId == null || complaint.Invoice!.Contract!.Room!.Property!.OwnerId == ownerId);
+    }
 
     private static readonly Expression<Func<InvoiceComplaints, InvoiceComplaintReadModel>> ToReadModel = complaint => new InvoiceComplaintReadModel(
         complaint.ComplaintId,

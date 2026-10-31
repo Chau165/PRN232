@@ -9,8 +9,19 @@ namespace PRN232.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class NotificationsController(INotificationService notificationService, ICurrentUserService currentUser) : ControllerBase
+public class NotificationsController : ControllerBase
 {
+    private readonly INotificationService _notificationService;
+    private readonly ICurrentUserService _currentUser;
+
+    public NotificationsController(
+        INotificationService notificationService,
+        ICurrentUserService currentUser)
+    {
+        _notificationService = notificationService;
+        _currentUser = currentUser;
+    }
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<NotificationDto>>> GetAll(
         [FromQuery] bool? isRead,
@@ -21,7 +32,7 @@ public class NotificationsController(INotificationService notificationService, I
             return Unauthorized();
         }
 
-        return Ok(await notificationService.GetAllAsync(userId, isRead, type));
+        return Ok(await _notificationService.GetAllAsync(userId, isRead, type));
     }
 
     [HttpPatch("{id:int}")]
@@ -34,7 +45,7 @@ public class NotificationsController(INotificationService notificationService, I
 
         try
         {
-            await notificationService.UpdateReadStateAsync(id, userId, dto.IsRead);
+            await _notificationService.UpdateReadStateAsync(id, userId, dto.IsRead);
             return Ok();
         }
         catch (NotificationNotFoundException exception)
@@ -53,7 +64,7 @@ public class NotificationsController(INotificationService notificationService, I
 
     private bool TryGetCurrentUser(out int userId)
     {
-        userId = currentUser.UserId ?? 0;
-        return currentUser.IsAuthenticated && userId > 0;
+        userId = _currentUser.UserId ?? 0;
+        return _currentUser.IsAuthenticated && userId > 0;
     }
 }

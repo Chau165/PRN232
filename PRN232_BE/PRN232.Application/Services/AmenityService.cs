@@ -22,7 +22,11 @@ public class AmenityService : IAmenityService
     public async Task<AmenityDto?> GetByIdAsync(int id)
     {
         var amenity = await _repository.GetByIdAsync(id);
-        return amenity is null ? null : ConvertToDto(amenity);
+        if (amenity is null)
+        {
+            return null;
+        }
+        return ConvertToDto(amenity);
     }
 
     public async Task<AmenityDto> CreateAsync(CreateAmenityDto dto)
@@ -76,19 +80,23 @@ public class AmenityService : IAmenityService
         return true;
     }
 
-    private static Amenities ConvertToEntity(CreateAmenityDto dto) =>
-        new()
+    private static Amenities ConvertToEntity(CreateAmenityDto dto)
+    {
+        return new Amenities()
         {
             Name = dto.Name
         };
+    }
 
     private static void ApplyUpdateToEntity(UpdateAmenityDto dto, Amenities entity)
     {
         entity.Name = dto.Name;
     }
 
-    private static AmenityDto ConvertToDto(Amenities entity) =>
-        new(entity.AmenityId, entity.Name);
+    private static AmenityDto ConvertToDto(Amenities entity)
+    {
+        return new AmenityDto(entity.AmenityId, entity.Name);
+    }
 }
 
 public class ReferenceDataValidationException(string message) : Exception(message);

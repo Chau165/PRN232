@@ -7,34 +7,195 @@ public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-    public DbSet<Roles> Roles => Set<Roles>();
-    public DbSet<Users> Users => Set<Users>();
-    public DbSet<Property> Properties => Set<Property>();
-    public DbSet<RoomTypes> RoomTypes => Set<RoomTypes>();
-    public DbSet<Service> Services => Set<Service>();
-    public DbSet<RoomTypeServices> RoomTypeServices => Set<RoomTypeServices>();
-    public DbSet<Rooms> Rooms => Set<Rooms>();
-    public DbSet<RoomImages> RoomImages => Set<RoomImages>();
-    public DbSet<Amenities> Amenities => Set<Amenities>();
-    public DbSet<RoomAmenities> RoomAmenities => Set<RoomAmenities>();
-    public DbSet<PropertyAmenities> PropertyAmenities => Set<PropertyAmenities>();
-    public DbSet<PropertyServiceRates> PropertyServiceRates => Set<PropertyServiceRates>();
-    public DbSet<Equipments> Equipments => Set<Equipments>();
-    public DbSet<Bookings> Bookings => Set<Bookings>();
-    public DbSet<Contracts> Contracts => Set<Contracts>();
-    public DbSet<UtilityReadings> UtilityReadings => Set<UtilityReadings>();
-    public DbSet<Invoices> Invoices => Set<Invoices>();
-    public DbSet<InvoiceDetails> InvoiceDetails => Set<InvoiceDetails>();
-    public DbSet<Payments> Payments => Set<Payments>();
-    public DbSet<MaintenanceRequests> MaintenanceRequests => Set<MaintenanceRequests>();
-    public DbSet<MaintenanceLogs> MaintenanceLogs => Set<MaintenanceLogs>();
-    public DbSet<MaintenanceReports> MaintenanceReports => Set<MaintenanceReports>();
-    public DbSet<MaintenanceReportImages> MaintenanceReportImages => Set<MaintenanceReportImages>();
-    public DbSet<Notifications> Notifications => Set<Notifications>();
-    public DbSet<IdentityDocuments> IdentityDocuments => Set<IdentityDocuments>();
-    public DbSet<ViewingSchedules> ViewingSchedules => Set<ViewingSchedules>();
-    public DbSet<InvoiceComplaints> InvoiceComplaints => Set<InvoiceComplaints>();
-
+    public DbSet<Roles> Roles
+    {
+        get
+        {
+            return Set<Roles>();
+        }
+    }
+    public DbSet<Users> Users
+    {
+        get
+        {
+            return Set<Users>();
+        }
+    }
+    public DbSet<Property> Properties
+    {
+        get
+        {
+            return Set<Property>();
+        }
+    }
+    public DbSet<RoomTypes> RoomTypes
+    {
+        get
+        {
+            return Set<RoomTypes>();
+        }
+    }
+    public DbSet<Service> Services
+    {
+        get
+        {
+            return Set<Service>();
+        }
+    }
+    public DbSet<RoomTypeServices> RoomTypeServices
+    {
+        get
+        {
+            return Set<RoomTypeServices>();
+        }
+    }
+    public DbSet<Rooms> Rooms
+    {
+        get
+        {
+            return Set<Rooms>();
+        }
+    }
+    public DbSet<RoomImages> RoomImages
+    {
+        get
+        {
+            return Set<RoomImages>();
+        }
+    }
+    public DbSet<Amenities> Amenities
+    {
+        get
+        {
+            return Set<Amenities>();
+        }
+    }
+    public DbSet<RoomAmenities> RoomAmenities
+    {
+        get
+        {
+            return Set<RoomAmenities>();
+        }
+    }
+    public DbSet<PropertyAmenities> PropertyAmenities
+    {
+        get
+        {
+            return Set<PropertyAmenities>();
+        }
+    }
+    public DbSet<PropertyServiceRates> PropertyServiceRates
+    {
+        get
+        {
+            return Set<PropertyServiceRates>();
+        }
+    }
+    public DbSet<Equipments> Equipments
+    {
+        get
+        {
+            return Set<Equipments>();
+        }
+    }
+    public DbSet<Bookings> Bookings
+    {
+        get
+        {
+            return Set<Bookings>();
+        }
+    }
+    public DbSet<Contracts> Contracts
+    {
+        get
+        {
+            return Set<Contracts>();
+        }
+    }
+    public DbSet<UtilityReadings> UtilityReadings
+    {
+        get
+        {
+            return Set<UtilityReadings>();
+        }
+    }
+    public DbSet<Invoices> Invoices
+    {
+        get
+        {
+            return Set<Invoices>();
+        }
+    }
+    public DbSet<InvoiceDetails> InvoiceDetails
+    {
+        get
+        {
+            return Set<InvoiceDetails>();
+        }
+    }
+    public DbSet<Payments> Payments
+    {
+        get
+        {
+            return Set<Payments>();
+        }
+    }
+    public DbSet<MaintenanceRequests> MaintenanceRequests
+    {
+        get
+        {
+            return Set<MaintenanceRequests>();
+        }
+    }
+    public DbSet<MaintenanceLogs> MaintenanceLogs
+    {
+        get
+        {
+            return Set<MaintenanceLogs>();
+        }
+    }
+    public DbSet<MaintenanceReports> MaintenanceReports
+    {
+        get
+        {
+            return Set<MaintenanceReports>();
+        }
+    }
+    public DbSet<MaintenanceReportImages> MaintenanceReportImages
+    {
+        get
+        {
+            return Set<MaintenanceReportImages>();
+        }
+    }
+    public DbSet<Notifications> Notifications
+    {
+        get
+        {
+            return Set<Notifications>();
+        }
+    }
+    public DbSet<IdentityDocuments> IdentityDocuments
+    {
+        get
+        {
+            return Set<IdentityDocuments>();
+        }
+    }
+    public DbSet<ViewingSchedules> ViewingSchedules
+    {
+        get
+        {
+            return Set<ViewingSchedules>();
+        }
+    }
+    public DbSet<InvoiceComplaints> InvoiceComplaints
+    {
+        get
+        {
+            return Set<InvoiceComplaints>();
+        }
+    }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // ---- composite keys (junction tables) ----

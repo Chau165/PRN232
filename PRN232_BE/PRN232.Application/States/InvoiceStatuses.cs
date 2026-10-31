@@ -7,7 +7,10 @@ public static class InvoiceStatuses
     // Có trong dữ liệu cũ; hoá đơn mới luôn là Unpaid, quá hạn được suy ra từ DueDate.
     public const string Overdue = "Overdue";
 
-    public static bool IsValid(string status) => status is Unpaid or Paid or Overdue;
+    public static bool IsValid(string status)
+    {
+        return status is Unpaid or Paid or Overdue;
+    }
 }
 
 public static class InvoiceItemTypes

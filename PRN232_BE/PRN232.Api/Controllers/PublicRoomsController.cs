@@ -25,6 +25,10 @@ public sealed class PublicRoomsController : ControllerBase
         CancellationToken cancellationToken)
     {
         var room = await _propertyListingService.GetRoomDetailAsync(roomId, cancellationToken);
-        return room is null ? NotFound() : Ok(room);
+        if (room is null)
+        {
+            return NotFound();
+        }
+        return Ok(room);
     }
 }

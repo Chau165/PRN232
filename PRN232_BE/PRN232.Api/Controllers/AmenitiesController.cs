@@ -18,13 +18,20 @@ public class AmenitiesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<AmenityDto>>> GetAll() => Ok(await _amenityService.GetAllAsync());
+    public async Task<ActionResult<IEnumerable<AmenityDto>>> GetAll()
+    {
+        return Ok(await _amenityService.GetAllAsync());
+    }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<AmenityDto>> GetById(int id)
     {
         var amenity = await _amenityService.GetByIdAsync(id);
-        return amenity is null ? NotFound() : Ok(amenity);
+        if (amenity is null)
+        {
+            return NotFound();
+        }
+        return Ok(amenity);
     }
 
     [HttpPost]
@@ -52,7 +59,11 @@ public class AmenitiesController : ControllerBase
         try
         {
             var updated = await _amenityService.UpdateAsync(id, dto);
-            return updated is null ? NotFound() : Ok(updated);
+            if (updated is null)
+            {
+                return NotFound();
+            }
+            return Ok(updated);
         }
         catch (ReferenceDataValidationException exception)
         {
@@ -62,6 +73,13 @@ public class AmenitiesController : ControllerBase
 
     [HttpDelete("{id:int}")]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<IActionResult> Delete(int id) =>
-        await _amenityService.DeleteAsync(id) ? NoContent() : NotFound();
+    public async Task<IActionResult> Delete(int id)
+    {
+        var operationSucceeded = await _amenityService.DeleteAsync(id);
+        if (!operationSucceeded)
+        {
+            return NotFound();
+        }
+        return NoContent();
+    }
 }

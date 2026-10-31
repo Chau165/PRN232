@@ -8,5 +8,8 @@ public static class PaymentMethods
     public const string Cash = "Cash";
 
     // Các phương thức khách được chọn khi tự thanh toán trực tuyến (qua cổng giả lập).
-    public static bool IsValid(string method) => method is VNPay or MoMo;
+    public static bool IsValid(string method)
+    {
+        return method is VNPay or MoMo;
+    }
 }

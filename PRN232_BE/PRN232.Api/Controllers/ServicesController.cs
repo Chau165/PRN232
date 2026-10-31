@@ -18,13 +18,20 @@ public class ServicesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<ServiceDto>>> GetAll() => Ok(await _serviceService.GetAllAsync());
+    public async Task<ActionResult<IEnumerable<ServiceDto>>> GetAll()
+    {
+        return Ok(await _serviceService.GetAllAsync());
+    }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ServiceDto>> GetById(int id)
     {
         var service = await _serviceService.GetByIdAsync(id);
-        return service is null ? NotFound() : Ok(service);
+        if (service is null)
+        {
+            return NotFound();
+        }
+        return Ok(service);
     }
 
     [HttpPost]
@@ -52,7 +59,11 @@ public class ServicesController : ControllerBase
         try
         {
             var updated = await _serviceService.UpdateAsync(id, dto);
-            return updated is null ? NotFound() : Ok(updated);
+            if (updated is null)
+            {
+                return NotFound();
+            }
+            return Ok(updated);
         }
         catch (ReferenceDataValidationException exception)
         {
@@ -62,6 +73,13 @@ public class ServicesController : ControllerBase
 
     [HttpDelete("{id:int}")]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<IActionResult> Delete(int id) =>
-        await _serviceService.DeleteAsync(id) ? NoContent() : NotFound();
+    public async Task<IActionResult> Delete(int id)
+    {
+        var operationSucceeded = await _serviceService.DeleteAsync(id);
+        if (!operationSucceeded)
+        {
+            return NotFound();
+        }
+        return NoContent();
+    }
 }

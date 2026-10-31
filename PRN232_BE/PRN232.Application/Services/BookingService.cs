@@ -28,8 +28,11 @@ public class BookingService : IBookingService
 
     public async Task<BookingDto> CreateAsync(CreateBookingDto dto, int customerId)
     {
-        var room = await _repository.GetRoomAsync(dto.RoomId)
-            ?? throw new BookingNotFoundException("Room does not exist.");
+        var room = await _repository.GetRoomAsync(dto.RoomId);
+        if (room is null)
+        {
+            throw new BookingNotFoundException("Room does not exist.");
+        }
 
         var now = _timeProvider.GetUtcNow();
         var booking = CreateBookingEntity(room, customerId, now);
@@ -39,8 +42,11 @@ public class BookingService : IBookingService
             throw new BookingRoomUnavailableException("Room is not available for booking.");
         }
 
-        var created = await _repository.GetByIdAsync(booking.BookingId, customerId, null)
-            ?? throw new InvalidOperationException("Created booking was not found.");
+        var created = await _repository.GetByIdAsync(booking.BookingId, customerId, null);
+        if (created is null)
+        {
+            throw new InvalidOperationException("Created booking was not found.");
+        }
         return ConvertToDto(created);
     }
 
@@ -65,7 +71,11 @@ public class BookingService : IBookingService
         {
             throw new BookingAuthorizationException("You cannot access this booking.");
         }
-        return booking is null ? null : ConvertToDto(booking);
+        if (booking is null)
+        {
+            return null;
+        }
+        return ConvertToDto(booking);
     }
 
     public async Task<BookingDto> PayAsync(int id, PayBookingDto dto, int customerId)
@@ -75,8 +85,11 @@ public class BookingService : IBookingService
             throw new BookingBusinessRuleException("Payment method must be VNPay or MoMo.");
         }
 
-        var booking = await _repository.GetForPaymentAsync(id)
-            ?? throw new BookingNotFoundException("Booking does not exist.");
+        var booking = await _repository.GetForPaymentAsync(id);
+        if (booking is null)
+        {
+            throw new BookingNotFoundException("Booking does not exist.");
+        }
         if (booking.CustomerId != customerId)
         {
             throw new BookingAuthorizationException("You cannot pay for another customer's booking.");
@@ -120,15 +133,21 @@ public class BookingService : IBookingService
             throw new BookingStatusConflictException("Only pending bookings can be paid.");
         }
 
-        var paid = await _repository.GetByIdAsync(id, customerId, null)
-            ?? throw new InvalidOperationException("Paid booking was not found.");
+        var paid = await _repository.GetByIdAsync(id, customerId, null);
+        if (paid is null)
+        {
+            throw new InvalidOperationException("Paid booking was not found.");
+        }
         return ConvertToDto(paid);
     }
 
     public async Task<BookingDto> CancelAsync(int id, int userId, string role)
     {
-        var booking = await GetByIdAsync(id, userId, role)
-            ?? throw new BookingNotFoundException("Booking does not exist.");
+        var booking = await GetByIdAsync(id, userId, role);
+        if (booking is null)
+        {
+            throw new BookingNotFoundException("Booking does not exist.");
+        }
         if (booking.Status == BookingStatuses.Cancelled)
         {
             throw new BookingStatusConflictException("Booking is already cancelled.");
@@ -144,20 +163,27 @@ public class BookingService : IBookingService
             throw new BookingStatusConflictException("Paid bookings can only be cancelled by the property manager.");
         }
 
-        var notification = role == RoleNames.Customer ? null : new Notifications
+        Notifications? notification = null;
+        if (role != RoleNames.Customer)
         {
-            UserId = booking.CustomerId,
-            Title = $"Booking #{id} - Phòng {booking.RoomCode} đã bị huỷ",
-            Type = NotificationTypes.Booking,
-            IsRead = false
-        };
+            notification = new Notifications
+            {
+                UserId = booking.CustomerId,
+                Title = $"Booking #{id} - Phòng {booking.RoomCode} đã bị huỷ",
+                Type = NotificationTypes.Booking,
+                IsRead = false
+            };
+        }
         if (!await _repository.CancelAsync(id, booking.Status, notification))
         {
             throw new BookingStatusConflictException("Booking status has changed. Please reload and try again.");
         }
 
-        var cancelled = await _repository.GetByIdAsync(id, null, null)
-            ?? throw new InvalidOperationException("Cancelled booking was not found.");
+        var cancelled = await _repository.GetByIdAsync(id, null, null);
+        if (cancelled is null)
+        {
+            throw new InvalidOperationException("Cancelled booking was not found.");
+        }
         return ConvertToDto(cancelled);
     }
 
@@ -173,22 +199,32 @@ public class BookingService : IBookingService
         };
     }
 
-    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role) =>
-        AccessScope.For(userId, role) ?? throw new BookingAuthorizationException("Your role cannot access bookings.");
+    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role)
+    {
+        var scope = AccessScope.For(userId, role);
+        if (scope is null)
+        {
+            throw new BookingAuthorizationException("Your role cannot access bookings.");
+        }
+        return scope.Value;
+    }
 
-    private static BookingDto ConvertToDto(BookingReadModel booking) => new(
-        booking.BookingId,
-        booking.RoomId,
-        booking.RoomCode,
-        booking.PropertyId,
-        booking.PropertyName,
-        booking.CustomerId,
-        booking.CustomerName,
-        booking.DepositAmount,
-        booking.Status,
-        booking.ExpiryDate,
-        booking.CustomerPhone,
-        booking.ContractId);
+    private static BookingDto ConvertToDto(BookingReadModel booking)
+    {
+        return new BookingDto(
+            booking.BookingId,
+            booking.RoomId,
+            booking.RoomCode,
+            booking.PropertyId,
+            booking.PropertyName,
+            booking.CustomerId,
+            booking.CustomerName,
+            booking.DepositAmount,
+            booking.Status,
+            booking.ExpiryDate,
+            booking.CustomerPhone,
+            booking.ContractId);
+    }
 }
 
 public sealed class BookingNotFoundException(string message) : Exception(message);

@@ -10,14 +10,21 @@ namespace PRN232.Api.Controllers;
 [ApiController]
 [Route("api/me/rentals")]
 [Authorize(Roles = RoleNames.Customer)]
-public sealed class MyRentalsController(IRentalService rentalService) : ControllerBase
+public sealed class MyRentalsController : ControllerBase
 {
+    private readonly IRentalService _rentalService;
+
+    public MyRentalsController(IRentalService rentalService)
+    {
+        _rentalService = rentalService;
+    }
+
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<RentalDto>>> Get(CancellationToken cancellationToken)
     {
         try
         {
-            return Ok(await rentalService.GetCurrentRentalsAsync(cancellationToken));
+            return Ok(await _rentalService.GetCurrentRentalsAsync(cancellationToken));
         }
         catch (RentalAuthenticationException)
         {
@@ -30,7 +37,7 @@ public sealed class MyRentalsController(IRentalService rentalService) : Controll
     {
         try
         {
-            return Ok(await rentalService.GetRentalHistoryAsync(cancellationToken));
+            return Ok(await _rentalService.GetRentalHistoryAsync(cancellationToken));
         }
         catch (RentalAuthenticationException)
         {

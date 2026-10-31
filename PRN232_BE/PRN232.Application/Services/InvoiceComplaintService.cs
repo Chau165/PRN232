@@ -30,8 +30,11 @@ public class InvoiceComplaintService : IInvoiceComplaintService
             throw new ComplaintBusinessRuleException($"Content is required and must be at most {MaxContentLength} characters.");
         }
 
-        var invoice = await _repository.GetInvoiceAsync(dto.InvoiceId)
-            ?? throw new ComplaintNotFoundException("Invoice does not exist.");
+        var invoice = await _repository.GetInvoiceAsync(dto.InvoiceId);
+        if (invoice is null)
+        {
+            throw new ComplaintNotFoundException("Invoice does not exist.");
+        }
         if (invoice.CustomerId != customerId)
         {
             throw new ComplaintAuthorizationException("You cannot complain about another customer's invoice.");
@@ -51,8 +54,11 @@ public class InvoiceComplaintService : IInvoiceComplaintService
             IsRead = false
         });
 
-        var created = await _repository.GetByIdAsync(complaint.ComplaintId, customerId, null)
-            ?? throw new InvalidOperationException("Created complaint was not found.");
+        var created = await _repository.GetByIdAsync(complaint.ComplaintId, customerId, null);
+        if (created is null)
+        {
+            throw new InvalidOperationException("Created complaint was not found.");
+        }
         return ConvertToDto(created);
     }
 
@@ -76,7 +82,11 @@ public class InvoiceComplaintService : IInvoiceComplaintService
         {
             throw new ComplaintAuthorizationException("You cannot access this complaint.");
         }
-        return complaint is null ? null : ConvertToDto(complaint);
+        if (complaint is null)
+        {
+            return null;
+        }
+        return ConvertToDto(complaint);
     }
 
     public async Task<InvoiceComplaintDto> UpdateStatusAsync(int id, UpdateComplaintStatusDto dto, int userId, string role)
@@ -90,8 +100,11 @@ public class InvoiceComplaintService : IInvoiceComplaintService
             throw new ComplaintBusinessRuleException("Status must be New, InProgress, or Resolved.");
         }
 
-        var complaint = await GetByIdAsync(id, userId, role)
-            ?? throw new ComplaintNotFoundException("Complaint does not exist.");
+        var complaint = await GetByIdAsync(id, userId, role);
+        if (complaint is null)
+        {
+            throw new ComplaintNotFoundException("Complaint does not exist.");
+        }
         if (complaint.Status == dto.Status)
         {
             return complaint;
@@ -111,25 +124,34 @@ public class InvoiceComplaintService : IInvoiceComplaintService
             IsRead = false
         });
 
-        var updated = await _repository.GetByIdAsync(complaint.ComplaintId, null, null)
-            ?? throw new InvalidOperationException("Updated complaint was not found.");
+        var updated = await _repository.GetByIdAsync(complaint.ComplaintId, null, null);
+        if (updated is null)
+        {
+            throw new InvalidOperationException("Updated complaint was not found.");
+        }
         return ConvertToDto(updated);
     }
 
-    private static string Period(DateOnly month) => month.ToString("MM/yyyy", CultureInfo.InvariantCulture);
+    private static string Period(DateOnly month)
+    {
+        return month.ToString("MM/yyyy", CultureInfo.InvariantCulture);
+    }
 
-    private static InvoiceComplaintDto ConvertToDto(InvoiceComplaintReadModel complaint) => new(
-        complaint.ComplaintId,
-        complaint.InvoiceId,
-        complaint.InvoiceMonth,
-        complaint.RoomCode,
-        complaint.PropertyName,
-        complaint.CustomerId,
-        complaint.CustomerName,
-        complaint.FeeType,
-        complaint.Content,
-        complaint.Status,
-        complaint.CreatedAt);
+    private static InvoiceComplaintDto ConvertToDto(InvoiceComplaintReadModel complaint)
+    {
+        return new InvoiceComplaintDto(
+            complaint.ComplaintId,
+            complaint.InvoiceId,
+            complaint.InvoiceMonth,
+            complaint.RoomCode,
+            complaint.PropertyName,
+            complaint.CustomerId,
+            complaint.CustomerName,
+            complaint.FeeType,
+            complaint.Content,
+            complaint.Status,
+            complaint.CreatedAt);
+    }
 
     private static InvoiceComplaints CreateComplaintEntity(
         int invoiceId, int customerId, string feeType, string content, DateTime createdAt)
@@ -145,8 +167,15 @@ public class InvoiceComplaintService : IInvoiceComplaintService
         };
     }
 
-    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role) =>
-        AccessScope.For(userId, role) ?? throw new ComplaintAuthorizationException("Your role cannot access complaints.");
+    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role)
+    {
+        var scope = AccessScope.For(userId, role);
+        if (scope is null)
+        {
+            throw new ComplaintAuthorizationException("Your role cannot access complaints.");
+        }
+        return scope.Value;
+    }
 }
 
 public sealed class ComplaintNotFoundException(string message) : Exception(message);

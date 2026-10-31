@@ -9,5 +9,8 @@ public static class ComplaintStatuses
     // Khiếu nại chung, không gắn với một dòng cụ thể trên hoá đơn.
     public const string OtherFeeType = "Khác";
 
-    public static bool IsValid(string status) => status is New or InProgress or Resolved;
+    public static bool IsValid(string status)
+    {
+        return status is New or InProgress or Resolved;
+    }
 }

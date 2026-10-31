@@ -24,15 +24,21 @@ public class PropertiesController : ControllerBase
     // DTO allow-list riêng không có thông tin chủ sở hữu (fix D9 — audit bảo mật).
     [HttpGet]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<ActionResult<IEnumerable<PropertyDto>>> GetAll([FromQuery] int? ownerId) =>
-        Ok(await _propertyService.GetAllAsync(ownerId));
+    public async Task<ActionResult<IEnumerable<PropertyDto>>> GetAll([FromQuery] int? ownerId)
+    {
+        return Ok(await _propertyService.GetAllAsync(ownerId));
+    }
 
     [HttpGet("{id:int}")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<PropertyDto>> GetById(int id)
     {
         var property = await _propertyService.GetByIdAsync(id);
-        return property is null ? NotFound() : Ok(property);
+        if (property is null)
+        {
+            return NotFound();
+        }
+        return Ok(property);
     }
 
     [HttpPost]
@@ -60,7 +66,11 @@ public class PropertiesController : ControllerBase
         try
         {
             var updated = await _propertyService.UpdateAsync(id, dto, CurrentUserId(), IsAdmin());
-            return updated is null ? NotFound() : Ok(updated);
+            if (updated is null)
+            {
+                return NotFound();
+            }
+            return Ok(updated);
         }
         catch (PropertyForbiddenException exception)
         {
@@ -80,7 +90,11 @@ public class PropertiesController : ControllerBase
         try
         {
             var deleted = await _propertyService.DeleteAsync(id, CurrentUserId(), IsAdmin());
-            return deleted ? NoContent() : NotFound();
+            if (!deleted)
+            {
+                return NotFound();
+            }
+            return NoContent();
         }
         catch (PropertyForbiddenException exception)
         {
@@ -93,8 +107,18 @@ public class PropertiesController : ControllerBase
         }
     }
 
-    private int CurrentUserId() =>
-        int.Parse(User.FindFirst("sub")?.Value ?? throw new InvalidOperationException("Token thiếu claim 'sub'."));
+    private int CurrentUserId()
+    {
+        var subjectId = User.FindFirst("sub")?.Value;
+        if (subjectId is null)
+        {
+            throw new InvalidOperationException("Token thiếu claim 'sub'.");
+        }
+        return int.Parse(subjectId);
+    }
 
-    private bool IsAdmin() => User.IsInRole("Admin");
+    private bool IsAdmin()
+    {
+        return User.IsInRole("Admin");
+    }
 }

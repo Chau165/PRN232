@@ -8,10 +8,12 @@ namespace PRN232.Infrastructure.Repositories;
 
 public static class RoomAvailabilityQueries
 {
-    public static IQueryable<Rooms> GetRentableRooms(IQueryable<Rooms> rooms, DateTimeOffset asOfUtc) =>
-        rooms
+    public static IQueryable<Rooms> GetRentableRooms(IQueryable<Rooms> rooms, DateTimeOffset asOfUtc)
+    {
+        return rooms
             .AsNoTracking()
             .Where(RoomRentabilityPolicy.IsRentableAt(asOfUtc));
+    }
 
     public static IQueryable<PropertyAvailabilityReadModel> GetPropertyAvailability(
         IQueryable<Property> properties,

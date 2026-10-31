@@ -25,7 +25,11 @@ public class ServiceCatalogService : IServiceService
     public async Task<ServiceDto?> GetByIdAsync(int id)
     {
         var entity = await _repository.GetByIdAsync(id);
-        return entity is null ? null : ConvertToDto(entity);
+        if (entity is null)
+        {
+            return null;
+        }
+        return ConvertToDto(entity);
     }
 
     public async Task<ServiceDto> CreateAsync(CreateServiceDto dto)

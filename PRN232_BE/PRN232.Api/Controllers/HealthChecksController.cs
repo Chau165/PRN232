@@ -15,15 +15,28 @@ public class HealthChecksController : ControllerBase
     }
 
     [HttpGet]
-    public IActionResult Get() => Ok(new { status = "ok", time = DateTime.UtcNow });
+    public IActionResult Get()
+    {
+        return Ok(new { status = "ok", time = DateTime.UtcNow });
+    }
 
     [HttpGet("database")]
     public async Task<IActionResult> GetDb()
     {
         var canConnect = await _context.Database.CanConnectAsync();
+        string databaseStatus;
+        if (canConnect)
+        {
+            databaseStatus = "connected";
+        }
+        else
+        {
+            databaseStatus = "unreachable";
+        }
+
         return Ok(new
         {
-            database = canConnect ? "connected" : "unreachable"
+            database = databaseStatus
         });
     }
 }

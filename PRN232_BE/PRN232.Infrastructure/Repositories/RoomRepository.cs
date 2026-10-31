@@ -15,8 +15,9 @@ public class RoomRepository : IRoomRepository
         _context = context;
     }
 
-    public Task<List<RoomSummaryReadModel>> GetAllAsync(int? propertyId, string? status, string? city, decimal? maxPrice) =>
-        _context.Rooms
+    public Task<List<RoomSummaryReadModel>> GetAllAsync(int? propertyId, string? status, string? city, decimal? maxPrice)
+    {
+        return _context.Rooms
             .AsNoTracking()
             .Where(r => propertyId == null || r.PropertyId == propertyId)
             .Where(r => status == null || r.Status == status)
@@ -24,55 +25,64 @@ public class RoomRepository : IRoomRepository
             .Where(r => maxPrice == null || r.RoomType!.Price <= maxPrice)
             .OrderBy(r => r.RoomId)
             .Select(r => new RoomSummaryReadModel(
-                r.RoomId,
-                r.PropertyId,
-                r.Property!.PropertyName,
-                r.RoomTypeId,
-                r.RoomType!.TypeName,
-                r.RoomType.Price,
-                r.RoomCode,
-                r.AreaSqm,
-                r.Status,
-                r.RoomImages.Where(i => i.IsPrimary).Select(i => i.ImageUrl).FirstOrDefault()))
+            r.RoomId,
+            r.PropertyId,
+            r.Property!.PropertyName,
+            r.RoomTypeId,
+            r.RoomType!.TypeName,
+            r.RoomType.Price,
+            r.RoomCode,
+            r.AreaSqm,
+            r.Status,
+            r.RoomImages.Where(i => i.IsPrimary).Select(i => i.ImageUrl).FirstOrDefault()))
             .ToListAsync();
+    }
 
-    public Task<RoomSummaryReadModel?> GetByIdAsync(int id) =>
-        _context.Rooms
+    public Task<RoomSummaryReadModel?> GetByIdAsync(int id)
+    {
+        return _context.Rooms
             .AsNoTracking()
             .Where(r => r.RoomId == id)
             .Select(r => new RoomSummaryReadModel(
-                r.RoomId,
-                r.PropertyId,
-                r.Property!.PropertyName,
-                r.RoomTypeId,
-                r.RoomType!.TypeName,
-                r.RoomType.Price,
-                r.RoomCode,
-                r.AreaSqm,
-                r.Status,
-                r.RoomImages.Where(i => i.IsPrimary).Select(i => i.ImageUrl).FirstOrDefault()))
+            r.RoomId,
+            r.PropertyId,
+            r.Property!.PropertyName,
+            r.RoomTypeId,
+            r.RoomType!.TypeName,
+            r.RoomType.Price,
+            r.RoomCode,
+            r.AreaSqm,
+            r.Status,
+            r.RoomImages.Where(i => i.IsPrimary).Select(i => i.ImageUrl).FirstOrDefault()))
             .FirstOrDefaultAsync();
+    }
 
-    public Task<List<RentableRoomReadModel>> GetRentableRoomsAsync(DateTimeOffset asOfUtc) =>
-        RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc)
+    public Task<List<RentableRoomReadModel>> GetRentableRoomsAsync(DateTimeOffset asOfUtc)
+    {
+        return RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc)
             .OrderBy(room => room.RoomId)
             .Select(room => new RentableRoomReadModel(
-                room.RoomId,
-                room.PropertyId,
-                room.RoomTypeId,
-                room.RoomType!.TypeName,
-                room.RoomType.Price,
-                room.RoomCode,
-                room.AreaSqm))
+            room.RoomId,
+            room.PropertyId,
+            room.RoomTypeId,
+            room.RoomType!.TypeName,
+            room.RoomType.Price,
+            room.RoomCode,
+            room.AreaSqm))
             .ToListAsync();
+    }
 
-    public Task<List<PropertyAvailabilityReadModel>> GetPropertyAvailabilityAsync(DateTimeOffset asOfUtc) =>
-        RoomAvailabilityQueries
+    public Task<List<PropertyAvailabilityReadModel>> GetPropertyAvailabilityAsync(DateTimeOffset asOfUtc)
+    {
+        return RoomAvailabilityQueries
             .GetPropertyAvailability(_context.Properties, _context.Rooms, asOfUtc)
             .ToListAsync();
+    }
 
-    public Task<Rooms?> GetTrackedByIdAsync(int id) =>
-        _context.Rooms.FirstOrDefaultAsync(r => r.RoomId == id);
+    public Task<Rooms?> GetTrackedByIdAsync(int id)
+    {
+        return _context.Rooms.FirstOrDefaultAsync(r => r.RoomId == id);
+    }
 
     public async Task<Rooms> AddAsync(Rooms room)
     {
@@ -80,41 +90,61 @@ public class RoomRepository : IRoomRepository
         return room;
     }
 
-    public void Remove(Rooms room) => _context.Rooms.Remove(room);
+    public void Remove(Rooms room)
+    {
+        _context.Rooms.Remove(room);
+    }
 
-    public Task<int?> GetOwnerIdAsync(int roomId) =>
-        _context.Rooms
+    public Task<int?> GetOwnerIdAsync(int roomId)
+    {
+        return _context.Rooms
             .AsNoTracking()
             .Where(r => r.RoomId == roomId)
             .Select(r => (int?)r.Property!.OwnerId)
             .FirstOrDefaultAsync();
+    }
 
-    public Task<bool> PropertyExistsAsync(int propertyId) => _context.Properties.AnyAsync(p => p.PropertyId == propertyId);
+    public Task<bool> PropertyExistsAsync(int propertyId)
+    {
+        return _context.Properties.AnyAsync(p => p.PropertyId == propertyId);
+    }
 
-    public Task<int?> GetPropertyOwnerIdAsync(int propertyId) =>
-        _context.Properties
+    public Task<int?> GetPropertyOwnerIdAsync(int propertyId)
+    {
+        return _context.Properties
             .AsNoTracking()
             .Where(p => p.PropertyId == propertyId)
             .Select(p => (int?)p.OwnerId)
             .FirstOrDefaultAsync();
+    }
 
-    public Task<bool> RoomTypeExistsAsync(int roomTypeId) => _context.RoomTypes.AnyAsync(rt => rt.RoomTypeId == roomTypeId);
+    public Task<bool> RoomTypeExistsAsync(int roomTypeId)
+    {
+        return _context.RoomTypes.AnyAsync(rt => rt.RoomTypeId == roomTypeId);
+    }
 
-    public async Task<bool> HasDependentsAsync(int roomId) =>
-        await _context.Equipments.AnyAsync(e => e.RoomId == roomId) ||
-        await _context.Contracts.AnyAsync(c => c.RoomId == roomId) ||
-        await _context.Bookings.AnyAsync(b => b.RoomId == roomId);
+    public async Task<bool> HasDependentsAsync(int roomId)
+    {
+        return await _context.Equipments.AnyAsync(e => e.RoomId == roomId) ||
+            await _context.Contracts.AnyAsync(c => c.RoomId == roomId) ||
+            await _context.Bookings.AnyAsync(b => b.RoomId == roomId);
+    }
 
-    public Task SaveChangesAsync() => _context.SaveChangesAsync();
+    public Task SaveChangesAsync()
+    {
+        return _context.SaveChangesAsync();
+    }
 
-    public Task<List<RoomImageReadModel>> GetImagesAsync(int roomId) =>
-        _context.RoomImages
+    public Task<List<RoomImageReadModel>> GetImagesAsync(int roomId)
+    {
+        return _context.RoomImages
             .AsNoTracking()
             .Where(i => i.RoomId == roomId)
             .OrderByDescending(i => i.IsPrimary)
             .ThenBy(i => i.RoomImageId)
             .Select(i => new RoomImageReadModel(i.RoomImageId, i.RoomId, i.ImageUrl, i.IsPrimary))
             .ToListAsync();
+    }
 
     public async Task<RoomImages> AddImageAsync(int roomId, RoomImages image)
     {
@@ -143,15 +173,19 @@ public class RoomRepository : IRoomRepository
         return true;
     }
 
-    public Task<List<Amenities>> GetAmenitiesAsync(int roomId) =>
-        _context.RoomAmenities
+    public Task<List<Amenities>> GetAmenitiesAsync(int roomId)
+    {
+        return _context.RoomAmenities
             .AsNoTracking()
             .Where(link => link.RoomId == roomId)
             .Select(link => link.Amenity!)
             .ToListAsync();
+    }
 
-    public Task<bool> AmenityLinkExistsAsync(int roomId, int amenityId) =>
-        _context.RoomAmenities.AnyAsync(link => link.RoomId == roomId && link.AmenityId == amenityId);
+    public Task<bool> AmenityLinkExistsAsync(int roomId, int amenityId)
+    {
+        return _context.RoomAmenities.AnyAsync(link => link.RoomId == roomId && link.AmenityId == amenityId);
+    }
 
     public async Task AddAmenityLinkAsync(int roomId, int amenityId)
     {
@@ -172,5 +206,8 @@ public class RoomRepository : IRoomRepository
         return true;
     }
 
-    public Task<bool> AmenityExistsAsync(int amenityId) => _context.Amenities.AnyAsync(a => a.AmenityId == amenityId);
+    public Task<bool> AmenityExistsAsync(int amenityId)
+    {
+        return _context.Amenities.AnyAsync(a => a.AmenityId == amenityId);
+    }
 }

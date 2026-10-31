@@ -66,7 +66,11 @@ public sealed class PublicPropertiesController : ControllerBase
         CancellationToken cancellationToken)
     {
         var property = await _propertyListingService.GetDetailAsync(id, cancellationToken);
-        return property is null ? NotFound() : Ok(property);
+        if (property is null)
+        {
+            return NotFound();
+        }
+        return Ok(property);
     }
 
     [HttpGet("{id:int}/rooms")]
@@ -81,7 +85,11 @@ public sealed class PublicPropertiesController : ControllerBase
         try
         {
             var page = await _propertyListingService.GetRoomsAsync(id, query, cancellationToken);
-            return page is null ? NotFound() : Ok(page);
+            if (page is null)
+            {
+                return NotFound();
+            }
+            return Ok(page);
         }
         catch (PublicPropertyQueryValidationException exception)
         {

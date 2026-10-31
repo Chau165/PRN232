@@ -23,14 +23,20 @@ public class RoomsController : ControllerBase
         [FromQuery] int? propertyId,
         [FromQuery] string? status,
         [FromQuery] string? city,
-        [FromQuery] decimal? maxPrice) =>
-        Ok(await _roomService.GetAllAsync(propertyId, status, city, maxPrice));
+        [FromQuery] decimal? maxPrice)
+    {
+        return Ok(await _roomService.GetAllAsync(propertyId, status, city, maxPrice));
+    }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<RoomDto>> GetById(int id)
     {
         var room = await _roomService.GetByIdAsync(id);
-        return room is null ? NotFound() : Ok(room);
+        if (room is null)
+        {
+            return NotFound();
+        }
+        return Ok(room);
     }
 
     [HttpPost]
@@ -66,7 +72,11 @@ public class RoomsController : ControllerBase
         try
         {
             var updated = await _roomService.UpdateAsync(id, dto, CurrentUserId(), IsAdmin());
-            return updated is null ? NotFound() : Ok(updated);
+            if (updated is null)
+            {
+                return NotFound();
+            }
+            return Ok(updated);
         }
         catch (RoomForbiddenException exception)
         {
@@ -88,7 +98,12 @@ public class RoomsController : ControllerBase
     {
         try
         {
-            return await _roomService.DeleteAsync(id, CurrentUserId(), IsAdmin()) ? NoContent() : NotFound();
+            var operationSucceeded = await _roomService.DeleteAsync(id, CurrentUserId(), IsAdmin());
+            if (!operationSucceeded)
+            {
+                return NotFound();
+            }
+            return NoContent();
         }
         catch (RoomForbiddenException exception)
         {
@@ -104,7 +119,11 @@ public class RoomsController : ControllerBase
     public async Task<ActionResult<IEnumerable<RoomImageDto>>> GetImages(int id)
     {
         var images = await _roomService.GetImagesAsync(id);
-        return images is null ? NotFound() : Ok(images);
+        if (images is null)
+        {
+            return NotFound();
+        }
+        return Ok(images);
     }
 
     [HttpPost("{id:int}/images")]
@@ -114,7 +133,11 @@ public class RoomsController : ControllerBase
         try
         {
             var image = await _roomService.AddImageAsync(id, dto, CurrentUserId(), IsAdmin());
-            return image is null ? NotFound() : Ok(image);
+            if (image is null)
+            {
+                return NotFound();
+            }
+            return Ok(image);
         }
         catch (RoomForbiddenException exception)
         {
@@ -132,7 +155,12 @@ public class RoomsController : ControllerBase
     {
         try
         {
-            return await _roomService.RemoveImageAsync(id, imageId, CurrentUserId(), IsAdmin()) ? NoContent() : NotFound();
+            var operationSucceeded = await _roomService.RemoveImageAsync(id, imageId, CurrentUserId(), IsAdmin());
+            if (!operationSucceeded)
+            {
+                return NotFound();
+            }
+            return NoContent();
         }
         catch (RoomForbiddenException exception)
         {
@@ -144,7 +172,11 @@ public class RoomsController : ControllerBase
     public async Task<ActionResult<IEnumerable<AmenityDto>>> GetAmenities(int id)
     {
         var amenities = await _roomService.GetAmenitiesAsync(id);
-        return amenities is null ? NotFound() : Ok(amenities);
+        if (amenities is null)
+        {
+            return NotFound();
+        }
+        return Ok(amenities);
     }
 
     [HttpPost("{id:int}/amenities/{amenityId:int}")]
@@ -176,7 +208,12 @@ public class RoomsController : ControllerBase
     {
         try
         {
-            return await _roomService.RemoveAmenityAsync(id, amenityId, CurrentUserId(), IsAdmin()) ? NoContent() : NotFound();
+            var operationSucceeded = await _roomService.RemoveAmenityAsync(id, amenityId, CurrentUserId(), IsAdmin());
+            if (!operationSucceeded)
+            {
+                return NotFound();
+            }
+            return NoContent();
         }
         catch (RoomForbiddenException exception)
         {
@@ -184,8 +221,18 @@ public class RoomsController : ControllerBase
         }
     }
 
-    private int CurrentUserId() =>
-        int.Parse(User.FindFirst("sub")?.Value ?? throw new InvalidOperationException("Token thiếu claim 'sub'."));
+    private int CurrentUserId()
+    {
+        var subjectId = User.FindFirst("sub")?.Value;
+        if (subjectId is null)
+        {
+            throw new InvalidOperationException("Token thiếu claim 'sub'.");
+        }
+        return int.Parse(subjectId);
+    }
 
-    private bool IsAdmin() => User.IsInRole("Admin");
+    private bool IsAdmin()
+    {
+        return User.IsInRole("Admin");
+    }
 }

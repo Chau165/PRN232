@@ -14,21 +14,27 @@ public class EquipmentRepository : IEquipmentRepository
         _context = context;
     }
 
-    public Task<List<Equipments>> GetAllAsync(int? roomId) =>
-        _context.Equipments
+    public Task<List<Equipments>> GetAllAsync(int? roomId)
+    {
+        return _context.Equipments
             .AsNoTracking()
             .Where(e => roomId == null || e.RoomId == roomId)
             .OrderBy(e => e.EquipmentId)
             .ToListAsync();
+    }
 
-    public Task<Equipments?> GetByIdAsync(int id) =>
-        _context.Equipments
+    public Task<Equipments?> GetByIdAsync(int id)
+    {
+        return _context.Equipments
             .AsNoTracking()
             .Where(e => e.EquipmentId == id)
             .FirstOrDefaultAsync();
+    }
 
-    public Task<Equipments?> GetTrackedByIdAsync(int id) =>
-        _context.Equipments.FirstOrDefaultAsync(e => e.EquipmentId == id);
+    public Task<Equipments?> GetTrackedByIdAsync(int id)
+    {
+        return _context.Equipments.FirstOrDefaultAsync(e => e.EquipmentId == id);
+    }
 
     public async Task<Equipments> AddAsync(Equipments equipment)
     {
@@ -36,16 +42,27 @@ public class EquipmentRepository : IEquipmentRepository
         return equipment;
     }
 
-    public void Remove(Equipments equipment) => _context.Equipments.Remove(equipment);
+    public void Remove(Equipments equipment)
+    {
+        _context.Equipments.Remove(equipment);
+    }
 
-    public Task<int?> GetOwnerIdAsync(int roomId) =>
-        _context.Rooms
+    public Task<int?> GetOwnerIdAsync(int roomId)
+    {
+        return _context.Rooms
             .AsNoTracking()
             .Where(r => r.RoomId == roomId)
             .Select(r => (int?)r.Property!.OwnerId)
             .FirstOrDefaultAsync();
+    }
 
-    public Task<bool> RoomExistsAsync(int roomId) => _context.Rooms.AnyAsync(r => r.RoomId == roomId);
+    public Task<bool> RoomExistsAsync(int roomId)
+    {
+        return _context.Rooms.AnyAsync(r => r.RoomId == roomId);
+    }
 
-    public Task SaveChangesAsync() => _context.SaveChangesAsync();
+    public Task SaveChangesAsync()
+    {
+        return _context.SaveChangesAsync();
+    }
 }

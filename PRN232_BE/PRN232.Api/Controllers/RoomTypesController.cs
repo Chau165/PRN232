@@ -18,13 +18,20 @@ public class RoomTypesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<RoomTypeDto>>> GetAll() => Ok(await _roomTypeService.GetAllAsync());
+    public async Task<ActionResult<IEnumerable<RoomTypeDto>>> GetAll()
+    {
+        return Ok(await _roomTypeService.GetAllAsync());
+    }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<RoomTypeDto>> GetById(int id)
     {
         var roomType = await _roomTypeService.GetByIdAsync(id);
-        return roomType is null ? NotFound() : Ok(roomType);
+        if (roomType is null)
+        {
+            return NotFound();
+        }
+        return Ok(roomType);
     }
 
     [HttpPost]
@@ -52,7 +59,11 @@ public class RoomTypesController : ControllerBase
         try
         {
             var updated = await _roomTypeService.UpdateAsync(id, dto);
-            return updated is null ? NotFound() : Ok(updated);
+            if (updated is null)
+            {
+                return NotFound();
+            }
+            return Ok(updated);
         }
         catch (RoomTypeValidationException exception)
         {
@@ -66,7 +77,12 @@ public class RoomTypesController : ControllerBase
     {
         try
         {
-            return await _roomTypeService.DeleteAsync(id) ? NoContent() : NotFound();
+            var operationSucceeded = await _roomTypeService.DeleteAsync(id);
+            if (!operationSucceeded)
+            {
+                return NotFound();
+            }
+            return NoContent();
         }
         catch (RoomTypeHasRoomsException exception)
         {
@@ -78,7 +94,11 @@ public class RoomTypesController : ControllerBase
     public async Task<ActionResult<IEnumerable<ServiceDto>>> GetServices(int id)
     {
         var services = await _roomTypeService.GetServicesAsync(id);
-        return services is null ? NotFound() : Ok(services);
+        if (services is null)
+        {
+            return NotFound();
+        }
+        return Ok(services);
     }
 
     [HttpPost("{id:int}/services/{serviceId:int}")]
@@ -102,6 +122,13 @@ public class RoomTypesController : ControllerBase
 
     [HttpDelete("{id:int}/services/{serviceId:int}")]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<IActionResult> RemoveService(int id, int serviceId) =>
-        await _roomTypeService.RemoveServiceAsync(id, serviceId) ? NoContent() : NotFound();
+    public async Task<IActionResult> RemoveService(int id, int serviceId)
+    {
+        var operationSucceeded = await _roomTypeService.RemoveServiceAsync(id, serviceId);
+        if (!operationSucceeded)
+        {
+            return NotFound();
+        }
+        return NoContent();
+    }
 }

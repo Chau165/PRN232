@@ -24,7 +24,11 @@ public class RoomService : IRoomService
     public async Task<RoomDto?> GetByIdAsync(int id)
     {
         var room = await _repository.GetByIdAsync(id);
-        return room is null ? null : ConvertToDto(room);
+        if (room is null)
+        {
+            return null;
+        }
+        return ConvertToDto(room);
     }
 
     public async Task<List<RentableRoomDto>> GetRentableRoomsAsync(DateTimeOffset asOfUtc)
@@ -105,7 +109,11 @@ public class RoomService : IRoomService
 
         await _repository.SaveChangesAsync();
         var updated = await _repository.GetByIdAsync(id);
-        return updated is null ? null : ConvertToDto(updated);
+        if (updated is null)
+        {
+            return null;
+        }
+        return ConvertToDto(updated);
     }
 
     public async Task<bool> DeleteAsync(int id, int requestingUserId, bool isAdmin)

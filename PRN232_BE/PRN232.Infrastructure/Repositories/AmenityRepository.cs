@@ -14,20 +14,26 @@ public class AmenityRepository : IAmenityRepository
         _context = context;
     }
 
-    public Task<List<Amenities>> GetAllAsync() =>
-        _context.Amenities
+    public Task<List<Amenities>> GetAllAsync()
+    {
+        return _context.Amenities
             .AsNoTracking()
             .OrderBy(a => a.Name)
             .ToListAsync();
+    }
 
-    public Task<Amenities?> GetByIdAsync(int id) =>
-        _context.Amenities
+    public Task<Amenities?> GetByIdAsync(int id)
+    {
+        return _context.Amenities
             .AsNoTracking()
             .Where(a => a.AmenityId == id)
             .FirstOrDefaultAsync();
+    }
 
-    public Task<Amenities?> GetTrackedByIdAsync(int id) =>
-        _context.Amenities.FirstOrDefaultAsync(a => a.AmenityId == id);
+    public Task<Amenities?> GetTrackedByIdAsync(int id)
+    {
+        return _context.Amenities.FirstOrDefaultAsync(a => a.AmenityId == id);
+    }
 
     public async Task<Amenities> AddAsync(Amenities amenity)
     {
@@ -35,7 +41,13 @@ public class AmenityRepository : IAmenityRepository
         return amenity;
     }
 
-    public void Remove(Amenities amenity) => _context.Amenities.Remove(amenity);
+    public void Remove(Amenities amenity)
+    {
+        _context.Amenities.Remove(amenity);
+    }
 
-    public Task SaveChangesAsync() => _context.SaveChangesAsync();
+    public Task SaveChangesAsync()
+    {
+        return _context.SaveChangesAsync();
+    }
 }

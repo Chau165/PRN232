@@ -16,13 +16,17 @@ public class UserRepository : IUserRepository
         _context = context;
     }
 
-    public Task<Users?> GetByEmailAsync(string email) =>
-        _context.Users
+    public Task<Users?> GetByEmailAsync(string email)
+    {
+        return _context.Users
             .Include(u => u.Role)
             .FirstOrDefaultAsync(u => u.Email == email);
+    }
 
-    public Task<bool> EmailExistsAsync(string email) =>
-        _context.Users.AnyAsync(u => u.Email == email);
+    public Task<bool> EmailExistsAsync(string email)
+    {
+        return _context.Users.AnyAsync(u => u.Email == email);
+    }
 
     public async Task<Users> AddAsync(Users user)
     {
@@ -30,40 +34,51 @@ public class UserRepository : IUserRepository
         return entry.Entity;
     }
 
-    public Task<List<UserReadModel>> GetAllAsync(int? roleId) =>
-        _context.Users
+    public Task<List<UserReadModel>> GetAllAsync(int? roleId)
+    {
+        return _context.Users
             .AsNoTracking()
             .Where(u => roleId == null || u.RoleId == roleId)
             .OrderBy(u => u.UserId)
             .Select(u => new UserReadModel(
-                u.UserId,
-                u.FullName,
-                u.Email,
-                u.PhoneNumber,
-                u.RoleId,
-                u.Role!.RoleName,
-                u.IsActive))
+            u.UserId,
+            u.FullName,
+            u.Email,
+            u.PhoneNumber,
+            u.RoleId,
+            u.Role!.RoleName,
+            u.IsActive))
             .ToListAsync();
+    }
 
-    public Task<UserReadModel?> GetByIdAsync(int id) =>
-        _context.Users
+    public Task<UserReadModel?> GetByIdAsync(int id)
+    {
+        return _context.Users
             .AsNoTracking()
             .Where(u => u.UserId == id)
             .Select(u => new UserReadModel(
-                u.UserId,
-                u.FullName,
-                u.Email,
-                u.PhoneNumber,
-                u.RoleId,
-                u.Role!.RoleName,
-                u.IsActive))
+            u.UserId,
+            u.FullName,
+            u.Email,
+            u.PhoneNumber,
+            u.RoleId,
+            u.Role!.RoleName,
+            u.IsActive))
             .FirstOrDefaultAsync();
+    }
 
-    public Task<Users?> GetTrackedByIdAsync(int id) =>
-        _context.Users.FirstOrDefaultAsync(u => u.UserId == id);
+    public Task<Users?> GetTrackedByIdAsync(int id)
+    {
+        return _context.Users.FirstOrDefaultAsync(u => u.UserId == id);
+    }
 
-    public Task<bool> RoleExistsAsync(int roleId) =>
-        _context.Roles.AnyAsync(r => r.RoleId == roleId);
+    public Task<bool> RoleExistsAsync(int roleId)
+    {
+        return _context.Roles.AnyAsync(r => r.RoleId == roleId);
+    }
 
-    public Task SaveChangesAsync() => _context.SaveChangesAsync();
+    public Task SaveChangesAsync()
+    {
+        return _context.SaveChangesAsync();
+    }
 }

@@ -20,14 +20,20 @@ public class RolesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<RoleDto>>> GetAll() =>
-        Ok(await _roleService.GetAllAsync());
+    public async Task<ActionResult<IEnumerable<RoleDto>>> GetAll()
+    {
+        return Ok(await _roleService.GetAllAsync());
+    }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<RoleDto>> GetById(int id)
     {
         var role = await _roleService.GetByIdAsync(id);
-        return role is null ? NotFound() : Ok(role);
+        if (role is null)
+        {
+            return NotFound();
+        }
+        return Ok(role);
     }
 
     [HttpPost]

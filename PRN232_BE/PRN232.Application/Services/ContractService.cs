@@ -28,8 +28,11 @@ public class ContractService : IContractService
             throw new ContractAuthorizationException("Only property managers can create contracts.");
         }
 
-        var booking = await _repository.GetBookingAsync(dto.BookingId)
-            ?? throw new ContractNotFoundException("Booking does not exist.");
+        var booking = await _repository.GetBookingAsync(dto.BookingId);
+        if (booking is null)
+        {
+            throw new ContractNotFoundException("Booking does not exist.");
+        }
         if (role == RoleNames.Manager && booking.OwnerId != userId)
         {
             throw new ContractAuthorizationException("You cannot create a contract for this booking.");
@@ -67,8 +70,11 @@ public class ContractService : IContractService
             throw new ContractConflictException("The booking changed or the room already has an active contract.");
         }
 
-        var created = await _repository.GetByIdAsync(contract.ContractId, null, null)
-            ?? throw new InvalidOperationException("Created contract was not found.");
+        var created = await _repository.GetByIdAsync(contract.ContractId, null, null);
+        if (created is null)
+        {
+            throw new InvalidOperationException("Created contract was not found.");
+        }
         return ConvertToDto(created);
     }
 
@@ -87,7 +93,11 @@ public class ContractService : IContractService
         {
             throw new ContractAuthorizationException("You cannot access this contract.");
         }
-        return contract is null ? null : ConvertToDto(contract);
+        if (contract is null)
+        {
+            return null;
+        }
+        return ConvertToDto(contract);
     }
 
     private static Contracts ConvertToEntity(CreateContractDto dto, ContractBookingReadModel booking, int userId)
@@ -106,25 +116,35 @@ public class ContractService : IContractService
         };
     }
 
-    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role) =>
-        AccessScope.For(userId, role) ?? throw new ContractAuthorizationException("Your role cannot access contracts.");
+    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role)
+    {
+        var scope = AccessScope.For(userId, role);
+        if (scope is null)
+        {
+            throw new ContractAuthorizationException("Your role cannot access contracts.");
+        }
+        return scope.Value;
+    }
 
-    private static ContractDto ConvertToDto(ContractReadModel contract) => new(
-        contract.ContractId,
-        contract.BookingId,
-        contract.RoomId,
-        contract.RoomCode,
-        contract.PropertyId,
-        contract.PropertyName,
-        contract.CustomerId,
-        contract.CustomerName,
-        contract.CustomerPhone,
-        contract.StartDate,
-        contract.EndDate,
-        contract.MonthlyRent,
-        contract.DepositAmount,
-        contract.Status,
-        contract.ProcessedByStaffName);
+    private static ContractDto ConvertToDto(ContractReadModel contract)
+    {
+        return new ContractDto(
+            contract.ContractId,
+            contract.BookingId,
+            contract.RoomId,
+            contract.RoomCode,
+            contract.PropertyId,
+            contract.PropertyName,
+            contract.CustomerId,
+            contract.CustomerName,
+            contract.CustomerPhone,
+            contract.StartDate,
+            contract.EndDate,
+            contract.MonthlyRent,
+            contract.DepositAmount,
+            contract.Status,
+            contract.ProcessedByStaffName);
+    }
 }
 
 public sealed class ContractNotFoundException(string message) : Exception(message);

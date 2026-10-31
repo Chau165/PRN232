@@ -55,7 +55,11 @@ public class BookingsController : ControllerBase
         try
         {
             var booking = await _bookingService.GetByIdAsync(id, userId, role);
-            return booking is null ? NotFound() : Ok(booking);
+            if (booking is null)
+            {
+                return NotFound();
+            }
+            return Ok(booking);
         }
         catch (BookingAuthorizationException exception)
         {
@@ -160,6 +164,8 @@ public class BookingsController : ControllerBase
         return _currentUser.IsAuthenticated && userId > 0 && role.Length > 0;
     }
 
-    private ObjectResult ForbidWithProblem(string detail) =>
-        StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = detail });
+    private ObjectResult ForbidWithProblem(string detail)
+    {
+        return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = detail });
+    }
 }

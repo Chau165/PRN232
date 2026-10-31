@@ -23,8 +23,11 @@ public class ViewingScheduleService : IViewingScheduleService
         var now = _timeProvider.GetUtcNow();
         EnsureFuture(dto.ScheduledAt, now);
 
-        var room = await _repository.GetRoomAsync(dto.RoomId)
-            ?? throw new ViewingNotFoundException("Room does not exist.");
+        var room = await _repository.GetRoomAsync(dto.RoomId);
+        if (room is null)
+        {
+            throw new ViewingNotFoundException("Room does not exist.");
+        }
         if (!await _repository.IsRoomRentableAsync(room.RoomId, now))
         {
             throw new ViewingConflictException("Room is not available for viewing.");
@@ -43,8 +46,11 @@ public class ViewingScheduleService : IViewingScheduleService
             IsRead = false
         });
 
-        var created = await _repository.GetByIdAsync(viewing.ViewingId, customerId, null)
-            ?? throw new InvalidOperationException("Created viewing request was not found.");
+        var created = await _repository.GetByIdAsync(viewing.ViewingId, customerId, null);
+        if (created is null)
+        {
+            throw new InvalidOperationException("Created viewing request was not found.");
+        }
         return ConvertToDto(created);
     }
 
@@ -68,7 +74,11 @@ public class ViewingScheduleService : IViewingScheduleService
         {
             throw new ViewingAuthorizationException("You cannot access this viewing request.");
         }
-        return viewing is null ? null : ConvertToDto(viewing);
+        if (viewing is null)
+        {
+            return null;
+        }
+        return ConvertToDto(viewing);
     }
 
     // Gộp "Chọn lịch" và "Chấp thuận": nếu khách để chủ trọ sắp xếp thì phải gửi kèm giờ xem;
@@ -79,8 +89,19 @@ public class ViewingScheduleService : IViewingScheduleService
         var now = _timeProvider.GetUtcNow();
         EnsureFuture(dto.ScheduledAt, now);
         var newTimeUtc = dto.ScheduledAt?.UtcDateTime;
-        var effectiveTime = newTimeUtc ?? viewing.ScheduledAt
-            ?? throw new ViewingBusinessRuleException("Choose a viewing time before approving.");
+        DateTime effectiveTime;
+        if (newTimeUtc.HasValue)
+        {
+            effectiveTime = newTimeUtc.Value;
+        }
+        else if (viewing.ScheduledAt.HasValue)
+        {
+            effectiveTime = viewing.ScheduledAt.Value;
+        }
+        else
+        {
+            throw new ViewingBusinessRuleException("Choose a viewing time before approving.");
+        }
         if (effectiveTime <= now.UtcDateTime)
         {
             throw new ViewingBusinessRuleException("The requested viewing time has passed. Choose a new time.");
@@ -105,8 +126,11 @@ public class ViewingScheduleService : IViewingScheduleService
             throw new ViewingAuthorizationException("Only property managers can handle viewing requests.");
         }
 
-        var viewing = await GetByIdAsync(id, userId, role)
-            ?? throw new ViewingNotFoundException("Viewing request does not exist.");
+        var viewing = await GetByIdAsync(id, userId, role);
+        if (viewing is null)
+        {
+            throw new ViewingNotFoundException("Viewing request does not exist.");
+        }
         if (viewing.Status != ViewingStatuses.Pending)
         {
             throw new ViewingConflictException("Only pending viewing requests can be handled.");
@@ -130,8 +154,11 @@ public class ViewingScheduleService : IViewingScheduleService
             throw new ViewingConflictException("Viewing request has already been handled.");
         }
 
-        var updated = await _repository.GetByIdAsync(viewing.ViewingId, null, null)
-            ?? throw new InvalidOperationException("Handled viewing request was not found.");
+        var updated = await _repository.GetByIdAsync(viewing.ViewingId, null, null);
+        if (updated is null)
+        {
+            throw new InvalidOperationException("Handled viewing request was not found.");
+        }
         return ConvertToDto(updated);
     }
 
@@ -154,20 +181,30 @@ public class ViewingScheduleService : IViewingScheduleService
         };
     }
 
-    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role) =>
-        AccessScope.For(userId, role) ?? throw new ViewingAuthorizationException("Your role cannot access viewing requests.");
+    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role)
+    {
+        var scope = AccessScope.For(userId, role);
+        if (scope is null)
+        {
+            throw new ViewingAuthorizationException("Your role cannot access viewing requests.");
+        }
+        return scope.Value;
+    }
 
-    private static ViewingScheduleDto ConvertToDto(ViewingScheduleReadModel viewing) => new(
-        viewing.ViewingId,
-        viewing.RoomId,
-        viewing.RoomCode,
-        viewing.PropertyId,
-        viewing.PropertyName,
-        viewing.CustomerId,
-        viewing.CustomerName,
-        viewing.CustomerPhone,
-        viewing.ScheduledAt,
-        viewing.Status);
+    private static ViewingScheduleDto ConvertToDto(ViewingScheduleReadModel viewing)
+    {
+        return new ViewingScheduleDto(
+            viewing.ViewingId,
+            viewing.RoomId,
+            viewing.RoomCode,
+            viewing.PropertyId,
+            viewing.PropertyName,
+            viewing.CustomerId,
+            viewing.CustomerName,
+            viewing.CustomerPhone,
+            viewing.ScheduledAt,
+            viewing.Status);
+    }
 }
 
 public sealed class ViewingNotFoundException(string message) : Exception(message);

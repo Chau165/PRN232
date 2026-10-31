@@ -17,12 +17,14 @@ public class BookingRepository : IBookingRepository
         _context = context;
     }
 
-    public Task<BookingRoomReadModel?> GetRoomAsync(int roomId) =>
-        _context.Rooms
+    public Task<BookingRoomReadModel?> GetRoomAsync(int roomId)
+    {
+        return _context.Rooms
             .AsNoTracking()
             .Where(room => room.RoomId == roomId)
             .Select(room => new BookingRoomReadModel(room.RoomId, room.RoomType!.Price))
             .FirstOrDefaultAsync();
+    }
 
     public async Task<bool> AddIfRoomRentableAsync(Bookings booking, DateTimeOffset asOfUtc)
     {
@@ -49,35 +51,43 @@ public class BookingRepository : IBookingRepository
         return true;
     }
 
-    public Task<List<BookingReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status) =>
-        InScope(customerId, ownerId)
+    public Task<List<BookingReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status)
+    {
+        return InScope(customerId, ownerId)
             .Where(booking => status == null || booking.Status == status)
             .OrderByDescending(booking => booking.BookingId)
             .Select(ToReadModel)
             .ToListAsync();
+    }
 
-    public Task<BookingReadModel?> GetByIdAsync(int bookingId, int? customerId, int? ownerId) =>
-        InScope(customerId, ownerId)
+    public Task<BookingReadModel?> GetByIdAsync(int bookingId, int? customerId, int? ownerId)
+    {
+        return InScope(customerId, ownerId)
             .Where(booking => booking.BookingId == bookingId)
             .Select(ToReadModel)
             .FirstOrDefaultAsync();
+    }
 
-    public Task<bool> ExistsAsync(int bookingId) =>
-        _context.Bookings.AnyAsync(booking => booking.BookingId == bookingId);
+    public Task<bool> ExistsAsync(int bookingId)
+    {
+        return _context.Bookings.AnyAsync(booking => booking.BookingId == bookingId);
+    }
 
-    public Task<BookingPaymentReadModel?> GetForPaymentAsync(int bookingId) =>
-        _context.Bookings
+    public Task<BookingPaymentReadModel?> GetForPaymentAsync(int bookingId)
+    {
+        return _context.Bookings
             .AsNoTracking()
             .Where(booking => booking.BookingId == bookingId)
             .Select(booking => new BookingPaymentReadModel(
-                booking.BookingId,
-                booking.CustomerId,
-                booking.Room!.Property!.OwnerId,
-                booking.Room.RoomCode,
-                booking.DepositAmount,
-                booking.Status,
-                booking.ExpiryDate))
+            booking.BookingId,
+            booking.CustomerId,
+            booking.Room!.Property!.OwnerId,
+            booking.Room.RoomCode,
+            booking.DepositAmount,
+            booking.Status,
+            booking.ExpiryDate))
             .FirstOrDefaultAsync();
+    }
 
     public async Task<bool> MarkDepositedAsync(
         int bookingId, DateTimeOffset asOfUtc, DateTime holdUntilUtc, Payments payment, Notifications notification)
@@ -138,11 +148,13 @@ public class BookingRepository : IBookingRepository
     }
 
     // Lọc dùng chung cho GetById và GetAll; tham số nào null thì không lọc theo tiêu chí đó.
-    private IQueryable<Bookings> InScope(int? customerId, int? ownerId) =>
-        _context.Bookings
+    private IQueryable<Bookings> InScope(int? customerId, int? ownerId)
+    {
+        return _context.Bookings
             .AsNoTracking()
             .Where(booking => customerId == null || booking.CustomerId == customerId)
             .Where(booking => ownerId == null || booking.Room!.Property!.OwnerId == ownerId);
+    }
 
     private static readonly Expression<Func<Bookings, BookingReadModel>> ToReadModel = booking => new BookingReadModel(
         booking.BookingId,

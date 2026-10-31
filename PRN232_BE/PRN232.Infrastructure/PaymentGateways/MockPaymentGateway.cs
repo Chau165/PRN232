@@ -6,5 +6,8 @@ namespace PRN232.Infrastructure.PaymentGateways;
 // Muốn dùng cổng thật thì viết class khác implement IPaymentGateway và đổi dòng đăng ký trong Program.cs.
 public class MockPaymentGateway : IPaymentGateway
 {
-    public Task<bool> ChargeAsync(string paymentMethod, decimal amount) => Task.FromResult(true);
+    public Task<bool> ChargeAsync(string paymentMethod, decimal amount)
+    {
+        return Task.FromResult(true);
+    }
 }

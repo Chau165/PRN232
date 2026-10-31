@@ -25,7 +25,11 @@ public class UserService : IUserService
     public async Task<UserDto?> GetByIdAsync(int id)
     {
         var user = await _repository.GetByIdAsync(id);
-        return user is null ? null : ConvertToDto(user);
+        if (user is null)
+        {
+            return null;
+        }
+        return ConvertToDto(user);
     }
 
     // Admin tạo trực tiếp account với role bất kỳ (Manager/Admin/Customer) — khác
@@ -84,7 +88,11 @@ public class UserService : IUserService
         entity.RoleId = dto.RoleId;
         await _repository.SaveChangesAsync();
         var updated = await _repository.GetByIdAsync(id);
-        return updated is null ? null : ConvertToDto(updated);
+        if (updated is null)
+        {
+            return null;
+        }
+        return ConvertToDto(updated);
     }
 
     public async Task<UserDto?> UpdateStatusAsync(int id, UpdateUserStatusDto dto, int requestingUserId)
@@ -102,7 +110,11 @@ public class UserService : IUserService
         entity.IsActive = dto.IsActive;
         await _repository.SaveChangesAsync();
         var updated = await _repository.GetByIdAsync(id);
-        return updated is null ? null : ConvertToDto(updated);
+        if (updated is null)
+        {
+            return null;
+        }
+        return ConvertToDto(updated);
     }
 
     // Self-service: chỉ chủ account mới gọi được (kiểm tra ownership ở Controller qua
@@ -127,7 +139,11 @@ public class UserService : IUserService
         ApplyUpdateToEntity(dto, entity);
         await _repository.SaveChangesAsync();
         var updated = await _repository.GetByIdAsync(id);
-        return updated is null ? null : ConvertToDto(updated);
+        if (updated is null)
+        {
+            return null;
+        }
+        return ConvertToDto(updated);
     }
 
     public async Task ChangePasswordAsync(int id, ChangePasswordDto dto, int requestingUserId)
@@ -192,8 +208,12 @@ public class UserService : IUserService
 
     private async Task<UserReadModel> GetUserResponseAsync(int userId)
     {
-        return await _repository.GetByIdAsync(userId)
-            ?? throw new InvalidOperationException("Created or updated user was not found.");
+        var user = await _repository.GetByIdAsync(userId);
+        if (user is null)
+        {
+            throw new InvalidOperationException("Created or updated user was not found.");
+        }
+        return user;
     }
 }
 

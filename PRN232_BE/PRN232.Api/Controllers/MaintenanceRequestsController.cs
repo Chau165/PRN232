@@ -56,7 +56,11 @@ public class MaintenanceRequestsController : ControllerBase
         try
         {
             var request = await _maintenanceService.GetByIdAsync(id, userId, role);
-            return request is null ? NotFound() : Ok(request);
+            if (request is null)
+            {
+                return NotFound();
+            }
+            return Ok(request);
         }
         catch (MaintenanceAuthorizationException exception)
         {
@@ -115,7 +119,11 @@ public class MaintenanceRequestsController : ControllerBase
             }
 
             var updated = await _maintenanceService.UpdateAsync(id, dto, userId, role);
-            return updated is null ? NotFound() : Ok(updated);
+            if (updated is null)
+            {
+                return NotFound();
+            }
+            return Ok(updated);
         }
         catch (MaintenanceNotFoundException exception)
         {
@@ -220,7 +228,11 @@ public class MaintenanceRequestsController : ControllerBase
         try
         {
             var report = await _maintenanceService.GetReportAsync(id, userId, role);
-            return report is null ? NotFound() : Ok(report);
+            if (report is null)
+            {
+                return NotFound();
+            }
+            return Ok(report);
         }
         catch (MaintenanceAuthorizationException exception)
         {
@@ -244,7 +256,11 @@ public class MaintenanceRequestsController : ControllerBase
         try
         {
             var logs = await _maintenanceService.GetLogsAsync(id, userId, role);
-            return logs is null ? NotFound() : Ok(logs);
+            if (logs is null)
+            {
+                return NotFound();
+            }
+            return Ok(logs);
         }
         catch (MaintenanceAuthorizationException exception)
         {
@@ -259,8 +275,10 @@ public class MaintenanceRequestsController : ControllerBase
         return _currentUser.IsAuthenticated && userId > 0 && role.Length > 0;
     }
 
-    private ObjectResult ForbidWithProblem(string detail) =>
-        StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = detail });
+    private ObjectResult ForbidWithProblem(string detail)
+    {
+        return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = detail });
+    }
 }
 
 public sealed class CreateMaintenanceReportForm

@@ -48,8 +48,11 @@ public class InvoiceService : IInvoiceService
             throw new InvoiceConflictException("An invoice for this month already exists.");
         }
 
-        var created = await _repository.GetByIdAsync(invoice.InvoiceId, null, null)
-            ?? throw new InvalidOperationException("Created invoice was not found.");
+        var created = await _repository.GetByIdAsync(invoice.InvoiceId, null, null);
+        if (created is null)
+        {
+            throw new InvalidOperationException("Created invoice was not found.");
+        }
         return ConvertToDto(created);
     }
 
@@ -73,7 +76,11 @@ public class InvoiceService : IInvoiceService
         {
             throw new InvoiceAuthorizationException("You cannot access this invoice.");
         }
-        return invoice is null ? null : ConvertToDto(invoice);
+        if (invoice is null)
+        {
+            return null;
+        }
+        return ConvertToDto(invoice);
     }
 
     // Khách tự thanh toán qua cổng giả lập (cùng cổng với tiền cọc ở bước đặt cọc).
@@ -118,8 +125,11 @@ public class InvoiceService : IInvoiceService
 
     private async Task<InvoicePaymentReadModel> GetUnpaidForPaymentAsync(int id)
     {
-        var invoice = await _repository.GetForPaymentAsync(id)
-            ?? throw new InvoiceNotFoundException("Invoice does not exist.");
+        var invoice = await _repository.GetForPaymentAsync(id);
+        if (invoice is null)
+        {
+            throw new InvoiceNotFoundException("Invoice does not exist.");
+        }
         if (invoice.Status == InvoiceStatuses.Paid)
         {
             throw new InvoiceConflictException("This invoice has already been paid.");
@@ -152,8 +162,11 @@ public class InvoiceService : IInvoiceService
             throw new InvoiceConflictException("This invoice has already been paid.");
         }
 
-        var paid = await _repository.GetByIdAsync(invoice.InvoiceId, null, null)
-            ?? throw new InvalidOperationException("Paid invoice was not found.");
+        var paid = await _repository.GetByIdAsync(invoice.InvoiceId, null, null);
+        if (paid is null)
+        {
+            throw new InvalidOperationException("Paid invoice was not found.");
+        }
         return ConvertToDto(paid);
     }
 
@@ -164,8 +177,11 @@ public class InvoiceService : IInvoiceService
             throw new InvoiceAuthorizationException("Only property managers can create invoices.");
         }
 
-        var contract = await _repository.GetContractAsync(dto.ContractId)
-            ?? throw new InvoiceNotFoundException("Contract does not exist.");
+        var contract = await _repository.GetContractAsync(dto.ContractId);
+        if (contract is null)
+        {
+            throw new InvoiceNotFoundException("Contract does not exist.");
+        }
         if (role == RoleNames.Manager && contract.OwnerId != userId)
         {
             throw new InvoiceAuthorizationException("You cannot create invoices for this contract.");
@@ -184,7 +200,7 @@ public class InvoiceService : IInvoiceService
         var period = Period(dto.InvoiceMonth);
         var details = new List<InvoiceDetails>
         {
-            new()
+            new InvoiceDetails()
             {
                 ItemType = InvoiceItemTypes.Rent,
                 Description = $"Tiền phòng tháng {period}",
@@ -196,8 +212,11 @@ public class InvoiceService : IInvoiceService
         MonthUsageReadModel? usage = null;
         if (services.Any(service => service.BillingBasis == "usage"))
         {
-            usage = await _repository.GetUsageAsync(contract.ContractId, dto.InvoiceMonth)
-                ?? throw new InvoiceConflictException("Record this month's meter readings before creating the invoice.");
+            usage = await _repository.GetUsageAsync(contract.ContractId, dto.InvoiceMonth);
+            if (usage is null)
+            {
+                throw new InvoiceConflictException("Record this month's meter readings before creating the invoice.");
+            }
         }
 
         foreach (var service in services)
@@ -271,42 +290,64 @@ public class InvoiceService : IInvoiceService
         }
     }
 
-    private static InvoiceDto ConvertToDto(Invoices invoice, InvoiceContractReadModel contract, string status) => new(
-        invoice.InvoiceId,
-        contract.ContractId,
-        contract.RoomCode,
-        contract.PropertyName,
-        contract.CustomerName,
-        invoice.InvoiceMonth,
-        invoice.DueDate,
-        status,
-        invoice.InvoiceDetails.Sum(detail => detail.Amount),
-        invoice.InvoiceDetails
+    private static InvoiceDto ConvertToDto(Invoices invoice, InvoiceContractReadModel contract, string status)
+    {
+        return new InvoiceDto(
+            invoice.InvoiceId,
+            contract.ContractId,
+            contract.RoomCode,
+            contract.PropertyName,
+            contract.CustomerName,
+            invoice.InvoiceMonth,
+            invoice.DueDate,
+            status,
+            invoice.InvoiceDetails.Sum(detail => detail.Amount),
+            invoice.InvoiceDetails
             .Select(ConvertToDto)
             .ToList());
+    }
 
-    private static InvoiceDto ConvertToDto(InvoiceReadModel invoice) => new(
-        invoice.InvoiceId,
-        invoice.ContractId,
-        invoice.RoomCode,
-        invoice.PropertyName,
-        invoice.CustomerName,
-        invoice.InvoiceMonth,
-        invoice.DueDate,
-        invoice.Status,
-        invoice.Total,
-        invoice.Lines.Select(ConvertToDto).ToList());
+    private static InvoiceDto ConvertToDto(InvoiceReadModel invoice)
+    {
+        return new InvoiceDto(
+            invoice.InvoiceId,
+            invoice.ContractId,
+            invoice.RoomCode,
+            invoice.PropertyName,
+            invoice.CustomerName,
+            invoice.InvoiceMonth,
+            invoice.DueDate,
+            invoice.Status,
+            invoice.Total,
+            invoice.Lines.Select(ConvertToDto).ToList());
+    }
 
-    private static InvoiceLineDto ConvertToDto(InvoiceDetails detail) => new(
-        detail.ItemType, detail.Description, detail.Quantity, detail.UnitPrice, detail.UnitCode, detail.Amount);
+    private static InvoiceLineDto ConvertToDto(InvoiceDetails detail)
+    {
+        return new InvoiceLineDto(
+            detail.ItemType, detail.Description, detail.Quantity, detail.UnitPrice, detail.UnitCode, detail.Amount);
+    }
 
-    private static InvoiceLineDto ConvertToDto(InvoiceLineReadModel line) => new(
-        line.ItemType, line.Description, line.Quantity, line.UnitPrice, line.UnitCode, line.Amount);
+    private static InvoiceLineDto ConvertToDto(InvoiceLineReadModel line)
+    {
+        return new InvoiceLineDto(
+            line.ItemType, line.Description, line.Quantity, line.UnitPrice, line.UnitCode, line.Amount);
+    }
 
-    private static string Period(DateOnly month) => month.ToString("MM/yyyy", CultureInfo.InvariantCulture);
+    private static string Period(DateOnly month)
+    {
+        return month.ToString("MM/yyyy", CultureInfo.InvariantCulture);
+    }
 
-    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role) =>
-        AccessScope.For(userId, role) ?? throw new InvoiceAuthorizationException("Your role cannot access invoices.");
+    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role)
+    {
+        var scope = AccessScope.For(userId, role);
+        if (scope is null)
+        {
+            throw new InvoiceAuthorizationException("Your role cannot access invoices.");
+        }
+        return scope.Value;
+    }
 }
 
 public sealed class InvoiceNotFoundException(string message) : Exception(message);

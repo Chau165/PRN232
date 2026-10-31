@@ -26,7 +26,7 @@ public static class PublicAreaNameNormalizer
         ["p"]
     ];
 
-    private static readonly HashSet<string> Suffixes = new(StringComparer.Ordinal)
+    private static readonly HashSet<string> Suffixes = new HashSet<string>(StringComparer.Ordinal)
     {
         "city", "province", "district", "ward"
     };
@@ -47,8 +47,18 @@ public static class PublicAreaNameNormalizer
                 continue;
             }
 
-            var normalizedCharacter = character == 'đ' ? 'd' : character;
-            characters.Append(char.IsLetterOrDigit(normalizedCharacter) ? normalizedCharacter : ' ');
+            var normalizedCharacter = character;
+            if (character == 'đ')
+            {
+                normalizedCharacter = 'd';
+            }
+
+            var outputCharacter = ' ';
+            if (char.IsLetterOrDigit(normalizedCharacter))
+            {
+                outputCharacter = normalizedCharacter;
+            }
+            characters.Append(outputCharacter);
         }
 
         var tokens = characters.ToString()

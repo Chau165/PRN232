@@ -28,8 +28,11 @@ public class UtilityReadingService : IUtilityReadingService
             throw new UtilityReadingAuthorizationException("Only property managers can record meter readings.");
         }
 
-        var contract = await _repository.GetContractAsync(dto.ContractId)
-            ?? throw new UtilityReadingNotFoundException("Contract does not exist.");
+        var contract = await _repository.GetContractAsync(dto.ContractId);
+        if (contract is null)
+        {
+            throw new UtilityReadingNotFoundException("Contract does not exist.");
+        }
         if (role == RoleNames.Manager && contract.OwnerId != userId)
         {
             throw new UtilityReadingAuthorizationException("You cannot record readings for this contract.");
@@ -48,10 +51,33 @@ public class UtilityReadingService : IUtilityReadingService
         {
             throw new UtilityReadingConflictException("A reading for this or a later month already exists.");
         }
-        var electricStart = latest?.ElectricEnd ?? dto.ElectricStart
-            ?? throw new UtilityReadingBusinessRuleException("The first reading of a contract needs the starting meter values.");
-        var waterStart = latest?.WaterEnd ?? dto.WaterStart
-            ?? throw new UtilityReadingBusinessRuleException("The first reading of a contract needs the starting meter values.");
+        decimal electricStart;
+        if (latest is not null)
+        {
+            electricStart = latest.ElectricEnd;
+        }
+        else if (dto.ElectricStart.HasValue)
+        {
+            electricStart = dto.ElectricStart.Value;
+        }
+        else
+        {
+            throw new UtilityReadingBusinessRuleException("The first reading of a contract needs the starting meter values.");
+        }
+
+        decimal waterStart;
+        if (latest is not null)
+        {
+            waterStart = latest.WaterEnd;
+        }
+        else if (dto.WaterStart.HasValue)
+        {
+            waterStart = dto.WaterStart.Value;
+        }
+        else
+        {
+            throw new UtilityReadingBusinessRuleException("The first reading of a contract needs the starting meter values.");
+        }
         if (electricStart < 0 || waterStart < 0)
         {
             throw new UtilityReadingBusinessRuleException("Meter values cannot be negative.");
@@ -69,8 +95,11 @@ public class UtilityReadingService : IUtilityReadingService
             throw new UtilityReadingConflictException("A reading for this or a later month already exists.");
         }
 
-        var created = await _repository.GetByIdAsync(reading.ReadingId, null, null)
-            ?? throw new InvalidOperationException("Created reading was not found.");
+        var created = await _repository.GetByIdAsync(reading.ReadingId, null, null);
+        if (created is null)
+        {
+            throw new InvalidOperationException("Created reading was not found.");
+        }
         return ConvertToDto(created);
     }
 
@@ -89,7 +118,11 @@ public class UtilityReadingService : IUtilityReadingService
         {
             throw new UtilityReadingAuthorizationException("You cannot access this reading.");
         }
-        return reading is null ? null : ConvertToDto(reading);
+        if (reading is null)
+        {
+            return null;
+        }
+        return ConvertToDto(reading);
     }
 
     private void EnsureValidMonth(DateOnly month, ReadingContractReadModel contract)
@@ -124,22 +157,32 @@ public class UtilityReadingService : IUtilityReadingService
         };
     }
 
-    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role) =>
-        AccessScope.For(userId, role) ?? throw new UtilityReadingAuthorizationException("Your role cannot access readings.");
+    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role)
+    {
+        var scope = AccessScope.For(userId, role);
+        if (scope is null)
+        {
+            throw new UtilityReadingAuthorizationException("Your role cannot access readings.");
+        }
+        return scope.Value;
+    }
 
-    private static UtilityReadingDto ConvertToDto(UtilityReadingReadModel reading) => new(
-        reading.ReadingId,
-        reading.ContractId,
-        reading.RoomCode,
-        reading.PropertyName,
-        reading.CustomerName,
-        reading.ReadingMonth,
-        reading.ElectricStart,
-        reading.ElectricEnd,
-        reading.ElectricUsage,
-        reading.WaterStart,
-        reading.WaterEnd,
-        reading.WaterUsage);
+    private static UtilityReadingDto ConvertToDto(UtilityReadingReadModel reading)
+    {
+        return new UtilityReadingDto(
+            reading.ReadingId,
+            reading.ContractId,
+            reading.RoomCode,
+            reading.PropertyName,
+            reading.CustomerName,
+            reading.ReadingMonth,
+            reading.ElectricStart,
+            reading.ElectricEnd,
+            reading.ElectricUsage,
+            reading.WaterStart,
+            reading.WaterEnd,
+            reading.WaterUsage);
+    }
 }
 
 public sealed class UtilityReadingNotFoundException(string message) : Exception(message);

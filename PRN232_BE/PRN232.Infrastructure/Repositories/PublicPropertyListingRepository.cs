@@ -20,13 +20,15 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
         _context = context;
     }
 
-    public async Task<bool> AmenityIdsExistAsync(int[] amenityIds, CancellationToken cancellationToken) =>
-        await _context.Amenities
+    public async Task<bool> AmenityIdsExistAsync(int[] amenityIds, CancellationToken cancellationToken)
+    {
+        return await _context.Amenities
             .AsNoTracking()
             .Where(amenity => amenityIds.Contains(amenity.AmenityId))
             .Select(amenity => amenity.AmenityId)
             .Distinct()
             .CountAsync(cancellationToken) == amenityIds.Length;
+    }
 
     public async Task<PublicPropertyPageReadModel> GetPageAsync(
         PublicPropertySearchCriteria criteria,
@@ -204,15 +206,19 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
     public Task<PublicPropertyDetailReadModel?> GetDetailAsync(
         int propertyId,
         DateTimeOffset asOfUtc,
-        CancellationToken cancellationToken) =>
-        GetDetailCoreAsync(propertyId, asOfUtc, false, null, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        return GetDetailCoreAsync(propertyId, asOfUtc, false, null, cancellationToken);
+    }
 
     public Task<PublicPropertyDetailReadModel?> GetEnrichedDetailAsync(
         int propertyId,
         DateTimeOffset asOfUtc,
         DateOnly currentMonthStart,
-        CancellationToken cancellationToken) =>
-        GetDetailCoreAsync(propertyId, asOfUtc, true, currentMonthStart, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        return GetDetailCoreAsync(propertyId, asOfUtc, true, currentMonthStart, cancellationToken);
+    }
 
     private async Task<PublicPropertyDetailReadModel?> GetDetailCoreAsync(
         int propertyId,

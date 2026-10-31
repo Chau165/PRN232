@@ -22,7 +22,11 @@ public class RoleService : IRoleService
     public async Task<RoleDto?> GetByIdAsync(int id)
     {
         var role = await _repository.GetByIdAsync(id);
-        return role is null ? null : ConvertToDto(role);
+        if (role is null)
+        {
+            return null;
+        }
+        return ConvertToDto(role);
     }
 
     public async Task<RoleDto> CreateAsync(CreateRoleDto dto)

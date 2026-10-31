@@ -4,7 +4,10 @@ namespace PRN232.Infrastructure.Security;
 
 public class BCryptPasswordHasher : IPasswordHasher
 {
-    public string Hash(string password) => BCrypt.Net.BCrypt.HashPassword(password);
+    public string Hash(string password)
+    {
+        return BCrypt.Net.BCrypt.HashPassword(password);
+    }
 
     public bool Verify(string password, string passwordHash)
     {

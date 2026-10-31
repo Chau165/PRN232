@@ -49,7 +49,11 @@ public class ContractsController : ControllerBase
         try
         {
             var contract = await _contractService.GetByIdAsync(id, userId, role);
-            return contract is null ? NotFound() : Ok(contract);
+            if (contract is null)
+            {
+                return NotFound();
+            }
+            return Ok(contract);
         }
         catch (ContractAuthorizationException exception)
         {
@@ -99,6 +103,8 @@ public class ContractsController : ControllerBase
         return _currentUser.IsAuthenticated && userId > 0 && role.Length > 0;
     }
 
-    private ObjectResult ForbidWithProblem(string detail) =>
-        StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = detail });
+    private ObjectResult ForbidWithProblem(string detail)
+    {
+        return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = detail });
+    }
 }

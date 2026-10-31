@@ -16,24 +16,26 @@ public class InvoiceRepository : IInvoiceRepository
         _context = context;
     }
 
-    public Task<InvoiceContractReadModel?> GetContractAsync(int contractId) =>
-        _context.Contracts
+    public Task<InvoiceContractReadModel?> GetContractAsync(int contractId)
+    {
+        return _context.Contracts
             .AsNoTracking()
             .Where(contract => contract.ContractId == contractId)
             .Select(contract => new InvoiceContractReadModel(
-                contract.ContractId,
-                contract.Room!.Property!.OwnerId,
-                contract.CustomerId,
-                contract.Customer!.FullName,
-                contract.Room.RoomCode,
-                contract.Room.PropertyId,
-                contract.Room.Property.PropertyName,
-                contract.Room.RoomTypeId,
-                contract.MonthlyRent,
-                contract.Status,
-                contract.StartDate,
-                contract.EndDate))
+            contract.ContractId,
+            contract.Room!.Property!.OwnerId,
+            contract.CustomerId,
+            contract.Customer!.FullName,
+            contract.Room.RoomCode,
+            contract.Room.PropertyId,
+            contract.Room.Property.PropertyName,
+            contract.Room.RoomTypeId,
+            contract.MonthlyRent,
+            contract.Status,
+            contract.StartDate,
+            contract.EndDate))
             .FirstOrDefaultAsync();
+    }
 
     // Dịch vụ lấy theo loại phòng (giống danh sách dịch vụ trên trang phòng), giá lấy theo khu trọ
     // với cùng điều kiện hiệu lực mà trang công khai dùng. Ghép trong bộ nhớ để chạy được cả trên SQLite.
@@ -78,8 +80,10 @@ public class InvoiceRepository : IInvoiceRepository
             : new MonthUsageReadModel(reading.ElectricEnd - reading.ElectricStart, reading.WaterEnd - reading.WaterStart);
     }
 
-    public Task<bool> ExistsForMonthAsync(int contractId, DateOnly month) =>
-        _context.Invoices.AnyAsync(invoice => invoice.ContractId == contractId && invoice.InvoiceMonth == month);
+    public Task<bool> ExistsForMonthAsync(int contractId, DateOnly month)
+    {
+        return _context.Invoices.AnyAsync(invoice => invoice.ContractId == contractId && invoice.InvoiceMonth == month);
+    }
 
     public async Task<bool> AddIfAbsentAsync(Invoices invoice, Notifications customerNotification)
     {
@@ -121,8 +125,10 @@ public class InvoiceRepository : IInvoiceRepository
         return invoice is null ? null : WithTotal(invoice);
     }
 
-    public Task<bool> ExistsAsync(int invoiceId) =>
-        _context.Invoices.AnyAsync(invoice => invoice.InvoiceId == invoiceId);
+    public Task<bool> ExistsAsync(int invoiceId)
+    {
+        return _context.Invoices.AnyAsync(invoice => invoice.InvoiceId == invoiceId);
+    }
 
     public async Task<InvoicePaymentReadModel?> GetForPaymentAsync(int invoiceId)
     {
@@ -168,14 +174,17 @@ public class InvoiceRepository : IInvoiceRepository
     }
 
     // Lọc dùng chung cho GetById và GetAll; tham số nào null thì không lọc theo tiêu chí đó.
-    private IQueryable<Invoices> InScope(int? customerId, int? ownerId) =>
-        _context.Invoices
+    private IQueryable<Invoices> InScope(int? customerId, int? ownerId)
+    {
+        return _context.Invoices
             .AsNoTracking()
             .Where(invoice => customerId == null || invoice.Contract!.CustomerId == customerId)
             .Where(invoice => ownerId == null || invoice.Contract!.Room!.Property!.OwnerId == ownerId);
+    }
 
-    private static IQueryable<InvoiceReadModel> Project(IQueryable<Invoices> invoices) =>
-        invoices.Select(invoice => new InvoiceReadModel(
+    private static IQueryable<InvoiceReadModel> Project(IQueryable<Invoices> invoices)
+    {
+        return invoices.Select(invoice => new InvoiceReadModel(
             invoice.InvoiceId,
             invoice.ContractId,
             invoice.Contract!.Room!.RoomCode,
@@ -186,15 +195,18 @@ public class InvoiceRepository : IInvoiceRepository
             invoice.Status,
             0m,
             invoice.InvoiceDetails
-                .OrderBy(detail => detail.InvoiceDetailId)
-                .Select(detail => new InvoiceLineReadModel(
-                    detail.ItemType, detail.Description, detail.Quantity, detail.UnitPrice, detail.UnitCode, detail.Amount))
-                .ToList()));
+            .OrderBy(detail => detail.InvoiceDetailId)
+            .Select(detail => new InvoiceLineReadModel(
+            detail.ItemType, detail.Description, detail.Quantity, detail.UnitPrice, detail.UnitCode, detail.Amount))
+            .ToList()));
+    }
 
     // Tổng tiền cộng trong bộ nhớ: bảng Invoices không có cột tổng, và SQLite không cộng được kiểu decimal.
-    private static InvoiceReadModel WithTotal(InvoiceReadModel invoice) =>
-        invoice with
+    private static InvoiceReadModel WithTotal(InvoiceReadModel invoice)
+    {
+        return invoice with
         {
             Total = invoice.Lines.Sum(line => line.Amount)
         };
+    }
 }

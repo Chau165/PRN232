@@ -18,15 +18,19 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
         _context = context;
     }
 
-    public Task<ViewingRoomReadModel?> GetRoomAsync(int roomId) =>
-        _context.Rooms
+    public Task<ViewingRoomReadModel?> GetRoomAsync(int roomId)
+    {
+        return _context.Rooms
             .AsNoTracking()
             .Where(room => room.RoomId == roomId)
             .Select(room => new ViewingRoomReadModel(room.RoomId, room.RoomCode, room.Property!.OwnerId))
             .FirstOrDefaultAsync();
+    }
 
-    public Task<bool> IsRoomRentableAsync(int roomId, DateTimeOffset asOfUtc) =>
-        RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc).AnyAsync(room => room.RoomId == roomId);
+    public Task<bool> IsRoomRentableAsync(int roomId, DateTimeOffset asOfUtc)
+    {
+        return RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc).AnyAsync(room => room.RoomId == roomId);
+    }
 
     // Yêu cầu còn "mở" khi đang chờ hoặc đã hẹn mà chưa tới giờ; lịch đã qua giờ thì cho đặt lại.
     public Task<bool> HasOpenRequestAsync(int customerId, int roomId, DateTimeOffset asOfUtc)
@@ -46,21 +50,27 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
         await _context.SaveChangesAsync();
     }
 
-    public Task<List<ViewingScheduleReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status) =>
-        InScope(customerId, ownerId)
+    public Task<List<ViewingScheduleReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status)
+    {
+        return InScope(customerId, ownerId)
             .Where(viewing => status == null || viewing.Status == status)
             .OrderByDescending(viewing => viewing.ViewingId)
             .Select(ToReadModel)
             .ToListAsync();
+    }
 
-    public Task<ViewingScheduleReadModel?> GetByIdAsync(int viewingId, int? customerId, int? ownerId) =>
-        InScope(customerId, ownerId)
+    public Task<ViewingScheduleReadModel?> GetByIdAsync(int viewingId, int? customerId, int? ownerId)
+    {
+        return InScope(customerId, ownerId)
             .Where(viewing => viewing.ViewingId == viewingId)
             .Select(ToReadModel)
             .FirstOrDefaultAsync();
+    }
 
-    public Task<bool> ExistsAsync(int viewingId) =>
-        _context.ViewingSchedules.AnyAsync(viewing => viewing.ViewingId == viewingId);
+    public Task<bool> ExistsAsync(int viewingId)
+    {
+        return _context.ViewingSchedules.AnyAsync(viewing => viewing.ViewingId == viewingId);
+    }
 
     public async Task<bool> DecideAsync(
         int viewingId, string status, DateTime? scheduledAtUtc, Notifications customerNotification)
@@ -85,11 +95,13 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
     }
 
     // Lọc dùng chung cho GetById và GetAll; tham số nào null thì không lọc theo tiêu chí đó.
-    private IQueryable<ViewingSchedules> InScope(int? customerId, int? ownerId) =>
-        _context.ViewingSchedules
+    private IQueryable<ViewingSchedules> InScope(int? customerId, int? ownerId)
+    {
+        return _context.ViewingSchedules
             .AsNoTracking()
             .Where(viewing => customerId == null || viewing.CustomerId == customerId)
             .Where(viewing => ownerId == null || viewing.Room!.Property!.OwnerId == ownerId);
+    }
 
     private static readonly Expression<Func<ViewingSchedules, ViewingScheduleReadModel>> ToReadModel =
         viewing => new ViewingScheduleReadModel(

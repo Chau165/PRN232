@@ -6,12 +6,17 @@ public static class MaintenanceRequestStatuses
     public const string Approved = "Approved";
     public const string Completed = "Completed";
 
-    public static bool IsValid(string status) => status is Pending or Approved or Completed;
+    public static bool IsValid(string status)
+    {
+        return status is Pending or Approved or Completed;
+    }
 
-    public static bool IsAllowedTransition(string current, string target) =>
-        (current, target) is
+    public static bool IsAllowedTransition(string current, string target)
+    {
+        return (current, target) is
             (Pending, Approved) or
             (Approved, Completed);
+    }
 }
 
 public class MaintenanceBusinessRuleException(string message) : Exception(message);

@@ -54,7 +54,11 @@ public class InvoiceComplaintsController : ControllerBase
         try
         {
             var complaint = await _complaintService.GetByIdAsync(id, userId, role);
-            return complaint is null ? NotFound() : Ok(complaint);
+            if (complaint is null)
+            {
+                return NotFound();
+            }
+            return Ok(complaint);
         }
         catch (ComplaintAuthorizationException exception)
         {
@@ -121,6 +125,8 @@ public class InvoiceComplaintsController : ControllerBase
         return _currentUser.IsAuthenticated && userId > 0 && role.Length > 0;
     }
 
-    private ObjectResult ForbidWithProblem(string detail) =>
-        StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = detail });
+    private ObjectResult ForbidWithProblem(string detail)
+    {
+        return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = detail });
+    }
 }

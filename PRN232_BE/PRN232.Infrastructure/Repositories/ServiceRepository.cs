@@ -14,20 +14,26 @@ public class ServiceRepository : IServiceRepository
         _context = context;
     }
 
-    public Task<List<Entities.Service>> GetAllAsync() =>
-        _context.Services
+    public Task<List<Entities.Service>> GetAllAsync()
+    {
+        return _context.Services
             .AsNoTracking()
             .OrderBy(s => s.Name)
             .ToListAsync();
+    }
 
-    public Task<Entities.Service?> GetByIdAsync(int id) =>
-        _context.Services
+    public Task<Entities.Service?> GetByIdAsync(int id)
+    {
+        return _context.Services
             .AsNoTracking()
             .Where(s => s.ServiceId == id)
             .FirstOrDefaultAsync();
+    }
 
-    public Task<Entities.Service?> GetTrackedByIdAsync(int id) =>
-        _context.Services.FirstOrDefaultAsync(s => s.ServiceId == id);
+    public Task<Entities.Service?> GetTrackedByIdAsync(int id)
+    {
+        return _context.Services.FirstOrDefaultAsync(s => s.ServiceId == id);
+    }
 
     public async Task<Entities.Service> AddAsync(Entities.Service service)
     {
@@ -35,7 +41,13 @@ public class ServiceRepository : IServiceRepository
         return service;
     }
 
-    public void Remove(Entities.Service service) => _context.Services.Remove(service);
+    public void Remove(Entities.Service service)
+    {
+        _context.Services.Remove(service);
+    }
 
-    public Task SaveChangesAsync() => _context.SaveChangesAsync();
+    public Task SaveChangesAsync()
+    {
+        return _context.SaveChangesAsync();
+    }
 }

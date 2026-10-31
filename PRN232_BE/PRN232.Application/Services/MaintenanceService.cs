@@ -32,26 +32,45 @@ public class MaintenanceService : IMaintenanceService
         {
             throw new MaintenanceBusinessRuleException("Status must be Pending, Approved, or Completed.");
         }
-        var requests = await _repository.GetAllAsync(
-            role == RoleNames.Customer ? userId : null,
-            role == RoleNames.Manager ? userId : null,
-            status,
-            assignedTo);
+        int? customerId = null;
+        if (role == RoleNames.Customer)
+        {
+            customerId = userId;
+        }
+        int? assignedManagerId = null;
+        if (role == RoleNames.Manager)
+        {
+            assignedManagerId = userId;
+        }
+
+        var requests = await _repository.GetAllAsync(customerId, assignedManagerId, status, assignedTo);
         return requests.Select(ConvertToDto).ToList();
     }
 
     public async Task<MaintenanceRequestDto?> GetByIdAsync(int id, int userId, string role)
     {
         EnsureKnownRole(role);
-        int? customerId = role == RoleNames.Customer ? userId : null;
-        int? assignedManagerId = role == RoleNames.Manager ? userId : null;
+        int? customerId = null;
+        if (role == RoleNames.Customer)
+        {
+            customerId = userId;
+        }
+        int? assignedManagerId = null;
+        if (role == RoleNames.Manager)
+        {
+            assignedManagerId = userId;
+        }
         var request = await _repository.GetByIdAsync(id, customerId, assignedManagerId);
         if (request is null && await _repository.RequestExistsAsync(id) &&
             (customerId.HasValue || assignedManagerId.HasValue))
         {
             throw new MaintenanceAuthorizationException("You cannot access this maintenance request.");
         }
-        return request is null ? null : ConvertToDto(request);
+        if (request is null)
+        {
+            return null;
+        }
+        return ConvertToDto(request);
     }
 
     public async Task<MaintenanceRequestDto> CreateAsync(CreateMaintenanceRequestDto dto, int customerId)
@@ -88,8 +107,11 @@ public class MaintenanceService : IMaintenanceService
                 [customerId], $"Bạn đã gửi yêu cầu sửa chữa #{requestId} cho phòng {contract.RoomCode}. Yêu cầu đang chờ duyệt."))
             .ToArray());
 
-        var created = await _repository.GetByIdAsync(request.RequestId, customerId, null)
-            ?? throw new InvalidOperationException("Created maintenance request was not found.");
+        var created = await _repository.GetByIdAsync(request.RequestId, customerId, null);
+        if (created is null)
+        {
+            throw new InvalidOperationException("Created maintenance request was not found.");
+        }
         return ConvertToDto(created);
     }
 
@@ -129,16 +151,21 @@ public class MaintenanceService : IMaintenanceService
             throw new MaintenanceAssigneeException("Assignee must be an active Manager.");
         }
 
-        var assignmentNote = string.IsNullOrWhiteSpace(dto.AssignmentNote)
-            ? null
-            : dto.AssignmentNote.Trim();
+        string? assignmentNote = null;
+        if (!string.IsNullOrWhiteSpace(dto.AssignmentNote))
+        {
+            assignmentNote = dto.AssignmentNote.Trim();
+        }
         if (assignmentNote?.Length > 1000)
         {
             throw new MaintenanceBusinessRuleException("Assignment note must not exceed 1000 characters.");
         }
 
-        var contract = await _repository.GetContractAsync(request.ContractId)
-            ?? throw new MaintenanceNotFoundException("Contract does not exist.");
+        var contract = await _repository.GetContractAsync(request.ContractId);
+        if (contract is null)
+        {
+            throw new MaintenanceNotFoundException("Contract does not exist.");
+        }
         ValidateContractDate(contract);
         if (request.EquipmentId is int equipmentId)
         {
@@ -160,14 +187,26 @@ public class MaintenanceService : IMaintenanceService
         }
 
         var updatedRequest = await _repository.GetByIdAsync(id, null, null);
-        return updatedRequest is null ? null : ConvertToDto(updatedRequest);
+        if (updatedRequest is null)
+        {
+            return null;
+        }
+        return ConvertToDto(updatedRequest);
     }
 
     public async Task<List<MaintenanceLogDto>?> GetLogsAsync(int id, int userId, string role)
     {
         EnsureKnownRole(role);
-        int? customerId = role == RoleNames.Customer ? userId : null;
-        int? assignedManagerId = role == RoleNames.Manager ? userId : null;
+        int? customerId = null;
+        if (role == RoleNames.Customer)
+        {
+            customerId = userId;
+        }
+        int? assignedManagerId = null;
+        if (role == RoleNames.Manager)
+        {
+            assignedManagerId = userId;
+        }
         var logs = await _repository.GetLogsAsync(id, customerId, assignedManagerId);
         if (logs is null && await _repository.RequestExistsAsync(id) &&
             (customerId.HasValue || assignedManagerId.HasValue))
@@ -218,12 +257,21 @@ public class MaintenanceService : IMaintenanceService
             throw new MaintenanceStatusTransitionException("A completion report already exists for this request.");
         }
 
-        var requestDetails = await _repository.GetByIdAsync(id, null, null)
-            ?? throw new MaintenanceNotFoundException("Maintenance request does not exist.");
+        var requestDetails = await _repository.GetByIdAsync(id, null, null);
+        if (requestDetails is null)
+        {
+            throw new MaintenanceNotFoundException("Maintenance request does not exist.");
+        }
         var approvingAdminId = await _repository.GetApprovingAdminIdAsync(id);
-        var adminRecipients = approvingAdminId.HasValue
-            ? [approvingAdminId.Value]
-            : await _notificationService.GetActiveAdminUserIdsAsync();
+        List<int> adminRecipients;
+        if (approvingAdminId.HasValue)
+        {
+            adminRecipients = [approvingAdminId.Value];
+        }
+        else
+        {
+            adminRecipients = await _notificationService.GetActiveAdminUserIdsAsync();
+        }
         var completionNotifications = _notificationService.BuildMaintenanceNotifications(
                 [requestDetails.CustomerId], $"Yêu cầu bảo trì #{id} - Phòng {requestDetails.RoomCode} đã hoàn tất")
             .Concat(_notificationService.BuildMaintenanceNotifications(
@@ -248,8 +296,11 @@ public class MaintenanceService : IMaintenanceService
             }
             databaseCommitted = true;
 
-            var createdReport = await _repository.GetReportAsync(id)
-                ?? throw new InvalidOperationException("Created maintenance report was not found.");
+            var createdReport = await _repository.GetReportAsync(id);
+            if (createdReport is null)
+            {
+                throw new InvalidOperationException("Created maintenance report was not found.");
+            }
             return await AddReadUrlsAsync(createdReport);
         }
         catch
@@ -260,7 +311,10 @@ public class MaintenanceService : IMaintenanceService
                 {
                     await _imageStorage.DeleteAsync(path);
                 }
-                catch { }
+                catch
+                {
+                    // Cleanup is best-effort so the original failure remains the one returned.
+                }
             }
             throw;
         }
@@ -401,37 +455,49 @@ public class MaintenanceService : IMaintenanceService
     }
 
     private static MaintenanceReportDto ConvertToDto(
-        MaintenanceReportReadModel report, IReadOnlyList<MaintenanceReportImageDto> images) => new(
-        report.ReportId, report.RequestId, report.Description, report.ReportedBy,
-        report.ReportedByName, report.CreatedAt, images);
+        MaintenanceReportReadModel report, IReadOnlyList<MaintenanceReportImageDto> images)
+    {
+        return new MaintenanceReportDto(
+            report.ReportId, report.RequestId, report.Description, report.ReportedBy,
+            report.ReportedByName, report.CreatedAt, images);
+    }
 
     private static MaintenanceReportImageDto ConvertToDto(
-        MaintenanceReportImageReadModel image, string readUrl) => new(image.ImageId, readUrl);
+        MaintenanceReportImageReadModel image, string readUrl)
+    {
+        return new MaintenanceReportImageDto(image.ImageId, readUrl);
+    }
 
-    private static MaintenanceRequestDto ConvertToDto(MaintenanceRequestReadModel request) => new(
-        request.RequestId,
-        request.Description,
-        request.Status,
-        request.ContractId,
-        request.CustomerId,
-        request.CustomerName,
-        request.RoomId,
-        request.RoomCode,
-        request.EquipmentId,
-        request.EquipmentName,
-        request.EquipmentStatus,
-        request.AssignedTo,
-        request.AssignedStaffName,
-        request.AssignmentNote);
+    private static MaintenanceRequestDto ConvertToDto(MaintenanceRequestReadModel request)
+    {
+        return new MaintenanceRequestDto(
+            request.RequestId,
+            request.Description,
+            request.Status,
+            request.ContractId,
+            request.CustomerId,
+            request.CustomerName,
+            request.RoomId,
+            request.RoomCode,
+            request.EquipmentId,
+            request.EquipmentName,
+            request.EquipmentStatus,
+            request.AssignedTo,
+            request.AssignedStaffName,
+            request.AssignmentNote);
+    }
 
-    private static MaintenanceLogDto ConvertToDto(MaintenanceLogReadModel log) => new(
-        log.LogId,
-        log.RequestId,
-        log.OldStatus,
-        log.NewStatus,
-        log.ChangedBy,
-        log.ChangedByName,
-        log.ChangedAt);
+    private static MaintenanceLogDto ConvertToDto(MaintenanceLogReadModel log)
+    {
+        return new MaintenanceLogDto(
+            log.LogId,
+            log.RequestId,
+            log.OldStatus,
+            log.NewStatus,
+            log.ChangedBy,
+            log.ChangedByName,
+            log.ChangedAt);
+    }
 }
 
 public sealed class MaintenanceAuthorizationException(string message) : Exception(message);

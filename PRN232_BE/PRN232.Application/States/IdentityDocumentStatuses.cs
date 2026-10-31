@@ -10,6 +10,8 @@ public static class IdentityDocumentStatuses
 
     // Chỉ duyệt được khi đang Pending — đã Approved/Rejected rồi thì không đổi nữa
     // (muốn nộp lại thì phải submit hồ sơ mới).
-    public static bool IsAllowedTransition(string current, string target) =>
-        current == Pending && ReviewTargets.Contains(target);
+    public static bool IsAllowedTransition(string current, string target)
+    {
+        return current == Pending && ReviewTargets.Contains(target);
+    }
 }

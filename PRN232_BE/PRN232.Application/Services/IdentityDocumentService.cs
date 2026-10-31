@@ -30,7 +30,11 @@ public class IdentityDocumentService : IIdentityDocumentService
     public async Task<IdentityDocumentDto?> GetByIdAsync(int id)
     {
         var document = await _repository.GetByIdAsync(id);
-        return document is null ? null : ConvertToDto(document);
+        if (document is null)
+        {
+            return null;
+        }
+        return ConvertToDto(document);
     }
 
     public async Task<IdentityDocumentDto> SubmitAsync(SubmitIdentityDocumentDto dto, int customerId)
@@ -77,7 +81,11 @@ public class IdentityDocumentService : IIdentityDocumentService
 
         await _repository.SaveChangesAsync();
         var updated = await _repository.GetByIdAsync(id);
-        return updated is null ? null : ConvertToDto(updated);
+        if (updated is null)
+        {
+            return null;
+        }
+        return ConvertToDto(updated);
     }
 
     private static DomainIdentityDocument CreateIdentityDocumentEntity(int customerId, string cccdNumber, string status)
@@ -104,8 +112,12 @@ public class IdentityDocumentService : IIdentityDocumentService
 
     private async Task<IdentityDocumentReadModel> GetDocumentResponseAsync(int documentId)
     {
-        return await _repository.GetByIdAsync(documentId)
-            ?? throw new InvalidOperationException("Created identity document was not found.");
+        var document = await _repository.GetByIdAsync(documentId);
+        if (document is null)
+        {
+            throw new InvalidOperationException("Created identity document was not found.");
+        }
+        return document;
     }
 }
 

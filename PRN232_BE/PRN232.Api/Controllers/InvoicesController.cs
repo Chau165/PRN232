@@ -54,7 +54,11 @@ public class InvoicesController : ControllerBase
         try
         {
             var invoice = await _invoiceService.GetByIdAsync(id, userId, role);
-            return invoice is null ? NotFound() : Ok(invoice);
+            if (invoice is null)
+            {
+                return NotFound();
+            }
+            return Ok(invoice);
         }
         catch (InvoiceAuthorizationException exception)
         {
@@ -154,6 +158,8 @@ public class InvoicesController : ControllerBase
         return _currentUser.IsAuthenticated && userId > 0 && role.Length > 0;
     }
 
-    private ObjectResult ForbidWithProblem(string detail) =>
-        StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = detail });
+    private ObjectResult ForbidWithProblem(string detail)
+    {
+        return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = detail });
+    }
 }

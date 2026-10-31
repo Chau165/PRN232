@@ -18,21 +18,23 @@ public class ContractRepository : IContractRepository
         _context = context;
     }
 
-    public Task<ContractBookingReadModel?> GetBookingAsync(int bookingId) =>
-        _context.Bookings
+    public Task<ContractBookingReadModel?> GetBookingAsync(int bookingId)
+    {
+        return _context.Bookings
             .AsNoTracking()
             .Where(booking => booking.BookingId == bookingId)
             .Select(booking => new ContractBookingReadModel(
-                booking.BookingId,
-                booking.RoomId,
-                booking.Room!.RoomCode,
-                booking.CustomerId,
-                booking.Room.Property!.OwnerId,
-                booking.Status,
-                booking.DepositAmount,
-                booking.Room.RoomType!.Price,
-                booking.Contract != null))
+            booking.BookingId,
+            booking.RoomId,
+            booking.Room!.RoomCode,
+            booking.CustomerId,
+            booking.Room.Property!.OwnerId,
+            booking.Status,
+            booking.DepositAmount,
+            booking.Room.RoomType!.Price,
+            booking.Contract != null))
             .FirstOrDefaultAsync();
+    }
 
     public async Task<bool> AddFromBookingAsync(Contracts contract, Notifications customerNotification)
     {
@@ -69,27 +71,35 @@ public class ContractRepository : IContractRepository
         return true;
     }
 
-    public Task<List<ContractReadModel>> GetAllAsync(int? customerId, int? ownerId) =>
-        InScope(customerId, ownerId)
+    public Task<List<ContractReadModel>> GetAllAsync(int? customerId, int? ownerId)
+    {
+        return InScope(customerId, ownerId)
             .OrderByDescending(contract => contract.ContractId)
             .Select(ToReadModel)
             .ToListAsync();
+    }
 
-    public Task<ContractReadModel?> GetByIdAsync(int contractId, int? customerId, int? ownerId) =>
-        InScope(customerId, ownerId)
+    public Task<ContractReadModel?> GetByIdAsync(int contractId, int? customerId, int? ownerId)
+    {
+        return InScope(customerId, ownerId)
             .Where(contract => contract.ContractId == contractId)
             .Select(ToReadModel)
             .FirstOrDefaultAsync();
+    }
 
-    public Task<bool> ExistsAsync(int contractId) =>
-        _context.Contracts.AnyAsync(contract => contract.ContractId == contractId);
+    public Task<bool> ExistsAsync(int contractId)
+    {
+        return _context.Contracts.AnyAsync(contract => contract.ContractId == contractId);
+    }
 
     // Lọc dùng chung cho GetById và GetAll; tham số nào null thì không lọc theo tiêu chí đó.
-    private IQueryable<Contracts> InScope(int? customerId, int? ownerId) =>
-        _context.Contracts
+    private IQueryable<Contracts> InScope(int? customerId, int? ownerId)
+    {
+        return _context.Contracts
             .AsNoTracking()
             .Where(contract => customerId == null || contract.CustomerId == customerId)
             .Where(contract => ownerId == null || contract.Room!.Property!.OwnerId == ownerId);
+    }
 
     private static readonly Expression<Func<Contracts, ContractReadModel>> ToReadModel = contract => new ContractReadModel(
         contract.ContractId,

@@ -6,19 +6,30 @@ using PRN232.Infrastructure.Data;
 
 namespace PRN232.Infrastructure.Repositories;
 
-public sealed class RentalRepository(AppDbContext context) : IRentalRepository
+public sealed class RentalRepository : IRentalRepository
 {
+    private readonly AppDbContext _context;
+
+    public RentalRepository(AppDbContext context)
+    {
+        _context = context;
+    }
+
     public async Task<IReadOnlyList<RentalReadModel>> GetCurrentRentalsAsync(
         int customerId,
         DateOnly today,
-        CancellationToken cancellationToken) =>
-        await GetRentalsAsync(customerId, today, history: false, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        return await GetRentalsAsync(customerId, today, history: false, cancellationToken);
+    }
 
     public async Task<IReadOnlyList<RentalReadModel>> GetRentalHistoryAsync(
         int customerId,
         DateOnly today,
-        CancellationToken cancellationToken) =>
-        await GetRentalsAsync(customerId, today, history: true, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        return await GetRentalsAsync(customerId, today, history: true, cancellationToken);
+    }
 
     private async Task<IReadOnlyList<RentalReadModel>> GetRentalsAsync(
         int customerId,
@@ -26,7 +37,7 @@ public sealed class RentalRepository(AppDbContext context) : IRentalRepository
         bool history,
         CancellationToken cancellationToken)
     {
-        var rentals = await context.Contracts
+        var rentals = await _context.Contracts
             .AsNoTracking()
             .Where(contract => contract.CustomerId == customerId &&
                 contract.Status == ContractStatuses.Active &&
@@ -60,14 +71,14 @@ public sealed class RentalRepository(AppDbContext context) : IRentalRepository
         }
 
         var roomIds = rentals.Select(rental => rental.RoomId).Distinct().ToArray();
-        var imageRows = await context.RoomImages
+        var imageRows = await _context.RoomImages
             .AsNoTracking()
             .Where(image => roomIds.Contains(image.RoomId))
             .OrderBy(image => image.RoomId)
             .ThenBy(image => image.RoomImageId)
             .Select(image => new RentalImageRow(image.RoomId, image.RoomImageId, image.ImageUrl, image.IsPrimary))
             .ToListAsync(cancellationToken);
-        var equipmentRows = await context.Equipments
+        var equipmentRows = await _context.Equipments
             .AsNoTracking()
             .Where(equipment => roomIds.Contains(equipment.RoomId))
             .OrderBy(equipment => equipment.RoomId)
@@ -76,7 +87,7 @@ public sealed class RentalRepository(AppDbContext context) : IRentalRepository
                 equipment.RoomId,
                 new RentalEquipmentReadModel(equipment.EquipmentId, equipment.Name, equipment.Status)))
             .ToListAsync(cancellationToken);
-        var amenityRows = await context.RoomAmenities
+        var amenityRows = await _context.RoomAmenities
             .AsNoTracking()
             .Where(link => roomIds.Contains(link.RoomId))
             .OrderBy(link => link.RoomId)

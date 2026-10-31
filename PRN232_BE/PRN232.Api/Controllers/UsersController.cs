@@ -22,15 +22,21 @@ public class UsersController : ControllerBase
     // roleId=2 để xem hết Manager).
     [HttpGet]
     [Authorize(Roles = "Admin")]
-    public async Task<ActionResult<IEnumerable<UserDto>>> GetAll([FromQuery] int? roleId) =>
-        Ok(await _userService.GetAllAsync(roleId));
+    public async Task<ActionResult<IEnumerable<UserDto>>> GetAll([FromQuery] int? roleId)
+    {
+        return Ok(await _userService.GetAllAsync(roleId));
+    }
 
     // GET /api/users/me — user tự xem profile của mình.
     [HttpGet("me")]
     public async Task<ActionResult<UserDto>> GetMe()
     {
         var user = await _userService.GetByIdAsync(CurrentUserId());
-        return user is null ? NotFound() : Ok(user);
+        if (user is null)
+        {
+            return NotFound();
+        }
+        return Ok(user);
     }
 
     // GET /api/users/{id} — Admin xem bất kỳ ai; user thường chỉ xem được chính mình.
@@ -44,7 +50,11 @@ public class UsersController : ControllerBase
         }
 
         var user = await _userService.GetByIdAsync(id);
-        return user is null ? NotFound() : Ok(user);
+        if (user is null)
+        {
+            return NotFound();
+        }
+        return Ok(user);
     }
 
     // POST /api/users — Admin tạo account Manager/Admin/Customer trực tiếp (gán role
@@ -83,7 +93,11 @@ public class UsersController : ControllerBase
         try
         {
             var updated = await _userService.UpdateRoleAsync(id, dto, CurrentUserId());
-            return updated is null ? NotFound() : Ok(updated);
+            if (updated is null)
+            {
+                return NotFound();
+            }
+            return Ok(updated);
         }
         catch (UserRoleNotFoundException exception)
         {
@@ -103,7 +117,11 @@ public class UsersController : ControllerBase
         try
         {
             var updated = await _userService.UpdateStatusAsync(id, dto, CurrentUserId());
-            return updated is null ? NotFound() : Ok(updated);
+            if (updated is null)
+            {
+                return NotFound();
+            }
+            return Ok(updated);
         }
         catch (UserCannotModifySelfException exception)
         {
@@ -118,7 +136,11 @@ public class UsersController : ControllerBase
         try
         {
             var updated = await _userService.UpdateProfileAsync(CurrentUserId(), dto, CurrentUserId());
-            return updated is null ? NotFound() : Ok(updated);
+            if (updated is null)
+            {
+                return NotFound();
+            }
+            return Ok(updated);
         }
         catch (UserValidationException exception)
         {
@@ -145,6 +167,13 @@ public class UsersController : ControllerBase
         }
     }
 
-    private int CurrentUserId() =>
-        int.Parse(User.FindFirst("sub")?.Value ?? throw new InvalidOperationException("Token thiếu claim 'sub'."));
+    private int CurrentUserId()
+    {
+        var subjectId = User.FindFirst("sub")?.Value;
+        if (subjectId is null)
+        {
+            throw new InvalidOperationException("Token thiếu claim 'sub'.");
+        }
+        return int.Parse(subjectId);
+    }
 }

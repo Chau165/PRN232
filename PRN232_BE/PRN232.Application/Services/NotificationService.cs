@@ -5,11 +5,18 @@ using PRN232.Domain.Entities;
 
 namespace PRN232.Application.Services;
 
-public class NotificationService(INotificationRepository repository) : INotificationService
+public class NotificationService : INotificationService
 {
+    private readonly INotificationRepository _repository;
+
+    public NotificationService(INotificationRepository repository)
+    {
+        _repository = repository;
+    }
+
     public async Task<List<NotificationDto>> GetAllAsync(int userId, bool? isRead, string? type)
     {
-        var notifications = await repository.GetByUserAsync(userId, isRead, type?.Trim());
+        var notifications = await _repository.GetByUserAsync(userId, isRead, type?.Trim());
         return notifications.Select(ConvertToDto).ToList();
     }
 
@@ -20,7 +27,7 @@ public class NotificationService(INotificationRepository repository) : INotifica
             throw new NotificationBusinessRuleException("IsRead is required.");
         }
 
-        var notification = await repository.GetByIdAsync(id);
+        var notification = await _repository.GetByIdAsync(id);
         if (notification is null)
         {
             throw new NotificationNotFoundException("Notification does not exist.");
@@ -31,14 +38,18 @@ public class NotificationService(INotificationRepository repository) : INotifica
         }
 
         notification.IsRead = isRead.Value;
-        await repository.SaveAsync();
+        await _repository.SaveAsync();
     }
 
-    public Task<List<int>> GetActiveAdminUserIdsAsync() => repository.GetActiveAdminUserIdsAsync();
+    public Task<List<int>> GetActiveAdminUserIdsAsync()
+    {
+        return _repository.GetActiveAdminUserIdsAsync();
+    }
 
     // Build schema-backed rows so the maintenance repository can save them atomically.
-    public IReadOnlyList<Notifications> BuildMaintenanceNotifications(IEnumerable<int> userIds, string title) =>
-        userIds.Distinct()
+    public IReadOnlyList<Notifications> BuildMaintenanceNotifications(IEnumerable<int> userIds, string title)
+    {
+        return userIds.Distinct()
             .Select(userId => new Notifications
             {
                 UserId = userId,
@@ -47,6 +58,7 @@ public class NotificationService(INotificationRepository repository) : INotifica
                 IsRead = false
             })
             .ToList();
+    }
 
     private static NotificationDto ConvertToDto(Notifications entity)
     {

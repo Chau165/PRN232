@@ -54,7 +54,11 @@ public class ViewingSchedulesController : ControllerBase
         try
         {
             var viewing = await _viewingService.GetByIdAsync(id, userId, role);
-            return viewing is null ? NotFound() : Ok(viewing);
+            if (viewing is null)
+            {
+                return NotFound();
+            }
+            return Ok(viewing);
         }
         catch (ViewingAuthorizationException exception)
         {
@@ -95,13 +99,17 @@ public class ViewingSchedulesController : ControllerBase
 
     [HttpPost("{id:int}/approve")]
     [Authorize(Roles = "Admin,Manager")]
-    public Task<ActionResult<ViewingScheduleDto>> Approve(int id, ApproveViewingScheduleDto dto) =>
-        HandleAsync((userId, role) => _viewingService.ApproveAsync(id, dto, userId, role));
+    public Task<ActionResult<ViewingScheduleDto>> Approve(int id, ApproveViewingScheduleDto dto)
+    {
+        return HandleAsync((userId, role) => _viewingService.ApproveAsync(id, dto, userId, role));
+    }
 
     [HttpPost("{id:int}/reject")]
     [Authorize(Roles = "Admin,Manager")]
-    public Task<ActionResult<ViewingScheduleDto>> Reject(int id) =>
-        HandleAsync((userId, role) => _viewingService.RejectAsync(id, userId, role));
+    public Task<ActionResult<ViewingScheduleDto>> Reject(int id)
+    {
+        return HandleAsync((userId, role) => _viewingService.RejectAsync(id, userId, role));
+    }
 
     // Cháº¥p thuáº­n vÃ  tá»« chá»‘i tráº£ vá» cÃ¹ng cÃ¡c loáº¡i lá»—i nÃªn dÃ¹ng chung má»™t chá»— chuyá»ƒn exception -> mÃ£ HTTP.
     private async Task<ActionResult<ViewingScheduleDto>> HandleAsync(Func<int, string, Task<ViewingScheduleDto>> action)
@@ -140,6 +148,8 @@ public class ViewingSchedulesController : ControllerBase
         return _currentUser.IsAuthenticated && userId > 0 && role.Length > 0;
     }
 
-    private ObjectResult ForbidWithProblem(string detail) =>
-        StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = detail });
+    private ObjectResult ForbidWithProblem(string detail)
+    {
+        return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = detail });
+    }
 }

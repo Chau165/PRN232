@@ -22,13 +22,17 @@ public class IdentityDocumentsController : ControllerBase
     // trạng thái (vd status=Pending để duyệt).
     [HttpGet]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<ActionResult<IEnumerable<IdentityDocumentDto>>> GetAll([FromQuery] string? status) =>
-        Ok(await _service.GetAllAsync(status));
+    public async Task<ActionResult<IEnumerable<IdentityDocumentDto>>> GetAll([FromQuery] string? status)
+    {
+        return Ok(await _service.GetAllAsync(status));
+    }
 
     // GET /api/identity-documents/mine — khách thuê xem hồ sơ CCCD của chính mình.
     [HttpGet("mine")]
-    public async Task<ActionResult<IEnumerable<IdentityDocumentDto>>> GetMine() =>
-        Ok(await _service.GetMineAsync(CurrentUserId()));
+    public async Task<ActionResult<IEnumerable<IdentityDocumentDto>>> GetMine()
+    {
+        return Ok(await _service.GetMineAsync(CurrentUserId()));
+    }
 
     // GET /api/identity-documents/{id} — Admin/Manager xem bất kỳ; khách thuê chỉ xem
     // được hồ sơ của chính mình.
@@ -83,7 +87,11 @@ public class IdentityDocumentsController : ControllerBase
         try
         {
             var updated = await _service.ReviewAsync(id, dto, CurrentUserId());
-            return updated is null ? NotFound() : Ok(updated);
+            if (updated is null)
+            {
+                return NotFound();
+            }
+            return Ok(updated);
         }
         catch (IdentityDocumentStatusTransitionException exception)
         {
@@ -91,6 +99,13 @@ public class IdentityDocumentsController : ControllerBase
         }
     }
 
-    private int CurrentUserId() =>
-        int.Parse(User.FindFirst("sub")?.Value ?? throw new InvalidOperationException("Token thiếu claim 'sub'."));
+    private int CurrentUserId()
+    {
+        var subjectId = User.FindFirst("sub")?.Value;
+        if (subjectId is null)
+        {
+            throw new InvalidOperationException("Token thiếu claim 'sub'.");
+        }
+        return int.Parse(subjectId);
+    }
 }

@@ -14,16 +14,20 @@ public class RoleRepository : IRoleRepository
         _context = context;
     }
 
-    public Task<List<Roles>> GetAllAsync() =>
-        _context.Roles
+    public Task<List<Roles>> GetAllAsync()
+    {
+        return _context.Roles
             .AsNoTracking()
             .ToListAsync();
+    }
 
-    public Task<Roles?> GetByIdAsync(int id) =>
-        _context.Roles
+    public Task<Roles?> GetByIdAsync(int id)
+    {
+        return _context.Roles
             .AsNoTracking()
             .Where(r => r.RoleId == id)
             .FirstOrDefaultAsync();
+    }
 
     public Task<Roles> AddAsync(Roles role)
     {
@@ -31,5 +35,8 @@ public class RoleRepository : IRoleRepository
         return Task.FromResult(role);
     }
 
-    public Task SaveChangesAsync() => _context.SaveChangesAsync();
+    public Task SaveChangesAsync()
+    {
+        return _context.SaveChangesAsync();
+    }
 }

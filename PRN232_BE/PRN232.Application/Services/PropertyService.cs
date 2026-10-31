@@ -22,7 +22,11 @@ public class PropertyService : IPropertyService
     public async Task<PropertyDto?> GetByIdAsync(int id)
     {
         var property = await _repository.GetByIdAsync(id);
-        return property is null ? null : ConvertToDto(property);
+        if (property is null)
+        {
+            return null;
+        }
+        return ConvertToDto(property);
     }
 
     public async Task<PropertyDto> CreateAsync(CreatePropertyDto dto, int ownerId)
@@ -64,7 +68,11 @@ public class PropertyService : IPropertyService
 
         await _repository.SaveChangesAsync();
         var updated = await _repository.GetByIdAsync(id);
-        return updated is null ? null : ConvertToDto(updated);
+        if (updated is null)
+        {
+            return null;
+        }
+        return ConvertToDto(updated);
     }
 
     public async Task<bool> DeleteAsync(int id, int requestingUserId, bool isAdmin)
@@ -132,8 +140,12 @@ public class PropertyService : IPropertyService
 
     private async Task<PropertySummaryReadModel> GetPropertyResponseAsync(int propertyId)
     {
-        return await _repository.GetByIdAsync(propertyId)
-            ?? throw new InvalidOperationException("Created property was not found.");
+        var property = await _repository.GetByIdAsync(propertyId);
+        if (property is null)
+        {
+            throw new InvalidOperationException("Created property was not found.");
+        }
+        return property;
     }
 }
 

@@ -22,7 +22,11 @@ public class EquipmentService : IEquipmentService
     public async Task<EquipmentDto?> GetByIdAsync(int id)
     {
         var equipment = await _repository.GetByIdAsync(id);
-        return equipment is null ? null : ConvertToDto(equipment);
+        if (equipment is null)
+        {
+            return null;
+        }
+        return ConvertToDto(equipment);
     }
 
     public async Task<EquipmentDto> CreateAsync(CreateEquipmentDto dto, int requestingUserId, bool isAdmin)

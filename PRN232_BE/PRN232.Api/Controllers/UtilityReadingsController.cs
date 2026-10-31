@@ -49,7 +49,11 @@ public class UtilityReadingsController : ControllerBase
         try
         {
             var reading = await _readingService.GetByIdAsync(id, userId, role);
-            return reading is null ? NotFound() : Ok(reading);
+            if (reading is null)
+            {
+                return NotFound();
+            }
+            return Ok(reading);
         }
         catch (UtilityReadingAuthorizationException exception)
         {
@@ -99,6 +103,8 @@ public class UtilityReadingsController : ControllerBase
         return _currentUser.IsAuthenticated && userId > 0 && role.Length > 0;
     }
 
-    private ObjectResult ForbidWithProblem(string detail) =>
-        StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = detail });
+    private ObjectResult ForbidWithProblem(string detail)
+    {
+        return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = detail });
+    }
 }

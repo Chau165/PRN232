@@ -126,3 +126,24 @@ Quên dòng này sẽ gặp lỗi `requires a primary key to be defined` lúc `d
    ```
 8. Thêm unit/integration tests cho mapping, EF tracking, JSON/API contract, authorization và
    query behavior liên quan; kiểm tra không phát sinh N+1 hoặc tải dữ liệu nhạy cảm.
+
+## 4. Quy tắc readability và control flow
+
+- Ưu tiên method body có braces cho validation, nghiệp vụ, authorization và mapping nhiều trường.
+  Giữ expression-bodied member khi biểu thức ngắn và đọc rõ ngay.
+- Converter dài dùng kiểu đích tường minh và `return new ConcreteDto(...)`; giữ nguyên toàn bộ
+  constructor argument, thứ tự trường, nullable, decimal precision và collection ordering.
+- Điều kiện nghiệp vụ, role scope, null guard và notification creation dài nên dùng `if/else` để
+  thể hiện từng nhánh. Đọc receiver một lần và giữ nguyên short-circuit, thứ tự đánh giá, side
+  effects, exception type/message và lazy fallback.
+- Tránh ternary lồng nhau hoặc ternary dài. Ternary ngắn, rõ nghĩa vẫn được giữ.
+- Giữ `??` và `?.` khi chúng thể hiện fallback hoặc null propagation đơn giản. Chuyển `?? throw`
+  dài sang guard tường minh chỉ sau khi kiểm tra thứ tự gọi và thời điểm ném exception.
+- Dùng target-typed `new()` khi kiểu đích rõ trong ngữ cảnh; dùng kiểu cụ thể khi việc suy luận
+  làm mapper hoặc khởi tạo dữ liệu khó đọc.
+- Chuẩn hóa primary constructor cho DI có chọn lọc khi field và dependency dễ hiểu hơn. Không
+  chuyển hàng loạt positional record, exception declaration hoặc constructor thể hiện rõ contract.
+- Giữ switch expression, LINQ lambda, nullable annotation, EF Core expression tree và SQL
+  projection khi chúng rõ nghĩa hoặc cần thiết cho dịch SQL. Không chuyển query sang xử lý phía
+  client để đạt style.
+- Không kéo dài code nếu không làm luồng điều khiển, kiểu dữ liệu hoặc mapping rõ hơn.

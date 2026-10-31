@@ -24,8 +24,11 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // ---- CORS: chỉ origin của FE ----
-var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-                      ?? new[] { "http://localhost:5173" };
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+if (allowedOrigins is null)
+{
+    allowedOrigins = new[] { "http://localhost:5173" };
+}
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendPolicy", policy =>
@@ -38,9 +41,14 @@ builder.Services.AddCors(options =>
 
 // ---- JWT: bind 1 lần thành JwtSettings (POCO, dùng chung cho middleware validate
 // token ở dưới và JwtTokenGenerator lúc issue token trong AuthController) ----
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (jwtKey is null)
+{
+    jwtKey = "CHANGE_ME_DEV_ONLY_32_CHARACTERS_MIN";
+}
 var jwtSettings = new JwtSettings
 {
-    Key = builder.Configuration["Jwt:Key"] ?? "CHANGE_ME_DEV_ONLY_32_CHARACTERS_MIN",
+    Key = jwtKey,
     Issuer = builder.Configuration["Jwt:Issuer"] ?? "PRN232_BE",
     Audience = builder.Configuration["Jwt:Audience"] ?? "PRN232_FE",
     ExpiryMinutes = builder.Configuration.GetValue<int?>("Jwt:ExpiryMinutes") ?? 120,

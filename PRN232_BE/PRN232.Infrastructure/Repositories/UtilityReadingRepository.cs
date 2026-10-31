@@ -16,25 +16,29 @@ public class UtilityReadingRepository : IUtilityReadingRepository
         _context = context;
     }
 
-    public Task<ReadingContractReadModel?> GetContractAsync(int contractId) =>
-        _context.Contracts
+    public Task<ReadingContractReadModel?> GetContractAsync(int contractId)
+    {
+        return _context.Contracts
             .AsNoTracking()
             .Where(contract => contract.ContractId == contractId)
             .Select(contract => new ReadingContractReadModel(
-                contract.ContractId,
-                contract.Room!.Property!.OwnerId,
-                contract.Status,
-                contract.StartDate,
-                contract.EndDate))
+            contract.ContractId,
+            contract.Room!.Property!.OwnerId,
+            contract.Status,
+            contract.StartDate,
+            contract.EndDate))
             .FirstOrDefaultAsync();
+    }
 
-    public Task<LatestReadingReadModel?> GetLatestAsync(int contractId) =>
-        _context.UtilityReadings
+    public Task<LatestReadingReadModel?> GetLatestAsync(int contractId)
+    {
+        return _context.UtilityReadings
             .AsNoTracking()
             .Where(reading => reading.ContractId == contractId)
             .OrderByDescending(reading => reading.ReadingMonth)
             .Select(reading => new LatestReadingReadModel(reading.ReadingMonth, reading.ElectricEnd, reading.WaterEnd))
             .FirstOrDefaultAsync();
+    }
 
     public async Task<bool> AddIfLatestAsync(UtilityReadings reading)
     {
@@ -60,29 +64,37 @@ public class UtilityReadingRepository : IUtilityReadingRepository
         return true;
     }
 
-    public Task<List<UtilityReadingReadModel>> GetAllAsync(int? customerId, int? ownerId, int? contractId) =>
-        InScope(customerId, ownerId)
+    public Task<List<UtilityReadingReadModel>> GetAllAsync(int? customerId, int? ownerId, int? contractId)
+    {
+        return InScope(customerId, ownerId)
             .Where(reading => contractId == null || reading.ContractId == contractId)
             .OrderByDescending(reading => reading.ReadingMonth)
             .ThenByDescending(reading => reading.ReadingId)
             .Select(ToReadModel)
             .ToListAsync();
+    }
 
-    public Task<UtilityReadingReadModel?> GetByIdAsync(int readingId, int? customerId, int? ownerId) =>
-        InScope(customerId, ownerId)
+    public Task<UtilityReadingReadModel?> GetByIdAsync(int readingId, int? customerId, int? ownerId)
+    {
+        return InScope(customerId, ownerId)
             .Where(reading => reading.ReadingId == readingId)
             .Select(ToReadModel)
             .FirstOrDefaultAsync();
+    }
 
-    public Task<bool> ExistsAsync(int readingId) =>
-        _context.UtilityReadings.AnyAsync(reading => reading.ReadingId == readingId);
+    public Task<bool> ExistsAsync(int readingId)
+    {
+        return _context.UtilityReadings.AnyAsync(reading => reading.ReadingId == readingId);
+    }
 
     // Lọc dùng chung cho GetById và GetAll; tham số nào null thì không lọc theo tiêu chí đó.
-    private IQueryable<UtilityReadings> InScope(int? customerId, int? ownerId) =>
-        _context.UtilityReadings
+    private IQueryable<UtilityReadings> InScope(int? customerId, int? ownerId)
+    {
+        return _context.UtilityReadings
             .AsNoTracking()
             .Where(reading => customerId == null || reading.Contract!.CustomerId == customerId)
             .Where(reading => ownerId == null || reading.Contract!.Room!.Property!.OwnerId == ownerId);
+    }
 
     private static readonly Expression<Func<UtilityReadings, UtilityReadingReadModel>> ToReadModel = reading => new UtilityReadingReadModel(
         reading.ReadingId,

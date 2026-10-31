@@ -24,7 +24,11 @@ public class RoomTypeService : IRoomTypeService
     public async Task<RoomTypeDto?> GetByIdAsync(int id)
     {
         var roomType = await _repository.GetByIdAsync(id);
-        return roomType is null ? null : ConvertToDto(roomType);
+        if (roomType is null)
+        {
+            return null;
+        }
+        return ConvertToDto(roomType);
     }
 
     public async Task<RoomTypeDto> CreateAsync(CreateRoomTypeDto dto)
@@ -98,9 +102,11 @@ public class RoomTypeService : IRoomTypeService
         return true;
     }
 
-    public async Task<bool> RemoveServiceAsync(int roomTypeId, int serviceId) =>
-        await _repository.RemoveServiceLinkAsync(roomTypeId, serviceId) &&
-        await SaveAndReturnTrueAsync();
+    public async Task<bool> RemoveServiceAsync(int roomTypeId, int serviceId)
+    {
+        return await _repository.RemoveServiceLinkAsync(roomTypeId, serviceId) &&
+            await SaveAndReturnTrueAsync();
+    }
 
     private async Task<bool> SaveAndReturnTrueAsync()
     {

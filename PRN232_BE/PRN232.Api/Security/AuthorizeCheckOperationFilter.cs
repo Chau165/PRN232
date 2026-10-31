@@ -14,7 +14,12 @@ public sealed class AuthorizeCheckOperationFilter : IOperationFilter
             return;
         }
 
-        var controllerAttributes = context.MethodInfo.DeclaringType?.GetCustomAttributes(true) ?? [];
+        object[] controllerAttributes = [];
+        var controllerType = context.MethodInfo.DeclaringType;
+        if (controllerType is not null)
+        {
+            controllerAttributes = controllerType.GetCustomAttributes(true);
+        }
         if (!methodAttributes.OfType<AuthorizeAttribute>().Any() && !controllerAttributes.OfType<AuthorizeAttribute>().Any())
         {
             return;
@@ -22,7 +27,7 @@ public sealed class AuthorizeCheckOperationFilter : IOperationFilter
 
         operation.Security = new List<OpenApiSecurityRequirement>
         {
-            new()
+            new OpenApiSecurityRequirement()
             {
                 [new OpenApiSecurityScheme
                 {

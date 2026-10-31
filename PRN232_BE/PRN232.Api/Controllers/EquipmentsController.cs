@@ -19,14 +19,20 @@ public class EquipmentsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<EquipmentDto>>> GetAll([FromQuery] int? roomId) =>
-        Ok(await _equipmentService.GetAllAsync(roomId));
+    public async Task<ActionResult<IEnumerable<EquipmentDto>>> GetAll([FromQuery] int? roomId)
+    {
+        return Ok(await _equipmentService.GetAllAsync(roomId));
+    }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<EquipmentDto>> GetById(int id)
     {
         var equipment = await _equipmentService.GetByIdAsync(id);
-        return equipment is null ? NotFound() : Ok(equipment);
+        if (equipment is null)
+        {
+            return NotFound();
+        }
+        return Ok(equipment);
     }
 
     [HttpPost]
@@ -56,7 +62,11 @@ public class EquipmentsController : ControllerBase
         try
         {
             var updated = await _equipmentService.UpdateAsync(id, dto, CurrentUserId(), IsAdmin());
-            return updated is null ? NotFound() : Ok(updated);
+            if (updated is null)
+            {
+                return NotFound();
+            }
+            return Ok(updated);
         }
         catch (EquipmentForbiddenException exception)
         {
@@ -73,7 +83,12 @@ public class EquipmentsController : ControllerBase
     {
         try
         {
-            return await _equipmentService.DeleteAsync(id, CurrentUserId(), IsAdmin()) ? NoContent() : NotFound();
+            var operationSucceeded = await _equipmentService.DeleteAsync(id, CurrentUserId(), IsAdmin());
+            if (!operationSucceeded)
+            {
+                return NotFound();
+            }
+            return NoContent();
         }
         catch (EquipmentForbiddenException exception)
         {
@@ -81,8 +96,18 @@ public class EquipmentsController : ControllerBase
         }
     }
 
-    private int CurrentUserId() =>
-        int.Parse(User.FindFirst("sub")?.Value ?? throw new InvalidOperationException("Token thiếu claim 'sub'."));
+    private int CurrentUserId()
+    {
+        var subjectId = User.FindFirst("sub")?.Value;
+        if (subjectId is null)
+        {
+            throw new InvalidOperationException("Token thiếu claim 'sub'.");
+        }
+        return int.Parse(subjectId);
+    }
 
-    private bool IsAdmin() => User.IsInRole("Admin");
+    private bool IsAdmin()
+    {
+        return User.IsInRole("Admin");
+    }
 }

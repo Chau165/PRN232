@@ -19,16 +19,20 @@ public class JwtTokenGenerator : IJwtTokenGenerator
 
     public (string Token, DateTime ExpiresAtUtc) GenerateToken(Users user, string roleName)
     {
-        var minutes = _settings.ExpiryMinutes <= 0 ? 120 : _settings.ExpiryMinutes;
+        var minutes = _settings.ExpiryMinutes;
+        if (minutes <= 0)
+        {
+            minutes = 120;
+        }
         var expiresAtUtc = DateTime.UtcNow.AddMinutes(minutes);
 
         var claims = new List<Claim>
         {
-            new(JwtRegisteredClaimNames.Sub, user.UserId.ToString()),
-            new(JwtRegisteredClaimNames.Email, user.Email),
-            new(ClaimTypes.Name, user.FullName),
-            new(ClaimTypes.Role, roleName),
-            new("roleId", user.RoleId.ToString()),
+            new Claim(JwtRegisteredClaimNames.Sub, user.UserId.ToString()),
+            new Claim(JwtRegisteredClaimNames.Email, user.Email),
+            new Claim(ClaimTypes.Name, user.FullName),
+            new Claim(ClaimTypes.Role, roleName),
+            new Claim("roleId", user.RoleId.ToString()),
         };
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.Key));

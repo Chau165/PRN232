@@ -16,8 +16,9 @@ public class MaintenanceRepository : IMaintenanceRepository
         _context = context;
     }
 
-    public async Task<List<MaintenanceRequestReadModel>> GetAllAsync(int? customerId, int? assignedManagerId, string? status, int? assignedTo) =>
-        await _context.MaintenanceRequests
+    public async Task<List<MaintenanceRequestReadModel>> GetAllAsync(int? customerId, int? assignedManagerId, string? status, int? assignedTo)
+    {
+        return await _context.MaintenanceRequests
             .AsNoTracking()
             .Where(r => customerId == null || r.Contract!.CustomerId == customerId)
             .Where(r => assignedManagerId == null || r.AssignedTo == assignedManagerId)
@@ -25,77 +26,91 @@ public class MaintenanceRepository : IMaintenanceRepository
             .Where(r => assignedTo == null || r.AssignedTo == assignedTo)
             .OrderBy(r => r.RequestId)
             .Select(r => new MaintenanceRequestReadModel(
-                r.RequestId,
-                r.Description,
-                r.Status,
-                r.ContractId,
-                r.Contract!.CustomerId,
-                r.Contract.Customer!.FullName,
-                r.Contract.RoomId,
-                r.Contract.Room!.RoomCode,
-                r.EquipmentId,
-                r.Equipment == null ? null : r.Equipment.Name,
-                r.Equipment == null ? null : r.Equipment.Status,
-                r.AssignedTo,
-                r.AssignedToUser == null ? null : r.AssignedToUser.FullName,
-                customerId.HasValue ? null : r.AssignmentNote))
+            r.RequestId,
+            r.Description,
+            r.Status,
+            r.ContractId,
+            r.Contract!.CustomerId,
+            r.Contract.Customer!.FullName,
+            r.Contract.RoomId,
+            r.Contract.Room!.RoomCode,
+            r.EquipmentId,
+            r.Equipment == null ? null : r.Equipment.Name,
+            r.Equipment == null ? null : r.Equipment.Status,
+            r.AssignedTo,
+            r.AssignedToUser == null ? null : r.AssignedToUser.FullName,
+            customerId.HasValue ? null : r.AssignmentNote))
             .ToListAsync();
+    }
 
-    public async Task<MaintenanceRequestReadModel?> GetByIdAsync(int id, int? customerId, int? assignedManagerId) =>
-        await _context.MaintenanceRequests
+    public async Task<MaintenanceRequestReadModel?> GetByIdAsync(int id, int? customerId, int? assignedManagerId)
+    {
+        return await _context.MaintenanceRequests
             .AsNoTracking()
             .Where(r => r.RequestId == id)
             .Where(r => customerId == null || r.Contract!.CustomerId == customerId)
             .Where(r => assignedManagerId == null || r.AssignedTo == assignedManagerId)
             .Select(r => new MaintenanceRequestReadModel(
-                r.RequestId,
-                r.Description,
-                r.Status,
-                r.ContractId,
-                r.Contract!.CustomerId,
-                r.Contract.Customer!.FullName,
-                r.Contract.RoomId,
-                r.Contract.Room!.RoomCode,
-                r.EquipmentId,
-                r.Equipment == null ? null : r.Equipment.Name,
-                r.Equipment == null ? null : r.Equipment.Status,
-                r.AssignedTo,
-                r.AssignedToUser == null ? null : r.AssignedToUser.FullName,
-                customerId.HasValue ? null : r.AssignmentNote))
+            r.RequestId,
+            r.Description,
+            r.Status,
+            r.ContractId,
+            r.Contract!.CustomerId,
+            r.Contract.Customer!.FullName,
+            r.Contract.RoomId,
+            r.Contract.Room!.RoomCode,
+            r.EquipmentId,
+            r.Equipment == null ? null : r.Equipment.Name,
+            r.Equipment == null ? null : r.Equipment.Status,
+            r.AssignedTo,
+            r.AssignedToUser == null ? null : r.AssignedToUser.FullName,
+            customerId.HasValue ? null : r.AssignmentNote))
             .FirstOrDefaultAsync();
+    }
 
-    public async Task<MaintenanceRequestStateReadModel?> GetStateByIdAsync(int id, int? assignedManagerId) =>
-        await _context.MaintenanceRequests
+    public async Task<MaintenanceRequestStateReadModel?> GetStateByIdAsync(int id, int? assignedManagerId)
+    {
+        return await _context.MaintenanceRequests
             .AsNoTracking()
             .Where(r => r.RequestId == id)
             .Where(r => assignedManagerId == null || r.AssignedTo == assignedManagerId)
             .Select(r => new MaintenanceRequestStateReadModel(
-                r.RequestId, r.ContractId, r.EquipmentId, r.AssignedTo, r.Status))
+            r.RequestId, r.ContractId, r.EquipmentId, r.AssignedTo, r.Status))
             .FirstOrDefaultAsync();
+    }
 
-    public Task<bool> RequestExistsAsync(int id) => _context.MaintenanceRequests.AnyAsync(r => r.RequestId == id);
+    public Task<bool> RequestExistsAsync(int id)
+    {
+        return _context.MaintenanceRequests.AnyAsync(r => r.RequestId == id);
+    }
 
-    public async Task<MaintenanceContractReadModel?> GetContractAsync(int contractId) =>
-        await _context.Contracts
+    public async Task<MaintenanceContractReadModel?> GetContractAsync(int contractId)
+    {
+        return await _context.Contracts
             .AsNoTracking()
             .Where(c => c.ContractId == contractId)
             .Select(c => new MaintenanceContractReadModel(
-                c.ContractId, c.RoomId, c.Room!.RoomCode, c.CustomerId, c.StartDate, c.EndDate, c.Status))
+            c.ContractId, c.RoomId, c.Room!.RoomCode, c.CustomerId, c.StartDate, c.EndDate, c.Status))
             .FirstOrDefaultAsync();
+    }
 
-    public Task<int?> GetEquipmentRoomIdAsync(int equipmentId) =>
-        _context.Equipments
+    public Task<int?> GetEquipmentRoomIdAsync(int equipmentId)
+    {
+        return _context.Equipments
             .AsNoTracking()
             .Where(e => e.EquipmentId == equipmentId)
             .Select(e => (int?)e.RoomId)
             .FirstOrDefaultAsync();
+    }
 
-    public Task<MaintenanceUserAssignmentReadModel?> GetUserAssignmentAsync(int userId) =>
-        _context.Users
+    public Task<MaintenanceUserAssignmentReadModel?> GetUserAssignmentAsync(int userId)
+    {
+        return _context.Users
             .AsNoTracking()
             .Where(u => u.UserId == userId)
             .Select(u => new MaintenanceUserAssignmentReadModel(u.IsActive, u.Role!.RoleName))
             .FirstOrDefaultAsync();
+    }
 
     public async Task<MaintenanceRequests> AddWithInitialLogAsync(
         MaintenanceRequests request,
@@ -181,34 +196,41 @@ public class MaintenanceRepository : IMaintenanceRepository
             .ToListAsync();
     }
 
-    public Task<int?> GetApprovingAdminIdAsync(int requestId) => _context.MaintenanceLogs
-        .AsNoTracking()
-        .Where(log => log.RequestId == requestId &&
-                      log.OldStatus == MaintenanceRequestStatuses.Pending &&
-                      log.NewStatus == MaintenanceRequestStatuses.Approved)
-        .OrderBy(log => log.ChangedAt)
-        .ThenBy(log => log.LogId)
-        .Select(log => log.ChangedBy)
-        .FirstOrDefaultAsync();
+    public Task<int?> GetApprovingAdminIdAsync(int requestId)
+    {
+        return _context.MaintenanceLogs
+            .AsNoTracking()
+            .Where(log => log.RequestId == requestId &&
+            log.OldStatus == MaintenanceRequestStatuses.Pending &&
+            log.NewStatus == MaintenanceRequestStatuses.Approved)
+            .OrderBy(log => log.ChangedAt)
+            .ThenBy(log => log.LogId)
+            .Select(log => log.ChangedBy)
+            .FirstOrDefaultAsync();
+    }
 
-    public Task<MaintenanceReportReadModel?> GetReportAsync(int requestId) =>
-        _context.MaintenanceReports
+    public Task<MaintenanceReportReadModel?> GetReportAsync(int requestId)
+    {
+        return _context.MaintenanceReports
             .AsNoTracking()
             .Where(report => report.RequestId == requestId)
             .Select(report => new MaintenanceReportReadModel(
-                report.ReportId,
-                report.RequestId,
-                report.Description,
-                report.ReportedBy,
-                report.Reporter!.FullName,
-                report.CreatedAt,
-                report.Images.OrderBy(image => image.ImageId)
-                    .Select(image => new MaintenanceReportImageReadModel(image.ImageId, image.ImageUrl))
-                    .ToList()))
+            report.ReportId,
+            report.RequestId,
+            report.Description,
+            report.ReportedBy,
+            report.Reporter!.FullName,
+            report.CreatedAt,
+            report.Images.OrderBy(image => image.ImageId)
+            .Select(image => new MaintenanceReportImageReadModel(image.ImageId, image.ImageUrl))
+            .ToList()))
             .FirstOrDefaultAsync();
+    }
 
-    public Task<bool> ReportExistsAsync(int requestId) =>
-        _context.MaintenanceReports.AnyAsync(report => report.RequestId == requestId);
+    public Task<bool> ReportExistsAsync(int requestId)
+    {
+        return _context.MaintenanceReports.AnyAsync(report => report.RequestId == requestId);
+    }
 
     public async Task<bool> CompleteWithReportAsync(
         int requestId,
