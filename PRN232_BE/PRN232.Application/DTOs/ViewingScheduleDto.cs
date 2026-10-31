@@ -16,5 +16,3 @@ public record ViewingScheduleDto(
 public record CreateViewingScheduleDto(int RoomId, DateTimeOffset? ScheduledAt);
 
 public record ApproveViewingScheduleDto(DateTimeOffset? ScheduledAt);
-
-public record ViewingRoomDto(int RoomId, string RoomCode, int OwnerId);

@@ -237,7 +237,9 @@ public class MaintenanceTransactionTests
 
     private static MaintenanceReports Report() => new()
     {
-        ReportedBy = 7, Description = "Repaired", CreatedAt = DateTime.UtcNow,
+        ReportedBy = 7,
+        Description = "Repaired",
+        CreatedAt = DateTime.UtcNow,
         Images = [new MaintenanceReportImages { ImageUrl = "maintenance/test/evidence.png" }]
     };
 

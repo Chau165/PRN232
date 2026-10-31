@@ -24,7 +24,10 @@ public sealed class RolesControllerAuthorizationTests
         await using var app = await CreateTestAppAsync();
         using var client = app.GetTestClient();
 
-        using var response = await client.PostAsJsonAsync("/api/roles", new { roleName = "Guest" });
+        using var response = await client.PostAsJsonAsync("/api/roles", new
+        {
+            roleName = "Guest"
+        });
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -36,7 +39,10 @@ public sealed class RolesControllerAuthorizationTests
         using var client = app.GetTestClient();
         client.DefaultRequestHeaders.Add("X-Test-Role", "Customer");
 
-        using var response = await client.PostAsJsonAsync("/api/roles", new { roleName = "Guest" });
+        using var response = await client.PostAsJsonAsync("/api/roles", new
+        {
+            roleName = "Guest"
+        });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -48,7 +54,10 @@ public sealed class RolesControllerAuthorizationTests
         using var client = app.GetTestClient();
         client.DefaultRequestHeaders.Add("X-Test-Role", "Admin");
 
-        using var response = await client.PostAsJsonAsync("/api/roles", new { roleName = "Guest" });
+        using var response = await client.PostAsJsonAsync("/api/roles", new
+        {
+            roleName = "Guest"
+        });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }

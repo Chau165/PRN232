@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
+using PRN232.Application.ReadModels;
 
 namespace PRN232.Infrastructure.Repositories;
 
@@ -15,12 +15,12 @@ public class IdentityDocumentRepository : IIdentityDocumentRepository
         _context = context;
     }
 
-    public Task<List<IdentityDocumentDto>> GetAllAsync(string? status) =>
+    public Task<List<IdentityDocumentReadModel>> GetAllAsync(string? status) =>
         _context.IdentityDocuments
             .AsNoTracking()
             .Where(d => status == null || d.Status == status)
             .OrderBy(d => d.IdentityDocumentId)
-            .Select(d => new IdentityDocumentDto(
+            .Select(d => new IdentityDocumentReadModel(
                 d.IdentityDocumentId,
                 d.CustomerId,
                 d.Customer!.FullName,
@@ -30,12 +30,12 @@ public class IdentityDocumentRepository : IIdentityDocumentRepository
                 d.ReviewedByUser == null ? null : d.ReviewedByUser.FullName))
             .ToListAsync();
 
-    public Task<List<IdentityDocumentDto>> GetByCustomerIdAsync(int customerId) =>
+    public Task<List<IdentityDocumentReadModel>> GetByCustomerIdAsync(int customerId) =>
         _context.IdentityDocuments
             .AsNoTracking()
             .Where(d => d.CustomerId == customerId)
             .OrderBy(d => d.IdentityDocumentId)
-            .Select(d => new IdentityDocumentDto(
+            .Select(d => new IdentityDocumentReadModel(
                 d.IdentityDocumentId,
                 d.CustomerId,
                 d.Customer!.FullName,
@@ -45,11 +45,11 @@ public class IdentityDocumentRepository : IIdentityDocumentRepository
                 d.ReviewedByUser == null ? null : d.ReviewedByUser.FullName))
             .ToListAsync();
 
-    public Task<IdentityDocumentDto?> GetByIdAsync(int id) =>
+    public Task<IdentityDocumentReadModel?> GetByIdAsync(int id) =>
         _context.IdentityDocuments
             .AsNoTracking()
             .Where(d => d.IdentityDocumentId == id)
-            .Select(d => new IdentityDocumentDto(
+            .Select(d => new IdentityDocumentReadModel(
                 d.IdentityDocumentId,
                 d.CustomerId,
                 d.Customer!.FullName,
@@ -59,7 +59,7 @@ public class IdentityDocumentRepository : IIdentityDocumentRepository
                 d.ReviewedByUser == null ? null : d.ReviewedByUser.FullName))
             .FirstOrDefaultAsync();
 
-    public Task<IdentityDocuments?> GetEntityByIdAsync(int id) =>
+    public Task<IdentityDocuments?> GetTrackedByIdAsync(int id) =>
         _context.IdentityDocuments.FirstOrDefaultAsync(d => d.IdentityDocumentId == id);
 
     public Task<bool> HasPendingOrApprovedAsync(int customerId) =>

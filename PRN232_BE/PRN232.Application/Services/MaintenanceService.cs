@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 
@@ -24,18 +25,19 @@ public class MaintenanceService : IMaintenanceService
         _timeProvider = timeProvider;
     }
 
-    public Task<List<MaintenanceRequestDto>> GetAllAsync(int userId, string role, string? status, int? assignedTo)
+    public async Task<List<MaintenanceRequestDto>> GetAllAsync(int userId, string role, string? status, int? assignedTo)
     {
         EnsureKnownRole(role);
         if (status is not null && !MaintenanceRequestStatuses.IsValid(status))
         {
             throw new MaintenanceBusinessRuleException("Status must be Pending, Approved, or Completed.");
         }
-        return _repository.GetAllAsync(
+        var requests = await _repository.GetAllAsync(
             role == RoleNames.Customer ? userId : null,
             role == RoleNames.Manager ? userId : null,
             status,
             assignedTo);
+        return requests.Select(ConvertToDto).ToList();
     }
 
     public async Task<MaintenanceRequestDto?> GetByIdAsync(int id, int userId, string role)
@@ -49,7 +51,7 @@ public class MaintenanceService : IMaintenanceService
         {
             throw new MaintenanceAuthorizationException("You cannot access this maintenance request.");
         }
-        return request;
+        return request is null ? null : ConvertToDto(request);
     }
 
     public async Task<MaintenanceRequestDto> CreateAsync(CreateMaintenanceRequestDto dto, int customerId)
@@ -74,30 +76,21 @@ public class MaintenanceService : IMaintenanceService
             await ValidateEquipmentAsync(equipmentId, contract.RoomId);
         }
 
-        var request = new MaintenanceRequests
-        {
-            ContractId = dto.ContractId,
-            EquipmentId = dto.EquipmentId,
-            Description = dto.Description,
-            Status = MaintenanceRequestStatuses.Pending,
-            AssignedTo = null
-        };
+        var initialStatus = MaintenanceRequestStatuses.Pending;
+        var request = ConvertToEntity(dto, initialStatus);
 
         var adminIds = await _notificationService.GetActiveAdminUserIdsAsync();
-        await _repository.AddWithInitialLogAsync(request, new MaintenanceLogs
-        {
-            OldStatus = null,
-            NewStatus = MaintenanceRequestStatuses.Pending,
-            ChangedBy = customerId,
-            ChangedAt = _timeProvider.GetUtcNow().UtcDateTime
-        }, requestId => _notificationService.BuildMaintenanceNotifications(
+        var changedAt = _timeProvider.GetUtcNow().UtcDateTime;
+        var initialLog = CreateInitialLogEntity(customerId, initialStatus, changedAt);
+        await _repository.AddWithInitialLogAsync(request, initialLog, requestId => _notificationService.BuildMaintenanceNotifications(
                 adminIds, $"Có yêu cầu bảo trì mới #{requestId} - Phòng {contract.RoomCode}")
             .Concat(_notificationService.BuildMaintenanceNotifications(
                 [customerId], $"Bạn đã gửi yêu cầu sửa chữa #{requestId} cho phòng {contract.RoomCode}. Yêu cầu đang chờ duyệt."))
             .ToArray());
 
-        return await _repository.GetByIdAsync(request.RequestId, customerId, null)
+        var created = await _repository.GetByIdAsync(request.RequestId, customerId, null)
             ?? throw new InvalidOperationException("Created maintenance request was not found.");
+        return ConvertToDto(created);
     }
 
     public async Task<MaintenanceRequestDto?> UpdateAsync(
@@ -166,7 +159,8 @@ public class MaintenanceService : IMaintenanceService
             throw new MaintenanceStatusTransitionException("Request status changed before the update completed.");
         }
 
-        return await _repository.GetByIdAsync(id, null, null);
+        var updatedRequest = await _repository.GetByIdAsync(id, null, null);
+        return updatedRequest is null ? null : ConvertToDto(updatedRequest);
     }
 
     public async Task<List<MaintenanceLogDto>?> GetLogsAsync(int id, int userId, string role)
@@ -180,7 +174,7 @@ public class MaintenanceService : IMaintenanceService
         {
             throw new MaintenanceAuthorizationException("You cannot access these maintenance logs.");
         }
-        return logs;
+        return logs?.Select(ConvertToDto).ToList();
     }
 
     public async Task<MaintenanceReportDto> CreateReportAsync(
@@ -245,13 +239,8 @@ public class MaintenanceService : IMaintenanceService
                 uploadedPaths.Add(await _imageStorage.UploadAsync(id, image));
             }
 
-            var report = new MaintenanceReports
-            {
-                ReportedBy = managerId,
-                Description = dto.Description.Trim(),
-                CreatedAt = _timeProvider.GetUtcNow().UtcDateTime,
-                Images = uploadedPaths.Select(path => new MaintenanceReportImages { ImageUrl = path }).ToList()
-            };
+            var reportCreatedAt = _timeProvider.GetUtcNow().UtcDateTime;
+            var report = ConvertToEntity(dto, managerId, reportCreatedAt, uploadedPaths);
             if (!await _repository.CompleteWithReportAsync(
                     id, report, managerId, report.CreatedAt, completionNotifications))
             {
@@ -267,7 +256,10 @@ public class MaintenanceService : IMaintenanceService
         {
             foreach (var path in uploadedPaths.Where(_ => !databaseCommitted))
             {
-                try { await _imageStorage.DeleteAsync(path); }
+                try
+                {
+                    await _imageStorage.DeleteAsync(path);
+                }
                 catch { }
             }
             throw;
@@ -301,14 +293,15 @@ public class MaintenanceService : IMaintenanceService
         return await AddReadUrlsAsync(report);
     }
 
-    private async Task<MaintenanceReportDto> AddReadUrlsAsync(MaintenanceReportDto report)
+    private async Task<MaintenanceReportDto> AddReadUrlsAsync(MaintenanceReportReadModel report)
     {
         var images = new List<MaintenanceReportImageDto>(report.Images.Count);
         foreach (var image in report.Images)
         {
-            images.Add(image with { ImageUrl = await _imageStorage.GetReadUrlAsync(image.ImageUrl) });
+            images.Add(ConvertToDto(image,
+                await _imageStorage.GetReadUrlAsync(image.ImageUrl)));
         }
-        return report with { Images = images };
+        return ConvertToDto(report, images);
     }
 
     private static void EnsureKnownRole(string role)
@@ -341,7 +334,49 @@ public class MaintenanceService : IMaintenanceService
         }
     }
 
-    private void ValidateContractDate(MaintenanceContractDto contract)
+    private static MaintenanceRequests ConvertToEntity(
+        CreateMaintenanceRequestDto dto,
+        string initialStatus)
+    {
+        return new MaintenanceRequests
+        {
+            ContractId = dto.ContractId,
+            EquipmentId = dto.EquipmentId,
+            Description = dto.Description,
+            Status = initialStatus,
+            AssignedTo = null
+        };
+    }
+
+    private static MaintenanceLogs CreateInitialLogEntity(int customerId, string initialStatus, DateTime changedAt)
+    {
+        return new MaintenanceLogs
+        {
+            OldStatus = null,
+            NewStatus = initialStatus,
+            ChangedBy = customerId,
+            ChangedAt = changedAt
+        };
+    }
+
+    private static MaintenanceReports ConvertToEntity(
+        CreateMaintenanceReportDto dto,
+        int managerId,
+        DateTime createdAt,
+        IEnumerable<string> imagePaths)
+    {
+        return new MaintenanceReports
+        {
+            ReportedBy = managerId,
+            Description = dto.Description.Trim(),
+            CreatedAt = createdAt,
+            Images = imagePaths
+                .Select(path => new MaintenanceReportImages { ImageUrl = path })
+                .ToList()
+        };
+    }
+
+    private void ValidateContractDate(MaintenanceContractReadModel contract)
     {
         var today = DateOnly.FromDateTime(_timeProvider.GetUtcNow().UtcDateTime);
         if (today < contract.StartDate || today > contract.EndDate)
@@ -364,6 +399,39 @@ public class MaintenanceService : IMaintenanceService
             throw new MaintenanceEquipmentException("Equipment does not belong to the contract room.");
         }
     }
+
+    private static MaintenanceReportDto ConvertToDto(
+        MaintenanceReportReadModel report, IReadOnlyList<MaintenanceReportImageDto> images) => new(
+        report.ReportId, report.RequestId, report.Description, report.ReportedBy,
+        report.ReportedByName, report.CreatedAt, images);
+
+    private static MaintenanceReportImageDto ConvertToDto(
+        MaintenanceReportImageReadModel image, string readUrl) => new(image.ImageId, readUrl);
+
+    private static MaintenanceRequestDto ConvertToDto(MaintenanceRequestReadModel request) => new(
+        request.RequestId,
+        request.Description,
+        request.Status,
+        request.ContractId,
+        request.CustomerId,
+        request.CustomerName,
+        request.RoomId,
+        request.RoomCode,
+        request.EquipmentId,
+        request.EquipmentName,
+        request.EquipmentStatus,
+        request.AssignedTo,
+        request.AssignedStaffName,
+        request.AssignmentNote);
+
+    private static MaintenanceLogDto ConvertToDto(MaintenanceLogReadModel log) => new(
+        log.LogId,
+        log.RequestId,
+        log.OldStatus,
+        log.NewStatus,
+        log.ChangedBy,
+        log.ChangedByName,
+        log.ChangedAt);
 }
 
 public sealed class MaintenanceAuthorizationException(string message) : Exception(message);

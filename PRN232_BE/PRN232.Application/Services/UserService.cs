@@ -1,6 +1,7 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
-using PRN232.Domain.Entities;
+using PRN232.Application.ReadModels;
+using DomainUser = PRN232.Domain.Entities.Users;
 
 namespace PRN232.Application.Services;
 
@@ -15,9 +16,17 @@ public class UserService : IUserService
         _passwordHasher = passwordHasher;
     }
 
-    public Task<List<UserDto>> GetAllAsync(int? roleId) => _repository.GetAllAsync(roleId);
+    public async Task<List<UserDto>> GetAllAsync(int? roleId)
+    {
+        var users = await _repository.GetAllAsync(roleId);
+        return users.Select(ConvertToDto).ToList();
+    }
 
-    public Task<UserDto?> GetByIdAsync(int id) => _repository.GetByIdAsync(id);
+    public async Task<UserDto?> GetByIdAsync(int id)
+    {
+        var user = await _repository.GetByIdAsync(id);
+        return user is null ? null : ConvertToDto(user);
+    }
 
     // Admin tạo trực tiếp account với role bất kỳ (Manager/Admin/Customer) — khác
     // /api/auth/register (công khai, luôn gán Customer).
@@ -46,25 +55,19 @@ public class UserService : IUserService
             throw new UserEmailAlreadyExistsException(normalizedEmail);
         }
 
-        var user = new Users
-        {
-            FullName = dto.FullName.Trim(),
-            Email = normalizedEmail,
-            PasswordHash = _passwordHasher.Hash(dto.Password),
-            PhoneNumber = dto.PhoneNumber?.Trim() ?? string.Empty,
-            RoleId = dto.RoleId,
-            IsActive = true,
-        };
+        var passwordHash = _passwordHasher.Hash(dto.Password);
+        var isActive = true;
+        var user = ConvertToEntity(dto, normalizedEmail, passwordHash, isActive);
 
         var created = await _repository.AddAsync(user);
         await _repository.SaveChangesAsync();
 
-        return (await _repository.GetByIdAsync(created.UserId))!;
+        return ConvertToDto(await GetUserResponseAsync(created.UserId));
     }
 
     public async Task<UserDto?> UpdateRoleAsync(int id, UpdateUserRoleDto dto, int requestingUserId)
     {
-        var entity = await _repository.GetEntityByIdAsync(id);
+        var entity = await _repository.GetTrackedByIdAsync(id);
         if (entity is null)
         {
             return null;
@@ -80,12 +83,13 @@ public class UserService : IUserService
 
         entity.RoleId = dto.RoleId;
         await _repository.SaveChangesAsync();
-        return await _repository.GetByIdAsync(id);
+        var updated = await _repository.GetByIdAsync(id);
+        return updated is null ? null : ConvertToDto(updated);
     }
 
     public async Task<UserDto?> UpdateStatusAsync(int id, UpdateUserStatusDto dto, int requestingUserId)
     {
-        var entity = await _repository.GetEntityByIdAsync(id);
+        var entity = await _repository.GetTrackedByIdAsync(id);
         if (entity is null)
         {
             return null;
@@ -97,7 +101,8 @@ public class UserService : IUserService
 
         entity.IsActive = dto.IsActive;
         await _repository.SaveChangesAsync();
-        return await _repository.GetByIdAsync(id);
+        var updated = await _repository.GetByIdAsync(id);
+        return updated is null ? null : ConvertToDto(updated);
     }
 
     // Self-service: chỉ chủ account mới gọi được (kiểm tra ownership ở Controller qua
@@ -109,7 +114,7 @@ public class UserService : IUserService
             throw new UserForbiddenException();
         }
 
-        var entity = await _repository.GetEntityByIdAsync(id);
+        var entity = await _repository.GetTrackedByIdAsync(id);
         if (entity is null)
         {
             return null;
@@ -119,10 +124,10 @@ public class UserService : IUserService
             throw new UserValidationException("Họ tên không được để trống.");
         }
 
-        entity.FullName = dto.FullName.Trim();
-        entity.PhoneNumber = dto.PhoneNumber?.Trim() ?? string.Empty;
+        ApplyUpdateToEntity(dto, entity);
         await _repository.SaveChangesAsync();
-        return await _repository.GetByIdAsync(id);
+        var updated = await _repository.GetByIdAsync(id);
+        return updated is null ? null : ConvertToDto(updated);
     }
 
     public async Task ChangePasswordAsync(int id, ChangePasswordDto dto, int requestingUserId)
@@ -132,7 +137,7 @@ public class UserService : IUserService
             throw new UserForbiddenException();
         }
 
-        var entity = await _repository.GetEntityByIdAsync(id);
+        var entity = await _repository.GetTrackedByIdAsync(id);
         if (entity is null)
         {
             throw new UserNotFoundException(id);
@@ -148,6 +153,47 @@ public class UserService : IUserService
 
         entity.PasswordHash = _passwordHasher.Hash(dto.NewPassword);
         await _repository.SaveChangesAsync();
+    }
+
+    private static DomainUser ConvertToEntity(
+        CreateUserDto dto,
+        string normalizedEmail,
+        string passwordHash,
+        bool isActive)
+    {
+        return new DomainUser
+        {
+            FullName = dto.FullName.Trim(),
+            Email = normalizedEmail,
+            PasswordHash = passwordHash,
+            PhoneNumber = dto.PhoneNumber?.Trim() ?? string.Empty,
+            RoleId = dto.RoleId,
+            IsActive = isActive
+        };
+    }
+
+    private static void ApplyUpdateToEntity(UpdateProfileDto dto, DomainUser entity)
+    {
+        entity.FullName = dto.FullName.Trim();
+        entity.PhoneNumber = dto.PhoneNumber?.Trim() ?? string.Empty;
+    }
+
+    private static UserDto ConvertToDto(UserReadModel readModel)
+    {
+        return new UserDto(
+            readModel.UserId,
+            readModel.FullName,
+            readModel.Email,
+            readModel.PhoneNumber,
+            readModel.RoleId,
+            readModel.RoleName,
+            readModel.IsActive);
+    }
+
+    private async Task<UserReadModel> GetUserResponseAsync(int userId)
+    {
+        return await _repository.GetByIdAsync(userId)
+            ?? throw new InvalidOperationException("Created or updated user was not found.");
     }
 }
 

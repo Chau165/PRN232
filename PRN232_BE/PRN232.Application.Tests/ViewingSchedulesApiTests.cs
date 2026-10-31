@@ -35,8 +35,16 @@ public class ViewingSchedulesApiTests
         using var client = factory.CreateClient();
         await LoginAsync(client, "customer@example.test");
 
-        var response = await client.PostAsJsonAsync("/api/viewing-schedules", new { roomId = 1, scheduledAt = FutureUtc });
-        var duplicate = await client.PostAsJsonAsync("/api/viewing-schedules", new { roomId = 1, scheduledAt = (DateTime?)null });
+        var response = await client.PostAsJsonAsync("/api/viewing-schedules", new
+        {
+            roomId = 1,
+            scheduledAt = FutureUtc
+        });
+        var duplicate = await client.PostAsJsonAsync("/api/viewing-schedules", new
+        {
+            roomId = 1,
+            scheduledAt = (DateTime?)null
+        });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -60,7 +68,11 @@ public class ViewingSchedulesApiTests
         await LoginAsync(client, "customer@example.test");
 
         var response = await client.PostAsJsonAsync("/api/viewing-schedules",
-            new { roomId, scheduledAt = DateTime.UtcNow.AddDays(daysFromNow) });
+            new
+            {
+                roomId,
+                scheduledAt = DateTime.UtcNow.AddDays(daysFromNow)
+            });
 
         Assert.Equal(expected, response.StatusCode);
     }
@@ -93,8 +105,13 @@ public class ViewingSchedulesApiTests
         var viewingId = await CreateViewingAsync(client, scheduledAt: null);
         await LoginAsync(client, "manager@example.test");
 
-        var withoutTime = await client.PostAsJsonAsync($"/api/viewing-schedules/{viewingId}/approve", new { });
-        var approved = await client.PostAsJsonAsync($"/api/viewing-schedules/{viewingId}/approve", new { scheduledAt = FutureUtc });
+        var withoutTime = await client.PostAsJsonAsync($"/api/viewing-schedules/{viewingId}/approve", new
+        {
+        });
+        var approved = await client.PostAsJsonAsync($"/api/viewing-schedules/{viewingId}/approve", new
+        {
+            scheduledAt = FutureUtc
+        });
         var again = await client.PostAsync($"/api/viewing-schedules/{viewingId}/reject", null);
 
         Assert.Equal(HttpStatusCode.BadRequest, withoutTime.StatusCode);
@@ -132,7 +149,11 @@ public class ViewingSchedulesApiTests
 
     private static async Task<int> CreateViewingAsync(HttpClient client, DateTime? scheduledAt)
     {
-        using var response = await client.PostAsJsonAsync("/api/viewing-schedules", new { roomId = 1, scheduledAt });
+        using var response = await client.PostAsJsonAsync("/api/viewing-schedules", new
+        {
+            roomId = 1,
+            scheduledAt
+        });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         return body.GetProperty("viewingId").GetInt32();

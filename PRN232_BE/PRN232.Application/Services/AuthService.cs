@@ -56,15 +56,9 @@ public class AuthService : IAuthService
             throw new AuthRoleNotSeededException(DefaultRegisterRoleName);
         }
 
-        var user = new Users
-        {
-            FullName = dto.FullName.Trim(),
-            Email = normalizedEmail,
-            PasswordHash = _passwordHasher.Hash(dto.Password),
-            PhoneNumber = dto.PhoneNumber?.Trim() ?? string.Empty,
-            RoleId = customerRole.RoleId,
-            IsActive = true,
-        };
+        var passwordHash = _passwordHasher.Hash(dto.Password);
+        var isActive = true;
+        var user = ConvertToEntity(dto, normalizedEmail, passwordHash, customerRole.RoleId, isActive);
 
         var created = await _userRepository.AddAsync(user);
         await _userRepository.SaveChangesAsync();
@@ -88,12 +82,40 @@ public class AuthService : IAuthService
         return BuildAuthResponse(user, user.Role?.RoleName ?? string.Empty);
     }
 
+    private static Users ConvertToEntity(
+        RegisterDto dto,
+        string normalizedEmail,
+        string passwordHash,
+        int customerRoleId,
+        bool isActive)
+    {
+        return new Users
+        {
+            FullName = dto.FullName.Trim(),
+            Email = normalizedEmail,
+            PasswordHash = passwordHash,
+            PhoneNumber = dto.PhoneNumber?.Trim() ?? string.Empty,
+            RoleId = customerRoleId,
+            IsActive = isActive
+        };
+    }
+
     private AuthResponseDto BuildAuthResponse(Users user, string roleName)
     {
         var (token, expiresAtUtc) = _jwtTokenGenerator.GenerateToken(user, roleName);
-        var userDto = new AuthenticatedUserDto(
-            user.UserId, user.FullName, user.Email, user.PhoneNumber, user.RoleId, roleName);
+        var userDto = ConvertToDto(user, roleName);
         return new AuthResponseDto(token, expiresAtUtc, userDto);
+    }
+
+    private static AuthenticatedUserDto ConvertToDto(Users user, string roleName)
+    {
+        return new AuthenticatedUserDto(
+            user.UserId,
+            user.FullName,
+            user.Email,
+            user.PhoneNumber,
+            user.RoleId,
+            roleName);
     }
 }
 

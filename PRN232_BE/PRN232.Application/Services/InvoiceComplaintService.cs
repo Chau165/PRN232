@@ -2,6 +2,7 @@ using System.Globalization;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Policies;
+using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 
@@ -41,15 +42,7 @@ public class InvoiceComplaintService : IInvoiceComplaintService
             throw new ComplaintBusinessRuleException("Fee type must be one of the invoice lines or \"Khác\".");
         }
 
-        var complaint = new InvoiceComplaints
-        {
-            InvoiceId = invoice.InvoiceId,
-            CustomerId = customerId,
-            FeeType = feeType,
-            Content = content,
-            Status = ComplaintStatuses.New,
-            CreatedAt = _timeProvider.GetUtcNow().UtcDateTime
-        };
+        var complaint = CreateComplaintEntity(invoice.InvoiceId, customerId, feeType, content, _timeProvider.GetUtcNow().UtcDateTime);
         await _repository.AddAsync(complaint, new Notifications
         {
             UserId = invoice.OwnerId,
@@ -58,11 +51,12 @@ public class InvoiceComplaintService : IInvoiceComplaintService
             IsRead = false
         });
 
-        return await _repository.GetByIdAsync(complaint.ComplaintId, customerId, null)
+        var created = await _repository.GetByIdAsync(complaint.ComplaintId, customerId, null)
             ?? throw new InvalidOperationException("Created complaint was not found.");
+        return ConvertToDto(created);
     }
 
-    public Task<List<InvoiceComplaintDto>> GetAllAsync(int userId, string role, string? status)
+    public async Task<List<InvoiceComplaintDto>> GetAllAsync(int userId, string role, string? status)
     {
         if (status is not null && !ComplaintStatuses.IsValid(status))
         {
@@ -70,7 +64,8 @@ public class InvoiceComplaintService : IInvoiceComplaintService
         }
 
         var (customerId, ownerId) = GetScope(userId, role);
-        return _repository.GetAllAsync(customerId, ownerId, status);
+        var complaints = await _repository.GetAllAsync(customerId, ownerId, status);
+        return complaints.Select(ConvertToDto).ToList();
     }
 
     public async Task<InvoiceComplaintDto?> GetByIdAsync(int id, int userId, string role)
@@ -81,7 +76,7 @@ public class InvoiceComplaintService : IInvoiceComplaintService
         {
             throw new ComplaintAuthorizationException("You cannot access this complaint.");
         }
-        return complaint;
+        return complaint is null ? null : ConvertToDto(complaint);
     }
 
     public async Task<InvoiceComplaintDto> UpdateStatusAsync(int id, UpdateComplaintStatusDto dto, int userId, string role)
@@ -116,11 +111,39 @@ public class InvoiceComplaintService : IInvoiceComplaintService
             IsRead = false
         });
 
-        return await _repository.GetByIdAsync(complaint.ComplaintId, null, null)
+        var updated = await _repository.GetByIdAsync(complaint.ComplaintId, null, null)
             ?? throw new InvalidOperationException("Updated complaint was not found.");
+        return ConvertToDto(updated);
     }
 
     private static string Period(DateOnly month) => month.ToString("MM/yyyy", CultureInfo.InvariantCulture);
+
+    private static InvoiceComplaintDto ConvertToDto(InvoiceComplaintReadModel complaint) => new(
+        complaint.ComplaintId,
+        complaint.InvoiceId,
+        complaint.InvoiceMonth,
+        complaint.RoomCode,
+        complaint.PropertyName,
+        complaint.CustomerId,
+        complaint.CustomerName,
+        complaint.FeeType,
+        complaint.Content,
+        complaint.Status,
+        complaint.CreatedAt);
+
+    private static InvoiceComplaints CreateComplaintEntity(
+        int invoiceId, int customerId, string feeType, string content, DateTime createdAt)
+    {
+        return new InvoiceComplaints
+        {
+            InvoiceId = invoiceId,
+            CustomerId = customerId,
+            FeeType = feeType,
+            Content = content,
+            Status = ComplaintStatuses.New,
+            CreatedAt = createdAt
+        };
+    }
 
     private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role) =>
         AccessScope.For(userId, role) ?? throw new ComplaintAuthorizationException("Your role cannot access complaints.");

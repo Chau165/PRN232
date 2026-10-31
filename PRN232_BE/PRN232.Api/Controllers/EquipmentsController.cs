@@ -35,7 +35,10 @@ public class EquipmentsController : ControllerBase
         try
         {
             var created = await _equipmentService.CreateAsync(dto, CurrentUserId(), IsAdmin());
-            return CreatedAtAction(nameof(GetById), new { id = created.EquipmentId }, created);
+            return CreatedAtAction(nameof(GetById), new
+            {
+                id = created.EquipmentId
+            }, created);
         }
         catch (EquipmentForbiddenException exception)
         {

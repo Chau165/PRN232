@@ -18,14 +18,3 @@ public record ContractDto(
     string? ProcessedByStaffName);
 
 public record CreateContractDto(int BookingId, DateOnly StartDate, DateOnly EndDate);
-
-public record ContractBookingDto(
-    int BookingId,
-    int RoomId,
-    string RoomCode,
-    int CustomerId,
-    int OwnerId,
-    string Status,
-    decimal DepositAmount,
-    decimal MonthlyRent,
-    bool HasContract);

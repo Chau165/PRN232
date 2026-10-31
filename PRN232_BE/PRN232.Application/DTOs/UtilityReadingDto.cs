@@ -23,7 +23,3 @@ public record CreateUtilityReadingDto(
     decimal WaterEnd,
     decimal? ElectricStart,
     decimal? WaterStart);
-
-public record ReadingContractDto(int ContractId, int OwnerId, string Status, DateOnly StartDate, DateOnly EndDate);
-
-public record LatestReadingDto(DateOnly ReadingMonth, decimal ElectricEnd, decimal WaterEnd);

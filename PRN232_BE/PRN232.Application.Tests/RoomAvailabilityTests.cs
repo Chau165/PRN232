@@ -273,7 +273,10 @@ public class RoomAvailabilityTests
             Context = context;
         }
 
-        public AppDbContext Context { get; }
+        public AppDbContext Context
+        {
+            get;
+        }
 
         public static async Task<TestDatabase> CreateAsync()
         {

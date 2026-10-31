@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Infrastructure.Data;
 using Entities = PRN232.Domain.Entities;
@@ -15,21 +14,19 @@ public class ServiceRepository : IServiceRepository
         _context = context;
     }
 
-    public Task<List<ServiceDto>> GetAllAsync() =>
+    public Task<List<Entities.Service>> GetAllAsync() =>
         _context.Services
             .AsNoTracking()
             .OrderBy(s => s.Name)
-            .Select(s => new ServiceDto(s.ServiceId, s.Name, s.Price))
             .ToListAsync();
 
-    public Task<ServiceDto?> GetByIdAsync(int id) =>
+    public Task<Entities.Service?> GetByIdAsync(int id) =>
         _context.Services
             .AsNoTracking()
             .Where(s => s.ServiceId == id)
-            .Select(s => new ServiceDto(s.ServiceId, s.Name, s.Price))
             .FirstOrDefaultAsync();
 
-    public Task<Entities.Service?> GetEntityByIdAsync(int id) =>
+    public Task<Entities.Service?> GetTrackedByIdAsync(int id) =>
         _context.Services.FirstOrDefaultAsync(s => s.ServiceId == id);
 
     public async Task<Entities.Service> AddAsync(Entities.Service service)

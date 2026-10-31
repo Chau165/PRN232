@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
@@ -17,11 +18,11 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
         _context = context;
     }
 
-    public Task<ViewingRoomDto?> GetRoomAsync(int roomId) =>
+    public Task<ViewingRoomReadModel?> GetRoomAsync(int roomId) =>
         _context.Rooms
             .AsNoTracking()
             .Where(room => room.RoomId == roomId)
-            .Select(room => new ViewingRoomDto(room.RoomId, room.RoomCode, room.Property!.OwnerId))
+            .Select(room => new ViewingRoomReadModel(room.RoomId, room.RoomCode, room.Property!.OwnerId))
             .FirstOrDefaultAsync();
 
     public Task<bool> IsRoomRentableAsync(int roomId, DateTimeOffset asOfUtc) =>
@@ -45,17 +46,17 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
         await _context.SaveChangesAsync();
     }
 
-    public Task<List<ViewingScheduleDto>> GetAllAsync(int? customerId, int? ownerId, string? status) =>
+    public Task<List<ViewingScheduleReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status) =>
         InScope(customerId, ownerId)
             .Where(viewing => status == null || viewing.Status == status)
             .OrderByDescending(viewing => viewing.ViewingId)
-            .Select(ToDto)
+            .Select(ToReadModel)
             .ToListAsync();
 
-    public Task<ViewingScheduleDto?> GetByIdAsync(int viewingId, int? customerId, int? ownerId) =>
+    public Task<ViewingScheduleReadModel?> GetByIdAsync(int viewingId, int? customerId, int? ownerId) =>
         InScope(customerId, ownerId)
             .Where(viewing => viewing.ViewingId == viewingId)
-            .Select(ToDto)
+            .Select(ToReadModel)
             .FirstOrDefaultAsync();
 
     public Task<bool> ExistsAsync(int viewingId) =>
@@ -90,8 +91,8 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
             .Where(viewing => customerId == null || viewing.CustomerId == customerId)
             .Where(viewing => ownerId == null || viewing.Room!.Property!.OwnerId == ownerId);
 
-    private static readonly Expression<Func<ViewingSchedules, ViewingScheduleDto>> ToDto =
-        viewing => new ViewingScheduleDto(
+    private static readonly Expression<Func<ViewingSchedules, ViewingScheduleReadModel>> ToReadModel =
+        viewing => new ViewingScheduleReadModel(
             viewing.ViewingId,
             viewing.RoomId,
             viewing.Room!.RoomCode,

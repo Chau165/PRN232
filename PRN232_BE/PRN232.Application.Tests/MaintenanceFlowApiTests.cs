@@ -45,7 +45,16 @@ public class MaintenanceFlowApiTests
         using var factory = new MaintenanceApiFactory();
         using var client = factory.CreateClient();
         var registration = await client.PostAsJsonAsync("/api/auth/register", new
-        { fullName = "New Customer", email = "  NEW@example.test ", password = Password, phoneNumber = "123", roleId = 3, roleName = "Admin", isActive = false, passwordHash = "spoofed" });
+        {
+            fullName = "New Customer",
+            email = "  NEW@example.test ",
+            password = Password,
+            phoneNumber = "123",
+            roleId = 3,
+            roleName = "Admin",
+            isActive = false,
+            passwordHash = "spoofed"
+        });
         Assert.Equal(HttpStatusCode.OK, registration.StatusCode);
         var registered = await registration.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Customer", registered.GetProperty("user").GetProperty("roleName").GetString());
@@ -63,7 +72,14 @@ public class MaintenanceFlowApiTests
             await context.SaveChangesAsync();
         }
         var response = await client.PostAsJsonAsync("/api/maintenance-requests", new
-        { contractId = 100, description = "Leaking faucet", status = "Completed", assignedTo = 8, changedBy = 999, customerId = 20 });
+        {
+            contractId = 100,
+            description = "Leaking faucet",
+            status = "Completed",
+            assignedTo = 8,
+            changedBy = 999,
+            customerId = 20
+        });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Pending", body.GetProperty("status").GetString());
@@ -80,9 +96,22 @@ public class MaintenanceFlowApiTests
         using var factory = new MaintenanceApiFactory();
         using var client = factory.CreateClient();
         Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync("/api/auth/register", new
-        { fullName = "Duplicate", email = "customer@example.test", password = Password, phoneNumber = "123" })).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/auth/login", new { email = "customer@example.test", password = "wrong" })).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/auth/login", new { email = "inactive@example.test", password = Password })).StatusCode);
+        {
+            fullName = "Duplicate",
+            email = "customer@example.test",
+            password = Password,
+            phoneNumber = "123"
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/auth/login", new
+        {
+            email = "customer@example.test",
+            password = "wrong"
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/auth/login", new
+        {
+            email = "inactive@example.test",
+            password = Password
+        })).StatusCode);
     }
 
     [Theory]
@@ -131,7 +160,12 @@ public class MaintenanceFlowApiTests
         using var factory = new MaintenanceApiFactory();
         using var client = factory.CreateClient();
         await LoginAsync(client, "customer@example.test");
-        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/maintenance-requests", new { contractId = 2, description = "Spoof", customerId = 20 })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/maintenance-requests", new
+        {
+            contractId = 2,
+            description = "Spoof",
+            customerId = 20
+        })).StatusCode);
     }
 
     [Theory]
@@ -145,7 +179,10 @@ public class MaintenanceFlowApiTests
         using var client = factory.CreateClient();
         await LoginAsync(client, "admin@example.test");
         Assert.Equal(expected, (await client.PatchAsJsonAsync("/api/maintenance-requests/3", new
-        { assignedTo, assignmentNote = "Do not persist for invalid assignment." })).StatusCode);
+        {
+            assignedTo,
+            assignmentNote = "Do not persist for invalid assignment."
+        })).StatusCode);
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Equal("Pending", (await context.MaintenanceRequests.FindAsync(3))!.Status);
@@ -199,7 +236,10 @@ public class MaintenanceFlowApiTests
         await LoginAsync(client, "admin@example.test");
         Assert.Equal(HttpStatusCode.Conflict,
             (await client.PatchAsJsonAsync("/api/maintenance-requests/3", new
-            { assignedTo = 7, assignmentNote = "Changed after approval" })).StatusCode);
+            {
+                assignedTo = 7,
+                assignmentNote = "Changed after approval"
+            })).StatusCode);
 
         await LoginAsync(client, "customer@example.test");
         var customerList = await client.GetFromJsonAsync<JsonElement>("/api/maintenance-requests");
@@ -256,7 +296,12 @@ public class MaintenanceFlowApiTests
         using var factory = new MaintenanceApiFactory();
         using var client = factory.CreateClient();
         await LoginAsync(client, "admin@example.test");
-        Assert.Equal(HttpStatusCode.Conflict, (await client.PatchAsJsonAsync("/api/maintenance-requests/1", new { status = "Completed", assignedTo = 7, changedBy = 999 })).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PatchAsJsonAsync("/api/maintenance-requests/1", new
+        {
+            status = "Completed",
+            assignedTo = 7,
+            changedBy = 999
+        })).StatusCode);
     }
 
     [Theory]
@@ -271,7 +316,10 @@ public class MaintenanceFlowApiTests
         using var client = factory.CreateClient();
         await LoginAsync(client, email);
         using var request = new HttpRequestMessage(new HttpMethod(method), path);
-        request.Content = method == "POST" ? ReportForm() : JsonContent.Create(new { assignedTo = 7 });
+        request.Content = method == "POST" ? ReportForm() : JsonContent.Create(new
+        {
+            assignedTo = 7
+        });
         Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(request)).StatusCode);
     }
 
@@ -367,12 +415,19 @@ public class MaintenanceFlowApiTests
             var context = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
             context.MaintenanceRequests.Add(new MaintenanceRequests
             {
-                RequestId = 24, ContractId = 2, Description = "Other room request", Status = "Pending"
+                RequestId = 24,
+                ContractId = 2,
+                Description = "Other room request",
+                Status = "Pending"
             });
             await context.SaveChangesAsync();
         }
         var customerToken = await LoginAsync(client, "customer@example.test");
-        var created = await client.PostAsJsonAsync("/api/maintenance-requests", new { contractId = 1, description = "Leaking faucet" });
+        var created = await client.PostAsJsonAsync("/api/maintenance-requests", new
+        {
+            contractId = 1,
+            description = "Leaking faucet"
+        });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         var id = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("requestId").GetInt32();
         Assert.Equal(25, id);
@@ -383,7 +438,10 @@ public class MaintenanceFlowApiTests
         Assert.Equal("Maintenance", customerCreatedNotification.GetProperty("type").GetString());
         Assert.False(customerCreatedNotification.GetProperty("isRead").GetBoolean());
         Assert.Equal(HttpStatusCode.Forbidden,
-            (await client.PatchAsJsonAsync($"/api/maintenance-requests/{id}", new { assignedTo = 7 })).StatusCode);
+            (await client.PatchAsJsonAsync($"/api/maintenance-requests/{id}", new
+            {
+                assignedTo = 7
+            })).StatusCode);
         using (var createScope = factory.Services.CreateScope())
         {
             var context = createScope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -400,12 +458,25 @@ public class MaintenanceFlowApiTests
         Assert.False(createdNotifications[0].GetProperty("isRead").GetBoolean());
         Assert.False(createdNotifications[0].TryGetProperty("createdAt", out _));
         Assert.Equal(HttpStatusCode.MethodNotAllowed,
-            (await client.PostAsJsonAsync("/api/notifications", new { userId = 10, title = "spoof", type = "Maintenance" })).StatusCode);
+            (await client.PostAsJsonAsync("/api/notifications", new
+            {
+                userId = 10,
+                title = "spoof",
+                type = "Maintenance"
+            })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync(
-            $"/api/notifications/{createdNotifications[0].GetProperty("notificationId").GetInt32()}", new { isRead = true })).StatusCode);
+            $"/api/notifications/{createdNotifications[0].GetProperty("notificationId").GetInt32()}", new
+            {
+                isRead = true
+            })).StatusCode);
         var assignmentNote = "Call the supply room before arrival.";
         var assigned = await client.PatchAsJsonAsync($"/api/maintenance-requests/{id}", new
-        { assignedTo = 7, assignmentNote, status = "Completed", changedBy = 999 });
+        {
+            assignedTo = 7,
+            assignmentNote,
+            status = "Completed",
+            changedBy = 999
+        });
         Assert.Equal(HttpStatusCode.OK, assigned.StatusCode);
         var assignment = await assigned.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Approved", assignment.GetProperty("status").GetString());
@@ -435,7 +506,11 @@ public class MaintenanceFlowApiTests
         Assert.Equal(assignmentNote,
             (await client.GetFromJsonAsync<JsonElement>($"/api/maintenance-requests/{id}")).GetProperty("assignmentNote").GetString());
         using var form = ReportForm();
-        foreach (var name in new[] { "ReportedBy", "ChangedBy", "ManagerId" }) form.Add(new StringContent("999"), name);
+        foreach (var name in new[] { "ReportedBy", "ChangedBy", "ManagerId" })
+        {
+            form.Add(new StringContent("999"), name);
+        }
+
         form.Add(new StringContent("Pending"), "Status");
         var completion = await client.PostAsync($"/api/maintenance-requests/{id}/reports", form);
         Assert.Equal(HttpStatusCode.Created, completion.StatusCode);
@@ -530,7 +605,12 @@ public class MaintenanceFlowApiTests
         Assert.Equal(new[] { 53, 51 }, newestFirst.EnumerateArray().Select(item => item.GetProperty("notificationId").GetInt32()));
         Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/api/notifications?isRead=invalid")).StatusCode);
         Assert.Equal(HttpStatusCode.MethodNotAllowed,
-            (await client.PostAsJsonAsync("/api/notifications", new { userId = 20, title = "spoof", type = "Maintenance" })).StatusCode);
+            (await client.PostAsJsonAsync("/api/notifications", new
+            {
+                userId = 20,
+                title = "spoof",
+                type = "Maintenance"
+            })).StatusCode);
     }
 
     [Fact]
@@ -549,10 +629,24 @@ public class MaintenanceFlowApiTests
 
         await LoginAsync(client, "customer@example.test");
         Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync("/api/notifications/60", new
-        { isRead = true, userId = 20, type = "Payment", title = "spoof", createdAt = "2026-01-01" })).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await client.PatchAsJsonAsync("/api/notifications/60", new { })).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await client.PatchAsJsonAsync("/api/notifications/61", new { isRead = true })).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await client.PatchAsJsonAsync("/api/notifications/999", new { isRead = true })).StatusCode);
+        {
+            isRead = true,
+            userId = 20,
+            type = "Payment",
+            title = "spoof",
+            createdAt = "2026-01-01"
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PatchAsJsonAsync("/api/notifications/60", new
+        {
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PatchAsJsonAsync("/api/notifications/61", new
+        {
+            isRead = true
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PatchAsJsonAsync("/api/notifications/999", new
+        {
+            isRead = true
+        })).StatusCode);
 
         using var verification = factory.Services.CreateScope();
         var stored = verification.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -594,7 +688,13 @@ public class MaintenanceFlowApiTests
         Assert.Equal(tagNames.Skip(3).OrderBy(name => name, StringComparer.OrdinalIgnoreCase), tagNames.Skip(3));
         var paths = swagger.RootElement.GetProperty("paths");
         foreach (var (path, verbs) in new[] { ("/api/maintenance-requests", new[] { "get", "post" }), ("/api/maintenance-requests/{id}", new[] { "get", "patch" }), ("/api/maintenance-requests/{id}/logs", new[] { "get" }), ("/api/maintenance-requests/{id}/reports", new[] { "get", "post" }) })
-            foreach (var verb in verbs) Assert.True(paths.GetProperty(path).TryGetProperty(verb, out _));
+        {
+            foreach (var verb in verbs)
+            {
+                Assert.True(paths.GetProperty(path).TryGetProperty(verb, out _));
+            }
+        }
+
         Assert.True(paths.TryGetProperty("/api/auth/login", out _));
         Assert.True(paths.TryGetProperty("/api/auth/register", out _));
         Assert.True(paths.GetProperty("/api/notifications").TryGetProperty("get", out var notificationsGet));
@@ -655,7 +755,11 @@ public class MaintenanceFlowApiTests
         using var factory = new MaintenanceApiFactory();
         using var client = factory.CreateClient();
         await LoginAsync(client, "customer@example.test");
-        Assert.Equal(expected, (await client.PostAsJsonAsync("/api/maintenance-requests", new { contractId, description })).StatusCode);
+        Assert.Equal(expected, (await client.PostAsJsonAsync("/api/maintenance-requests", new
+        {
+            contractId,
+            description
+        })).StatusCode);
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Equal(4, await context.MaintenanceRequests.CountAsync());
@@ -670,7 +774,10 @@ public class MaintenanceFlowApiTests
         using var factory = new MaintenanceApiFactory();
         using var client = factory.CreateClient();
         await LoginAsync(client, "admin@example.test");
-        Assert.Equal(expected, (await client.PatchAsJsonAsync($"/api/maintenance-requests/{id}", new { assignedTo = (int?)null })).StatusCode);
+        Assert.Equal(expected, (await client.PatchAsJsonAsync($"/api/maintenance-requests/{id}", new
+        {
+            assignedTo = (int?)null
+        })).StatusCode);
     }
 
     [Fact]
@@ -697,7 +804,11 @@ public class MaintenanceFlowApiTests
 
     private static async Task<string> LoginAsync(HttpClient client, string email)
     {
-        using var response = await client.PostAsJsonAsync("/api/auth/login", new { email, password = Password });
+        using var response = await client.PostAsJsonAsync("/api/auth/login", new
+        {
+            email,
+            password = Password
+        });
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         var token = body.GetProperty("accessToken").GetString()!;
@@ -728,8 +839,10 @@ internal sealed class MaintenanceApiFactory : WebApplicationFactory<MaintenanceR
         builder.UseEnvironment("Testing");
         builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Jwt:Key"] = "integration-test-only-signing-key-32-bytes", ["Jwt:Issuer"] = "test-issuer",
-            ["Jwt:Audience"] = "test-audience", ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=unused"
+            ["Jwt:Key"] = "integration-test-only-signing-key-32-bytes",
+            ["Jwt:Issuer"] = "test-issuer",
+            ["Jwt:Audience"] = "test-audience",
+            ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=unused"
         }));
         builder.ConfigureTestServices(services =>
         {
@@ -760,7 +873,10 @@ internal sealed class MaintenanceApiFactory : WebApplicationFactory<MaintenanceR
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        if (disposing) _connection.Dispose();
+        if (disposing)
+        {
+            _connection.Dispose();
+        }
     }
     private static Users User(int id, int roleId, string name, string email, string hash, bool active = true) => new() { UserId = id, RoleId = roleId, FullName = name, Email = email, PasswordHash = hash, IsActive = active };
     private static Contracts Contract(int id, int customerId, int roomId) => new() { ContractId = id, CustomerId = customerId, RoomId = roomId, StartDate = new DateOnly(2020, 1, 1), EndDate = new DateOnly(2100, 1, 1) };
@@ -769,21 +885,44 @@ internal sealed class MaintenanceApiFactory : WebApplicationFactory<MaintenanceR
 
 internal sealed class TestReportImageStorage : IMaintenanceReportImageStorage
 {
-    public int UploadCount { get; private set; }
-    public int DeleteCount { get; private set; }
-    public int SigningCount { get; private set; }
-    public bool FailUpload { get; set; }
-    public bool FailSigning { get; set; }
+    public int UploadCount
+    {
+        get; private set;
+    }
+    public int DeleteCount
+    {
+        get; private set;
+    }
+    public int SigningCount
+    {
+        get; private set;
+    }
+    public bool FailUpload
+    {
+        get; set;
+    }
+    public bool FailSigning
+    {
+        get; set;
+    }
     public Task<string> UploadAsync(int requestId, MaintenanceReportImageInput image)
     {
         UploadCount++;
-        if (FailUpload) throw new HttpRequestException("Test storage failure");
+        if (FailUpload)
+        {
+            throw new HttpRequestException("Test storage failure");
+        }
+
         return Task.FromResult($"maintenance/{requestId}/{Guid.NewGuid():N}.png");
     }
     public Task<string> GetReadUrlAsync(string path)
     {
         SigningCount++;
-        if (FailSigning) throw new HttpRequestException("Test signing failure");
+        if (FailSigning)
+        {
+            throw new HttpRequestException("Test signing failure");
+        }
+
         return Task.FromResult($"https://storage.test/{path}?signed=test");
     }
     public Task DeleteAsync(string path)

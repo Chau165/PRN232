@@ -43,7 +43,10 @@ public class BookingsApiTests
         using var client = factory.CreateClient();
         await LoginAsync(client, "manager@example.test");
 
-        var response = await client.PostAsJsonAsync("/api/bookings", new { roomId = 1 });
+        var response = await client.PostAsJsonAsync("/api/bookings", new
+        {
+            roomId = 1
+        });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -56,7 +59,12 @@ public class BookingsApiTests
         await LoginAsync(client, "customer@example.test");
 
         var response = await client.PostAsJsonAsync("/api/bookings", new
-        { roomId = 1, customerId = 20, status = "Deposited", depositAmount = 1 });
+        {
+            roomId = 1,
+            customerId = 20,
+            status = "Deposited",
+            depositAmount = 1
+        });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -78,10 +86,16 @@ public class BookingsApiTests
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
         await LoginAsync(client, "customer@example.test");
-        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/bookings", new { roomId = 1 })).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/bookings", new
+        {
+            roomId = 1
+        })).StatusCode);
 
         await LoginAsync(client, "other@example.test");
-        var second = await client.PostAsJsonAsync("/api/bookings", new { roomId = 1 });
+        var second = await client.PostAsJsonAsync("/api/bookings", new
+        {
+            roomId = 1
+        });
 
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
     }
@@ -95,7 +109,10 @@ public class BookingsApiTests
         using var client = factory.CreateClient();
         await LoginAsync(client, "customer@example.test");
 
-        var response = await client.PostAsJsonAsync("/api/bookings", new { roomId });
+        var response = await client.PostAsJsonAsync("/api/bookings", new
+        {
+            roomId
+        });
 
         Assert.Equal(expected, response.StatusCode);
     }
@@ -127,7 +144,10 @@ public class BookingsApiTests
         await LoginAsync(client, "customer@example.test");
         var bookingId = await CreateBookingAsync(client);
 
-        var response = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new { paymentMethod = "MoMo" });
+        var response = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new
+        {
+            paymentMethod = "MoMo"
+        });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -151,9 +171,15 @@ public class BookingsApiTests
         await LoginAsync(client, "customer@example.test");
         var bookingId = await CreateBookingAsync(client);
         Assert.Equal(HttpStatusCode.OK,
-            (await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new { paymentMethod = "VNPay" })).StatusCode);
+            (await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new
+            {
+                paymentMethod = "VNPay"
+            })).StatusCode);
 
-        var second = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new { paymentMethod = "VNPay" });
+        var second = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new
+        {
+            paymentMethod = "VNPay"
+        });
 
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
         using var scope = factory.Services.CreateScope();
@@ -171,7 +197,10 @@ public class BookingsApiTests
         var bookingId = await CreateBookingAsync(client);
 
         await LoginAsync(client, email);
-        var response = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new { paymentMethod = "VNPay" });
+        var response = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new
+        {
+            paymentMethod = "VNPay"
+        });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -184,8 +213,14 @@ public class BookingsApiTests
         await LoginAsync(client, "customer@example.test");
         var bookingId = await CreateBookingAsync(client);
 
-        var cash = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new { paymentMethod = "Cash" });
-        var unknown = await client.PostAsJsonAsync("/api/bookings/999/pay", new { paymentMethod = "VNPay" });
+        var cash = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new
+        {
+            paymentMethod = "Cash"
+        });
+        var unknown = await client.PostAsJsonAsync("/api/bookings/999/pay", new
+        {
+            paymentMethod = "VNPay"
+        });
 
         Assert.Equal(HttpStatusCode.BadRequest, cash.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
@@ -241,7 +276,10 @@ public class BookingsApiTests
         Assert.Equal("Cancelled", body.GetProperty("status").GetString());
         Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync($"/api/bookings/{bookingId}/cancel", null)).StatusCode);
         await LoginAsync(client, "other@example.test");
-        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/bookings", new { roomId = 1 })).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/bookings", new
+        {
+            roomId = 1
+        })).StatusCode);
     }
 
     [Fact]
@@ -251,7 +289,10 @@ public class BookingsApiTests
         using var client = factory.CreateClient();
         await LoginAsync(client, "customer@example.test");
         var bookingId = await CreateBookingAsync(client);
-        await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new { paymentMethod = "VNPay" });
+        await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new
+        {
+            paymentMethod = "VNPay"
+        });
 
         var byCustomer = await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
         await LoginAsync(client, "manager-b@example.test");
@@ -270,7 +311,10 @@ public class BookingsApiTests
 
     private static async Task<int> CreateBookingAsync(HttpClient client)
     {
-        using var response = await client.PostAsJsonAsync("/api/bookings", new { roomId = 1 });
+        using var response = await client.PostAsJsonAsync("/api/bookings", new
+        {
+            roomId = 1
+        });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         return body.GetProperty("bookingId").GetInt32();
@@ -278,7 +322,11 @@ public class BookingsApiTests
 
     internal static async Task LoginAsync(HttpClient client, string email)
     {
-        using var response = await client.PostAsJsonAsync("/api/auth/login", new { email, password = Password });
+        using var response = await client.PostAsJsonAsync("/api/auth/login", new
+        {
+            email,
+            password = Password
+        });
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         client.DefaultRequestHeaders.Authorization =
@@ -295,8 +343,10 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
         builder.UseEnvironment("Testing");
         builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Jwt:Key"] = "integration-test-only-signing-key-32-bytes", ["Jwt:Issuer"] = "test-issuer",
-            ["Jwt:Audience"] = "test-audience", ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=unused"
+            ["Jwt:Key"] = "integration-test-only-signing-key-32-bytes",
+            ["Jwt:Issuer"] = "test-issuer",
+            ["Jwt:Audience"] = "test-audience",
+            ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=unused"
         }));
         builder.ConfigureTestServices(services =>
         {
@@ -347,16 +397,32 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        if (disposing) _connection.Dispose();
+        if (disposing)
+        {
+            _connection.Dispose();
+        }
     }
 
     private static PropertyServiceRates Rate(int rateId, int serviceId, decimal price, string unitCode, string billingBasis) =>
         new()
         {
-            RateId = rateId, PropertyId = 1, ServiceId = serviceId, Price = price,
-            UnitCode = unitCode, BillingBasis = billingBasis, EffectiveFrom = new DateOnly(2000, 1, 1)
+            RateId = rateId,
+            PropertyId = 1,
+            ServiceId = serviceId,
+            Price = price,
+            UnitCode = unitCode,
+            BillingBasis = billingBasis,
+            EffectiveFrom = new DateOnly(2000, 1, 1)
         };
 
     private static Users User(int id, int roleId, string name, string email, string hash) =>
-        new() { UserId = id, RoleId = roleId, FullName = name, Email = email, PasswordHash = hash, IsActive = true };
+        new()
+        {
+            UserId = id,
+            RoleId = roleId,
+            FullName = name,
+            Email = email,
+            PasswordHash = hash,
+            IsActive = true
+        };
 }

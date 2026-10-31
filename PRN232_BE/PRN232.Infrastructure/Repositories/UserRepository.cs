@@ -3,6 +3,7 @@ using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
+using PRN232.Application.ReadModels;
 
 namespace PRN232.Infrastructure.Repositories;
 
@@ -29,12 +30,12 @@ public class UserRepository : IUserRepository
         return entry.Entity;
     }
 
-    public Task<List<UserDto>> GetAllAsync(int? roleId) =>
+    public Task<List<UserReadModel>> GetAllAsync(int? roleId) =>
         _context.Users
             .AsNoTracking()
             .Where(u => roleId == null || u.RoleId == roleId)
             .OrderBy(u => u.UserId)
-            .Select(u => new UserDto(
+            .Select(u => new UserReadModel(
                 u.UserId,
                 u.FullName,
                 u.Email,
@@ -44,11 +45,11 @@ public class UserRepository : IUserRepository
                 u.IsActive))
             .ToListAsync();
 
-    public Task<UserDto?> GetByIdAsync(int id) =>
+    public Task<UserReadModel?> GetByIdAsync(int id) =>
         _context.Users
             .AsNoTracking()
             .Where(u => u.UserId == id)
-            .Select(u => new UserDto(
+            .Select(u => new UserReadModel(
                 u.UserId,
                 u.FullName,
                 u.Email,
@@ -58,7 +59,7 @@ public class UserRepository : IUserRepository
                 u.IsActive))
             .FirstOrDefaultAsync();
 
-    public Task<Users?> GetEntityByIdAsync(int id) =>
+    public Task<Users?> GetTrackedByIdAsync(int id) =>
         _context.Users.FirstOrDefaultAsync(u => u.UserId == id);
 
     public Task<bool> RoleExistsAsync(int roleId) =>

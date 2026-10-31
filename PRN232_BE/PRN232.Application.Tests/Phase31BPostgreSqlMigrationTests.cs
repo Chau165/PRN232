@@ -320,15 +320,15 @@ public sealed class Phase31BPostgreSqlMigrationTests
         string billingBasis,
         DateOnly effectiveFrom,
         DateOnly? effectiveTo) => new()
-    {
-        PropertyId = propertyId,
-        ServiceId = serviceId,
-        Price = price,
-        UnitCode = unitCode,
-        BillingBasis = billingBasis,
-        EffectiveFrom = effectiveFrom,
-        EffectiveTo = effectiveTo
-    };
+        {
+            PropertyId = propertyId,
+            ServiceId = serviceId,
+            Price = price,
+            UnitCode = unitCode,
+            BillingBasis = billingBasis,
+            EffectiveFrom = effectiveFrom,
+            EffectiveTo = effectiveTo
+        };
 
     private static Task<int> InsertRateAsync(
         AppDbContext context,
@@ -638,7 +638,10 @@ public sealed class Phase31BPostgreSqlMigrationTests
         while (exception is not null)
         {
             if (exception is PostgresException postgresException)
+            {
                 return postgresException;
+            }
+
             exception = exception.InnerException;
         }
 
@@ -653,6 +656,8 @@ public sealed class Phase31BPostgreSqlFactAttribute : FactAttribute
     public Phase31BPostgreSqlFactAttribute()
     {
         if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PRN232_MIGRATION_TEST_POSTGRES_CONNECTION")))
+        {
             Skip = "Set PRN232_MIGRATION_TEST_POSTGRES_CONNECTION to the dedicated loopback PostgreSQL migration-test server.";
+        }
     }
 }

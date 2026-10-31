@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
@@ -15,21 +14,19 @@ public class RoomTypeRepository : IRoomTypeRepository
         _context = context;
     }
 
-    public Task<List<RoomTypeDto>> GetAllAsync() =>
+    public Task<List<RoomTypes>> GetAllAsync() =>
         _context.RoomTypes
             .AsNoTracking()
             .OrderBy(rt => rt.RoomTypeId)
-            .Select(rt => new RoomTypeDto(rt.RoomTypeId, rt.TypeName, rt.Price))
             .ToListAsync();
 
-    public Task<RoomTypeDto?> GetByIdAsync(int id) =>
+    public Task<RoomTypes?> GetByIdAsync(int id) =>
         _context.RoomTypes
             .AsNoTracking()
             .Where(rt => rt.RoomTypeId == id)
-            .Select(rt => new RoomTypeDto(rt.RoomTypeId, rt.TypeName, rt.Price))
             .FirstOrDefaultAsync();
 
-    public Task<RoomTypes?> GetEntityByIdAsync(int id) =>
+    public Task<RoomTypes?> GetTrackedByIdAsync(int id) =>
         _context.RoomTypes.FirstOrDefaultAsync(rt => rt.RoomTypeId == id);
 
     public async Task<RoomTypes> AddAsync(RoomTypes roomType)
@@ -45,11 +42,11 @@ public class RoomTypeRepository : IRoomTypeRepository
 
     public Task SaveChangesAsync() => _context.SaveChangesAsync();
 
-    public Task<List<ServiceDto>> GetServicesAsync(int roomTypeId) =>
+    public Task<List<Service>> GetServicesAsync(int roomTypeId) =>
         _context.RoomTypeServices
             .AsNoTracking()
             .Where(link => link.RoomTypeId == roomTypeId)
-            .Select(link => new ServiceDto(link.Service!.ServiceId, link.Service.Name, link.Service.Price))
+            .Select(link => link.Service!)
             .ToListAsync();
 
     public Task<bool> ServiceLinkExistsAsync(int roomTypeId, int serviceId) =>

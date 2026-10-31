@@ -3,10 +3,10 @@
 Tài liệu này áp dụng cho tất cả thành viên khi code backend. Mục đích: code của 5 người
 nhìn như 1 người viết, và khi thầy review thì convention đặt tên nhất quán giữa các module.
 
-Module mẫu để tham khảo/copy khi bắt đầu module mới: **Roles**
+Module **Roles** là mẫu tham khảo cho DTO, Service và Controller:
 (`PRN232.Application/{DTOs,Interfaces,Services}/Role*.cs`,
-`PRN232.Infrastructure/Repositories/RoleRepository.cs`,
-`PRN232.Api/Controllers/RolesController.cs`).
+`PRN232.Api/Controllers/RolesController.cs`). Không sao chép cách Repository của module này
+chiếu trực tiếp sang API DTO; Repository phải tuân thủ quy tắc Entity/Read Model tại mục 1.
 
 ## 1. Kiến trúc N-layer
 
@@ -25,15 +25,22 @@ PRN232.Infrastructure  ----------------------------
 
 - **`PRN232.Application`** — business logic, không biết DB thật sự chạy bằng Postgres hay gì.
   - `DTOs/` — các record dùng để nhận/trả data qua API (không bao giờ trả thẳng Entity ra ngoài).
+  - `ReadModels/` — kiểu dữ liệu chỉ dùng nội bộ Application cho các truy vấn đọc phức tạp;
+    không dùng API response DTO làm kiểu trả về Repository.
   - `Interfaces/` — `IXxxRepository`, `IXxxService` (contract, chưa có implementation).
   - `Services/` — implementation của `IXxxService`, gọi qua `IXxxRepository` (không gọi
-    `AppDbContext` trực tiếp ở layer này).
+    `AppDbContext` trực tiếp ở layer này). Service giữ nghiệp vụ và chuyển đổi DTO ↔ Entity/
+    Read Model ↔ response DTO.
 
 - **`PRN232.Infrastructure`** — chi tiết kỹ thuật: EF Core, Postgres, migrations.
   - `Data/AppDbContext.cs` — DbContext + Fluent API config (`OnModelCreating`).
   - `Repositories/` — implementation của `IXxxRepository`, là chỗ DUY NHẤT được query
-    `AppDbContext` trực tiếp. Dùng pattern EF projection: `.Select(x => new XxxDto(...))`
-    ngay trong query (xem `RoleRepository`), không load Entity đầy đủ rồi map tay ở Service.
+    `AppDbContext` trực tiếp. CRUD đơn giản trả Entity; query chỉ đọc dùng `AsNoTracking()`,
+    còn Entity cần cập nhật phải được tracking đến `SaveChangesAsync()`.
+  - Query đọc có quan hệ được phép dùng `Include`/`ThenInclude` hoặc EF projection sang
+    Application Read Model khi cần giới hạn cột, bảo toàn hiệu năng hoặc tránh tải dữ liệu nhạy
+    cảm. Chỉ giữ projection đặc thù khi có lý do cụ thể; không projection sang API DTO trong
+    Repository.
   - `Migrations/` — sinh bằng `dotnet ef migrations add ... --project PRN232.Infrastructure
     --startup-project PRN232.Api`, không sửa tay.
 
@@ -84,16 +91,38 @@ Quên dòng này sẽ gặp lỗi `requires a primary key to be defined` lúc `d
   nhiều ở tên service/repo).
 - **Async method**: luôn hậu tố `Async` (`GetAllAsync`, `AddAsync`, `SaveChangesAsync`).
 
-## 3. Checklist khi thêm 1 module mới (copy pattern Roles)
+### Quy tắc mapping và ranh giới Repository
+
+- Repository không phụ thuộc `PRN232.Application.DTOs` và không trả API request/response DTO.
+  CRUD cơ bản ưu tiên `Entity`; query đọc phức tạp có thể trả `Application/ReadModels` hoặc giữ
+  projection tối ưu có lý do được ghi rõ.
+- Service chịu trách nhiệm map Entity/Read Model thành response DTO và map request DTO thành
+  Entity. Dùng các phương thức convert riêng (`ConvertToEntity`, `ApplyUpdateToEntity`,
+  `ConvertToDto`) cho ánh xạ thuần túy.
+- Validation, authorization, ownership, trạng thái nghiệp vụ, defaults và normalization tiếp
+  tục ở Service/layer hiện có; mapper không quyết định nghiệp vụ.
+- Update áp dụng lên Entity đang tracking. Chỉ gán trường hiện được phép sửa; không thay primary
+  key, foreign key, navigation, status hoặc concurrency token ngoài quy tắc nghiệp vụ hiện có.
+- Filtering, sorting, pagination, aggregate và phân quyền theo dữ liệu phải tiếp tục chạy phía
+  database. Không materialize toàn bảng để lọc ở Service, không tạo N+1, không tải cột nhạy cảm
+  không cần thiết.
+- Thay đổi Repository nội bộ không được làm đổi route, HTTP verb/status, request/response DTO,
+  JSON camelCase/nullability, authorization hoặc error contract.
+
+## 3. Checklist khi thêm 1 module mới
 
 1. `Domain/Entities/Xxx.cs` — nếu chưa có (đa số entity đã có sẵn, chỉ cần check `HasKey`).
 2. `Application/DTOs/XxxDto.cs` (+ `CreateXxxDto`, `UpdateXxxDto` nếu cần).
 3. `Application/Interfaces/IXxxRepository.cs`, `IXxxService.cs`.
-4. `Infrastructure/Repositories/XxxRepository.cs` — implement, dùng EF projection.
-5. `Application/Services/XxxService.cs` — implement, gọi qua `IXxxRepository`.
+4. `Infrastructure/Repositories/XxxRepository.cs` — implement; CRUD trả Entity, read query
+   liên quan dùng `Application/ReadModels` hoặc projection tối ưu có lý do.
+5. `Application/Services/XxxService.cs` — implement, gọi qua `IXxxRepository`, giữ nghiệp vụ và
+   mapping DTO/Entity/Read Model.
 6. `Api/Controllers/XxxController.cs`.
 7. Đăng ký DI trong `PRN232.Api/Program.cs`:
    ```csharp
    builder.Services.AddScoped<IXxxRepository, XxxRepository>();
    builder.Services.AddScoped<IXxxService, XxxService>();
    ```
+8. Thêm unit/integration tests cho mapping, EF tracking, JSON/API contract, authorization và
+   query behavior liên quan; kiểm tra không phát sinh N+1 hoặc tải dữ liệu nhạy cảm.

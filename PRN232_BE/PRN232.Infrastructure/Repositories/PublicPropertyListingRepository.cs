@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Normalizers;
+using PRN232.Application.ReadModels;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
 
@@ -27,7 +28,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             .Distinct()
             .CountAsync(cancellationToken) == amenityIds.Length;
 
-    public async Task<PublicPropertyPageDto> GetPageAsync(
+    public async Task<PublicPropertyPageReadModel> GetPageAsync(
         PublicPropertySearchCriteria criteria,
         DateTimeOffset asOfUtc,
         CancellationToken cancellationToken)
@@ -106,13 +107,13 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             .GroupBy(link => link.RoomId)
             .ToDictionary(
                 group => group.Key,
-                group => (IReadOnlyList<PublicAmenitySummaryDto>)group
+                group => (IReadOnlyList<PublicAmenitySummaryReadModel>)group
                     .Take(MaximumAmenitiesSummary)
-                    .Select(link => new PublicAmenitySummaryDto(link.AmenityId, link.Name))
+                    .Select(link => new PublicAmenitySummaryReadModel(link.AmenityId, link.Name))
                     .ToArray());
 
         var items = pageRows
-            .Select(row => new PublicPropertyCardDto(
+            .Select(row => new PublicPropertyCardReadModel(
                 row.PropertyId,
                 row.PropertyName,
                 row.AddressText,
@@ -122,7 +123,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 row.PrimaryImageUrl,
                 row.RepresentativeRoomId is int roomId && amenitiesByRoom.TryGetValue(roomId, out var amenities)
                     ? amenities
-                    : Array.Empty<PublicAmenitySummaryDto>(),
+                     : Array.Empty<PublicAmenitySummaryReadModel>(),
                 row.AvailableRoomCount,
                 row.StartingPrice))
             .ToArray();
@@ -132,10 +133,10 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             await transaction.CommitAsync(cancellationToken);
         }
 
-        return new PublicPropertyPageDto(items, totalCount, criteria.Page, criteria.PageSize);
+        return new PublicPropertyPageReadModel(items, totalCount, criteria.Page, criteria.PageSize);
     }
 
-    public async Task<IReadOnlyList<PublicPropertyAreaCardDto>> GetByAreaAsync(
+    public async Task<IReadOnlyList<PublicPropertyAreaCardReadModel>> GetByAreaAsync(
         PublicPropertyAreaSearchCriteria criteria,
         DateTimeOffset asOfUtc,
         CancellationToken cancellationToken)
@@ -178,7 +179,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 (criteria.City is null || PublicAreaNameNormalizer.Normalize(property.City) == criteria.City) &&
                 (criteria.District is null || PublicAreaNameNormalizer.Normalize(property.District) == criteria.District) &&
                 (criteria.Ward is null || PublicAreaNameNormalizer.Normalize(property.Ward) == criteria.Ward))
-            .Select(property => new PublicPropertyAreaCardDto(
+            .Select(property => new PublicPropertyAreaCardReadModel(
                 property.PropertyId,
                 property.PropertyName,
                 property.AddressText,
@@ -200,20 +201,20 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
         return items;
     }
 
-    public Task<PublicPropertyDetailDto?> GetDetailAsync(
+    public Task<PublicPropertyDetailReadModel?> GetDetailAsync(
         int propertyId,
         DateTimeOffset asOfUtc,
         CancellationToken cancellationToken) =>
         GetDetailCoreAsync(propertyId, asOfUtc, false, null, cancellationToken);
 
-    public Task<PublicPropertyDetailDto?> GetEnrichedDetailAsync(
+    public Task<PublicPropertyDetailReadModel?> GetEnrichedDetailAsync(
         int propertyId,
         DateTimeOffset asOfUtc,
         DateOnly currentMonthStart,
         CancellationToken cancellationToken) =>
         GetDetailCoreAsync(propertyId, asOfUtc, true, currentMonthStart, cancellationToken);
 
-    private async Task<PublicPropertyDetailDto?> GetDetailCoreAsync(
+    private async Task<PublicPropertyDetailReadModel?> GetDetailCoreAsync(
         int propertyId,
         DateTimeOffset asOfUtc,
         bool includeEnrichment,
@@ -264,17 +265,21 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             join room in rentableRooms on roomAmenity.RoomId equals room.RoomId
             join amenity in _context.Amenities.AsNoTracking() on roomAmenity.AmenityId equals amenity.AmenityId
             where room.PropertyId == propertyId
-            group roomAmenity.RoomId by new { amenity.AmenityId, amenity.Name } into amenityRooms
+            group roomAmenity.RoomId by new
+            {
+                amenity.AmenityId,
+                amenity.Name
+            } into amenityRooms
             orderby amenityRooms.Key.AmenityId
-            select new PublicPropertyRoomAmenityDto(
+            select new PublicPropertyRoomAmenityReadModel(
                 amenityRooms.Key.AmenityId,
                 amenityRooms.Key.Name,
                 amenityRooms.Count()))
             .ToListAsync(cancellationToken);
 
         string? description = null;
-        IReadOnlyList<PublicAmenitySummaryDto> commonAmenities = Array.Empty<PublicAmenitySummaryDto>();
-        IReadOnlyList<PublicPropertyServiceRateDto> livingCosts = Array.Empty<PublicPropertyServiceRateDto>();
+        IReadOnlyList<PublicAmenitySummaryReadModel> commonAmenities = Array.Empty<PublicAmenitySummaryReadModel>();
+        IReadOnlyList<PublicPropertyServiceRateReadModel> livingCosts = Array.Empty<PublicPropertyServiceRateReadModel>();
         if (includeEnrichment)
         {
             description = await _context.Properties
@@ -288,7 +293,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 .Where(link => link.PropertyId == propertyId)
                 .OrderBy(link => link.Amenity!.Name)
                 .ThenBy(link => link.AmenityId)
-                .Select(link => new PublicAmenitySummaryDto(link.AmenityId, link.Amenity!.Name))
+                .Select(link => new PublicAmenitySummaryReadModel(link.AmenityId, link.Amenity!.Name))
                 .ToListAsync(cancellationToken);
 
             var effectiveDate = currentMonthStart
@@ -300,7 +305,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                     (rate.EffectiveTo == null || rate.EffectiveTo > effectiveDate))
                 .OrderBy(rate => rate.Service!.Name)
                 .ThenBy(rate => rate.ServiceId)
-                .Select(rate => new PublicPropertyServiceRateDto(
+                .Select(rate => new PublicPropertyServiceRateReadModel(
                     rate.ServiceId,
                     rate.Service!.Name,
                     rate.Price,
@@ -316,7 +321,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             await transaction.CommitAsync(cancellationToken);
         }
 
-        return new PublicPropertyDetailDto(
+        return new PublicPropertyDetailReadModel(
             detail.PropertyId,
             detail.PropertyName,
             detail.AddressText,
@@ -334,7 +339,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
         };
     }
 
-    public async Task<PublicPropertyRoomPageDto?> GetRoomsAsync(
+    public async Task<PublicPropertyRoomPageReadModel?> GetRoomsAsync(
         int propertyId,
         PublicPropertySearchCriteria criteria,
         DateTimeOffset asOfUtc,
@@ -410,12 +415,12 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             .GroupBy(link => link.RoomId)
             .ToDictionary(
                 group => group.Key,
-                group => (IReadOnlyList<PublicAmenitySummaryDto>)group
+                group => (IReadOnlyList<PublicAmenitySummaryReadModel>)group
                     .Take(MaximumAmenitiesSummary)
-                    .Select(link => new PublicAmenitySummaryDto(link.AmenityId, link.Name))
+                    .Select(link => new PublicAmenitySummaryReadModel(link.AmenityId, link.Name))
                     .ToArray());
         var items = pageRows
-            .Select(room => new PublicPropertyRoomCardDto(
+            .Select(room => new PublicPropertyRoomCardReadModel(
                 room.RoomId,
                 room.RoomCode,
                 room.RoomTypeId,
@@ -425,7 +430,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 null,
                 amenitiesByRoom.TryGetValue(room.RoomId, out var amenities)
                     ? amenities
-                    : Array.Empty<PublicAmenitySummaryDto>()))
+                     : Array.Empty<PublicAmenitySummaryReadModel>()))
             .ToArray();
 
         if (transaction is not null)
@@ -433,10 +438,10 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             await transaction.CommitAsync(cancellationToken);
         }
 
-        return new PublicPropertyRoomPageDto(items, totalCount, criteria.Page, criteria.PageSize);
+        return new PublicPropertyRoomPageReadModel(items, totalCount, criteria.Page, criteria.PageSize);
     }
 
-    public async Task<PublicRoomDetailDto?> GetRoomDetailAsync(
+    public async Task<PublicRoomDetailReadModel?> GetRoomDetailAsync(
         int roomId,
         DateTimeOffset asOfUtc,
         CancellationToken cancellationToken)
@@ -453,9 +458,9 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 candidate.RoomCode,
                 candidate.AreaSqm,
                 RoomTypeId = candidate.RoomType!.RoomTypeId,
-                RoomType = new PublicRoomTypeDto(candidate.RoomType.RoomTypeId, candidate.RoomType.TypeName),
+                RoomType = new PublicRoomTypeReadModel(candidate.RoomType.RoomTypeId, candidate.RoomType.TypeName),
                 BaseRent = candidate.RoomType.Price,
-                Property = new PublicRoomPropertyDto(
+                Property = new PublicRoomPropertyReadModel(
                     candidate.Property!.PropertyId,
                     candidate.Property.PropertyName,
                     candidate.Property.AddressText,
@@ -479,7 +484,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             .AsNoTracking()
             .Where(link => link.RoomId == roomId)
             .OrderBy(link => link.AmenityId)
-            .Select(link => new PublicAmenitySummaryDto(link.Amenity!.AmenityId, link.Amenity.Name))
+            .Select(link => new PublicAmenitySummaryReadModel(link.Amenity!.AmenityId, link.Amenity.Name))
             .ToListAsync(cancellationToken);
         var amenities = amenityRows
             .DistinctBy(amenity => amenity.AmenityId)
@@ -489,7 +494,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             .AsNoTracking()
             .Where(link => link.RoomTypeId == room.RoomTypeId)
             .OrderBy(link => link.ServiceId)
-            .Select(link => new PublicRoomServiceDto(
+            .Select(link => new PublicRoomServiceReadModel(
                 link.Service!.ServiceId,
                 link.Service.Name,
                 link.Service.Price))
@@ -500,7 +505,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             await transaction.CommitAsync(cancellationToken);
         }
 
-        return new PublicRoomDetailDto(
+        return new PublicRoomDetailReadModel(
             room.RoomId,
             room.RoomCode,
             room.AreaSqm,
@@ -510,7 +515,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             Array.Empty<string>(),
             amenities,
             services,
-            Array.Empty<PublicRoomEquipmentDto>());
+            Array.Empty<PublicRoomEquipmentReadModel>());
     }
 
     private static IQueryable<Rooms> ApplyRoomFilters(

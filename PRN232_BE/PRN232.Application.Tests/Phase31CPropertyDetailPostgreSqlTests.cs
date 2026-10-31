@@ -189,7 +189,7 @@ public sealed class Phase31CPropertyDetailPostgreSqlTests
                 .Options;
             await using var context = new AppDbContext(options);
             var exception = await Record.ExceptionAsync(async () =>
-                await new PropertyRepository(context).GetEntityByIdAsync(propertyId));
+                await new PropertyRepository(context).GetTrackedByIdAsync(propertyId));
             Assert.Equal("42703", FindPostgresException(exception)?.SqlState);
         }
         finally
@@ -382,15 +382,15 @@ public sealed class Phase31CPropertyDetailPostgreSqlTests
         string billingBasis,
         DateOnly effectiveFrom,
         DateOnly? effectiveTo) => new()
-    {
-        PropertyId = propertyId,
-        ServiceId = serviceId,
-        Price = price,
-        UnitCode = unitCode,
-        BillingBasis = billingBasis,
-        EffectiveFrom = effectiveFrom,
-        EffectiveTo = effectiveTo
-    };
+        {
+            PropertyId = propertyId,
+            ServiceId = serviceId,
+            Price = price,
+            UnitCode = unitCode,
+            BillingBasis = billingBasis,
+            EffectiveFrom = effectiveFrom,
+            EffectiveTo = effectiveTo
+        };
 
     private static string GetIsolatedServerConnectionString()
     {
@@ -435,7 +435,10 @@ public sealed class Phase31CPropertyDetailPostgreSqlTests
         while (exception is not null)
         {
             if (exception is PostgresException postgresException)
+            {
                 return postgresException;
+            }
+
             exception = exception.InnerException;
         }
 
@@ -459,7 +462,10 @@ public sealed class Phase31CPropertyDetailPostgreSqlTests
             Clock = clock;
         }
 
-        public MutableTimeProvider Clock { get; }
+        public MutableTimeProvider Clock
+        {
+            get;
+        }
         public SqlCaptureInterceptor SqlCapture { get; } = new();
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)

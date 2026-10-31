@@ -304,7 +304,11 @@ public sealed class MyRentalsApiTests
 
     private static async Task LoginAsync(HttpClient client, string email)
     {
-        using var response = await client.PostAsJsonAsync("/api/auth/login", new { email, password = Password });
+        using var response = await client.PostAsJsonAsync("/api/auth/login", new
+        {
+            email,
+            password = Password
+        });
         response.EnsureSuccessStatusCode();
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
@@ -330,23 +334,26 @@ public sealed class MyRentalsApiTests
         string status,
         DateOnly startDate,
         DateOnly endDate) => new()
-    {
-        ContractId = id,
-        CustomerId = customerId,
-        RoomId = roomId,
-        Status = status,
-        StartDate = startDate,
-        EndDate = endDate,
-        MonthlyRent = 3_000_000m,
-        DepositAmount = 6_000_000m
-    };
+        {
+            ContractId = id,
+            CustomerId = customerId,
+            RoomId = roomId,
+            Status = status,
+            StartDate = startDate,
+            EndDate = endDate,
+            MonthlyRent = 3_000_000m,
+            DepositAmount = 6_000_000m
+        };
 
     private sealed class RentalsApiFactory : WebApplicationFactory<MyRentalsController>
     {
         private readonly SqliteConnection _connection = new("Data Source=:memory:");
         private bool _seeded;
         public RentalSqlCapture SqlCapture { get; } = new();
-        public MutableTimeProvider Clock { get; }
+        public MutableTimeProvider Clock
+        {
+            get;
+        }
 
         public RentalsApiFactory(DateTimeOffset? utcNow = null) =>
             Clock = new MutableTimeProvider(utcNow ?? new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
@@ -384,7 +391,11 @@ public sealed class MyRentalsApiTests
             using var scope = Services.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             context.Database.EnsureCreated();
-            if (_seeded) return;
+            if (_seeded)
+            {
+                return;
+            }
+
             Seed(context);
             _seeded = true;
         }
@@ -392,7 +403,10 @@ public sealed class MyRentalsApiTests
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-            if (disposing) _connection.Dispose();
+            if (disposing)
+            {
+                _connection.Dispose();
+            }
         }
 
         private static void Seed(AppDbContext context)
@@ -438,9 +452,14 @@ public sealed class MyRentalsApiTests
             context.Contracts.AddRange(
                 new Contracts
                 {
-                    ContractId = 1, CustomerId = 10, RoomId = 101, Status = "Active",
-                    StartDate = Today.AddMonths(-1), EndDate = Today.AddMonths(1),
-                    MonthlyRent = 3_800_000m, DepositAmount = 7_600_000m
+                    ContractId = 1,
+                    CustomerId = 10,
+                    RoomId = 101,
+                    Status = "Active",
+                    StartDate = Today.AddMonths(-1),
+                    EndDate = Today.AddMonths(1),
+                    MonthlyRent = 3_800_000m,
+                    DepositAmount = 7_600_000m
                 },
                 Contract(2, 20, 102, "Active", Today.AddMonths(-1), Today.AddMonths(1)));
             context.SaveChanges();

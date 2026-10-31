@@ -13,9 +13,17 @@ public class EquipmentService : IEquipmentService
         _repository = repository;
     }
 
-    public Task<List<EquipmentDto>> GetAllAsync(int? roomId) => _repository.GetAllAsync(roomId);
+    public async Task<List<EquipmentDto>> GetAllAsync(int? roomId)
+    {
+        var equipment = await _repository.GetAllAsync(roomId);
+        return equipment.Select(ConvertToDto).ToList();
+    }
 
-    public Task<EquipmentDto?> GetByIdAsync(int id) => _repository.GetByIdAsync(id);
+    public async Task<EquipmentDto?> GetByIdAsync(int id)
+    {
+        var equipment = await _repository.GetByIdAsync(id);
+        return equipment is null ? null : ConvertToDto(equipment);
+    }
 
     public async Task<EquipmentDto> CreateAsync(CreateEquipmentDto dto, int requestingUserId, bool isAdmin)
     {
@@ -26,26 +34,16 @@ public class EquipmentService : IEquipmentService
         await EnsureOwnerOrAdminAsync(dto.RoomId, requestingUserId, isAdmin);
         Validate(dto.Name, dto.Supplier, dto.Status);
 
-        var entity = new Equipments
-        {
-            RoomId = dto.RoomId,
-            Name = dto.Name.Trim(),
-            InstallDate = dto.InstallDate,
-            WarrantyExpiry = dto.WarrantyExpiry,
-            Supplier = dto.Supplier?.Trim() ?? string.Empty,
-            Status = dto.Status.Trim(),
-        };
+        var entity = ConvertToEntity(dto);
 
-        var created = await _repository.AddAsync(entity);
+        await _repository.AddAsync(entity);
         await _repository.SaveChangesAsync();
-        return new EquipmentDto(
-            created.EquipmentId, created.RoomId, created.Name, created.InstallDate,
-            created.WarrantyExpiry, created.Supplier, created.Status);
+        return ConvertToDto(entity);
     }
 
     public async Task<EquipmentDto?> UpdateAsync(int id, UpdateEquipmentDto dto, int requestingUserId, bool isAdmin)
     {
-        var entity = await _repository.GetEntityByIdAsync(id);
+        var entity = await _repository.GetTrackedByIdAsync(id);
         if (entity is null)
         {
             return null;
@@ -53,21 +51,15 @@ public class EquipmentService : IEquipmentService
         await EnsureOwnerOrAdminAsync(entity.RoomId, requestingUserId, isAdmin);
         Validate(dto.Name, dto.Supplier, dto.Status);
 
-        entity.Name = dto.Name.Trim();
-        entity.InstallDate = dto.InstallDate;
-        entity.WarrantyExpiry = dto.WarrantyExpiry;
-        entity.Supplier = dto.Supplier?.Trim() ?? string.Empty;
-        entity.Status = dto.Status.Trim();
+        ApplyUpdateToEntity(dto, entity);
 
         await _repository.SaveChangesAsync();
-        return new EquipmentDto(
-            entity.EquipmentId, entity.RoomId, entity.Name, entity.InstallDate,
-            entity.WarrantyExpiry, entity.Supplier, entity.Status);
+        return ConvertToDto(entity);
     }
 
     public async Task<bool> DeleteAsync(int id, int requestingUserId, bool isAdmin)
     {
-        var entity = await _repository.GetEntityByIdAsync(id);
+        var entity = await _repository.GetTrackedByIdAsync(id);
         if (entity is null)
         {
             return false;
@@ -102,6 +94,40 @@ public class EquipmentService : IEquipmentService
         {
             throw new EquipmentValidationException("Trạng thái thiết bị không được để trống.");
         }
+    }
+
+    private static Equipments ConvertToEntity(CreateEquipmentDto dto)
+    {
+        return new Equipments
+        {
+            RoomId = dto.RoomId,
+            Name = dto.Name.Trim(),
+            InstallDate = dto.InstallDate,
+            WarrantyExpiry = dto.WarrantyExpiry,
+            Supplier = dto.Supplier?.Trim() ?? string.Empty,
+            Status = dto.Status.Trim()
+        };
+    }
+
+    private static void ApplyUpdateToEntity(UpdateEquipmentDto dto, Equipments entity)
+    {
+        entity.Name = dto.Name.Trim();
+        entity.InstallDate = dto.InstallDate;
+        entity.WarrantyExpiry = dto.WarrantyExpiry;
+        entity.Supplier = dto.Supplier?.Trim() ?? string.Empty;
+        entity.Status = dto.Status.Trim();
+    }
+
+    private static EquipmentDto ConvertToDto(Equipments entity)
+    {
+        return new EquipmentDto(
+            entity.EquipmentId,
+            entity.RoomId,
+            entity.Name,
+            entity.InstallDate,
+            entity.WarrantyExpiry,
+            entity.Supplier,
+            entity.Status);
     }
 }
 

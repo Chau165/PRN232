@@ -56,7 +56,10 @@ public class IdentityDocumentsController : ControllerBase
         try
         {
             var created = await _service.SubmitAsync(dto, CurrentUserId());
-            return CreatedAtAction(nameof(GetById), new { id = created.IdentityDocumentId }, created);
+            return CreatedAtAction(nameof(GetById), new
+            {
+                id = created.IdentityDocumentId
+            }, created);
         }
         catch (IdentityDocumentPendingExistsException exception)
         {

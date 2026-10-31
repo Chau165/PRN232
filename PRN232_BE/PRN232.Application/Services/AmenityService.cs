@@ -13,9 +13,17 @@ public class AmenityService : IAmenityService
         _repository = repository;
     }
 
-    public Task<List<AmenityDto>> GetAllAsync() => _repository.GetAllAsync();
+    public async Task<List<AmenityDto>> GetAllAsync()
+    {
+        var amenities = await _repository.GetAllAsync();
+        return amenities.Select(ConvertToDto).ToList();
+    }
 
-    public Task<AmenityDto?> GetByIdAsync(int id) => _repository.GetByIdAsync(id);
+    public async Task<AmenityDto?> GetByIdAsync(int id)
+    {
+        var amenity = await _repository.GetByIdAsync(id);
+        return amenity is null ? null : ConvertToDto(amenity);
+    }
 
     public async Task<AmenityDto> CreateAsync(CreateAmenityDto dto)
     {
@@ -24,14 +32,19 @@ public class AmenityService : IAmenityService
             throw new ReferenceDataValidationException("Tên tiện ích không được để trống.");
         }
 
-        var entity = await _repository.AddAsync(new Amenities { Name = dto.Name.Trim() });
+        var normalizedDto = dto with
+        {
+            Name = dto.Name.Trim()
+        };
+        var entity = ConvertToEntity(normalizedDto);
+        entity = await _repository.AddAsync(entity);
         await _repository.SaveChangesAsync();
-        return new AmenityDto(entity.AmenityId, entity.Name);
+        return ConvertToDto(entity);
     }
 
     public async Task<AmenityDto?> UpdateAsync(int id, UpdateAmenityDto dto)
     {
-        var entity = await _repository.GetEntityByIdAsync(id);
+        var entity = await _repository.GetTrackedByIdAsync(id);
         if (entity is null)
         {
             return null;
@@ -41,14 +54,18 @@ public class AmenityService : IAmenityService
             throw new ReferenceDataValidationException("Tên tiện ích không được để trống.");
         }
 
-        entity.Name = dto.Name.Trim();
+        var normalizedDto = dto with
+        {
+            Name = dto.Name.Trim()
+        };
+        ApplyUpdateToEntity(normalizedDto, entity);
         await _repository.SaveChangesAsync();
-        return new AmenityDto(entity.AmenityId, entity.Name);
+        return ConvertToDto(entity);
     }
 
     public async Task<bool> DeleteAsync(int id)
     {
-        var entity = await _repository.GetEntityByIdAsync(id);
+        var entity = await _repository.GetTrackedByIdAsync(id);
         if (entity is null)
         {
             return false;
@@ -58,6 +75,20 @@ public class AmenityService : IAmenityService
         await _repository.SaveChangesAsync();
         return true;
     }
+
+    private static Amenities ConvertToEntity(CreateAmenityDto dto) =>
+        new()
+        {
+            Name = dto.Name
+        };
+
+    private static void ApplyUpdateToEntity(UpdateAmenityDto dto, Amenities entity)
+    {
+        entity.Name = dto.Name;
+    }
+
+    private static AmenityDto ConvertToDto(Amenities entity) =>
+        new(entity.AmenityId, entity.Name);
 }
 
 public class ReferenceDataValidationException(string message) : Exception(message);

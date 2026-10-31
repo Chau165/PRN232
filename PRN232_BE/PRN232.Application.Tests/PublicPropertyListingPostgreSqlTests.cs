@@ -329,7 +329,13 @@ public sealed class PublicPropertyListingPostgreSqlTests
     {
         using var response = await client.PostAsJsonAsync(
             "/api/rooms",
-            new { propertyId = 1, roomTypeId = 1, roomCode = "not-written", areaSqm = 1m });
+            new
+            {
+                propertyId = 1,
+                roomTypeId = 1,
+                roomCode = "not-written",
+                areaSqm = 1m
+            });
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 

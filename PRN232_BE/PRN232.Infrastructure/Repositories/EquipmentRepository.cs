@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
@@ -15,24 +14,20 @@ public class EquipmentRepository : IEquipmentRepository
         _context = context;
     }
 
-    public Task<List<EquipmentDto>> GetAllAsync(int? roomId) =>
+    public Task<List<Equipments>> GetAllAsync(int? roomId) =>
         _context.Equipments
             .AsNoTracking()
             .Where(e => roomId == null || e.RoomId == roomId)
             .OrderBy(e => e.EquipmentId)
-            .Select(e => new EquipmentDto(
-                e.EquipmentId, e.RoomId, e.Name, e.InstallDate, e.WarrantyExpiry, e.Supplier, e.Status))
             .ToListAsync();
 
-    public Task<EquipmentDto?> GetByIdAsync(int id) =>
+    public Task<Equipments?> GetByIdAsync(int id) =>
         _context.Equipments
             .AsNoTracking()
             .Where(e => e.EquipmentId == id)
-            .Select(e => new EquipmentDto(
-                e.EquipmentId, e.RoomId, e.Name, e.InstallDate, e.WarrantyExpiry, e.Supplier, e.Status))
             .FirstOrDefaultAsync();
 
-    public Task<Equipments?> GetEntityByIdAsync(int id) =>
+    public Task<Equipments?> GetTrackedByIdAsync(int id) =>
         _context.Equipments.FirstOrDefaultAsync(e => e.EquipmentId == id);
 
     public async Task<Equipments> AddAsync(Equipments equipment)

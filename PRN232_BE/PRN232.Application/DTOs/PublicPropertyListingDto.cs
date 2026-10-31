@@ -2,24 +2,66 @@ namespace PRN232.Application.DTOs;
 
 public sealed class PublicPropertyQueryDto
 {
-    public string? Keyword { get; set; }
-    public string? City { get; set; }
-    public string? District { get; set; }
-    public string? Ward { get; set; }
-    public decimal? MinPrice { get; set; }
-    public decimal? MaxPrice { get; set; }
-    public string? RoomTypeName { get; set; }
-    public int[]? AmenityIds { get; set; }
-    public string? SortBy { get; set; }
-    public int? Page { get; set; }
-    public int? PageSize { get; set; }
+    public string? Keyword
+    {
+        get; set;
+    }
+    public string? City
+    {
+        get; set;
+    }
+    public string? District
+    {
+        get; set;
+    }
+    public string? Ward
+    {
+        get; set;
+    }
+    public decimal? MinPrice
+    {
+        get; set;
+    }
+    public decimal? MaxPrice
+    {
+        get; set;
+    }
+    public string? RoomTypeName
+    {
+        get; set;
+    }
+    public int[]? AmenityIds
+    {
+        get; set;
+    }
+    public string? SortBy
+    {
+        get; set;
+    }
+    public int? Page
+    {
+        get; set;
+    }
+    public int? PageSize
+    {
+        get; set;
+    }
 }
 
 public sealed class PublicPropertyAreaQueryDto
 {
-    public string? City { get; set; }
-    public string? District { get; set; }
-    public string? Ward { get; set; }
+    public string? City
+    {
+        get; set;
+    }
+    public string? District
+    {
+        get; set;
+    }
+    public string? Ward
+    {
+        get; set;
+    }
 }
 
 public sealed record PublicPropertySearchCriteria(
@@ -95,12 +137,21 @@ public sealed record PublicPropertyDetailDto(
     decimal? StartingPrice,
     IReadOnlyList<PublicPropertyRoomAmenityDto> RoomAmenities)
 {
-    public string? Description { get; init; }
+    public string? Description
+    {
+        get; init;
+    }
 
-    public IReadOnlyList<PublicAmenitySummaryDto> CommonAmenities { get; init; } =
+    public IReadOnlyList<PublicAmenitySummaryDto> CommonAmenities
+    {
+        get; init;
+    } =
         Array.Empty<PublicAmenitySummaryDto>();
 
-    public IReadOnlyList<PublicPropertyServiceRateDto> LivingCosts { get; init; } =
+    public IReadOnlyList<PublicPropertyServiceRateDto> LivingCosts
+    {
+        get; init;
+    } =
         Array.Empty<PublicPropertyServiceRateDto>();
 }
 
@@ -111,13 +162,34 @@ public sealed record PublicPropertyRoomAmenityDto(
 
 public sealed class PublicPropertyRoomsQueryDto
 {
-    public decimal? MinPrice { get; set; }
-    public decimal? MaxPrice { get; set; }
-    public string? RoomTypeName { get; set; }
-    public int[]? AmenityIds { get; set; }
-    public string? SortBy { get; set; }
-    public int? Page { get; set; }
-    public int? PageSize { get; set; }
+    public decimal? MinPrice
+    {
+        get; set;
+    }
+    public decimal? MaxPrice
+    {
+        get; set;
+    }
+    public string? RoomTypeName
+    {
+        get; set;
+    }
+    public int[]? AmenityIds
+    {
+        get; set;
+    }
+    public string? SortBy
+    {
+        get; set;
+    }
+    public int? Page
+    {
+        get; set;
+    }
+    public int? PageSize
+    {
+        get; set;
+    }
 }
 
 public sealed record PublicPropertyRoomCardDto(

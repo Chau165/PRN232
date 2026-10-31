@@ -24,9 +24,19 @@ public class InvoicesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<InvoiceDto>>> GetAll([FromQuery] int? contractId, [FromQuery] string? status)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
-        try { return Ok(await _invoiceService.GetAllAsync(userId, role, contractId, status)); }
-        catch (InvoiceAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            return Ok(await _invoiceService.GetAllAsync(userId, role, contractId, status));
+        }
+        catch (InvoiceAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
         catch (InvoiceBusinessRuleException exception)
         {
             return BadRequest(new ProblemDetails { Title = "Invalid invoice filter", Detail = exception.Message });
@@ -36,20 +46,31 @@ public class InvoicesController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<InvoiceDto>> GetById(int id)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             var invoice = await _invoiceService.GetByIdAsync(id, userId, role);
             return invoice is null ? NotFound() : Ok(invoice);
         }
-        catch (InvoiceAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (InvoiceAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
     }
 
     [HttpPost("preview")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<InvoiceDto>> Preview(CreateInvoiceDto dto)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
         return await HandleAsync(async () => Ok(await _invoiceService.PreviewAsync(dto, userId, role)));
     }
 
@@ -57,11 +78,18 @@ public class InvoicesController : ControllerBase
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<InvoiceDto>> Create(CreateInvoiceDto dto)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
         return await HandleAsync(async () =>
         {
             var created = await _invoiceService.CreateAsync(dto, userId, role);
-            return CreatedAtAction(nameof(GetById), new { id = created.InvoiceId }, created);
+            return CreatedAtAction(nameof(GetById), new
+            {
+                id = created.InvoiceId
+            }, created);
         });
     }
 
@@ -69,7 +97,11 @@ public class InvoicesController : ControllerBase
     [Authorize(Roles = RoleNames.Customer)]
     public async Task<ActionResult<InvoiceDto>> Pay(int id, PayInvoiceDto dto)
     {
-        if (!TryGetCurrentUser(out var userId, out _)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out _))
+        {
+            return Unauthorized();
+        }
+
         return await HandleAsync(async () => Ok(await _invoiceService.PayAsync(id, dto, userId)));
     }
 
@@ -77,11 +109,15 @@ public class InvoicesController : ControllerBase
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<InvoiceDto>> RecordCash(int id)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
         return await HandleAsync(async () => Ok(await _invoiceService.RecordCashPaymentAsync(id, userId, role)));
     }
 
-    // Các thao tác ghi đều ném cùng các loại lỗi nên dùng chung một chỗ chuyển exception -> mã HTTP.
+    // CÃ¡c thao tÃ¡c ghi Ä‘á»u nÃ©m cÃ¹ng cÃ¡c loáº¡i lá»—i nÃªn dÃ¹ng chung má»™t chá»— chuyá»ƒn exception -> mÃ£ HTTP.
     private async Task<ActionResult<InvoiceDto>> HandleAsync(Func<Task<ActionResult<InvoiceDto>>> action)
     {
         try
@@ -96,7 +132,10 @@ public class InvoicesController : ControllerBase
         {
             return NotFound(new ProblemDetails { Title = "Contract not found", Detail = exception.Message });
         }
-        catch (InvoiceAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (InvoiceAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
         catch (InvoiceConflictException exception)
         {
             return Conflict(new ProblemDetails { Title = "Invoice conflict", Detail = exception.Message });

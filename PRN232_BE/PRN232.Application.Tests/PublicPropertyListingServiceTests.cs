@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.Services;
 using Xunit;
 
@@ -40,47 +41,50 @@ public sealed class PublicPropertyListingServiceTests
 
     private sealed class CapturingPublicPropertyListingRepository : IPublicPropertyListingRepository
     {
-        public DateOnly? CurrentMonthStart { get; private set; }
+        public DateOnly? CurrentMonthStart
+        {
+            get; private set;
+        }
 
         public Task<bool> AmenityIdsExistAsync(int[] amenityIds, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
-        public Task<PublicPropertyPageDto> GetPageAsync(
+        public Task<PublicPropertyPageReadModel> GetPageAsync(
             PublicPropertySearchCriteria criteria,
             DateTimeOffset asOfUtc,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
-        public Task<IReadOnlyList<PublicPropertyAreaCardDto>> GetByAreaAsync(
+        public Task<IReadOnlyList<PublicPropertyAreaCardReadModel>> GetByAreaAsync(
             PublicPropertyAreaSearchCriteria criteria,
             DateTimeOffset asOfUtc,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
-        public Task<PublicPropertyDetailDto?> GetDetailAsync(
+        public Task<PublicPropertyDetailReadModel?> GetDetailAsync(
             int propertyId,
             DateTimeOffset asOfUtc,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
-        public Task<PublicPropertyDetailDto?> GetEnrichedDetailAsync(
+        public Task<PublicPropertyDetailReadModel?> GetEnrichedDetailAsync(
             int propertyId,
             DateTimeOffset asOfUtc,
             DateOnly currentMonthStart,
             CancellationToken cancellationToken)
         {
             CurrentMonthStart = currentMonthStart;
-            return Task.FromResult<PublicPropertyDetailDto?>(null);
+            return Task.FromResult<PublicPropertyDetailReadModel?>(null);
         }
 
-        public Task<PublicPropertyRoomPageDto?> GetRoomsAsync(
+        public Task<PublicPropertyRoomPageReadModel?> GetRoomsAsync(
             int propertyId,
             PublicPropertySearchCriteria criteria,
             DateTimeOffset asOfUtc,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
-        public Task<PublicRoomDetailDto?> GetRoomDetailAsync(
+        public Task<PublicRoomDetailReadModel?> GetRoomDetailAsync(
             int roomId,
             DateTimeOffset asOfUtc,
             CancellationToken cancellationToken) =>

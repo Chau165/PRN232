@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
 
@@ -15,7 +15,7 @@ public class RoomRepository : IRoomRepository
         _context = context;
     }
 
-    public Task<List<RoomDto>> GetAllAsync(int? propertyId, string? status, string? city, decimal? maxPrice) =>
+    public Task<List<RoomSummaryReadModel>> GetAllAsync(int? propertyId, string? status, string? city, decimal? maxPrice) =>
         _context.Rooms
             .AsNoTracking()
             .Where(r => propertyId == null || r.PropertyId == propertyId)
@@ -23,7 +23,7 @@ public class RoomRepository : IRoomRepository
             .Where(r => city == null || r.Property!.City == city)
             .Where(r => maxPrice == null || r.RoomType!.Price <= maxPrice)
             .OrderBy(r => r.RoomId)
-            .Select(r => new RoomDto(
+            .Select(r => new RoomSummaryReadModel(
                 r.RoomId,
                 r.PropertyId,
                 r.Property!.PropertyName,
@@ -36,11 +36,11 @@ public class RoomRepository : IRoomRepository
                 r.RoomImages.Where(i => i.IsPrimary).Select(i => i.ImageUrl).FirstOrDefault()))
             .ToListAsync();
 
-    public Task<RoomDto?> GetByIdAsync(int id) =>
+    public Task<RoomSummaryReadModel?> GetByIdAsync(int id) =>
         _context.Rooms
             .AsNoTracking()
             .Where(r => r.RoomId == id)
-            .Select(r => new RoomDto(
+            .Select(r => new RoomSummaryReadModel(
                 r.RoomId,
                 r.PropertyId,
                 r.Property!.PropertyName,
@@ -53,10 +53,10 @@ public class RoomRepository : IRoomRepository
                 r.RoomImages.Where(i => i.IsPrimary).Select(i => i.ImageUrl).FirstOrDefault()))
             .FirstOrDefaultAsync();
 
-    public Task<List<RentableRoomDto>> GetRentableRoomsAsync(DateTimeOffset asOfUtc) =>
+    public Task<List<RentableRoomReadModel>> GetRentableRoomsAsync(DateTimeOffset asOfUtc) =>
         RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc)
             .OrderBy(room => room.RoomId)
-            .Select(room => new RentableRoomDto(
+            .Select(room => new RentableRoomReadModel(
                 room.RoomId,
                 room.PropertyId,
                 room.RoomTypeId,
@@ -66,12 +66,12 @@ public class RoomRepository : IRoomRepository
                 room.AreaSqm))
             .ToListAsync();
 
-    public Task<List<PropertyAvailabilityDto>> GetPropertyAvailabilityAsync(DateTimeOffset asOfUtc) =>
+    public Task<List<PropertyAvailabilityReadModel>> GetPropertyAvailabilityAsync(DateTimeOffset asOfUtc) =>
         RoomAvailabilityQueries
             .GetPropertyAvailability(_context.Properties, _context.Rooms, asOfUtc)
             .ToListAsync();
 
-    public Task<Rooms?> GetEntityByIdAsync(int id) =>
+    public Task<Rooms?> GetTrackedByIdAsync(int id) =>
         _context.Rooms.FirstOrDefaultAsync(r => r.RoomId == id);
 
     public async Task<Rooms> AddAsync(Rooms room)
@@ -107,13 +107,13 @@ public class RoomRepository : IRoomRepository
 
     public Task SaveChangesAsync() => _context.SaveChangesAsync();
 
-    public Task<List<RoomImageDto>> GetImagesAsync(int roomId) =>
+    public Task<List<RoomImageReadModel>> GetImagesAsync(int roomId) =>
         _context.RoomImages
             .AsNoTracking()
             .Where(i => i.RoomId == roomId)
             .OrderByDescending(i => i.IsPrimary)
             .ThenBy(i => i.RoomImageId)
-            .Select(i => new RoomImageDto(i.RoomImageId, i.RoomId, i.ImageUrl, i.IsPrimary))
+            .Select(i => new RoomImageReadModel(i.RoomImageId, i.RoomId, i.ImageUrl, i.IsPrimary))
             .ToListAsync();
 
     public async Task<RoomImages> AddImageAsync(int roomId, RoomImages image)
@@ -143,11 +143,11 @@ public class RoomRepository : IRoomRepository
         return true;
     }
 
-    public Task<List<AmenityDto>> GetAmenitiesAsync(int roomId) =>
+    public Task<List<Amenities>> GetAmenitiesAsync(int roomId) =>
         _context.RoomAmenities
             .AsNoTracking()
             .Where(link => link.RoomId == roomId)
-            .Select(link => new AmenityDto(link.Amenity!.AmenityId, link.Amenity.Name))
+            .Select(link => link.Amenity!)
             .ToListAsync();
 
     public Task<bool> AmenityLinkExistsAsync(int roomId, int amenityId) =>

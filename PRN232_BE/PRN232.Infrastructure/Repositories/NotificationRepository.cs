@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
@@ -9,15 +8,13 @@ namespace PRN232.Infrastructure.Repositories;
 
 public class NotificationRepository(AppDbContext context) : INotificationRepository
 {
-    public Task<List<NotificationDto>> GetByUserAsync(int userId, bool? isRead, string? type) =>
+    public Task<List<Notifications>> GetByUserAsync(int userId, bool? isRead, string? type) =>
         context.Notifications
             .AsNoTracking()
             .Where(notification => notification.UserId == userId)
             .Where(notification => isRead == null || notification.IsRead == isRead)
             .Where(notification => type == null || notification.Type == type)
             .OrderByDescending(notification => notification.NotificationId)
-            .Select(notification => new NotificationDto(
-                notification.NotificationId, notification.Title, notification.Type, notification.IsRead))
             .ToListAsync();
 
     public Task<List<int>> GetActiveAdminUserIdsAsync() => context.Users

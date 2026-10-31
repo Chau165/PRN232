@@ -34,6 +34,7 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
-      # Bật lại khi nhóm có test project (dotnet new xunit) thật sự.
-      # - name: Test
-      #   run: dotnet test --no-build --configuration Release
+      - name: Test local suite
+        run: >-
+          dotnet test --no-build --no-restore --configuration Release
+          --filter "FullyQualifiedName!~SupabaseReadOnlyInspectionTests&FullyQualifiedName!~Phase31BPostgreSqlMigrationTests&FullyQualifiedName!~Phase31CPropertyDetailPostgreSqlTests&FullyQualifiedName!~AssignmentNoteMigrationTests&FullyQualifiedName!~PublicPropertyListingPostgreSqlTests"

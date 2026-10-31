@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.Services;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
@@ -555,8 +556,15 @@ public class MaintenanceServiceTests
         var repository = ValidRequest(oldStatus, 7);
         repository.ActiveUsers[7] = new MaintenanceUserAssignmentDto(true, RoleNames.Manager);
         var service = CreateService(repository);
-        if (newStatus == "Approved") await service.UpdateAsync(1, new UpdateMaintenanceRequestDto(7), 99, RoleNames.Admin);
-        else await service.CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager);
+        if (newStatus == "Approved")
+        {
+            await service.UpdateAsync(1, new UpdateMaintenanceRequestDto(7), 99, RoleNames.Admin);
+        }
+        else
+        {
+            await service.CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager);
+        }
+
         Assert.Equal(newStatus, repository.State!.Status);
         Assert.Single(repository.Logs);
     }
@@ -656,46 +664,83 @@ public class MaintenanceServiceTests
     {
         private int _nextId = 1;
 
-        public MaintenanceContractDto? Contract { get; set; }
-        public MaintenanceRequestStateDto? State { get; set; }
+        public MaintenanceContractDto? Contract
+        {
+            get; set;
+        }
+        public MaintenanceRequestStateDto? State
+        {
+            get; set;
+        }
         public Dictionary<int, int> EquipmentRooms { get; } = new();
         public Dictionary<int, MaintenanceUserAssignmentDto> ActiveUsers { get; } = new();
         public List<MaintenanceLogDto> Logs { get; } = new();
         public List<Notifications> GeneratedNotifications { get; } = new();
-        public int AddCount { get; private set; }
-        public int AtomicUpdateCount { get; private set; }
-        public string? LastAssignmentNote { get; private set; }
-        public bool FailAtomicUpdate { get; set; }
-        public bool FailReportCompletion { get; set; }
-        public MaintenanceReports? SavedReport { get; private set; }
+        public int AddCount
+        {
+            get; private set;
+        }
+        public int AtomicUpdateCount
+        {
+            get; private set;
+        }
+        public string? LastAssignmentNote
+        {
+            get; private set;
+        }
+        public bool FailAtomicUpdate
+        {
+            get; set;
+        }
+        public bool FailReportCompletion
+        {
+            get; set;
+        }
+        public MaintenanceReports? SavedReport
+        {
+            get; private set;
+        }
         public bool RequestExists { get; set; } = true;
         public bool CustomerOwnsContract { get; set; } = true;
-        public int ReportReadCount { get; private set; }
-        public (int? CustomerId, string? Status, int? AssignedTo) LastFilters { get; private set; }
-
-        public Task<List<MaintenanceRequestDto>> GetAllAsync(int? customerId, int? assignedManagerId, string? status, int? assignedTo)
+        public int ReportReadCount
         {
-            LastFilters = (customerId, status, assignedTo);
-            return Task.FromResult(new List<MaintenanceRequestDto>());
+            get; private set;
+        }
+        public (int? CustomerId, string? Status, int? AssignedTo) LastFilters
+        {
+            get; private set;
         }
 
-        public Task<MaintenanceRequestDto?> GetByIdAsync(int id, int? customerId, int? assignedManagerId) =>
-            Task.FromResult(State?.RequestId == id && (!customerId.HasValue || CustomerOwnsContract) &&
-                            (!assignedManagerId.HasValue || assignedManagerId == State?.AssignedTo) ? ToDto(State) : null);
+        public Task<List<MaintenanceRequestReadModel>> GetAllAsync(int? customerId, int? assignedManagerId, string? status, int? assignedTo)
+        {
+            LastFilters = (customerId, status, assignedTo);
+            return Task.FromResult(new List<MaintenanceRequestReadModel>());
+        }
 
-        public Task<MaintenanceRequestStateDto?> GetStateByIdAsync(int id, int? assignedManagerId) =>
-            Task.FromResult(State?.RequestId == id && (!assignedManagerId.HasValue || assignedManagerId == State?.AssignedTo) ? State : null);
+        public Task<MaintenanceRequestReadModel?> GetByIdAsync(int id, int? customerId, int? assignedManagerId) =>
+            Task.FromResult(State?.RequestId == id && (!customerId.HasValue || CustomerOwnsContract) &&
+                            (!assignedManagerId.HasValue || assignedManagerId == State?.AssignedTo) ? ToReadModel(ToDto(State)) : null);
+
+        public Task<MaintenanceRequestStateReadModel?> GetStateByIdAsync(int id, int? assignedManagerId) =>
+            Task.FromResult(State?.RequestId == id && (!assignedManagerId.HasValue || assignedManagerId == State?.AssignedTo)
+                ? new MaintenanceRequestStateReadModel(State.RequestId, State.ContractId, State.EquipmentId, State.AssignedTo, State.Status)
+                : null);
 
         public Task<bool> RequestExistsAsync(int id) => Task.FromResult(RequestExists);
 
-        public Task<MaintenanceContractDto?> GetContractAsync(int contractId) =>
-            Task.FromResult(Contract?.ContractId == contractId ? Contract : null);
+        public Task<MaintenanceContractReadModel?> GetContractAsync(int contractId) =>
+            Task.FromResult(Contract?.ContractId == contractId && Contract is not null
+                ? new MaintenanceContractReadModel(Contract.ContractId, Contract.RoomId, Contract.RoomCode, Contract.CustomerId,
+                    Contract.StartDate, Contract.EndDate, Contract.Status)
+                : null);
 
         public Task<int?> GetEquipmentRoomIdAsync(int equipmentId) =>
             Task.FromResult(EquipmentRooms.TryGetValue(equipmentId, out var roomId) ? (int?)roomId : null);
 
-        public Task<MaintenanceUserAssignmentDto?> GetUserAssignmentAsync(int userId) =>
-            Task.FromResult(ActiveUsers.TryGetValue(userId, out var assignment) ? assignment : null);
+        public Task<MaintenanceUserAssignmentReadModel?> GetUserAssignmentAsync(int userId) =>
+            Task.FromResult(ActiveUsers.TryGetValue(userId, out var assignment)
+                ? new MaintenanceUserAssignmentReadModel(assignment.IsActive, assignment.RoleName)
+                : null);
 
         public Task<MaintenanceRequests> AddWithInitialLogAsync(
             MaintenanceRequests request,
@@ -733,36 +778,50 @@ public class MaintenanceServiceTests
                 null, changedAt));
             LastAssignmentNote = assignmentNote;
             _assignmentNote = assignmentNote;
-            State = State with { Status = status, AssignedTo = assignedTo ?? State.AssignedTo };
+            State = State with
+            {
+                Status = status,
+                AssignedTo = assignedTo ?? State.AssignedTo
+            };
             AtomicUpdateCount++;
             return Task.FromResult(true);
         }
 
-        public Task<List<MaintenanceLogDto>?> GetLogsAsync(int requestId, int? customerId, int? assignedManagerId) =>
+        public Task<List<MaintenanceLogReadModel>?> GetLogsAsync(int requestId, int? customerId, int? assignedManagerId) =>
             Task.FromResult(State?.RequestId == requestId && (!customerId.HasValue || CustomerOwnsContract) &&
                             (!assignedManagerId.HasValue || assignedManagerId == State?.AssignedTo)
-                ? Logs.OrderBy(x => x.ChangedAt).ThenBy(x => x.LogId).ToList() : null);
+                ? Logs.OrderBy(x => x.ChangedAt).ThenBy(x => x.LogId)
+                    .Select(log => new MaintenanceLogReadModel(log.LogId, log.RequestId, log.OldStatus, log.NewStatus,
+                        log.ChangedBy, log.ChangedByName, log.ChangedAt)).ToList()
+                : null);
 
         public Task<int?> GetApprovingAdminIdAsync(int requestId) => Task.FromResult<int?>(9);
 
-        public Task<MaintenanceReportDto?> GetReportAsync(int requestId)
+        public Task<MaintenanceReportReadModel?> GetReportAsync(int requestId)
         {
             ReportReadCount++;
-            return Task.FromResult<MaintenanceReportDto?>(SavedReport is null || SavedReport.RequestId != requestId
+            return Task.FromResult<MaintenanceReportReadModel?>(SavedReport is null || SavedReport.RequestId != requestId
                 ? null
-                : new MaintenanceReportDto(SavedReport.ReportId, SavedReport.RequestId, SavedReport.Description,
+                : new MaintenanceReportReadModel(SavedReport.ReportId, SavedReport.RequestId, SavedReport.Description,
                     SavedReport.ReportedBy, "Manager", SavedReport.CreatedAt,
-                    SavedReport.Images.Select((image, index) => new MaintenanceReportImageDto(index + 1, image.ImageUrl)).ToList()));
+                    SavedReport.Images.Select((image, index) => new MaintenanceReportImageReadModel(index + 1, image.ImageUrl)).ToList()));
         }
         public Task<bool> ReportExistsAsync(int requestId) => Task.FromResult(SavedReport?.RequestId == requestId);
         public Task<bool> CompleteWithReportAsync(int requestId, MaintenanceReports report, int changedBy, DateTime changedAt, IReadOnlyCollection<Notifications>? notifications = null)
         {
-            if (FailReportCompletion || State?.RequestId != requestId || State.Status != "Approved") return Task.FromResult(false);
+            if (FailReportCompletion || State?.RequestId != requestId || State.Status != "Approved")
+            {
+                return Task.FromResult(false);
+            }
+
             report.ReportId = 1;
             report.RequestId = requestId;
             SavedReport = report;
             Logs.Add(new MaintenanceLogDto(Logs.Count + 1, requestId, "Approved", "Completed", changedBy, "Manager", changedAt));
-            State = State with { Status = "Completed" };
+            State = State with
+            {
+                Status = "Completed"
+            };
             return Task.FromResult(true);
         }
 
@@ -783,18 +842,39 @@ public class MaintenanceServiceTests
             state.EquipmentId, state.EquipmentId.HasValue ? "AC" : null,
             state.EquipmentId.HasValue ? "Working" : null, state.AssignedTo,
             state.AssignedTo.HasValue ? "Staff" : null, _assignmentNote);
+
+        private static MaintenanceRequestReadModel ToReadModel(MaintenanceRequestDto request) => new(
+            request.RequestId, request.Description, request.Status, request.ContractId, request.CustomerId,
+            request.CustomerName, request.RoomId, request.RoomCode, request.EquipmentId, request.EquipmentName,
+            request.EquipmentStatus, request.AssignedTo, request.AssignedStaffName, request.AssignmentNote);
     }
 
     private sealed class FakeImageStorage : IMaintenanceReportImageStorage
     {
-        public int UploadCount { get; private set; }
-        public int DeleteCount { get; private set; }
-        public int SignCount { get; private set; }
-        public bool FailUpload { get; set; }
+        public int UploadCount
+        {
+            get; private set;
+        }
+        public int DeleteCount
+        {
+            get; private set;
+        }
+        public int SignCount
+        {
+            get; private set;
+        }
+        public bool FailUpload
+        {
+            get; set;
+        }
         public Task<string> UploadAsync(int requestId, MaintenanceReportImageInput image)
         {
             UploadCount++;
-            if (FailUpload) throw new HttpRequestException("Storage unavailable");
+            if (FailUpload)
+            {
+                throw new HttpRequestException("Storage unavailable");
+            }
+
             return Task.FromResult($"{requestId}/{image.FileName}");
         }
         public Task<string> GetReadUrlAsync(string objectPath)

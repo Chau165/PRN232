@@ -56,7 +56,10 @@ public class UsersController : ControllerBase
         try
         {
             var created = await _userService.CreateAsync(dto);
-            return CreatedAtAction(nameof(GetById), new { id = created.UserId }, created);
+            return CreatedAtAction(nameof(GetById), new
+            {
+                id = created.UserId
+            }, created);
         }
         catch (UserEmailAlreadyExistsException exception)
         {

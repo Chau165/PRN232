@@ -35,6 +35,9 @@ public class RolesController : ControllerBase
     public async Task<ActionResult<RoleDto>> Create(CreateRoleDto dto)
     {
         var created = await _roleService.CreateAsync(dto);
-        return CreatedAtAction(nameof(GetById), new { id = created.RoleId }, created);
+        return CreatedAtAction(nameof(GetById), new
+        {
+            id = created.RoleId
+        }, created);
     }
 }

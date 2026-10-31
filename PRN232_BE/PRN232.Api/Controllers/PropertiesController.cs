@@ -42,7 +42,10 @@ public class PropertiesController : ControllerBase
         try
         {
             var created = await _propertyService.CreateAsync(dto, CurrentUserId());
-            return CreatedAtAction(nameof(GetById), new { id = created.PropertyId }, created);
+            return CreatedAtAction(nameof(GetById), new
+            {
+                id = created.PropertyId
+            }, created);
         }
         catch (PropertyValidationException exception)
         {

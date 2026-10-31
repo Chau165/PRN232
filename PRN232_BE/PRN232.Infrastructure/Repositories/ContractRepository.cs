@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
@@ -17,11 +18,11 @@ public class ContractRepository : IContractRepository
         _context = context;
     }
 
-    public Task<ContractBookingDto?> GetBookingAsync(int bookingId) =>
+    public Task<ContractBookingReadModel?> GetBookingAsync(int bookingId) =>
         _context.Bookings
             .AsNoTracking()
             .Where(booking => booking.BookingId == bookingId)
-            .Select(booking => new ContractBookingDto(
+            .Select(booking => new ContractBookingReadModel(
                 booking.BookingId,
                 booking.RoomId,
                 booking.Room!.RoomCode,
@@ -68,16 +69,16 @@ public class ContractRepository : IContractRepository
         return true;
     }
 
-    public Task<List<ContractDto>> GetAllAsync(int? customerId, int? ownerId) =>
+    public Task<List<ContractReadModel>> GetAllAsync(int? customerId, int? ownerId) =>
         InScope(customerId, ownerId)
             .OrderByDescending(contract => contract.ContractId)
-            .Select(ToDto)
+            .Select(ToReadModel)
             .ToListAsync();
 
-    public Task<ContractDto?> GetByIdAsync(int contractId, int? customerId, int? ownerId) =>
+    public Task<ContractReadModel?> GetByIdAsync(int contractId, int? customerId, int? ownerId) =>
         InScope(customerId, ownerId)
             .Where(contract => contract.ContractId == contractId)
-            .Select(ToDto)
+            .Select(ToReadModel)
             .FirstOrDefaultAsync();
 
     public Task<bool> ExistsAsync(int contractId) =>
@@ -90,7 +91,7 @@ public class ContractRepository : IContractRepository
             .Where(contract => customerId == null || contract.CustomerId == customerId)
             .Where(contract => ownerId == null || contract.Room!.Property!.OwnerId == ownerId);
 
-    private static readonly Expression<Func<Contracts, ContractDto>> ToDto = contract => new ContractDto(
+    private static readonly Expression<Func<Contracts, ContractReadModel>> ToReadModel = contract => new ContractReadModel(
         contract.ContractId,
         contract.BookingId,
         contract.RoomId,

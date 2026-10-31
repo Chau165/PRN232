@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.Services;
 using PRN232.Domain.Entities;
 using Xunit;
@@ -32,7 +33,10 @@ public sealed class AuthServiceRegistrationTests
 
     private sealed class TestUserRepository : IUserRepository
     {
-        public Users? CreatedUser { get; private set; }
+        public Users? CreatedUser
+        {
+            get; private set;
+        }
 
         public Task<bool> EmailExistsAsync(string email) => Task.FromResult(false);
 
@@ -47,25 +51,25 @@ public sealed class AuthServiceRegistrationTests
 
         public Task<Users?> GetByEmailAsync(string email) => throw new NotImplementedException();
 
-        public Task<List<UserDto>> GetAllAsync(int? roleId) => throw new NotImplementedException();
+        public Task<List<UserReadModel>> GetAllAsync(int? roleId) => throw new NotImplementedException();
 
-        public Task<UserDto?> GetByIdAsync(int id) => throw new NotImplementedException();
+        public Task<UserReadModel?> GetByIdAsync(int id) => throw new NotImplementedException();
 
-        public Task<Users?> GetEntityByIdAsync(int id) => throw new NotImplementedException();
+        public Task<Users?> GetTrackedByIdAsync(int id) => throw new NotImplementedException();
 
         public Task<bool> RoleExistsAsync(int roleId) => throw new NotImplementedException();
     }
 
     private sealed class TestRoleRepository : IRoleRepository
     {
-        public Task<List<RoleDto>> GetAllAsync() => Task.FromResult(new List<RoleDto>
+        public Task<List<Roles>> GetAllAsync() => Task.FromResult(new List<Roles>
         {
-            new(1, "Customer"),
-            new(2, "Manager"),
-            new(3, "Admin"),
+            new() { RoleId = 1, RoleName = "Customer" },
+            new() { RoleId = 2, RoleName = "Manager" },
+            new() { RoleId = 3, RoleName = "Admin" },
         });
 
-        public Task<RoleDto?> GetByIdAsync(int id) => throw new NotImplementedException();
+        public Task<Roles?> GetByIdAsync(int id) => throw new NotImplementedException();
 
         public Task<Roles> AddAsync(Roles role) => throw new NotImplementedException();
 

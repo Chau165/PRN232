@@ -24,9 +24,19 @@ public class ViewingSchedulesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<ViewingScheduleDto>>> GetAll([FromQuery] string? status)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
-        try { return Ok(await _viewingService.GetAllAsync(userId, role, status)); }
-        catch (ViewingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            return Ok(await _viewingService.GetAllAsync(userId, role, status));
+        }
+        catch (ViewingAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
         catch (ViewingBusinessRuleException exception)
         {
             return BadRequest(new ProblemDetails { Title = "Invalid viewing filter", Detail = exception.Message });
@@ -36,24 +46,38 @@ public class ViewingSchedulesController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ViewingScheduleDto>> GetById(int id)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             var viewing = await _viewingService.GetByIdAsync(id, userId, role);
             return viewing is null ? NotFound() : Ok(viewing);
         }
-        catch (ViewingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (ViewingAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
     }
 
     [HttpPost]
     [Authorize(Roles = RoleNames.Customer)]
     public async Task<ActionResult<ViewingScheduleDto>> Create(CreateViewingScheduleDto dto)
     {
-        if (!TryGetCurrentUser(out var userId, out _)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out _))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             var created = await _viewingService.CreateAsync(dto, userId);
-            return CreatedAtAction(nameof(GetById), new { id = created.ViewingId }, created);
+            return CreatedAtAction(nameof(GetById), new
+            {
+                id = created.ViewingId
+            }, created);
         }
         catch (ViewingBusinessRuleException exception)
         {
@@ -79,10 +103,14 @@ public class ViewingSchedulesController : ControllerBase
     public Task<ActionResult<ViewingScheduleDto>> Reject(int id) =>
         HandleAsync((userId, role) => _viewingService.RejectAsync(id, userId, role));
 
-    // Chấp thuận và từ chối trả về cùng các loại lỗi nên dùng chung một chỗ chuyển exception -> mã HTTP.
+    // Cháº¥p thuáº­n vÃ  tá»« chá»‘i tráº£ vá» cÃ¹ng cÃ¡c loáº¡i lá»—i nÃªn dÃ¹ng chung má»™t chá»— chuyá»ƒn exception -> mÃ£ HTTP.
     private async Task<ActionResult<ViewingScheduleDto>> HandleAsync(Func<int, string, Task<ViewingScheduleDto>> action)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             return Ok(await action(userId, role));
@@ -95,7 +123,10 @@ public class ViewingSchedulesController : ControllerBase
         {
             return NotFound(new ProblemDetails { Title = "Viewing request not found", Detail = exception.Message });
         }
-        catch (ViewingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (ViewingAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
         catch (ViewingConflictException exception)
         {
             return Conflict(new ProblemDetails { Title = "Viewing request already handled", Detail = exception.Message });

@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
@@ -16,7 +16,7 @@ public class MaintenanceRepository : IMaintenanceRepository
         _context = context;
     }
 
-    public async Task<List<MaintenanceRequestDto>> GetAllAsync(int? customerId, int? assignedManagerId, string? status, int? assignedTo) =>
+    public async Task<List<MaintenanceRequestReadModel>> GetAllAsync(int? customerId, int? assignedManagerId, string? status, int? assignedTo) =>
         await _context.MaintenanceRequests
             .AsNoTracking()
             .Where(r => customerId == null || r.Contract!.CustomerId == customerId)
@@ -24,7 +24,7 @@ public class MaintenanceRepository : IMaintenanceRepository
             .Where(r => status == null || r.Status == status)
             .Where(r => assignedTo == null || r.AssignedTo == assignedTo)
             .OrderBy(r => r.RequestId)
-            .Select(r => new MaintenanceRequestDto(
+            .Select(r => new MaintenanceRequestReadModel(
                 r.RequestId,
                 r.Description,
                 r.Status,
@@ -41,13 +41,13 @@ public class MaintenanceRepository : IMaintenanceRepository
                 customerId.HasValue ? null : r.AssignmentNote))
             .ToListAsync();
 
-    public async Task<MaintenanceRequestDto?> GetByIdAsync(int id, int? customerId, int? assignedManagerId) =>
+    public async Task<MaintenanceRequestReadModel?> GetByIdAsync(int id, int? customerId, int? assignedManagerId) =>
         await _context.MaintenanceRequests
             .AsNoTracking()
             .Where(r => r.RequestId == id)
             .Where(r => customerId == null || r.Contract!.CustomerId == customerId)
             .Where(r => assignedManagerId == null || r.AssignedTo == assignedManagerId)
-            .Select(r => new MaintenanceRequestDto(
+            .Select(r => new MaintenanceRequestReadModel(
                 r.RequestId,
                 r.Description,
                 r.Status,
@@ -64,22 +64,22 @@ public class MaintenanceRepository : IMaintenanceRepository
                 customerId.HasValue ? null : r.AssignmentNote))
             .FirstOrDefaultAsync();
 
-    public async Task<MaintenanceRequestStateDto?> GetStateByIdAsync(int id, int? assignedManagerId) =>
+    public async Task<MaintenanceRequestStateReadModel?> GetStateByIdAsync(int id, int? assignedManagerId) =>
         await _context.MaintenanceRequests
             .AsNoTracking()
             .Where(r => r.RequestId == id)
             .Where(r => assignedManagerId == null || r.AssignedTo == assignedManagerId)
-            .Select(r => new MaintenanceRequestStateDto(
+            .Select(r => new MaintenanceRequestStateReadModel(
                 r.RequestId, r.ContractId, r.EquipmentId, r.AssignedTo, r.Status))
             .FirstOrDefaultAsync();
 
     public Task<bool> RequestExistsAsync(int id) => _context.MaintenanceRequests.AnyAsync(r => r.RequestId == id);
 
-    public async Task<MaintenanceContractDto?> GetContractAsync(int contractId) =>
+    public async Task<MaintenanceContractReadModel?> GetContractAsync(int contractId) =>
         await _context.Contracts
             .AsNoTracking()
             .Where(c => c.ContractId == contractId)
-            .Select(c => new MaintenanceContractDto(
+            .Select(c => new MaintenanceContractReadModel(
                 c.ContractId, c.RoomId, c.Room!.RoomCode, c.CustomerId, c.StartDate, c.EndDate, c.Status))
             .FirstOrDefaultAsync();
 
@@ -90,11 +90,11 @@ public class MaintenanceRepository : IMaintenanceRepository
             .Select(e => (int?)e.RoomId)
             .FirstOrDefaultAsync();
 
-    public Task<MaintenanceUserAssignmentDto?> GetUserAssignmentAsync(int userId) =>
+    public Task<MaintenanceUserAssignmentReadModel?> GetUserAssignmentAsync(int userId) =>
         _context.Users
             .AsNoTracking()
             .Where(u => u.UserId == userId)
-            .Select(u => new MaintenanceUserAssignmentDto(u.IsActive, u.Role!.RoleName))
+            .Select(u => new MaintenanceUserAssignmentReadModel(u.IsActive, u.Role!.RoleName))
             .FirstOrDefaultAsync();
 
     public async Task<MaintenanceRequests> AddWithInitialLogAsync(
@@ -154,7 +154,7 @@ public class MaintenanceRepository : IMaintenanceRepository
         return true;
     }
 
-    public async Task<List<MaintenanceLogDto>?> GetLogsAsync(int requestId, int? customerId, int? assignedManagerId)
+    public async Task<List<MaintenanceLogReadModel>?> GetLogsAsync(int requestId, int? customerId, int? assignedManagerId)
     {
         var request = _context.MaintenanceRequests
             .Where(r => r.RequestId == requestId)
@@ -170,7 +170,7 @@ public class MaintenanceRepository : IMaintenanceRepository
             .Where(log => log.RequestId == requestId)
             .OrderBy(log => log.ChangedAt)
             .ThenBy(log => log.LogId)
-            .Select(log => new MaintenanceLogDto(
+            .Select(log => new MaintenanceLogReadModel(
                 log.LogId,
                 log.RequestId,
                 log.OldStatus,
@@ -191,11 +191,11 @@ public class MaintenanceRepository : IMaintenanceRepository
         .Select(log => log.ChangedBy)
         .FirstOrDefaultAsync();
 
-    public Task<MaintenanceReportDto?> GetReportAsync(int requestId) =>
+    public Task<MaintenanceReportReadModel?> GetReportAsync(int requestId) =>
         _context.MaintenanceReports
             .AsNoTracking()
             .Where(report => report.RequestId == requestId)
-            .Select(report => new MaintenanceReportDto(
+            .Select(report => new MaintenanceReportReadModel(
                 report.ReportId,
                 report.RequestId,
                 report.Description,
@@ -203,7 +203,7 @@ public class MaintenanceRepository : IMaintenanceRepository
                 report.Reporter!.FullName,
                 report.CreatedAt,
                 report.Images.OrderBy(image => image.ImageId)
-                    .Select(image => new MaintenanceReportImageDto(image.ImageId, image.ImageUrl))
+                    .Select(image => new MaintenanceReportImageReadModel(image.ImageId, image.ImageUrl))
                     .ToList()))
             .FirstOrDefaultAsync();
 

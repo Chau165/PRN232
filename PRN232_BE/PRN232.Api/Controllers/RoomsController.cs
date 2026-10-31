@@ -40,7 +40,10 @@ public class RoomsController : ControllerBase
         try
         {
             var created = await _roomService.CreateAsync(dto, CurrentUserId(), IsAdmin());
-            return CreatedAtAction(nameof(GetById), new { id = created.RoomId }, created);
+            return CreatedAtAction(nameof(GetById), new
+            {
+                id = created.RoomId
+            }, created);
         }
         catch (RoomForbiddenException exception)
         {

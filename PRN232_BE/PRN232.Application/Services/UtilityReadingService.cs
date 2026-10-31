@@ -1,6 +1,7 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Policies;
+using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 
@@ -60,15 +61,7 @@ public class UtilityReadingService : IUtilityReadingService
             throw new UtilityReadingBusinessRuleException("New meter values cannot be lower than the previous ones.");
         }
 
-        var reading = new UtilityReadings
-        {
-            ContractId = contract.ContractId,
-            ReadingMonth = dto.ReadingMonth,
-            ElectricStart = electricStart,
-            ElectricEnd = dto.ElectricEnd,
-            WaterStart = waterStart,
-            WaterEnd = dto.WaterEnd
-        };
+        var reading = ConvertToEntity(dto, contract.ContractId, electricStart, waterStart);
         // Repository kiểm tra lại "chưa có tháng này hoặc tháng sau" ngay lúc ghi,
         // phòng khi hai người cùng nhập chỉ số cho một hợp đồng.
         if (!await _repository.AddIfLatestAsync(reading))
@@ -76,14 +69,16 @@ public class UtilityReadingService : IUtilityReadingService
             throw new UtilityReadingConflictException("A reading for this or a later month already exists.");
         }
 
-        return await _repository.GetByIdAsync(reading.ReadingId, null, null)
+        var created = await _repository.GetByIdAsync(reading.ReadingId, null, null)
             ?? throw new InvalidOperationException("Created reading was not found.");
+        return ConvertToDto(created);
     }
 
-    public Task<List<UtilityReadingDto>> GetAllAsync(int userId, string role, int? contractId)
+    public async Task<List<UtilityReadingDto>> GetAllAsync(int userId, string role, int? contractId)
     {
         var (customerId, ownerId) = GetScope(userId, role);
-        return _repository.GetAllAsync(customerId, ownerId, contractId);
+        var readings = await _repository.GetAllAsync(customerId, ownerId, contractId);
+        return readings.Select(ConvertToDto).ToList();
     }
 
     public async Task<UtilityReadingDto?> GetByIdAsync(int id, int userId, string role)
@@ -94,10 +89,10 @@ public class UtilityReadingService : IUtilityReadingService
         {
             throw new UtilityReadingAuthorizationException("You cannot access this reading.");
         }
-        return reading;
+        return reading is null ? null : ConvertToDto(reading);
     }
 
-    private void EnsureValidMonth(DateOnly month, ReadingContractDto contract)
+    private void EnsureValidMonth(DateOnly month, ReadingContractReadModel contract)
     {
         if (month.Day != 1)
         {
@@ -115,8 +110,36 @@ public class UtilityReadingService : IUtilityReadingService
         }
     }
 
+    private static UtilityReadings ConvertToEntity(
+        CreateUtilityReadingDto dto, int contractId, decimal electricStart, decimal waterStart)
+    {
+        return new UtilityReadings
+        {
+            ContractId = contractId,
+            ReadingMonth = dto.ReadingMonth,
+            ElectricStart = electricStart,
+            ElectricEnd = dto.ElectricEnd,
+            WaterStart = waterStart,
+            WaterEnd = dto.WaterEnd
+        };
+    }
+
     private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role) =>
         AccessScope.For(userId, role) ?? throw new UtilityReadingAuthorizationException("Your role cannot access readings.");
+
+    private static UtilityReadingDto ConvertToDto(UtilityReadingReadModel reading) => new(
+        reading.ReadingId,
+        reading.ContractId,
+        reading.RoomCode,
+        reading.PropertyName,
+        reading.CustomerName,
+        reading.ReadingMonth,
+        reading.ElectricStart,
+        reading.ElectricEnd,
+        reading.ElectricUsage,
+        reading.WaterStart,
+        reading.WaterEnd,
+        reading.WaterUsage);
 }
 
 public sealed class UtilityReadingNotFoundException(string message) : Exception(message);

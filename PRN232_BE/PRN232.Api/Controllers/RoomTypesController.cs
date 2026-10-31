@@ -34,7 +34,10 @@ public class RoomTypesController : ControllerBase
         try
         {
             var created = await _roomTypeService.CreateAsync(dto);
-            return CreatedAtAction(nameof(GetById), new { id = created.RoomTypeId }, created);
+            return CreatedAtAction(nameof(GetById), new
+            {
+                id = created.RoomTypeId
+            }, created);
         }
         catch (RoomTypeValidationException exception)
         {

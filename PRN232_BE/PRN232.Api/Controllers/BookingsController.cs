@@ -25,9 +25,19 @@ public class BookingsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<BookingDto>>> GetAll([FromQuery] string? status)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
-        try { return Ok(await _bookingService.GetAllAsync(userId, role, status)); }
-        catch (BookingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            return Ok(await _bookingService.GetAllAsync(userId, role, status));
+        }
+        catch (BookingAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
         catch (BookingBusinessRuleException exception)
         {
             return BadRequest(new ProblemDetails { Title = "Invalid booking filter", Detail = exception.Message });
@@ -37,13 +47,20 @@ public class BookingsController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<BookingDto>> GetById(int id)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             var booking = await _bookingService.GetByIdAsync(id, userId, role);
             return booking is null ? NotFound() : Ok(booking);
         }
-        catch (BookingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (BookingAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
     }
 
     [HttpPost]
@@ -51,11 +68,18 @@ public class BookingsController : ControllerBase
     [EnableRateLimiting("BookingPolicy")]
     public async Task<ActionResult<BookingDto>> Create(CreateBookingDto dto)
     {
-        if (!TryGetCurrentUser(out var userId, out _)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out _))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             var created = await _bookingService.CreateAsync(dto, userId);
-            return CreatedAtAction(nameof(GetById), new { id = created.BookingId }, created);
+            return CreatedAtAction(nameof(GetById), new
+            {
+                id = created.BookingId
+            }, created);
         }
         catch (BookingNotFoundException exception)
         {
@@ -71,7 +95,11 @@ public class BookingsController : ControllerBase
     [Authorize(Roles = RoleNames.Customer)]
     public async Task<ActionResult<BookingDto>> Pay(int id, PayBookingDto dto)
     {
-        if (!TryGetCurrentUser(out var userId, out _)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out _))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             return Ok(await _bookingService.PayAsync(id, dto, userId));
@@ -84,7 +112,10 @@ public class BookingsController : ControllerBase
         {
             return NotFound(new ProblemDetails { Title = "Booking not found", Detail = exception.Message });
         }
-        catch (BookingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (BookingAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
         catch (BookingStatusConflictException exception)
         {
             return Conflict(new ProblemDetails { Title = "Booking cannot be paid", Detail = exception.Message });
@@ -99,7 +130,11 @@ public class BookingsController : ControllerBase
     [HttpPost("{id:int}/cancel")]
     public async Task<ActionResult<BookingDto>> Cancel(int id)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             return Ok(await _bookingService.CancelAsync(id, userId, role));
@@ -108,7 +143,10 @@ public class BookingsController : ControllerBase
         {
             return NotFound(new ProblemDetails { Title = "Booking not found", Detail = exception.Message });
         }
-        catch (BookingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (BookingAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
         catch (BookingStatusConflictException exception)
         {
             return Conflict(new ProblemDetails { Title = "Booking cannot be cancelled", Detail = exception.Message });

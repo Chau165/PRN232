@@ -16,37 +16,45 @@ public class ServiceCatalogService : IServiceService
         _repository = repository;
     }
 
-    public Task<List<ServiceDto>> GetAllAsync() => _repository.GetAllAsync();
+    public async Task<List<ServiceDto>> GetAllAsync()
+    {
+        var entities = await _repository.GetAllAsync();
+        return entities.Select(ConvertToDto).ToList();
+    }
 
-    public Task<ServiceDto?> GetByIdAsync(int id) => _repository.GetByIdAsync(id);
+    public async Task<ServiceDto?> GetByIdAsync(int id)
+    {
+        var entity = await _repository.GetByIdAsync(id);
+        return entity is null ? null : ConvertToDto(entity);
+    }
 
     public async Task<ServiceDto> CreateAsync(CreateServiceDto dto)
     {
         Validate(dto.Name, dto.Price);
 
-        var entity = await _repository.AddAsync(new Entities.Service { Name = dto.Name.Trim(), Price = dto.Price });
+        var entity = ConvertToEntity(dto);
+        await _repository.AddAsync(entity);
         await _repository.SaveChangesAsync();
-        return new ServiceDto(entity.ServiceId, entity.Name, entity.Price);
+        return ConvertToDto(entity);
     }
 
     public async Task<ServiceDto?> UpdateAsync(int id, UpdateServiceDto dto)
     {
-        var entity = await _repository.GetEntityByIdAsync(id);
+        var entity = await _repository.GetTrackedByIdAsync(id);
         if (entity is null)
         {
             return null;
         }
         Validate(dto.Name, dto.Price);
 
-        entity.Name = dto.Name.Trim();
-        entity.Price = dto.Price;
+        ApplyUpdateToEntity(dto, entity);
         await _repository.SaveChangesAsync();
-        return new ServiceDto(entity.ServiceId, entity.Name, entity.Price);
+        return ConvertToDto(entity);
     }
 
     public async Task<bool> DeleteAsync(int id)
     {
-        var entity = await _repository.GetEntityByIdAsync(id);
+        var entity = await _repository.GetTrackedByIdAsync(id);
         if (entity is null)
         {
             return false;
@@ -67,5 +75,25 @@ public class ServiceCatalogService : IServiceService
         {
             throw new ReferenceDataValidationException("Giá dịch vụ không được âm.");
         }
+    }
+
+    private static Entities.Service ConvertToEntity(CreateServiceDto dto)
+    {
+        return new Entities.Service
+        {
+            Name = dto.Name.Trim(),
+            Price = dto.Price
+        };
+    }
+
+    private static void ApplyUpdateToEntity(UpdateServiceDto dto, Entities.Service entity)
+    {
+        entity.Name = dto.Name.Trim();
+        entity.Price = dto.Price;
+    }
+
+    private static ServiceDto ConvertToDto(Entities.Service entity)
+    {
+        return new ServiceDto(entity.ServiceId, entity.Name, entity.Price);
     }
 }

@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.Services;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
@@ -14,7 +15,7 @@ public class BookingServiceTests
     [Fact]
     public async Task CreateAsync_creates_pending_booking_with_one_month_deposit_and_payment_window()
     {
-        var repository = new FakeBookingRepository { Room = new BookingRoomDto(5, 3_000_000m) };
+        var repository = new FakeBookingRepository { Room = new BookingRoomReadModel(5, 3_000_000m) };
 
         var created = await CreateService(repository).CreateAsync(new CreateBookingDto(5), 42);
 
@@ -39,7 +40,7 @@ public class BookingServiceTests
     [Fact]
     public async Task CreateAsync_rejects_room_that_is_not_rentable()
     {
-        var repository = new FakeBookingRepository { Room = new BookingRoomDto(5, 3_000_000m), RoomIsRentable = false };
+        var repository = new FakeBookingRepository { Room = new BookingRoomReadModel(5, 3_000_000m), RoomIsRentable = false };
 
         await Assert.ThrowsAsync<BookingRoomUnavailableException>(() =>
             CreateService(repository).CreateAsync(new CreateBookingDto(5), 42));
@@ -224,7 +225,8 @@ public class BookingServiceTests
     {
         var repository = new FakeBookingRepository
         {
-            Booking = SampleBooking(customerId: 10, BookingStatuses.Deposited), OwnerId = 42
+            Booking = SampleBooking(customerId: 10, BookingStatuses.Deposited),
+            OwnerId = 42
         };
 
         await CreateService(repository).CancelAsync(1, 42, role);
@@ -294,21 +296,39 @@ public class BookingServiceTests
 
     private sealed class FakeBookingRepository : IBookingRepository
     {
-        public BookingRoomDto? Room { get; init; }
+        public BookingRoomReadModel? Room
+        {
+            get; init;
+        }
         public bool RoomIsRentable { get; init; } = true;
         public bool DepositSucceeds { get; init; } = true;
         public bool CancelSucceeds { get; init; } = true;
-        public BookingDto? Booking { get; set; }
+        public BookingDto? Booking
+        {
+            get; set;
+        }
         public int OwnerId { get; init; } = 7;
         public List<Bookings> Added { get; } = [];
         public List<(int BookingId, DateTimeOffset AsOfUtc, DateTime HoldUntilUtc, Payments Payment,
-            Notifications Notification)> Deposits { get; } = [];
+            Notifications Notification)> Deposits
+        {
+            get;
+        } = [];
         public List<(int BookingId, string ExpectedStatus, Notifications? Notification)> Cancellations { get; } = [];
-        public DateTimeOffset? LastAsOfUtc { get; private set; }
-        public (int? CustomerId, int? OwnerId) LastScope { get; private set; }
-        public string? LastStatus { get; private set; }
+        public DateTimeOffset? LastAsOfUtc
+        {
+            get; private set;
+        }
+        public (int? CustomerId, int? OwnerId) LastScope
+        {
+            get; private set;
+        }
+        public string? LastStatus
+        {
+            get; private set;
+        }
 
-        public Task<BookingRoomDto?> GetRoomAsync(int roomId) =>
+        public Task<BookingRoomReadModel?> GetRoomAsync(int roomId) =>
             Task.FromResult(Room?.RoomId == roomId ? Room : null);
 
         public Task<bool> AddIfRoomRentableAsync(Bookings booking, DateTimeOffset asOfUtc)
@@ -326,27 +346,27 @@ public class BookingServiceTests
             return Task.FromResult(true);
         }
 
-        public Task<List<BookingDto>> GetAllAsync(int? customerId, int? ownerId, string? status)
+        public Task<List<BookingReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status)
         {
             LastScope = (customerId, ownerId);
             LastStatus = status;
-            return Task.FromResult(Booking is null ? new List<BookingDto>() : [Booking]);
+            return Task.FromResult(Booking is null ? new List<BookingReadModel>() : [ToReadModel(Booking)]);
         }
 
-        public Task<BookingDto?> GetByIdAsync(int bookingId, int? customerId, int? ownerId)
+        public Task<BookingReadModel?> GetByIdAsync(int bookingId, int? customerId, int? ownerId)
         {
             LastScope = (customerId, ownerId);
             var visible = Booking is not null && Booking.BookingId == bookingId &&
                 (customerId is null || Booking.CustomerId == customerId) &&
                 (ownerId is null || OwnerId == ownerId);
-            return Task.FromResult(visible ? Booking : null);
+            return Task.FromResult(visible && Booking is not null ? ToReadModel(Booking) : null);
         }
 
         public Task<bool> ExistsAsync(int bookingId) => Task.FromResult(Booking?.BookingId == bookingId);
 
-        public Task<BookingPaymentDto?> GetForPaymentAsync(int bookingId) =>
+        public Task<BookingPaymentReadModel?> GetForPaymentAsync(int bookingId) =>
             Task.FromResult(Booking?.BookingId == bookingId
-                ? new BookingPaymentDto(Booking.BookingId, Booking.CustomerId, OwnerId, Booking.RoomCode,
+                ? new BookingPaymentReadModel(Booking.BookingId, Booking.CustomerId, OwnerId, Booking.RoomCode,
                     Booking.DepositAmount, Booking.Status, Booking.ExpiryDate)
                 : null);
 
@@ -359,7 +379,11 @@ public class BookingServiceTests
             }
 
             Deposits.Add((bookingId, asOfUtc, holdUntilUtc, payment, notification));
-            Booking = Booking! with { Status = BookingStatuses.Deposited, ExpiryDate = holdUntilUtc };
+            Booking = Booking! with
+            {
+                Status = BookingStatuses.Deposited,
+                ExpiryDate = holdUntilUtc
+            };
             return Task.FromResult(true);
         }
 
@@ -371,9 +395,17 @@ public class BookingServiceTests
             }
 
             Cancellations.Add((bookingId, expectedStatus, customerNotification));
-            Booking = Booking! with { Status = BookingStatuses.Cancelled };
+            Booking = Booking! with
+            {
+                Status = BookingStatuses.Cancelled
+            };
             return Task.FromResult(true);
         }
+
+        private static BookingReadModel ToReadModel(BookingDto booking) => new(
+            booking.BookingId, booking.RoomId, booking.RoomCode, booking.PropertyId, booking.PropertyName,
+            booking.CustomerId, booking.CustomerName, booking.DepositAmount, booking.Status, booking.ExpiryDate,
+            booking.CustomerPhone, booking.ContractId);
     }
 
     private sealed class FakePaymentGateway : IPaymentGateway

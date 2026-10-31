@@ -86,7 +86,15 @@ public class UtilityReadingsApiTests
     private static Task<HttpResponseMessage> PostReadingAsync(HttpClient client, int contractId, DateOnly readingMonth,
         decimal electricEnd, decimal waterEnd, decimal? electricStart, decimal? waterStart) =>
         client.PostAsJsonAsync("/api/utility-readings",
-            new { contractId, readingMonth, electricEnd, waterEnd, electricStart, waterStart });
+            new
+            {
+                contractId,
+                readingMonth,
+                electricEnd,
+                waterEnd,
+                electricStart,
+                waterStart
+            });
 
     // Hợp đồng bắt đầu hôm nay nên tháng hiện tại là tháng duy nhất ghi được chỉ số trong test.
     private static async Task<int> CreateContractAsync(HttpClient client)

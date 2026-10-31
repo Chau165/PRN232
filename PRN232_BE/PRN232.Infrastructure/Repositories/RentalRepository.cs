@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Infrastructure.Data;
 
@@ -8,19 +8,19 @@ namespace PRN232.Infrastructure.Repositories;
 
 public sealed class RentalRepository(AppDbContext context) : IRentalRepository
 {
-    public async Task<IReadOnlyList<RentalDto>> GetCurrentRentalsAsync(
+    public async Task<IReadOnlyList<RentalReadModel>> GetCurrentRentalsAsync(
         int customerId,
         DateOnly today,
         CancellationToken cancellationToken) =>
         await GetRentalsAsync(customerId, today, history: false, cancellationToken);
 
-    public async Task<IReadOnlyList<RentalDto>> GetRentalHistoryAsync(
+    public async Task<IReadOnlyList<RentalReadModel>> GetRentalHistoryAsync(
         int customerId,
         DateOnly today,
         CancellationToken cancellationToken) =>
         await GetRentalsAsync(customerId, today, history: true, cancellationToken);
 
-    private async Task<IReadOnlyList<RentalDto>> GetRentalsAsync(
+    private async Task<IReadOnlyList<RentalReadModel>> GetRentalsAsync(
         int customerId,
         DateOnly today,
         bool history,
@@ -54,7 +54,10 @@ public sealed class RentalRepository(AppDbContext context) : IRentalRepository
                 contract.Room.Property.PrimaryImageUrl))
             .ToListAsync(cancellationToken);
 
-        if (rentals.Count == 0) return [];
+        if (rentals.Count == 0)
+        {
+            return [];
+        }
 
         var roomIds = rentals.Select(rental => rental.RoomId).Distinct().ToArray();
         var imageRows = await context.RoomImages
@@ -71,7 +74,7 @@ public sealed class RentalRepository(AppDbContext context) : IRentalRepository
             .ThenBy(equipment => equipment.EquipmentId)
             .Select(equipment => new RentalEquipmentRow(
                 equipment.RoomId,
-                new RentalEquipmentDto(equipment.EquipmentId, equipment.Name, equipment.Status)))
+                new RentalEquipmentReadModel(equipment.EquipmentId, equipment.Name, equipment.Status)))
             .ToListAsync(cancellationToken);
         var amenityRows = await context.RoomAmenities
             .AsNoTracking()
@@ -80,15 +83,15 @@ public sealed class RentalRepository(AppDbContext context) : IRentalRepository
             .ThenBy(link => link.AmenityId)
             .Select(link => new RentalAmenityRow(
                 link.RoomId,
-                new RentalAmenityDto(link.Amenity!.AmenityId, link.Amenity.Name)))
+                new RentalAmenityReadModel(link.Amenity!.AmenityId, link.Amenity.Name)))
             .ToListAsync(cancellationToken);
 
         var imagesByRoom = imageRows.GroupBy(image => image.RoomId)
             .ToDictionary(group => group.Key, group => group.ToArray());
         var equipmentByRoom = equipmentRows.GroupBy(row => row.RoomId)
-            .ToDictionary(group => group.Key, group => (IReadOnlyList<RentalEquipmentDto>)group.Select(row => row.Equipment).ToArray());
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<RentalEquipmentReadModel>)group.Select(row => row.Equipment).ToArray());
         var amenitiesByRoom = amenityRows.GroupBy(row => row.RoomId)
-            .ToDictionary(group => group.Key, group => (IReadOnlyList<RentalAmenityDto>)group.Select(row => row.Amenity).ToArray());
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<RentalAmenityReadModel>)group.Select(row => row.Amenity).ToArray());
 
         return rentals.Select(rental =>
         {
@@ -100,7 +103,7 @@ public sealed class RentalRepository(AppDbContext context) : IRentalRepository
                 .Select(image => image.ImageUrl)
                 .FirstOrDefault() ?? rental.PropertyPrimaryImageUrl;
 
-            return new RentalDto(
+            return new RentalReadModel(
                 rental.ContractId,
                 rental.ContractStatus,
                 rental.StartDate,
@@ -142,6 +145,6 @@ public sealed class RentalRepository(AppDbContext context) : IRentalRepository
         string? PropertyPrimaryImageUrl);
 
     private sealed record RentalImageRow(int RoomId, int RoomImageId, string ImageUrl, bool IsPrimary);
-    private sealed record RentalEquipmentRow(int RoomId, RentalEquipmentDto Equipment);
-    private sealed record RentalAmenityRow(int RoomId, RentalAmenityDto Amenity);
+    private sealed record RentalEquipmentRow(int RoomId, RentalEquipmentReadModel Equipment);
+    private sealed record RentalAmenityRow(int RoomId, RentalAmenityReadModel Amenity);
 }

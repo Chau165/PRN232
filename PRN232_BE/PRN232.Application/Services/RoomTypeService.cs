@@ -15,37 +15,45 @@ public class RoomTypeService : IRoomTypeService
         _serviceRepository = serviceRepository;
     }
 
-    public Task<List<RoomTypeDto>> GetAllAsync() => _repository.GetAllAsync();
+    public async Task<List<RoomTypeDto>> GetAllAsync()
+    {
+        var roomTypes = await _repository.GetAllAsync();
+        return roomTypes.Select(ConvertToDto).ToList();
+    }
 
-    public Task<RoomTypeDto?> GetByIdAsync(int id) => _repository.GetByIdAsync(id);
+    public async Task<RoomTypeDto?> GetByIdAsync(int id)
+    {
+        var roomType = await _repository.GetByIdAsync(id);
+        return roomType is null ? null : ConvertToDto(roomType);
+    }
 
     public async Task<RoomTypeDto> CreateAsync(CreateRoomTypeDto dto)
     {
         Validate(dto.TypeName, dto.Price);
 
-        var entity = await _repository.AddAsync(new RoomTypes { TypeName = dto.TypeName.Trim(), Price = dto.Price });
+        var entity = ConvertToEntity(dto);
+        await _repository.AddAsync(entity);
         await _repository.SaveChangesAsync();
-        return new RoomTypeDto(entity.RoomTypeId, entity.TypeName, entity.Price);
+        return ConvertToDto(entity);
     }
 
     public async Task<RoomTypeDto?> UpdateAsync(int id, UpdateRoomTypeDto dto)
     {
-        var entity = await _repository.GetEntityByIdAsync(id);
+        var entity = await _repository.GetTrackedByIdAsync(id);
         if (entity is null)
         {
             return null;
         }
         Validate(dto.TypeName, dto.Price);
 
-        entity.TypeName = dto.TypeName.Trim();
-        entity.Price = dto.Price;
+        ApplyUpdateToEntity(dto, entity);
         await _repository.SaveChangesAsync();
-        return new RoomTypeDto(entity.RoomTypeId, entity.TypeName, entity.Price);
+        return ConvertToDto(entity);
     }
 
     public async Task<bool> DeleteAsync(int id)
     {
-        var entity = await _repository.GetEntityByIdAsync(id);
+        var entity = await _repository.GetTrackedByIdAsync(id);
         if (entity is null)
         {
             return false;
@@ -62,20 +70,21 @@ public class RoomTypeService : IRoomTypeService
 
     public async Task<List<ServiceDto>?> GetServicesAsync(int roomTypeId)
     {
-        if (await _repository.GetEntityByIdAsync(roomTypeId) is null)
+        if (await _repository.GetTrackedByIdAsync(roomTypeId) is null)
         {
             return null;
         }
-        return await _repository.GetServicesAsync(roomTypeId);
+        var services = await _repository.GetServicesAsync(roomTypeId);
+        return services.Select(ConvertToDto).ToList();
     }
 
     public async Task<bool> AddServiceAsync(int roomTypeId, int serviceId)
     {
-        if (await _repository.GetEntityByIdAsync(roomTypeId) is null)
+        if (await _repository.GetTrackedByIdAsync(roomTypeId) is null)
         {
             throw new RoomTypeNotFoundException();
         }
-        if (await _serviceRepository.GetEntityByIdAsync(serviceId) is null)
+        if (await _serviceRepository.GetTrackedByIdAsync(serviceId) is null)
         {
             throw new ServiceNotFoundException();
         }
@@ -109,6 +118,31 @@ public class RoomTypeService : IRoomTypeService
         {
             throw new RoomTypeValidationException("Giá phòng không được âm.");
         }
+    }
+
+    private static RoomTypes ConvertToEntity(CreateRoomTypeDto dto)
+    {
+        return new RoomTypes
+        {
+            TypeName = dto.TypeName.Trim(),
+            Price = dto.Price
+        };
+    }
+
+    private static void ApplyUpdateToEntity(UpdateRoomTypeDto dto, RoomTypes entity)
+    {
+        entity.TypeName = dto.TypeName.Trim();
+        entity.Price = dto.Price;
+    }
+
+    private static RoomTypeDto ConvertToDto(RoomTypes entity)
+    {
+        return new RoomTypeDto(entity.RoomTypeId, entity.TypeName, entity.Price);
+    }
+
+    private static ServiceDto ConvertToDto(Service entity)
+    {
+        return new ServiceDto(entity.ServiceId, entity.Name, entity.Price);
     }
 }
 

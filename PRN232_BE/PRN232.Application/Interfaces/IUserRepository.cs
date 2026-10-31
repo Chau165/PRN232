@@ -1,5 +1,5 @@
-using PRN232.Application.DTOs;
 using PRN232.Domain.Entities;
+using PRN232.Application.ReadModels;
 
 namespace PRN232.Application.Interfaces;
 
@@ -11,12 +11,11 @@ public interface IUserRepository
     Task<bool> EmailExistsAsync(string email);
     Task<Users> AddAsync(Users user);
 
-    // Dùng cho module quản lý user (Admin) — trả DTO, projection sẵn qua Select().
-    Task<List<UserDto>> GetAllAsync(int? roleId);
-    Task<UserDto?> GetByIdAsync(int id);
+    Task<List<UserReadModel>> GetAllAsync(int? roleId);
+    Task<UserReadModel?> GetByIdAsync(int id);
 
     // Update role/status/profile/password đều cần Entity để EF theo dõi thay đổi.
-    Task<Users?> GetEntityByIdAsync(int id);
+    Task<Users?> GetTrackedByIdAsync(int id);
 
     Task<bool> RoleExistsAsync(int roleId);
 

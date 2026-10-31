@@ -39,14 +39,29 @@ public class InvoicesApiTests
         using var client = factory.CreateClient();
         var contractId = await CreateContractWithReadingAsync(client);
 
-        var preview = await client.PostAsJsonAsync("/api/invoices/preview", new { contractId, invoiceMonth = ThisMonth, dueDate = DueDate });
+        var preview = await client.PostAsJsonAsync("/api/invoices/preview", new
+        {
+            contractId,
+            invoiceMonth = ThisMonth,
+            dueDate = DueDate
+        });
         int invoicesAfterPreview;
         using (var scope = factory.Services.CreateScope())
         {
             invoicesAfterPreview = await scope.ServiceProvider.GetRequiredService<AppDbContext>().Invoices.CountAsync();
         }
-        var created = await client.PostAsJsonAsync("/api/invoices", new { contractId, invoiceMonth = ThisMonth, dueDate = DueDate });
-        var again = await client.PostAsJsonAsync("/api/invoices", new { contractId, invoiceMonth = ThisMonth, dueDate = DueDate });
+        var created = await client.PostAsJsonAsync("/api/invoices", new
+        {
+            contractId,
+            invoiceMonth = ThisMonth,
+            dueDate = DueDate
+        });
+        var again = await client.PostAsJsonAsync("/api/invoices", new
+        {
+            contractId,
+            invoiceMonth = ThisMonth,
+            dueDate = DueDate
+        });
 
         // 3.000.000 tiền phòng + 50 kWh x 3.500 + 4 m3 x 20.000 + 100.000 internet.
         Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
@@ -81,8 +96,18 @@ public class InvoicesApiTests
         var contract = await PostContractAsync(client, bookingId, VietnamToday, VietnamToday.AddYears(1));
         var contractId = (await contract.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("contractId").GetInt32();
 
-        var noReading = await client.PostAsJsonAsync("/api/invoices", new { contractId, invoiceMonth = ThisMonth, dueDate = DueDate });
-        var pastDue = await client.PostAsJsonAsync("/api/invoices", new { contractId, invoiceMonth = ThisMonth, dueDate = VietnamToday.AddDays(-1) });
+        var noReading = await client.PostAsJsonAsync("/api/invoices", new
+        {
+            contractId,
+            invoiceMonth = ThisMonth,
+            dueDate = DueDate
+        });
+        var pastDue = await client.PostAsJsonAsync("/api/invoices", new
+        {
+            contractId,
+            invoiceMonth = ThisMonth,
+            dueDate = VietnamToday.AddDays(-1)
+        });
 
         Assert.Equal((HttpStatusCode.Conflict, HttpStatusCode.BadRequest), (noReading.StatusCode, pastDue.StatusCode));
     }
@@ -97,7 +122,12 @@ public class InvoicesApiTests
         var contractId = await CreateContractWithReadingAsync(client);
 
         await LoginAsync(client, email);
-        var response = await client.PostAsJsonAsync("/api/invoices", new { contractId, invoiceMonth = ThisMonth, dueDate = DueDate });
+        var response = await client.PostAsJsonAsync("/api/invoices", new
+        {
+            contractId,
+            invoiceMonth = ThisMonth,
+            dueDate = DueDate
+        });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -110,10 +140,19 @@ public class InvoicesApiTests
         var invoiceId = await CreateInvoiceAsync(client);
 
         await LoginAsync(client, "other@example.test");
-        var byOtherTenant = await client.PostAsJsonAsync($"/api/invoices/{invoiceId}/pay", new { paymentMethod = "MoMo" });
+        var byOtherTenant = await client.PostAsJsonAsync($"/api/invoices/{invoiceId}/pay", new
+        {
+            paymentMethod = "MoMo"
+        });
         await LoginAsync(client, "customer@example.test");
-        var paid = await client.PostAsJsonAsync($"/api/invoices/{invoiceId}/pay", new { paymentMethod = "MoMo" });
-        var again = await client.PostAsJsonAsync($"/api/invoices/{invoiceId}/pay", new { paymentMethod = "MoMo" });
+        var paid = await client.PostAsJsonAsync($"/api/invoices/{invoiceId}/pay", new
+        {
+            paymentMethod = "MoMo"
+        });
+        var again = await client.PostAsJsonAsync($"/api/invoices/{invoiceId}/pay", new
+        {
+            paymentMethod = "MoMo"
+        });
         await LoginAsync(client, "manager@example.test");
         var cashAfterPaid = await client.PostAsync($"/api/invoices/{invoiceId}/record-cash", null);
 
@@ -153,7 +192,12 @@ public class InvoicesApiTests
     internal static async Task<int> CreateInvoiceAsync(HttpClient client)
     {
         var contractId = await CreateContractWithReadingAsync(client);
-        var created = await client.PostAsJsonAsync("/api/invoices", new { contractId, invoiceMonth = ThisMonth, dueDate = DueDate });
+        var created = await client.PostAsJsonAsync("/api/invoices", new
+        {
+            contractId,
+            invoiceMonth = ThisMonth,
+            dueDate = DueDate
+        });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         return (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("invoiceId").GetInt32();
     }
@@ -167,7 +211,12 @@ public class InvoicesApiTests
         var contractId = (await contract.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("contractId").GetInt32();
         var reading = await client.PostAsJsonAsync("/api/utility-readings", new
         {
-            contractId, readingMonth = ThisMonth, electricStart = 100m, electricEnd = 150m, waterStart = 10m, waterEnd = 14m
+            contractId,
+            readingMonth = ThisMonth,
+            electricStart = 100m,
+            electricEnd = 150m,
+            waterStart = 10m,
+            waterEnd = 14m
         });
         Assert.Equal(HttpStatusCode.Created, reading.StatusCode);
         return contractId;

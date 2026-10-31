@@ -2,15 +2,27 @@ namespace PRN232.Domain.Entities;
 
 public class Users
 {
-    public int UserId { get; set; }
-    public int RoleId { get; set; }
+    public int UserId
+    {
+        get; set;
+    }
+    public int RoleId
+    {
+        get; set;
+    }
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
     public string PhoneNumber { get; set; } = string.Empty;
-    public bool IsActive { get; set; }
+    public bool IsActive
+    {
+        get; set;
+    }
 
-    public Roles? Role { get; set; }
+    public Roles? Role
+    {
+        get; set;
+    }
     public ICollection<Property> OwnedProperties { get; set; } = new List<Property>();
     public ICollection<Bookings> Bookings { get; set; } = new List<Bookings>();
     public ICollection<Contracts> ContractsAsCustomer { get; set; } = new List<Contracts>();

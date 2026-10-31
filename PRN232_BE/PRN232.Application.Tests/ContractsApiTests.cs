@@ -83,7 +83,10 @@ public class ContractsApiTests
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
         await LoginAsync(client, "customer@example.test");
-        var unpaid = await client.PostAsJsonAsync("/api/bookings", new { roomId = 1 });
+        var unpaid = await client.PostAsJsonAsync("/api/bookings", new
+        {
+            roomId = 1
+        });
         var unpaidId = (await unpaid.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("bookingId").GetInt32();
         await LoginAsync(client, "manager@example.test");
 
@@ -131,14 +134,25 @@ public class ContractsApiTests
     }
 
     internal static Task<HttpResponseMessage> PostContractAsync(HttpClient client, int bookingId, DateOnly startDate, DateOnly endDate) =>
-        client.PostAsJsonAsync("/api/contracts", new { bookingId, startDate, endDate });
+        client.PostAsJsonAsync("/api/contracts", new
+        {
+            bookingId,
+            startDate,
+            endDate
+        });
 
     internal static async Task<int> CreatePaidBookingAsync(HttpClient client)
     {
         await LoginAsync(client, "customer@example.test");
-        var created = await client.PostAsJsonAsync("/api/bookings", new { roomId = 1 });
+        var created = await client.PostAsJsonAsync("/api/bookings", new
+        {
+            roomId = 1
+        });
         var bookingId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("bookingId").GetInt32();
-        var paid = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new { paymentMethod = "VNPay" });
+        var paid = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/pay", new
+        {
+            paymentMethod = "VNPay"
+        });
         Assert.Equal(HttpStatusCode.OK, paid.StatusCode);
         return bookingId;
     }

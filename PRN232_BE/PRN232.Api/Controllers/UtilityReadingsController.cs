@@ -23,32 +23,56 @@ public class UtilityReadingsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<UtilityReadingDto>>> GetAll([FromQuery] int? contractId)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
-        try { return Ok(await _readingService.GetAllAsync(userId, role, contractId)); }
-        catch (UtilityReadingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            return Ok(await _readingService.GetAllAsync(userId, role, contractId));
+        }
+        catch (UtilityReadingAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<UtilityReadingDto>> GetById(int id)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             var reading = await _readingService.GetByIdAsync(id, userId, role);
             return reading is null ? NotFound() : Ok(reading);
         }
-        catch (UtilityReadingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (UtilityReadingAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
     }
 
     [HttpPost]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<UtilityReadingDto>> Create(CreateUtilityReadingDto dto)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             var created = await _readingService.CreateAsync(dto, userId, role);
-            return CreatedAtAction(nameof(GetById), new { id = created.ReadingId }, created);
+            return CreatedAtAction(nameof(GetById), new
+            {
+                id = created.ReadingId
+            }, created);
         }
         catch (UtilityReadingBusinessRuleException exception)
         {
@@ -58,7 +82,10 @@ public class UtilityReadingsController : ControllerBase
         {
             return NotFound(new ProblemDetails { Title = "Contract not found", Detail = exception.Message });
         }
-        catch (UtilityReadingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (UtilityReadingAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
         catch (UtilityReadingConflictException exception)
         {
             return Conflict(new ProblemDetails { Title = "Reading cannot be recorded", Detail = exception.Message });

@@ -1,6 +1,7 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Policies;
+using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 
@@ -33,13 +34,7 @@ public class ViewingScheduleService : IViewingScheduleService
             throw new ViewingConflictException("You already have an open viewing request for this room.");
         }
 
-        var viewing = new ViewingSchedules
-        {
-            RoomId = room.RoomId,
-            CustomerId = customerId,
-            ScheduledAt = dto.ScheduledAt?.UtcDateTime,
-            Status = ViewingStatuses.Pending
-        };
+        var viewing = ConvertToEntity(dto, room.RoomId, customerId);
         await _repository.AddAsync(viewing, new Notifications
         {
             UserId = room.OwnerId,
@@ -48,11 +43,12 @@ public class ViewingScheduleService : IViewingScheduleService
             IsRead = false
         });
 
-        return await _repository.GetByIdAsync(viewing.ViewingId, customerId, null)
+        var created = await _repository.GetByIdAsync(viewing.ViewingId, customerId, null)
             ?? throw new InvalidOperationException("Created viewing request was not found.");
+        return ConvertToDto(created);
     }
 
-    public Task<List<ViewingScheduleDto>> GetAllAsync(int userId, string role, string? status)
+    public async Task<List<ViewingScheduleDto>> GetAllAsync(int userId, string role, string? status)
     {
         if (status is not null && !ViewingStatuses.IsValid(status))
         {
@@ -60,7 +56,8 @@ public class ViewingScheduleService : IViewingScheduleService
         }
 
         var (customerId, ownerId) = GetScope(userId, role);
-        return _repository.GetAllAsync(customerId, ownerId, status);
+        var viewings = await _repository.GetAllAsync(customerId, ownerId, status);
+        return viewings.Select(ConvertToDto).ToList();
     }
 
     public async Task<ViewingScheduleDto?> GetByIdAsync(int id, int userId, string role)
@@ -71,7 +68,7 @@ public class ViewingScheduleService : IViewingScheduleService
         {
             throw new ViewingAuthorizationException("You cannot access this viewing request.");
         }
-        return viewing;
+        return viewing is null ? null : ConvertToDto(viewing);
     }
 
     // Gộp "Chọn lịch" và "Chấp thuận": nếu khách để chủ trọ sắp xếp thì phải gửi kèm giờ xem;
@@ -133,8 +130,9 @@ public class ViewingScheduleService : IViewingScheduleService
             throw new ViewingConflictException("Viewing request has already been handled.");
         }
 
-        return await _repository.GetByIdAsync(viewing.ViewingId, null, null)
+        var updated = await _repository.GetByIdAsync(viewing.ViewingId, null, null)
             ?? throw new InvalidOperationException("Handled viewing request was not found.");
+        return ConvertToDto(updated);
     }
 
     private static void EnsureFuture(DateTimeOffset? scheduledAt, DateTimeOffset now)
@@ -145,8 +143,31 @@ public class ViewingScheduleService : IViewingScheduleService
         }
     }
 
+    private static ViewingSchedules ConvertToEntity(CreateViewingScheduleDto dto, int roomId, int customerId)
+    {
+        return new ViewingSchedules
+        {
+            RoomId = roomId,
+            CustomerId = customerId,
+            ScheduledAt = dto.ScheduledAt?.UtcDateTime,
+            Status = ViewingStatuses.Pending
+        };
+    }
+
     private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role) =>
         AccessScope.For(userId, role) ?? throw new ViewingAuthorizationException("Your role cannot access viewing requests.");
+
+    private static ViewingScheduleDto ConvertToDto(ViewingScheduleReadModel viewing) => new(
+        viewing.ViewingId,
+        viewing.RoomId,
+        viewing.RoomCode,
+        viewing.PropertyId,
+        viewing.PropertyName,
+        viewing.CustomerId,
+        viewing.CustomerName,
+        viewing.CustomerPhone,
+        viewing.ScheduledAt,
+        viewing.Status);
 }
 
 public sealed class ViewingNotFoundException(string message) : Exception(message);

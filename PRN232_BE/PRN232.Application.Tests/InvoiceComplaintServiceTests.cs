@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.Services;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
@@ -72,7 +73,7 @@ public class InvoiceComplaintServiceTests
     [Fact]
     public async Task UpdateStatusAsync_lets_the_owner_resolve_and_notifies_the_tenant()
     {
-        var repository = new FakeComplaintRepository { Complaint = SampleComplaint() };
+        var repository = new FakeComplaintRepository { Complaint = SampleComplaintReadModel() };
 
         var updated = await CreateService(repository).UpdateStatusAsync(1, new UpdateComplaintStatusDto(ComplaintStatuses.Resolved), 7, RoleNames.Manager);
 
@@ -86,7 +87,7 @@ public class InvoiceComplaintServiceTests
     [Fact]
     public async Task UpdateStatusAsync_does_nothing_when_the_status_is_unchanged()
     {
-        var repository = new FakeComplaintRepository { Complaint = SampleComplaint() };
+        var repository = new FakeComplaintRepository { Complaint = SampleComplaintReadModel() };
 
         await CreateService(repository).UpdateStatusAsync(1, new UpdateComplaintStatusDto(ComplaintStatuses.New), 9, RoleNames.Admin);
 
@@ -98,7 +99,7 @@ public class InvoiceComplaintServiceTests
     [InlineData(RoleNames.Manager, 8, ComplaintStatuses.Resolved)]
     public async Task UpdateStatusAsync_allows_only_the_owner_or_an_admin(string role, int userId, string status)
     {
-        var repository = new FakeComplaintRepository { Complaint = SampleComplaint() };
+        var repository = new FakeComplaintRepository { Complaint = SampleComplaintReadModel() };
 
         await Assert.ThrowsAsync<ComplaintAuthorizationException>(() =>
             CreateService(repository).UpdateStatusAsync(1, new UpdateComplaintStatusDto(status), userId, role));
@@ -109,7 +110,7 @@ public class InvoiceComplaintServiceTests
     public async Task UpdateStatusAsync_rejects_an_unknown_status()
     {
         await Assert.ThrowsAsync<ComplaintBusinessRuleException>(() =>
-            CreateService(new FakeComplaintRepository { Complaint = SampleComplaint() })
+            CreateService(new FakeComplaintRepository { Complaint = SampleComplaintReadModel() })
                 .UpdateStatusAsync(1, new UpdateComplaintStatusDto("Closed"), 9, RoleNames.Admin));
     }
 
@@ -128,38 +129,47 @@ public class InvoiceComplaintServiceTests
 
     private static InvoiceComplaintService CreateService(FakeComplaintRepository repository) => new(repository, new FixedTimeProvider(Now));
 
-    private static InvoiceComplaintDto SampleComplaint() => new(
+    private static InvoiceComplaintReadModel SampleComplaintReadModel() => new(
         1, 1, October, "A-101", "Sunrise", 10, "Customer A", RentLine, "Sai giá phòng", ComplaintStatuses.New, Now.UtcDateTime);
 
     private sealed class FakeComplaintRepository : IInvoiceComplaintRepository
     {
-        public ComplaintInvoiceDto Invoice { get; init; } =
+        public ComplaintInvoiceReadModel Invoice
+        {
+            get; init;
+        } =
             new(1, 10, 7, "A-101", October, [RentLine, "Electricity - per kWh - tháng 10/2026"]);
-        public InvoiceComplaintDto? Complaint { get; set; }
+        public InvoiceComplaintReadModel? Complaint
+        {
+            get; set;
+        }
         public List<(InvoiceComplaints Complaint, Notifications Notification)> Added { get; } = [];
         public List<(int ComplaintId, string Status, Notifications Notification)> Updates { get; } = [];
-        public (int? CustomerId, int? OwnerId, string? Status) LastQuery { get; private set; }
+        public (int? CustomerId, int? OwnerId, string? Status) LastQuery
+        {
+            get; private set;
+        }
 
-        public Task<ComplaintInvoiceDto?> GetInvoiceAsync(int invoiceId) =>
+        public Task<ComplaintInvoiceReadModel?> GetInvoiceAsync(int invoiceId) =>
             Task.FromResult(Invoice.InvoiceId == invoiceId ? Invoice : null);
 
         public Task AddAsync(InvoiceComplaints complaint, Notifications ownerNotification)
         {
             complaint.ComplaintId = 1;
             Added.Add((complaint, ownerNotification));
-            Complaint = new InvoiceComplaintDto(1, complaint.InvoiceId, October, "A-101", "Sunrise", complaint.CustomerId,
+            Complaint = new InvoiceComplaintReadModel(1, complaint.InvoiceId, October, "A-101", "Sunrise", complaint.CustomerId,
                 "Customer A", complaint.FeeType, complaint.Content, complaint.Status, complaint.CreatedAt);
             return Task.CompletedTask;
         }
 
-        public Task<List<InvoiceComplaintDto>> GetAllAsync(int? customerId, int? ownerId, string? status)
+        public Task<List<InvoiceComplaintReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status)
         {
             LastQuery = (customerId, ownerId, status);
-            return Task.FromResult(new List<InvoiceComplaintDto>());
+            return Task.FromResult(new List<InvoiceComplaintReadModel>());
         }
 
         // Khiếu nại mẫu thuộc khách 10 ở khu trọ của chủ 7; ngoài phạm vi đó thì trả null như repository thật.
-        public Task<InvoiceComplaintDto?> GetByIdAsync(int complaintId, int? customerId, int? ownerId)
+        public Task<InvoiceComplaintReadModel?> GetByIdAsync(int complaintId, int? customerId, int? ownerId)
         {
             var visible = Complaint?.ComplaintId == complaintId &&
                 (customerId is null || Complaint.CustomerId == customerId) && (ownerId is null or 7);
@@ -171,7 +181,10 @@ public class InvoiceComplaintServiceTests
         public Task UpdateStatusAsync(int complaintId, string status, Notifications customerNotification)
         {
             Updates.Add((complaintId, status, customerNotification));
-            Complaint = Complaint! with { Status = status };
+            Complaint = Complaint! with
+            {
+                Status = status
+            };
             return Task.CompletedTask;
         }
     }

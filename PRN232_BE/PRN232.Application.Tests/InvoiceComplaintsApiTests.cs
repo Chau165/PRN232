@@ -36,10 +36,25 @@ public class InvoiceComplaintsApiTests
         var invoice = await client.GetFromJsonAsync<JsonElement>($"/api/invoices/{invoiceId}");
         var rentLine = invoice.GetProperty("lines")[0].GetProperty("description").GetString();
 
-        var invented = await client.PostAsJsonAsync("/api/invoice-complaints", new { invoiceId, feeType = "Tiền gửi xe", content = "Sai" });
-        var created = await client.PostAsJsonAsync("/api/invoice-complaints", new { invoiceId, feeType = rentLine, content = "Giá phòng không đúng hợp đồng" });
+        var invented = await client.PostAsJsonAsync("/api/invoice-complaints", new
+        {
+            invoiceId,
+            feeType = "Tiền gửi xe",
+            content = "Sai"
+        });
+        var created = await client.PostAsJsonAsync("/api/invoice-complaints", new
+        {
+            invoiceId,
+            feeType = rentLine,
+            content = "Giá phòng không đúng hợp đồng"
+        });
         await LoginAsync(client, "other@example.test");
-        var byOtherTenant = await client.PostAsJsonAsync("/api/invoice-complaints", new { invoiceId, feeType = "Khác", content = "Sai" });
+        var byOtherTenant = await client.PostAsJsonAsync("/api/invoice-complaints", new
+        {
+            invoiceId,
+            feeType = "Khác",
+            content = "Sai"
+        });
 
         Assert.Equal((HttpStatusCode.BadRequest, HttpStatusCode.Created, HttpStatusCode.Forbidden),
             (invented.StatusCode, created.StatusCode, byOtherTenant.StatusCode));
@@ -57,13 +72,24 @@ public class InvoiceComplaintsApiTests
         using var client = factory.CreateClient();
         var invoiceId = await CreateInvoiceAsync(client);
         await LoginAsync(client, "customer@example.test");
-        var created = await client.PostAsJsonAsync("/api/invoice-complaints", new { invoiceId, feeType = "Khác", content = "Sai" });
+        var created = await client.PostAsJsonAsync("/api/invoice-complaints", new
+        {
+            invoiceId,
+            feeType = "Khác",
+            content = "Sai"
+        });
         var complaintId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("complaintId").GetInt32();
 
         await LoginAsync(client, "manager-b@example.test");
-        var byOtherManager = await client.PatchAsJsonAsync($"/api/invoice-complaints/{complaintId}", new { status = "Resolved" });
+        var byOtherManager = await client.PatchAsJsonAsync($"/api/invoice-complaints/{complaintId}", new
+        {
+            status = "Resolved"
+        });
         await LoginAsync(client, "manager@example.test");
-        var handled = await client.PatchAsJsonAsync($"/api/invoice-complaints/{complaintId}", new { status = "InProgress" });
+        var handled = await client.PatchAsJsonAsync($"/api/invoice-complaints/{complaintId}", new
+        {
+            status = "InProgress"
+        });
 
         Assert.Equal((HttpStatusCode.Forbidden, HttpStatusCode.OK), (byOtherManager.StatusCode, handled.StatusCode));
         Assert.Equal("InProgress", (await handled.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString());
@@ -84,7 +110,12 @@ public class InvoiceComplaintsApiTests
         using var client = factory.CreateClient();
         var invoiceId = await CreateInvoiceAsync(client);
         await LoginAsync(client, "customer@example.test");
-        var created = await client.PostAsJsonAsync("/api/invoice-complaints", new { invoiceId, feeType = "Khác", content = "Hạn thanh toán quá gấp" });
+        var created = await client.PostAsJsonAsync("/api/invoice-complaints", new
+        {
+            invoiceId,
+            feeType = "Khác",
+            content = "Hạn thanh toán quá gấp"
+        });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
 
         await LoginAsync(client, email);

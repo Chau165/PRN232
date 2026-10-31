@@ -44,7 +44,10 @@ public sealed class SupabaseMaintenanceReportImageStorage : IMaintenanceReportIm
     public async Task<string> GetReadUrlAsync(string objectPath)
     {
         using var request = CreateRequest(HttpMethod.Post, $"object/sign/{Escape(Bucket)}/{EscapePath(objectPath)}");
-        request.Content = JsonContent.Create(new { expiresIn = 3600 });
+        request.Content = JsonContent.Create(new
+        {
+            expiresIn = 3600
+        });
         using var response = await _httpClient.SendAsync(request);
         response.EnsureSuccessStatusCode();
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
@@ -58,7 +61,10 @@ public sealed class SupabaseMaintenanceReportImageStorage : IMaintenanceReportIm
     public async Task DeleteAsync(string objectPath)
     {
         using var request = CreateRequest(HttpMethod.Delete, $"object/{Escape(Bucket)}");
-        request.Content = JsonContent.Create(new { prefixes = new[] { objectPath } });
+        request.Content = JsonContent.Create(new
+        {
+            prefixes = new[] { objectPath }
+        });
         using var response = await _httpClient.SendAsync(request);
         response.EnsureSuccessStatusCode();
     }

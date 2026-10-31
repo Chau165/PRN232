@@ -1,6 +1,7 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Normalizers;
+using PRN232.Application.ReadModels;
 
 namespace PRN232.Application.Services;
 
@@ -45,10 +46,11 @@ public sealed class PublicPropertyListingService : IPublicPropertyListingService
         }
 
         var asOfUtc = _timeProvider.GetUtcNow().ToUniversalTime();
-        return await _repository.GetPageAsync(criteria, asOfUtc, cancellationToken);
+        var page = await _repository.GetPageAsync(criteria, asOfUtc, cancellationToken);
+        return ConvertToDto(page);
     }
 
-    public Task<IReadOnlyList<PublicPropertyAreaCardDto>> GetByAreaAsync(
+    public async Task<IReadOnlyList<PublicPropertyAreaCardDto>> GetByAreaAsync(
         PublicPropertyAreaQueryDto query,
         CancellationToken cancellationToken)
     {
@@ -64,7 +66,8 @@ public sealed class PublicPropertyListingService : IPublicPropertyListingService
         }
 
         var asOfUtc = _timeProvider.GetUtcNow().ToUniversalTime();
-        return _repository.GetByAreaAsync(criteria, asOfUtc, cancellationToken);
+        var items = await _repository.GetByAreaAsync(criteria, asOfUtc, cancellationToken);
+        return items.Select(ConvertToDto).ToArray();
     }
 
     public async Task<PublicPropertyDetailDto?> GetDetailAsync(
@@ -74,16 +77,18 @@ public sealed class PublicPropertyListingService : IPublicPropertyListingService
         var asOfUtc = _timeProvider.GetUtcNow().ToUniversalTime();
         if (!_propertyDetailEnrichmentEnabled)
         {
-            return await _repository.GetDetailAsync(propertyId, asOfUtc, cancellationToken);
+            var detail = await _repository.GetDetailAsync(propertyId, asOfUtc, cancellationToken);
+            return detail is null ? null : ConvertToDto(detail);
         }
 
         var localNow = TimeZoneInfo.ConvertTime(asOfUtc, PropertyBusinessTimeZone);
         var currentMonthStart = new DateOnly(localNow.Year, localNow.Month, 1);
-        return await _repository.GetEnrichedDetailAsync(
+        var enrichedDetail = await _repository.GetEnrichedDetailAsync(
             propertyId,
             asOfUtc,
             currentMonthStart,
             cancellationToken);
+        return enrichedDetail is null ? null : ConvertToDto(enrichedDetail);
     }
 
     public async Task<PublicPropertyRoomPageDto?> GetRoomsAsync(
@@ -112,14 +117,80 @@ public sealed class PublicPropertyListingService : IPublicPropertyListingService
         }
 
         var asOfUtc = _timeProvider.GetUtcNow().ToUniversalTime();
-        return await _repository.GetRoomsAsync(propertyId, criteria, asOfUtc, cancellationToken);
+        var page = await _repository.GetRoomsAsync(propertyId, criteria, asOfUtc, cancellationToken);
+        return page is null
+            ? null
+            : ConvertToDto(page);
     }
 
-    public Task<PublicRoomDetailDto?> GetRoomDetailAsync(int roomId, CancellationToken cancellationToken)
+    public async Task<PublicRoomDetailDto?> GetRoomDetailAsync(int roomId, CancellationToken cancellationToken)
     {
         var asOfUtc = _timeProvider.GetUtcNow().ToUniversalTime();
-        return _repository.GetRoomDetailAsync(roomId, asOfUtc, cancellationToken);
+        var detail = await _repository.GetRoomDetailAsync(roomId, asOfUtc, cancellationToken);
+        return detail is null ? null : ConvertToDto(detail);
     }
+
+    private static PublicPropertyAreaCardDto ConvertToDto(PublicPropertyAreaCardReadModel item) => new(
+        item.PropertyId, item.PropertyName, item.AddressText, item.Ward, item.District, item.City,
+        item.Latitude, item.Longitude, item.PrimaryImageUrl, item.AvailableRoomCount, item.StartingPrice);
+
+    private static PublicPropertyCardDto ConvertToDto(PublicPropertyCardReadModel item) => new(
+        item.PropertyId, item.PropertyName, item.AddressText, item.Ward, item.District, item.City,
+        item.PrimaryImageUrl, item.AmenitiesSummary.Select(ConvertToDto).ToArray(),
+        item.AvailableRoomCount, item.StartingPrice);
+
+    private static PublicPropertyRoomCardDto ConvertToDto(PublicPropertyRoomCardReadModel item) => new(
+        item.RoomId, item.RoomCode, item.RoomTypeId, item.RoomTypeName, item.BaseRent, item.AreaSqm,
+        item.PrimaryImageUrl, item.AmenitiesSummary.Select(ConvertToDto).ToArray());
+
+    private static PublicPropertyDetailDto ConvertToDto(PublicPropertyDetailReadModel item) => new(
+        item.PropertyId, item.PropertyName, item.AddressText, item.Ward, item.District, item.City,
+        item.PrimaryImageUrl, item.AvailableRoomCount, item.StartingPrice,
+        item.RoomAmenities.Select(ConvertToDto).ToArray())
+    {
+        Description = item.Description,
+        CommonAmenities = item.CommonAmenities?.Select(ConvertToDto).ToArray() ?? Array.Empty<PublicAmenitySummaryDto>(),
+        LivingCosts = item.LivingCosts?.Select(ConvertToDto).ToArray() ?? Array.Empty<PublicPropertyServiceRateDto>()
+    };
+
+    private static PublicRoomDetailDto ConvertToDto(PublicRoomDetailReadModel item) => new(
+        item.RoomId, item.RoomCode, item.AreaSqm,
+        ConvertToDto(item.RoomType),
+        item.BaseRent,
+        ConvertToDto(item.Property),
+        item.Images,
+        item.Amenities.Select(ConvertToDto).ToArray(),
+        item.Services.Select(ConvertToDto).ToArray(),
+        item.Equipments.Select(ConvertToDto).ToArray());
+
+    private static PublicAmenitySummaryDto ConvertToDto(PublicAmenitySummaryReadModel item) =>
+        new(item.AmenityId, item.Name);
+
+    private static PublicPropertyPageDto ConvertToDto(PublicPropertyPageReadModel page) => new(
+        page.Items.Select(ConvertToDto).ToArray(), page.TotalCount, page.Page, page.PageSize);
+
+    private static PublicPropertyRoomPageDto ConvertToDto(PublicPropertyRoomPageReadModel page) => new(
+        page.Items.Select(ConvertToDto).ToArray(), page.TotalCount, page.Page, page.PageSize);
+
+    private static PublicPropertyRoomAmenityDto ConvertToDto(PublicPropertyRoomAmenityReadModel amenity) => new(
+        amenity.AmenityId, amenity.Name, amenity.RentableRoomCount);
+
+    private static PublicPropertyServiceRateDto ConvertToDto(PublicPropertyServiceRateReadModel rate) => new(
+        rate.ServiceId, rate.ServiceName, rate.Price, rate.UnitCode, rate.BillingBasis,
+        rate.EffectiveFrom, rate.EffectiveTo);
+
+    private static PublicRoomTypeDto ConvertToDto(PublicRoomTypeReadModel roomType) => new(
+        roomType.RoomTypeId, roomType.RoomTypeName);
+
+    private static PublicRoomPropertyDto ConvertToDto(PublicRoomPropertyReadModel property) => new(
+        property.PropertyId, property.PropertyName, property.AddressText,
+        property.Ward, property.District, property.City);
+
+    private static PublicRoomServiceDto ConvertToDto(PublicRoomServiceReadModel service) => new(
+        service.ServiceId, service.Name, service.Price);
+
+    private static PublicRoomEquipmentDto ConvertToDto(PublicRoomEquipmentReadModel equipment) => new(
+        equipment.EquipmentId, equipment.Name);
 
     private static PublicPropertySearchCriteria NormalizeAndValidate(
         PublicPropertyQueryDto query,
@@ -195,7 +266,11 @@ public sealed class PublicPropertyListingService : IPublicPropertyListingService
 
     private static string? NormalizeAreaFilter(string? value, string field)
     {
-        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
         if (value.Trim().Length > 120)
         {
             throw new PublicPropertyQueryValidationException(field, "Area name must not exceed 120 characters.");

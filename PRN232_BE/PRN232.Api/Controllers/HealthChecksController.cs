@@ -21,6 +21,9 @@ public class HealthChecksController : ControllerBase
     public async Task<IActionResult> GetDb()
     {
         var canConnect = await _context.Database.CanConnectAsync();
-        return Ok(new { database = canConnect ? "connected" : "unreachable" });
+        return Ok(new
+        {
+            database = canConnect ? "connected" : "unreachable"
+        });
     }
 }

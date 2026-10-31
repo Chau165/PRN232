@@ -26,9 +26,19 @@ public class MaintenanceRequestsController : ControllerBase
         [FromQuery] string? status,
         [FromQuery] int? assignedTo)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
-        try { return Ok(await _maintenanceService.GetAllAsync(userId, role, status, assignedTo)); }
-        catch (MaintenanceAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            return Ok(await _maintenanceService.GetAllAsync(userId, role, status, assignedTo));
+        }
+        catch (MaintenanceAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
         catch (MaintenanceBusinessRuleException exception)
         {
             return BadRequest(new ProblemDetails { Title = "Invalid maintenance filter", Detail = exception.Message });
@@ -38,13 +48,20 @@ public class MaintenanceRequestsController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<MaintenanceRequestDto>> GetById(int id)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             var request = await _maintenanceService.GetByIdAsync(id, userId, role);
             return request is null ? NotFound() : Ok(request);
         }
-        catch (MaintenanceAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (MaintenanceAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
     }
 
     [HttpPost]
@@ -53,15 +70,25 @@ public class MaintenanceRequestsController : ControllerBase
     {
         try
         {
-            if (!TryGetCurrentUser(out var userId, out _)) return Unauthorized();
+            if (!TryGetCurrentUser(out var userId, out _))
+            {
+                return Unauthorized();
+            }
+
             var created = await _maintenanceService.CreateAsync(dto, userId);
-            return CreatedAtAction(nameof(GetById), new { id = created.RequestId }, created);
+            return CreatedAtAction(nameof(GetById), new
+            {
+                id = created.RequestId
+            }, created);
         }
         catch (MaintenanceNotFoundException exception)
         {
             return NotFound(new ProblemDetails { Title = "Related resource not found", Detail = exception.Message });
         }
-        catch (MaintenanceAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (MaintenanceAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
         catch (MaintenanceContractException exception)
         {
             return BadRequest(new ProblemDetails { Title = "Invalid contract", Detail = exception.Message });
@@ -82,7 +109,11 @@ public class MaintenanceRequestsController : ControllerBase
     {
         try
         {
-            if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+            if (!TryGetCurrentUser(out var userId, out var role))
+            {
+                return Unauthorized();
+            }
+
             var updated = await _maintenanceService.UpdateAsync(id, dto, userId, role);
             return updated is null ? NotFound() : Ok(updated);
         }
@@ -90,7 +121,10 @@ public class MaintenanceRequestsController : ControllerBase
         {
             return NotFound(new ProblemDetails { Title = "Related resource not found", Detail = exception.Message });
         }
-        catch (MaintenanceAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (MaintenanceAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
         catch (MaintenanceContractException exception)
         {
             return BadRequest(new ProblemDetails { Title = "Invalid contract", Detail = exception.Message });
@@ -121,7 +155,11 @@ public class MaintenanceRequestsController : ControllerBase
     {
         try
         {
-            if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+            if (!TryGetCurrentUser(out var userId, out var role))
+            {
+                return Unauthorized();
+            }
+
             if (form.Images is null || form.Images.Count is < 1 or > 5)
             {
                 return BadRequest(new ProblemDetails { Title = "Invalid evidence", Detail = "Submit between 1 and 5 images." });
@@ -142,13 +180,19 @@ public class MaintenanceRequestsController : ControllerBase
 
             var report = await _maintenanceService.CreateReportAsync(
                 id, new CreateMaintenanceReportDto(form.Description ?? string.Empty, images), userId, role);
-            return CreatedAtAction(nameof(GetReport), new { id }, report);
+            return CreatedAtAction(nameof(GetReport), new
+            {
+                id
+            }, report);
         }
         catch (MaintenanceNotFoundException exception)
         {
             return NotFound(new ProblemDetails { Title = "Maintenance request not found", Detail = exception.Message });
         }
-        catch (MaintenanceAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (MaintenanceAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
         catch (MaintenanceStatusTransitionException exception)
         {
             return Conflict(new ProblemDetails { Title = "Invalid maintenance state", Detail = exception.Message });
@@ -168,13 +212,20 @@ public class MaintenanceRequestsController : ControllerBase
     [Authorize(Roles = RoleNames.Admin + "," + RoleNames.Manager)]
     public async Task<ActionResult<MaintenanceReportDto>> GetReport(int id)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             var report = await _maintenanceService.GetReportAsync(id, userId, role);
             return report is null ? NotFound() : Ok(report);
         }
-        catch (MaintenanceAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (MaintenanceAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
         catch (HttpRequestException)
         {
             return StatusCode(StatusCodes.Status502BadGateway,
@@ -185,13 +236,20 @@ public class MaintenanceRequestsController : ControllerBase
     [HttpGet("{id:int}/logs")]
     public async Task<ActionResult<IEnumerable<MaintenanceLogDto>>> GetLogs(int id)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             var logs = await _maintenanceService.GetLogsAsync(id, userId, role);
             return logs is null ? NotFound() : Ok(logs);
         }
-        catch (MaintenanceAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (MaintenanceAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
     }
 
     private bool TryGetCurrentUser(out int userId, out string role)
@@ -207,6 +265,9 @@ public class MaintenanceRequestsController : ControllerBase
 
 public sealed class CreateMaintenanceReportForm
 {
-    public string? Description { get; set; }
+    public string? Description
+    {
+        get; set;
+    }
     public List<IFormFile> Images { get; set; } = [];
 }

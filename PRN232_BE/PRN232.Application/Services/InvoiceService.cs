@@ -2,6 +2,7 @@ using System.Globalization;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Policies;
+using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 
@@ -28,7 +29,7 @@ public class InvoiceService : IInvoiceService
     public async Task<InvoiceDto> PreviewAsync(CreateInvoiceDto dto, int userId, string role)
     {
         var (contract, invoice) = await BuildAsync(dto, userId, role);
-        return ToDto(invoice, contract, "Preview");
+        return ConvertToDto(invoice, contract, "Preview");
     }
 
     public async Task<InvoiceDto> CreateAsync(CreateInvoiceDto dto, int userId, string role)
@@ -47,11 +48,12 @@ public class InvoiceService : IInvoiceService
             throw new InvoiceConflictException("An invoice for this month already exists.");
         }
 
-        return await _repository.GetByIdAsync(invoice.InvoiceId, null, null)
+        var created = await _repository.GetByIdAsync(invoice.InvoiceId, null, null)
             ?? throw new InvalidOperationException("Created invoice was not found.");
+        return ConvertToDto(created);
     }
 
-    public Task<List<InvoiceDto>> GetAllAsync(int userId, string role, int? contractId, string? status)
+    public async Task<List<InvoiceDto>> GetAllAsync(int userId, string role, int? contractId, string? status)
     {
         if (status is not null && !InvoiceStatuses.IsValid(status))
         {
@@ -59,7 +61,8 @@ public class InvoiceService : IInvoiceService
         }
 
         var (customerId, ownerId) = GetScope(userId, role);
-        return _repository.GetAllAsync(customerId, ownerId, contractId, status);
+        var invoices = await _repository.GetAllAsync(customerId, ownerId, contractId, status);
+        return invoices.Select(ConvertToDto).ToList();
     }
 
     public async Task<InvoiceDto?> GetByIdAsync(int id, int userId, string role)
@@ -70,7 +73,7 @@ public class InvoiceService : IInvoiceService
         {
             throw new InvoiceAuthorizationException("You cannot access this invoice.");
         }
-        return invoice;
+        return invoice is null ? null : ConvertToDto(invoice);
     }
 
     // Khách tự thanh toán qua cổng giả lập (cùng cổng với tiền cọc ở bước đặt cọc).
@@ -113,7 +116,7 @@ public class InvoiceService : IInvoiceService
             $"Đã ghi nhận thanh toán tiền mặt hoá đơn tháng {Period(invoice.InvoiceMonth)} - Phòng {invoice.RoomCode}");
     }
 
-    private async Task<InvoicePaymentDto> GetUnpaidForPaymentAsync(int id)
+    private async Task<InvoicePaymentReadModel> GetUnpaidForPaymentAsync(int id)
     {
         var invoice = await _repository.GetForPaymentAsync(id)
             ?? throw new InvoiceNotFoundException("Invoice does not exist.");
@@ -126,7 +129,7 @@ public class InvoiceService : IInvoiceService
 
     // Người trả luôn là khách thuê; số tiền là tổng các dòng do server tính, client không gửi số tiền.
     private async Task<InvoiceDto> MarkPaidAsync(
-        InvoicePaymentDto invoice, string paymentMethod, int notifyUserId, string notificationTitle)
+        InvoicePaymentReadModel invoice, string paymentMethod, int notifyUserId, string notificationTitle)
     {
         var payment = new Payments
         {
@@ -149,11 +152,12 @@ public class InvoiceService : IInvoiceService
             throw new InvoiceConflictException("This invoice has already been paid.");
         }
 
-        return await _repository.GetByIdAsync(invoice.InvoiceId, null, null)
+        var paid = await _repository.GetByIdAsync(invoice.InvoiceId, null, null)
             ?? throw new InvalidOperationException("Paid invoice was not found.");
+        return ConvertToDto(paid);
     }
 
-    private async Task<(InvoiceContractDto Contract, Invoices Invoice)> BuildAsync(CreateInvoiceDto dto, int userId, string role)
+    private async Task<(InvoiceContractReadModel Contract, Invoices Invoice)> BuildAsync(CreateInvoiceDto dto, int userId, string role)
     {
         if (role is not (RoleNames.Manager or RoleNames.Admin))
         {
@@ -189,7 +193,7 @@ public class InvoiceService : IInvoiceService
         };
 
         var services = await _repository.GetBillableServicesAsync(contract.PropertyId, contract.RoomTypeId, dto.InvoiceMonth);
-        MonthUsageDto? usage = null;
+        MonthUsageReadModel? usage = null;
         if (services.Any(service => service.BillingBasis == "usage"))
         {
             usage = await _repository.GetUsageAsync(contract.ContractId, dto.InvoiceMonth)
@@ -214,7 +218,7 @@ public class InvoiceService : IInvoiceService
 
     // Mỗi dòng lưu lại RateId, số lượng, đơn giá và đơn vị lúc lập: khu trọ đổi giá sau này
     // thì hoá đơn cũ vẫn giữ nguyên số tiền đã tính.
-    private static InvoiceDetails BuildServiceLine(BillableServiceDto service, MonthUsageDto? usage, string period)
+    private static InvoiceDetails BuildServiceLine(BillableServiceReadModel service, MonthUsageReadModel? usage, string period)
     {
         if (service.RateId is null || service.Price is null)
         {
@@ -244,7 +248,7 @@ public class InvoiceService : IInvoiceService
         };
     }
 
-    private void EnsureValidDates(CreateInvoiceDto dto, InvoiceContractDto contract)
+    private void EnsureValidDates(CreateInvoiceDto dto, InvoiceContractReadModel contract)
     {
         if (dto.InvoiceMonth.Day != 1)
         {
@@ -267,7 +271,7 @@ public class InvoiceService : IInvoiceService
         }
     }
 
-    private static InvoiceDto ToDto(Invoices invoice, InvoiceContractDto contract, string status) => new(
+    private static InvoiceDto ConvertToDto(Invoices invoice, InvoiceContractReadModel contract, string status) => new(
         invoice.InvoiceId,
         contract.ContractId,
         contract.RoomCode,
@@ -278,9 +282,26 @@ public class InvoiceService : IInvoiceService
         status,
         invoice.InvoiceDetails.Sum(detail => detail.Amount),
         invoice.InvoiceDetails
-            .Select(detail => new InvoiceLineDto(
-                detail.ItemType, detail.Description, detail.Quantity, detail.UnitPrice, detail.UnitCode, detail.Amount))
+            .Select(ConvertToDto)
             .ToList());
+
+    private static InvoiceDto ConvertToDto(InvoiceReadModel invoice) => new(
+        invoice.InvoiceId,
+        invoice.ContractId,
+        invoice.RoomCode,
+        invoice.PropertyName,
+        invoice.CustomerName,
+        invoice.InvoiceMonth,
+        invoice.DueDate,
+        invoice.Status,
+        invoice.Total,
+        invoice.Lines.Select(ConvertToDto).ToList());
+
+    private static InvoiceLineDto ConvertToDto(InvoiceDetails detail) => new(
+        detail.ItemType, detail.Description, detail.Quantity, detail.UnitPrice, detail.UnitCode, detail.Amount);
+
+    private static InvoiceLineDto ConvertToDto(InvoiceLineReadModel line) => new(
+        line.ItemType, line.Description, line.Quantity, line.UnitPrice, line.UnitCode, line.Amount);
 
     private static string Period(DateOnly month) => month.ToString("MM/yyyy", CultureInfo.InvariantCulture);
 

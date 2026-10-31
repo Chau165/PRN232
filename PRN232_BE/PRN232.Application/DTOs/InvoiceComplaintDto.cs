@@ -17,11 +17,3 @@ public record InvoiceComplaintDto(
 public record CreateInvoiceComplaintDto(int InvoiceId, string FeeType, string Content);
 
 public record UpdateComplaintStatusDto(string Status);
-
-public record ComplaintInvoiceDto(
-    int InvoiceId,
-    int CustomerId,
-    int OwnerId,
-    string RoomCode,
-    DateOnly InvoiceMonth,
-    IReadOnlyList<string> LineDescriptions);

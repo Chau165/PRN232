@@ -78,9 +78,15 @@ public class SupabaseMaintenanceReportImageStorageTests
         {
             switch (operation)
             {
-                case "upload": await storage.UploadAsync(12, new MaintenanceReportImageInput("evidence.png", "image/png", [1])); break;
-                case "sign": await storage.GetReadUrlAsync("maintenance/12/evidence.png"); break;
-                case "delete": await storage.DeleteAsync("maintenance/12/evidence.png"); break;
+                case "upload":
+                    await storage.UploadAsync(12, new MaintenanceReportImageInput("evidence.png", "image/png", [1]));
+                    break;
+                case "sign":
+                    await storage.GetReadUrlAsync("maintenance/12/evidence.png");
+                    break;
+                case "delete":
+                    await storage.DeleteAsync("maintenance/12/evidence.png");
+                    break;
             }
         });
     }
@@ -100,17 +106,28 @@ public class SupabaseMaintenanceReportImageStorageTests
     {
         var settings = new Dictionary<string, string?>
         {
-            ["Supabase:Url"] = "https://project.supabase.co", ["Supabase:ServiceRoleKey"] = "test-only-storage-key",
+            ["Supabase:Url"] = "https://project.supabase.co",
+            ["Supabase:ServiceRoleKey"] = "test-only-storage-key",
             ["Supabase:MaintenanceReportBucket"] = "maintenance-evidence"
         };
-        if (missing is not null) settings.Remove(missing);
+        if (missing is not null)
+        {
+            settings.Remove(missing);
+        }
+
         return new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
     }
 
     private sealed class StorageHandler : HttpMessageHandler
     {
-        public bool Fail { get; init; }
-        public bool AbsoluteSignedUrl { get; init; }
+        public bool Fail
+        {
+            get; init;
+        }
+        public bool AbsoluteSignedUrl
+        {
+            get; init;
+        }
         public List<CapturedRequest> Requests { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -122,11 +139,18 @@ public class SupabaseMaintenanceReportImageStorageTests
                 request.Headers.GetValues("apikey").Single(),
                 body));
 
-            if (Fail) return new HttpResponseMessage(HttpStatusCode.BadGateway);
-            if (AbsoluteSignedUrl) return new HttpResponseMessage(HttpStatusCode.OK)
+            if (Fail)
             {
-                Content = new StringContent("{\"signedURL\":\"https://storage.test/signed?token=test\"}", Encoding.UTF8, "application/json")
-            };
+                return new HttpResponseMessage(HttpStatusCode.BadGateway);
+            }
+
+            if (AbsoluteSignedUrl)
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"signedURL\":\"https://storage.test/signed?token=test\"}", Encoding.UTF8, "application/json")
+                };
+            }
 
             var content = request.RequestUri.AbsolutePath.Contains("object/sign", StringComparison.Ordinal)
                 ? "{\"signedURL\":\"/object/sign/maintenance-evidence/" +

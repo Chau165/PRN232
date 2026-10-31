@@ -13,20 +13,36 @@ public class RoleService : IRoleService
         _repository = repository;
     }
 
-    // Đọc: Repository đã trả DTO sẵn (EF Core project trực tiếp trong query),
-    // Service không cần map gì thêm nữa.
-    public Task<List<RoleDto>> GetAllAsync() => _repository.GetAllAsync();
+    public async Task<List<RoleDto>> GetAllAsync()
+    {
+        var roles = await _repository.GetAllAsync();
+        return roles.Select(ConvertToDto).ToList();
+    }
 
-    public Task<RoleDto?> GetByIdAsync(int id) => _repository.GetByIdAsync(id);
+    public async Task<RoleDto?> GetByIdAsync(int id)
+    {
+        var role = await _repository.GetByIdAsync(id);
+        return role is null ? null : ConvertToDto(role);
+    }
 
-    // Create: vẫn cần tạo Entity để EF theo dõi + sinh RoleId, nên bước này
-    // vẫn "map tay" 2 chiều (CreateRoleDto -> Entity, Entity -> RoleDto) —
-    // ít code, không cần thư viện mapping nào.
     public async Task<RoleDto> CreateAsync(CreateRoleDto dto)
     {
-        var role = new Roles { RoleName = dto.RoleName };
+        var role = ConvertToEntity(dto);
         await _repository.AddAsync(role);
         await _repository.SaveChangesAsync();
-        return new RoleDto(role.RoleId, role.RoleName);
+        return ConvertToDto(role);
+    }
+
+    private static Roles ConvertToEntity(CreateRoleDto dto)
+    {
+        return new Roles
+        {
+            RoleName = dto.RoleName
+        };
+    }
+
+    private static RoleDto ConvertToDto(Roles entity)
+    {
+        return new RoleDto(entity.RoleId, entity.RoleName);
     }
 }

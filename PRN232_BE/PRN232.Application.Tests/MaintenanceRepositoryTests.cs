@@ -26,13 +26,19 @@ public class MaintenanceRepositoryTests
         context.Contracts.AddRange(
             new Contracts
             {
-                ContractId = 1, CustomerId = 10, RoomId = 1,
-                StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2027, 1, 1)
+                ContractId = 1,
+                CustomerId = 10,
+                RoomId = 1,
+                StartDate = new DateOnly(2026, 1, 1),
+                EndDate = new DateOnly(2027, 1, 1)
             },
             new Contracts
             {
-                ContractId = 2, CustomerId = 20, RoomId = 2,
-                StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2027, 1, 1)
+                ContractId = 2,
+                CustomerId = 20,
+                RoomId = 2,
+                StartDate = new DateOnly(2026, 1, 1),
+                EndDate = new DateOnly(2027, 1, 1)
             });
         context.MaintenanceRequests.AddRange(
             new MaintenanceRequests { RequestId = 1, ContractId = 1, Description = "A", Status = "Pending", AssignmentNote = "Internal note" },

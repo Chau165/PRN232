@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Domain.Entities;
+using PRN232.Application.ReadModels;
 using PRN232.Infrastructure.Data;
 
 namespace PRN232.Infrastructure.Repositories;
@@ -15,12 +15,12 @@ public class PropertyRepository : IPropertyRepository
         _context = context;
     }
 
-    public Task<List<PropertyDto>> GetAllAsync(int? ownerId) =>
+    public Task<List<PropertySummaryReadModel>> GetAllAsync(int? ownerId) =>
         _context.Properties
             .AsNoTracking()
             .Where(p => ownerId == null || p.OwnerId == ownerId)
             .OrderBy(p => p.PropertyId)
-            .Select(p => new PropertyDto(
+            .Select(p => new PropertySummaryReadModel(
                 p.PropertyId,
                 p.OwnerId,
                 p.Owner!.FullName,
@@ -34,11 +34,11 @@ public class PropertyRepository : IPropertyRepository
                 p.Rooms.Count))
             .ToListAsync();
 
-    public Task<PropertyDto?> GetByIdAsync(int id) =>
+    public Task<PropertySummaryReadModel?> GetByIdAsync(int id) =>
         _context.Properties
             .AsNoTracking()
             .Where(p => p.PropertyId == id)
-            .Select(p => new PropertyDto(
+            .Select(p => new PropertySummaryReadModel(
                 p.PropertyId,
                 p.OwnerId,
                 p.Owner!.FullName,
@@ -52,7 +52,7 @@ public class PropertyRepository : IPropertyRepository
                 p.Rooms.Count))
             .FirstOrDefaultAsync();
 
-    public Task<Property?> GetEntityByIdAsync(int id) =>
+    public Task<Property?> GetTrackedByIdAsync(int id) =>
         _context.Properties.FirstOrDefaultAsync(p => p.PropertyId == id);
 
     public async Task<Property> AddAsync(Property property)

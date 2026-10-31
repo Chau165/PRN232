@@ -885,7 +885,10 @@ public sealed class PublicPropertyListingApiTests
         private readonly string _databaseName = Guid.NewGuid().ToString();
         private readonly bool? _propertyDetailEnrichmentEnabled;
         private readonly string _environment;
-        public FixedTimeProvider Clock { get; }
+        public FixedTimeProvider Clock
+        {
+            get;
+        }
 
         public PublicPropertiesApiFactory(
             bool? propertyDetailEnrichmentEnabled = false,
@@ -1121,7 +1124,10 @@ public sealed class PublicPropertyListingApiTests
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
-        public int ReadCount { get; private set; }
+        public int ReadCount
+        {
+            get; private set;
+        }
 
         public override DateTimeOffset GetUtcNow()
         {

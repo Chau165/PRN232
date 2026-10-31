@@ -33,7 +33,10 @@ public static class PublicAreaNameNormalizer
 
     public static string Normalize(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
 
         var decomposed = value.Trim().Normalize(NormalizationForm.FormD).ToLowerInvariant();
         var characters = new StringBuilder(decomposed.Length);

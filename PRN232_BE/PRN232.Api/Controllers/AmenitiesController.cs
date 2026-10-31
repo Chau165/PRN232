@@ -34,7 +34,10 @@ public class AmenitiesController : ControllerBase
         try
         {
             var created = await _amenityService.CreateAsync(dto);
-            return CreatedAtAction(nameof(GetById), new { id = created.AmenityId }, created);
+            return CreatedAtAction(nameof(GetById), new
+            {
+                id = created.AmenityId
+            }, created);
         }
         catch (ReferenceDataValidationException exception)
         {

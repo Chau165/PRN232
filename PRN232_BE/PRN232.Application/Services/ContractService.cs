@@ -1,6 +1,7 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Policies;
+using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 
@@ -53,18 +54,7 @@ public class ContractService : IContractService
         }
 
         // Giá thuê chốt theo giá phòng lúc lập hợp đồng; tiền cọc là số khách đã trả cho booking.
-        var contract = new Contracts
-        {
-            RoomId = booking.RoomId,
-            CustomerId = booking.CustomerId,
-            BookingId = booking.BookingId,
-            ProcessedByStaffId = userId,
-            StartDate = dto.StartDate,
-            EndDate = dto.EndDate,
-            MonthlyRent = booking.MonthlyRent,
-            DepositAmount = booking.DepositAmount,
-            Status = ContractStatuses.Active
-        };
+        var contract = ConvertToEntity(dto, booking, userId);
         var notification = new Notifications
         {
             UserId = booking.CustomerId,
@@ -77,14 +67,16 @@ public class ContractService : IContractService
             throw new ContractConflictException("The booking changed or the room already has an active contract.");
         }
 
-        return await _repository.GetByIdAsync(contract.ContractId, null, null)
+        var created = await _repository.GetByIdAsync(contract.ContractId, null, null)
             ?? throw new InvalidOperationException("Created contract was not found.");
+        return ConvertToDto(created);
     }
 
-    public Task<List<ContractDto>> GetAllAsync(int userId, string role)
+    public async Task<List<ContractDto>> GetAllAsync(int userId, string role)
     {
         var (customerId, ownerId) = GetScope(userId, role);
-        return _repository.GetAllAsync(customerId, ownerId);
+        var contracts = await _repository.GetAllAsync(customerId, ownerId);
+        return contracts.Select(ConvertToDto).ToList();
     }
 
     public async Task<ContractDto?> GetByIdAsync(int id, int userId, string role)
@@ -95,11 +87,44 @@ public class ContractService : IContractService
         {
             throw new ContractAuthorizationException("You cannot access this contract.");
         }
-        return contract;
+        return contract is null ? null : ConvertToDto(contract);
+    }
+
+    private static Contracts ConvertToEntity(CreateContractDto dto, ContractBookingReadModel booking, int userId)
+    {
+        return new Contracts
+        {
+            RoomId = booking.RoomId,
+            CustomerId = booking.CustomerId,
+            BookingId = booking.BookingId,
+            ProcessedByStaffId = userId,
+            StartDate = dto.StartDate,
+            EndDate = dto.EndDate,
+            MonthlyRent = booking.MonthlyRent,
+            DepositAmount = booking.DepositAmount,
+            Status = ContractStatuses.Active
+        };
     }
 
     private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role) =>
         AccessScope.For(userId, role) ?? throw new ContractAuthorizationException("Your role cannot access contracts.");
+
+    private static ContractDto ConvertToDto(ContractReadModel contract) => new(
+        contract.ContractId,
+        contract.BookingId,
+        contract.RoomId,
+        contract.RoomCode,
+        contract.PropertyId,
+        contract.PropertyName,
+        contract.CustomerId,
+        contract.CustomerName,
+        contract.CustomerPhone,
+        contract.StartDate,
+        contract.EndDate,
+        contract.MonthlyRent,
+        contract.DepositAmount,
+        contract.Status,
+        contract.ProcessedByStaffName);
 }
 
 public sealed class ContractNotFoundException(string message) : Exception(message);

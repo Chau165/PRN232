@@ -16,14 +16,22 @@ public class NotificationsController(INotificationService notificationService, I
         [FromQuery] bool? isRead,
         [FromQuery] string? type)
     {
-        if (!TryGetCurrentUser(out var userId)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId))
+        {
+            return Unauthorized();
+        }
+
         return Ok(await notificationService.GetAllAsync(userId, isRead, type));
     }
 
     [HttpPatch("{id:int}")]
     public async Task<IActionResult> Update(int id, UpdateNotificationDto dto)
     {
-        if (!TryGetCurrentUser(out var userId)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             await notificationService.UpdateReadStateAsync(id, userId, dto.IsRead);

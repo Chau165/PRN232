@@ -16,7 +16,10 @@ public class MaintenanceCurrentUserTests
     {
         var generator = new JwtTokenGenerator(new JwtSettings
         {
-            Key = "test-only-signing-key-minimum-32-bytes", Issuer = "test", Audience = "test", ExpiryMinutes = 30
+            Key = "test-only-signing-key-minimum-32-bytes",
+            Issuer = "test",
+            Audience = "test",
+            ExpiryMinutes = 30
         });
         var (token, _) = generator.GenerateToken(new Users { UserId = 7, FullName = "Manager", Email = "manager@example.test", RoleId = 2 }, "Manager");
         var claims = new JwtSecurityTokenHandler().ReadJwtToken(token).Claims.ToArray();

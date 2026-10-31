@@ -7,8 +7,11 @@ namespace PRN232.Application.Services;
 
 public class NotificationService(INotificationRepository repository) : INotificationService
 {
-    public Task<List<NotificationDto>> GetAllAsync(int userId, bool? isRead, string? type) =>
-        repository.GetByUserAsync(userId, isRead, type?.Trim());
+    public async Task<List<NotificationDto>> GetAllAsync(int userId, bool? isRead, string? type)
+    {
+        var notifications = await repository.GetByUserAsync(userId, isRead, type?.Trim());
+        return notifications.Select(ConvertToDto).ToList();
+    }
 
     public async Task UpdateReadStateAsync(int id, int userId, bool? isRead)
     {
@@ -44,6 +47,15 @@ public class NotificationService(INotificationRepository repository) : INotifica
                 IsRead = false
             })
             .ToList();
+
+    private static NotificationDto ConvertToDto(Notifications entity)
+    {
+        return new NotificationDto(
+            entity.NotificationId,
+            entity.Title,
+            entity.Type,
+            entity.IsRead);
+    }
 }
 
 public sealed class NotificationBusinessRuleException(string message) : Exception(message);

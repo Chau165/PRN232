@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.Services;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
@@ -115,18 +116,24 @@ public class ContractServiceTests
     private static ContractService CreateService(FakeContractRepository repository) =>
         new(repository, new FixedTimeProvider(Now));
 
-    private static ContractBookingDto SampleBooking() =>
+    private static ContractBookingReadModel SampleBooking() =>
         new(1, 5, "A-101", 10, 7, BookingStatuses.Deposited, 3_000_000m, 3_500_000m, false);
 
     private sealed class FakeContractRepository : IContractRepository
     {
-        public ContractBookingDto? Booking { get; init; } = SampleBooking();
+        public ContractBookingReadModel? Booking { get; init; } = SampleBooking();
         public bool AddSucceeds { get; init; } = true;
-        public int? ExistingContractId { get; set; }
+        public int? ExistingContractId
+        {
+            get; set;
+        }
         public List<(Contracts Contract, Notifications Notification)> Added { get; } = [];
-        public (int? CustomerId, int? OwnerId) LastScope { get; private set; }
+        public (int? CustomerId, int? OwnerId) LastScope
+        {
+            get; private set;
+        }
 
-        public Task<ContractBookingDto?> GetBookingAsync(int bookingId) =>
+        public Task<ContractBookingReadModel?> GetBookingAsync(int bookingId) =>
             Task.FromResult(Booking?.BookingId == bookingId ? Booking : null);
 
         public Task<bool> AddFromBookingAsync(Contracts contract, Notifications customerNotification)
@@ -142,18 +149,18 @@ public class ContractServiceTests
             return Task.FromResult(true);
         }
 
-        public Task<List<ContractDto>> GetAllAsync(int? customerId, int? ownerId)
+        public Task<List<ContractReadModel>> GetAllAsync(int? customerId, int? ownerId)
         {
             LastScope = (customerId, ownerId);
-            return Task.FromResult(new List<ContractDto>());
+            return Task.FromResult(new List<ContractReadModel>());
         }
 
         // Hợp đồng mẫu thuộc khách 10 ở khu trọ của chủ 7; ngoài phạm vi đó thì trả null như repository thật.
-        public Task<ContractDto?> GetByIdAsync(int contractId, int? customerId, int? ownerId)
+        public Task<ContractReadModel?> GetByIdAsync(int contractId, int? customerId, int? ownerId)
         {
             var visible = ExistingContractId == contractId && (customerId is null or 10) && (ownerId is null or 7);
             return Task.FromResult(visible
-                ? new ContractDto(contractId, 1, 5, "A-101", 1, "Sunrise", 10, "Customer", "0900000000",
+                ? new ContractReadModel(contractId, 1, 5, "A-101", 1, "Sunrise", 10, "Customer", "0900000000",
                     VietnamToday, VietnamToday.AddYears(1), 3_500_000m, 3_000_000m, ContractStatuses.Active, "Manager")
                 : null);
         }

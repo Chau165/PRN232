@@ -34,7 +34,10 @@ public class ServicesController : ControllerBase
         try
         {
             var created = await _serviceService.CreateAsync(dto);
-            return CreatedAtAction(nameof(GetById), new { id = created.ServiceId }, created);
+            return CreatedAtAction(nameof(GetById), new
+            {
+                id = created.ServiceId
+            }, created);
         }
         catch (ReferenceDataValidationException exception)
         {

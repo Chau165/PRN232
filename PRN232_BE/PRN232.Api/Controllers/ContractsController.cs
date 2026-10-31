@@ -23,32 +23,56 @@ public class ContractsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<ContractDto>>> GetAll()
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
-        try { return Ok(await _contractService.GetAllAsync(userId, role)); }
-        catch (ContractAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            return Ok(await _contractService.GetAllAsync(userId, role));
+        }
+        catch (ContractAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ContractDto>> GetById(int id)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             var contract = await _contractService.GetByIdAsync(id, userId, role);
             return contract is null ? NotFound() : Ok(contract);
         }
-        catch (ContractAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (ContractAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
     }
 
     [HttpPost]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<ContractDto>> Create(CreateContractDto dto)
     {
-        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
         try
         {
             var created = await _contractService.CreateFromBookingAsync(dto, userId, role);
-            return CreatedAtAction(nameof(GetById), new { id = created.ContractId }, created);
+            return CreatedAtAction(nameof(GetById), new
+            {
+                id = created.ContractId
+            }, created);
         }
         catch (ContractBusinessRuleException exception)
         {
@@ -58,7 +82,10 @@ public class ContractsController : ControllerBase
         {
             return NotFound(new ProblemDetails { Title = "Booking not found", Detail = exception.Message });
         }
-        catch (ContractAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (ContractAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
         catch (ContractConflictException exception)
         {
             return Conflict(new ProblemDetails { Title = "Contract cannot be created", Detail = exception.Message });

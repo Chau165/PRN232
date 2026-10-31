@@ -25,7 +25,9 @@ public sealed class SupabaseReadOnlyInspectionTests
         await connection.OpenAsync();
         await using var transaction = await connection.BeginTransactionAsync();
         await using (var readOnly = new NpgsqlCommand("SET TRANSACTION READ ONLY", connection, transaction))
+        {
             await readOnly.ExecuteNonQueryAsync();
+        }
 
         await using var command = new NpgsqlCommand("""
             SELECT current_database(), inet_server_addr()::text,

@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
@@ -15,21 +14,19 @@ public class AmenityRepository : IAmenityRepository
         _context = context;
     }
 
-    public Task<List<AmenityDto>> GetAllAsync() =>
+    public Task<List<Amenities>> GetAllAsync() =>
         _context.Amenities
             .AsNoTracking()
             .OrderBy(a => a.Name)
-            .Select(a => new AmenityDto(a.AmenityId, a.Name))
             .ToListAsync();
 
-    public Task<AmenityDto?> GetByIdAsync(int id) =>
+    public Task<Amenities?> GetByIdAsync(int id) =>
         _context.Amenities
             .AsNoTracking()
             .Where(a => a.AmenityId == id)
-            .Select(a => new AmenityDto(a.AmenityId, a.Name))
             .FirstOrDefaultAsync();
 
-    public Task<Amenities?> GetEntityByIdAsync(int id) =>
+    public Task<Amenities?> GetTrackedByIdAsync(int id) =>
         _context.Amenities.FirstOrDefaultAsync(a => a.AmenityId == id);
 
     public async Task<Amenities> AddAsync(Amenities amenity)

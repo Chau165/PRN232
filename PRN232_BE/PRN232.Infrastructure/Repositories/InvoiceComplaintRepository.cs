@@ -1,7 +1,7 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
-using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
 
@@ -16,11 +16,11 @@ public class InvoiceComplaintRepository : IInvoiceComplaintRepository
         _context = context;
     }
 
-    public Task<ComplaintInvoiceDto?> GetInvoiceAsync(int invoiceId) =>
+    public Task<ComplaintInvoiceReadModel?> GetInvoiceAsync(int invoiceId) =>
         _context.Invoices
             .AsNoTracking()
             .Where(invoice => invoice.InvoiceId == invoiceId)
-            .Select(invoice => new ComplaintInvoiceDto(
+            .Select(invoice => new ComplaintInvoiceReadModel(
                 invoice.InvoiceId,
                 invoice.Contract!.CustomerId,
                 invoice.Contract.Room!.Property!.OwnerId,
@@ -36,17 +36,17 @@ public class InvoiceComplaintRepository : IInvoiceComplaintRepository
         await _context.SaveChangesAsync();
     }
 
-    public Task<List<InvoiceComplaintDto>> GetAllAsync(int? customerId, int? ownerId, string? status) =>
+    public Task<List<InvoiceComplaintReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status) =>
         InScope(customerId, ownerId)
             .Where(complaint => status == null || complaint.Status == status)
             .OrderByDescending(complaint => complaint.ComplaintId)
-            .Select(ToDto)
+            .Select(ToReadModel)
             .ToListAsync();
 
-    public Task<InvoiceComplaintDto?> GetByIdAsync(int complaintId, int? customerId, int? ownerId) =>
+    public Task<InvoiceComplaintReadModel?> GetByIdAsync(int complaintId, int? customerId, int? ownerId) =>
         InScope(customerId, ownerId)
             .Where(complaint => complaint.ComplaintId == complaintId)
-            .Select(ToDto)
+            .Select(ToReadModel)
             .FirstOrDefaultAsync();
 
     public Task<bool> ExistsAsync(int complaintId) =>
@@ -70,7 +70,7 @@ public class InvoiceComplaintRepository : IInvoiceComplaintRepository
             .Where(complaint => customerId == null || complaint.CustomerId == customerId)
             .Where(complaint => ownerId == null || complaint.Invoice!.Contract!.Room!.Property!.OwnerId == ownerId);
 
-    private static readonly Expression<Func<InvoiceComplaints, InvoiceComplaintDto>> ToDto = complaint => new InvoiceComplaintDto(
+    private static readonly Expression<Func<InvoiceComplaints, InvoiceComplaintReadModel>> ToReadModel = complaint => new InvoiceComplaintReadModel(
         complaint.ComplaintId,
         complaint.InvoiceId,
         complaint.Invoice!.InvoiceMonth,

@@ -1,7 +1,8 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.States;
-using PRN232.Domain.Entities;
+using DomainIdentityDocument = PRN232.Domain.Entities.IdentityDocuments;
 
 namespace PRN232.Application.Services;
 
@@ -14,12 +15,23 @@ public class IdentityDocumentService : IIdentityDocumentService
         _repository = repository;
     }
 
-    public Task<List<IdentityDocumentDto>> GetAllAsync(string? status) => _repository.GetAllAsync(status);
+    public async Task<List<IdentityDocumentDto>> GetAllAsync(string? status)
+    {
+        var documents = await _repository.GetAllAsync(status);
+        return documents.Select(ConvertToDto).ToList();
+    }
 
-    public Task<List<IdentityDocumentDto>> GetMineAsync(int customerId) =>
-        _repository.GetByCustomerIdAsync(customerId);
+    public async Task<List<IdentityDocumentDto>> GetMineAsync(int customerId)
+    {
+        var documents = await _repository.GetByCustomerIdAsync(customerId);
+        return documents.Select(ConvertToDto).ToList();
+    }
 
-    public Task<IdentityDocumentDto?> GetByIdAsync(int id) => _repository.GetByIdAsync(id);
+    public async Task<IdentityDocumentDto?> GetByIdAsync(int id)
+    {
+        var document = await _repository.GetByIdAsync(id);
+        return document is null ? null : ConvertToDto(document);
+    }
 
     public async Task<IdentityDocumentDto> SubmitAsync(SubmitIdentityDocumentDto dto, int customerId)
     {
@@ -38,22 +50,18 @@ public class IdentityDocumentService : IIdentityDocumentService
             throw new IdentityDocumentDuplicateException(cccdNumber);
         }
 
-        var document = new IdentityDocuments
-        {
-            CustomerId = customerId,
-            CCCDNumber = cccdNumber,
-            Status = IdentityDocumentStatuses.Pending,
-        };
+        var status = IdentityDocumentStatuses.Pending;
+        var document = CreateIdentityDocumentEntity(customerId, cccdNumber, status);
 
         var created = await _repository.AddAsync(document);
         await _repository.SaveChangesAsync();
 
-        return (await _repository.GetByIdAsync(created.IdentityDocumentId))!;
+        return ConvertToDto(await GetDocumentResponseAsync(created.IdentityDocumentId));
     }
 
     public async Task<IdentityDocumentDto?> ReviewAsync(int id, ReviewIdentityDocumentDto dto, int reviewerId)
     {
-        var entity = await _repository.GetEntityByIdAsync(id);
+        var entity = await _repository.GetTrackedByIdAsync(id);
         if (entity is null)
         {
             return null;
@@ -68,7 +76,36 @@ public class IdentityDocumentService : IIdentityDocumentService
         entity.ReviewedBy = reviewerId;
 
         await _repository.SaveChangesAsync();
-        return await _repository.GetByIdAsync(id);
+        var updated = await _repository.GetByIdAsync(id);
+        return updated is null ? null : ConvertToDto(updated);
+    }
+
+    private static DomainIdentityDocument CreateIdentityDocumentEntity(int customerId, string cccdNumber, string status)
+    {
+        return new DomainIdentityDocument
+        {
+            CustomerId = customerId,
+            CCCDNumber = cccdNumber,
+            Status = status
+        };
+    }
+
+    private static IdentityDocumentDto ConvertToDto(IdentityDocumentReadModel readModel)
+    {
+        return new IdentityDocumentDto(
+            readModel.IdentityDocumentId,
+            readModel.CustomerId,
+            readModel.CustomerName,
+            readModel.CCCDNumber,
+            readModel.Status,
+            readModel.ReviewedBy,
+            readModel.ReviewedByName);
+    }
+
+    private async Task<IdentityDocumentReadModel> GetDocumentResponseAsync(int documentId)
+    {
+        return await _repository.GetByIdAsync(documentId)
+            ?? throw new InvalidOperationException("Created identity document was not found.");
     }
 }
 

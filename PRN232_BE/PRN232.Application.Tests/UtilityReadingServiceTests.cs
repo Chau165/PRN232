@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.Services;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
@@ -30,7 +31,7 @@ public class UtilityReadingServiceTests
     [Fact]
     public async Task CreateAsync_continues_from_the_previous_month_and_ignores_client_starting_values()
     {
-        var repository = new FakeReadingRepository { Latest = new LatestReadingDto(new DateOnly(2026, 9, 1), 1320m, 104m) };
+        var repository = new FakeReadingRepository { Latest = new LatestReadingReadModel(new DateOnly(2026, 9, 1), 1320m, 104m) };
 
         await CreateService(repository).CreateAsync(
             new CreateUtilityReadingDto(1, October, 1465m, 109m, ElectricStart: 0m, WaterStart: 0m), 9, RoleNames.Admin);
@@ -55,7 +56,7 @@ public class UtilityReadingServiceTests
     [InlineData(2026, 5, 1)]
     public async Task CreateAsync_rejects_mid_month_future_or_out_of_term_months(int year, int month, int day)
     {
-        var repository = new FakeReadingRepository { Latest = new LatestReadingDto(new DateOnly(2026, 4, 1), 100m, 10m) };
+        var repository = new FakeReadingRepository { Latest = new LatestReadingReadModel(new DateOnly(2026, 4, 1), 100m, 10m) };
 
         await Assert.ThrowsAsync<UtilityReadingBusinessRuleException>(() => CreateService(repository)
             .CreateAsync(new CreateUtilityReadingDto(1, new DateOnly(year, month, day), 150m, 14m, null, null), 7, RoleNames.Manager));
@@ -65,7 +66,7 @@ public class UtilityReadingServiceTests
     [Fact]
     public async Task CreateAsync_uses_the_vietnam_calendar_month()
     {
-        var repository = new FakeReadingRepository { Latest = new LatestReadingDto(October, 150m, 14m) };
+        var repository = new FakeReadingRepository { Latest = new LatestReadingReadModel(October, 150m, 14m) };
         // 18:00 UTC ngày 31/10 đã là ngày 01/11 ở Việt Nam, nên được ghi chỉ số tháng 11.
         var service = new UtilityReadingService(repository, new FixedTimeProvider(new DateTimeOffset(2026, 10, 31, 18, 0, 0, TimeSpan.Zero)));
 
@@ -79,7 +80,7 @@ public class UtilityReadingServiceTests
     [InlineData(9)]
     public async Task CreateAsync_rejects_a_month_that_is_not_after_the_latest_reading(int month)
     {
-        var repository = new FakeReadingRepository { Latest = new LatestReadingDto(October, 150m, 14m) };
+        var repository = new FakeReadingRepository { Latest = new LatestReadingReadModel(October, 150m, 14m) };
 
         await Assert.ThrowsAsync<UtilityReadingConflictException>(() => CreateService(repository)
             .CreateAsync(new CreateUtilityReadingDto(1, new DateOnly(2026, month, 1), 200m, 18m, null, null), 7, RoleNames.Manager));
@@ -90,7 +91,7 @@ public class UtilityReadingServiceTests
     [InlineData(1400, 103)]
     public async Task CreateAsync_rejects_meter_values_lower_than_the_previous_ones(int electricEnd, int waterEnd)
     {
-        var repository = new FakeReadingRepository { Latest = new LatestReadingDto(new DateOnly(2026, 9, 1), 1320m, 104m) };
+        var repository = new FakeReadingRepository { Latest = new LatestReadingReadModel(new DateOnly(2026, 9, 1), 1320m, 104m) };
 
         await Assert.ThrowsAsync<UtilityReadingBusinessRuleException>(() => CreateService(repository)
             .CreateAsync(new CreateUtilityReadingDto(1, October, electricEnd, waterEnd, null, null), 7, RoleNames.Manager));
@@ -141,21 +142,27 @@ public class UtilityReadingServiceTests
     private static UtilityReadingService CreateService(FakeReadingRepository repository) =>
         new(repository, new FixedTimeProvider(Now));
 
-    private static ReadingContractDto SampleContract() =>
+    private static ReadingContractReadModel SampleContract() =>
         new(1, 7, ContractStatuses.Active, new DateOnly(2026, 6, 1), new DateOnly(2027, 5, 31));
 
     private sealed class FakeReadingRepository : IUtilityReadingRepository
     {
-        public ReadingContractDto? Contract { get; init; } = SampleContract();
-        public LatestReadingDto? Latest { get; init; }
+        public ReadingContractReadModel? Contract { get; init; } = SampleContract();
+        public LatestReadingReadModel? Latest
+        {
+            get; init;
+        }
         public bool AddSucceeds { get; init; } = true;
         public List<UtilityReadings> Added { get; } = [];
-        public (int? CustomerId, int? OwnerId, int? ContractId) LastQuery { get; private set; }
+        public (int? CustomerId, int? OwnerId, int? ContractId) LastQuery
+        {
+            get; private set;
+        }
 
-        public Task<ReadingContractDto?> GetContractAsync(int contractId) =>
+        public Task<ReadingContractReadModel?> GetContractAsync(int contractId) =>
             Task.FromResult(Contract?.ContractId == contractId ? Contract : null);
 
-        public Task<LatestReadingDto?> GetLatestAsync(int contractId) => Task.FromResult(Latest);
+        public Task<LatestReadingReadModel?> GetLatestAsync(int contractId) => Task.FromResult(Latest);
 
         public Task<bool> AddIfLatestAsync(UtilityReadings reading)
         {
@@ -169,16 +176,16 @@ public class UtilityReadingServiceTests
             return Task.FromResult(true);
         }
 
-        public Task<List<UtilityReadingDto>> GetAllAsync(int? customerId, int? ownerId, int? contractId)
+        public Task<List<UtilityReadingReadModel>> GetAllAsync(int? customerId, int? ownerId, int? contractId)
         {
             LastQuery = (customerId, ownerId, contractId);
-            return Task.FromResult(new List<UtilityReadingDto>());
+            return Task.FromResult(new List<UtilityReadingReadModel>());
         }
 
-        public Task<UtilityReadingDto?> GetByIdAsync(int readingId, int? customerId, int? ownerId)
+        public Task<UtilityReadingReadModel?> GetByIdAsync(int readingId, int? customerId, int? ownerId)
         {
             var reading = Added.SingleOrDefault(item => item.ReadingId == readingId);
-            return Task.FromResult(reading is null ? null : new UtilityReadingDto(
+            return Task.FromResult(reading is null ? null : new UtilityReadingReadModel(
                 reading.ReadingId, reading.ContractId, "A-101", "Sunrise", "Customer", reading.ReadingMonth,
                 reading.ElectricStart, reading.ElectricEnd, reading.ElectricEnd - reading.ElectricStart,
                 reading.WaterStart, reading.WaterEnd, reading.WaterEnd - reading.WaterStart));

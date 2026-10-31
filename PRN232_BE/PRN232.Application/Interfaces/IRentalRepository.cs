@@ -1,15 +1,15 @@
-using PRN232.Application.DTOs;
+using PRN232.Application.ReadModels;
 
 namespace PRN232.Application.Interfaces;
 
 public interface IRentalRepository
 {
-    Task<IReadOnlyList<RentalDto>> GetCurrentRentalsAsync(
+    Task<IReadOnlyList<RentalReadModel>> GetCurrentRentalsAsync(
         int customerId,
         DateOnly today,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<RentalDto>> GetRentalHistoryAsync(
+    Task<IReadOnlyList<RentalReadModel>> GetRentalHistoryAsync(
         int customerId,
         DateOnly today,
         CancellationToken cancellationToken);

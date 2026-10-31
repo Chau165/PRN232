@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using PRN232.Application.DTOs;
 using PRN232.Application.Policies;
+using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 
@@ -13,7 +13,7 @@ public static class RoomAvailabilityQueries
             .AsNoTracking()
             .Where(RoomRentabilityPolicy.IsRentableAt(asOfUtc));
 
-    public static IQueryable<PropertyAvailabilityDto> GetPropertyAvailability(
+    public static IQueryable<PropertyAvailabilityReadModel> GetPropertyAvailability(
         IQueryable<Property> properties,
         IQueryable<Rooms> rooms,
         DateTimeOffset asOfUtc)
@@ -23,7 +23,7 @@ public static class RoomAvailabilityQueries
         return properties
             .AsNoTracking()
             .OrderBy(property => property.PropertyId)
-            .Select(property => new PropertyAvailabilityDto(
+            .Select(property => new PropertyAvailabilityReadModel(
                 property.PropertyId,
                 rentableRooms
                     .Where(room => room.PropertyId == property.PropertyId)

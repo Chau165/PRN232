@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.Services;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
@@ -14,9 +15,9 @@ public class InvoiceServiceTests
     private static readonly DateOnly October = new(2026, 10, 1);
     private static readonly DateOnly DueDate = new(2026, 11, 10);
 
-    private static readonly BillableServiceDto Electricity = new(1, "Electricity - per kWh", 11, 3_500m, "kwh", "usage");
-    private static readonly BillableServiceDto Water = new(2, "Water - per m3", 12, 20_000m, "m3", "usage");
-    private static readonly BillableServiceDto Internet = new(3, "Internet - monthly", 13, 100_000m, "room_month", "fixed_room");
+    private static readonly BillableServiceReadModel Electricity = new(1, "Electricity - per kWh", 11, 3_500m, "kwh", "usage");
+    private static readonly BillableServiceReadModel Water = new(2, "Water - per m3", 12, 20_000m, "m3", "usage");
+    private static readonly BillableServiceReadModel Internet = new(3, "Internet - monthly", 13, 100_000m, "room_month", "fixed_room");
 
     [Fact]
     public async Task PreviewAsync_bills_rent_metered_usage_and_fixed_services_without_saving()
@@ -57,7 +58,7 @@ public class InvoiceServiceTests
         var repository = new FakeInvoiceRepository
         {
             Services = [Electricity with { Price = 3_333m }],
-            Usage = new MonthUsageDto(1.5m, 0m)
+            Usage = new MonthUsageReadModel(1.5m, 0m)
         };
 
         var preview = await CreateService(repository).PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 7, RoleNames.Manager);
@@ -242,33 +243,39 @@ public class InvoiceServiceTests
     private static InvoiceService CreateService(FakeInvoiceRepository repository, FakePaymentGateway? gateway = null) =>
         new(repository, gateway ?? new FakePaymentGateway(), new FixedTimeProvider(Now));
 
-    private static InvoicePaymentDto SamplePaymentTarget() =>
+    private static InvoicePaymentReadModel SamplePaymentTarget() =>
         new(5, 10, 7, "A-101", October, InvoiceStatuses.Unpaid, 3_207_500m);
 
-    private static InvoiceContractDto SampleContract() => new(
+    private static InvoiceContractReadModel SampleContract() => new(
         1, 7, 10, "Customer A", "A-101", 1, "Sunrise", 1, 2_500_000m, ContractStatuses.Active,
         new DateOnly(2026, 6, 1), new DateOnly(2027, 5, 31));
 
     private sealed class FakeInvoiceRepository : IInvoiceRepository
     {
-        public InvoiceContractDto? Contract { get; init; } = SampleContract();
-        public List<BillableServiceDto> Services { get; init; } = [Electricity, Water, Internet];
-        public MonthUsageDto? Usage { get; init; } = new(145m, 5m);
-        public bool InvoiceExists { get; init; }
+        public InvoiceContractReadModel? Contract { get; init; } = SampleContract();
+        public List<BillableServiceReadModel> Services { get; init; } = [Electricity, Water, Internet];
+        public MonthUsageReadModel? Usage { get; init; } = new(145m, 5m);
+        public bool InvoiceExists
+        {
+            get; init;
+        }
         public bool AddSucceeds { get; init; } = true;
-        public InvoicePaymentDto? PaymentTarget { get; init; } = SamplePaymentTarget();
+        public InvoicePaymentReadModel? PaymentTarget { get; init; } = SamplePaymentTarget();
         public bool MarkPaidSucceeds { get; init; } = true;
         public List<(Invoices Invoice, Notifications Notification)> Added { get; } = [];
         public List<(int InvoiceId, Payments Payment, Notifications Notification)> Paid { get; } = [];
-        public (int? CustomerId, int? OwnerId, int? ContractId, string? Status) LastQuery { get; private set; }
+        public (int? CustomerId, int? OwnerId, int? ContractId, string? Status) LastQuery
+        {
+            get; private set;
+        }
 
-        public Task<InvoiceContractDto?> GetContractAsync(int contractId) =>
+        public Task<InvoiceContractReadModel?> GetContractAsync(int contractId) =>
             Task.FromResult(Contract?.ContractId == contractId ? Contract : null);
 
-        public Task<List<BillableServiceDto>> GetBillableServicesAsync(int propertyId, int roomTypeId, DateOnly month) =>
+        public Task<List<BillableServiceReadModel>> GetBillableServicesAsync(int propertyId, int roomTypeId, DateOnly month) =>
             Task.FromResult(Services);
 
-        public Task<MonthUsageDto?> GetUsageAsync(int contractId, DateOnly month) => Task.FromResult(Usage);
+        public Task<MonthUsageReadModel?> GetUsageAsync(int contractId, DateOnly month) => Task.FromResult(Usage);
 
         public Task<bool> ExistsForMonthAsync(int contractId, DateOnly month) => Task.FromResult(InvoiceExists);
 
@@ -284,31 +291,31 @@ public class InvoiceServiceTests
             return Task.FromResult(true);
         }
 
-        public Task<List<InvoiceDto>> GetAllAsync(int? customerId, int? ownerId, int? contractId, string? status)
+        public Task<List<InvoiceReadModel>> GetAllAsync(int? customerId, int? ownerId, int? contractId, string? status)
         {
             LastQuery = (customerId, ownerId, contractId, status);
-            return Task.FromResult(new List<InvoiceDto>());
+            return Task.FromResult(new List<InvoiceReadModel>());
         }
 
-        public Task<InvoiceDto?> GetByIdAsync(int invoiceId, int? customerId, int? ownerId)
+        public Task<InvoiceReadModel?> GetByIdAsync(int invoiceId, int? customerId, int? ownerId)
         {
             var invoice = Added.Select(item => item.Invoice).SingleOrDefault(item => item.InvoiceId == invoiceId);
             if (invoice is null && PaymentTarget?.InvoiceId == invoiceId)
             {
                 var status = Paid.Count > 0 ? InvoiceStatuses.Paid : PaymentTarget.Status;
-                return Task.FromResult<InvoiceDto?>(new InvoiceDto(invoiceId, 1, "A-101", "Sunrise", "Customer A",
+                return Task.FromResult<InvoiceReadModel?>(new InvoiceReadModel(invoiceId, 1, "A-101", "Sunrise", "Customer A",
                     October, DueDate, status, PaymentTarget.Total, []));
             }
-            return Task.FromResult(invoice is null ? null : new InvoiceDto(
+            return Task.FromResult(invoice is null ? null : new InvoiceReadModel(
                 invoice.InvoiceId, invoice.ContractId, "A-101", "Sunrise", "Customer A", invoice.InvoiceMonth, invoice.DueDate,
                 invoice.Status, invoice.InvoiceDetails.Sum(detail => detail.Amount),
-                invoice.InvoiceDetails.Select(detail => new InvoiceLineDto(
+                invoice.InvoiceDetails.Select(detail => new InvoiceLineReadModel(
                     detail.ItemType, detail.Description, detail.Quantity, detail.UnitPrice, detail.UnitCode, detail.Amount)).ToList()));
         }
 
         public Task<bool> ExistsAsync(int invoiceId) => Task.FromResult(Added.Any(item => item.Invoice.InvoiceId == invoiceId));
 
-        public Task<InvoicePaymentDto?> GetForPaymentAsync(int invoiceId) =>
+        public Task<InvoicePaymentReadModel?> GetForPaymentAsync(int invoiceId) =>
             Task.FromResult(PaymentTarget?.InvoiceId == invoiceId ? PaymentTarget : null);
 
         public Task<bool> MarkPaidAsync(int invoiceId, Payments payment, Notifications notification)

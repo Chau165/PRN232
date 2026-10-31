@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
@@ -16,11 +16,11 @@ public class InvoiceRepository : IInvoiceRepository
         _context = context;
     }
 
-    public Task<InvoiceContractDto?> GetContractAsync(int contractId) =>
+    public Task<InvoiceContractReadModel?> GetContractAsync(int contractId) =>
         _context.Contracts
             .AsNoTracking()
             .Where(contract => contract.ContractId == contractId)
-            .Select(contract => new InvoiceContractDto(
+            .Select(contract => new InvoiceContractReadModel(
                 contract.ContractId,
                 contract.Room!.Property!.OwnerId,
                 contract.CustomerId,
@@ -37,7 +37,7 @@ public class InvoiceRepository : IInvoiceRepository
 
     // Dịch vụ lấy theo loại phòng (giống danh sách dịch vụ trên trang phòng), giá lấy theo khu trọ
     // với cùng điều kiện hiệu lực mà trang công khai dùng. Ghép trong bộ nhớ để chạy được cả trên SQLite.
-    public async Task<List<BillableServiceDto>> GetBillableServicesAsync(int propertyId, int roomTypeId, DateOnly month)
+    public async Task<List<BillableServiceReadModel>> GetBillableServicesAsync(int propertyId, int roomTypeId, DateOnly month)
     {
         var services = await _context.RoomTypeServices
             .AsNoTracking()
@@ -60,13 +60,13 @@ public class InvoiceRepository : IInvoiceRepository
                     .Where(item => item.ServiceId == service.ServiceId)
                     .OrderByDescending(item => item.EffectiveFrom)
                     .FirstOrDefault();
-                return new BillableServiceDto(
+                return new BillableServiceReadModel(
                     service.ServiceId, service.Name, rate?.RateId, rate?.Price, rate?.UnitCode, rate?.BillingBasis);
             })
             .ToList();
     }
 
-    public async Task<MonthUsageDto?> GetUsageAsync(int contractId, DateOnly month)
+    public async Task<MonthUsageReadModel?> GetUsageAsync(int contractId, DateOnly month)
     {
         var reading = await _context.UtilityReadings
             .AsNoTracking()
@@ -75,7 +75,7 @@ public class InvoiceRepository : IInvoiceRepository
             .FirstOrDefaultAsync();
         return reading is null
             ? null
-            : new MonthUsageDto(reading.ElectricEnd - reading.ElectricStart, reading.WaterEnd - reading.WaterStart);
+            : new MonthUsageReadModel(reading.ElectricEnd - reading.ElectricStart, reading.WaterEnd - reading.WaterStart);
     }
 
     public Task<bool> ExistsForMonthAsync(int contractId, DateOnly month) =>
@@ -103,7 +103,7 @@ public class InvoiceRepository : IInvoiceRepository
         return true;
     }
 
-    public async Task<List<InvoiceDto>> GetAllAsync(int? customerId, int? ownerId, int? contractId, string? status)
+    public async Task<List<InvoiceReadModel>> GetAllAsync(int? customerId, int? ownerId, int? contractId, string? status)
     {
         var invoices = await Project(InScope(customerId, ownerId)
                 .Where(invoice => contractId == null || invoice.ContractId == contractId)
@@ -114,7 +114,7 @@ public class InvoiceRepository : IInvoiceRepository
         return invoices.Select(WithTotal).ToList();
     }
 
-    public async Task<InvoiceDto?> GetByIdAsync(int invoiceId, int? customerId, int? ownerId)
+    public async Task<InvoiceReadModel?> GetByIdAsync(int invoiceId, int? customerId, int? ownerId)
     {
         var invoice = await Project(InScope(customerId, ownerId).Where(item => item.InvoiceId == invoiceId))
             .FirstOrDefaultAsync();
@@ -124,7 +124,7 @@ public class InvoiceRepository : IInvoiceRepository
     public Task<bool> ExistsAsync(int invoiceId) =>
         _context.Invoices.AnyAsync(invoice => invoice.InvoiceId == invoiceId);
 
-    public async Task<InvoicePaymentDto?> GetForPaymentAsync(int invoiceId)
+    public async Task<InvoicePaymentReadModel?> GetForPaymentAsync(int invoiceId)
     {
         var invoice = await _context.Invoices
             .AsNoTracking()
@@ -143,7 +143,7 @@ public class InvoiceRepository : IInvoiceRepository
         // Tổng tiền cộng trong bộ nhớ, cùng lý do với WithTotal bên dưới.
         return invoice is null
             ? null
-            : new InvoicePaymentDto(invoice.InvoiceId, invoice.CustomerId, invoice.OwnerId, invoice.RoomCode,
+            : new InvoicePaymentReadModel(invoice.InvoiceId, invoice.CustomerId, invoice.OwnerId, invoice.RoomCode,
                 invoice.InvoiceMonth, invoice.Status, invoice.Amounts.Sum());
     }
 
@@ -174,8 +174,8 @@ public class InvoiceRepository : IInvoiceRepository
             .Where(invoice => customerId == null || invoice.Contract!.CustomerId == customerId)
             .Where(invoice => ownerId == null || invoice.Contract!.Room!.Property!.OwnerId == ownerId);
 
-    private static IQueryable<InvoiceDto> Project(IQueryable<Invoices> invoices) =>
-        invoices.Select(invoice => new InvoiceDto(
+    private static IQueryable<InvoiceReadModel> Project(IQueryable<Invoices> invoices) =>
+        invoices.Select(invoice => new InvoiceReadModel(
             invoice.InvoiceId,
             invoice.ContractId,
             invoice.Contract!.Room!.RoomCode,
@@ -187,11 +187,14 @@ public class InvoiceRepository : IInvoiceRepository
             0m,
             invoice.InvoiceDetails
                 .OrderBy(detail => detail.InvoiceDetailId)
-                .Select(detail => new InvoiceLineDto(
+                .Select(detail => new InvoiceLineReadModel(
                     detail.ItemType, detail.Description, detail.Quantity, detail.UnitPrice, detail.UnitCode, detail.Amount))
                 .ToList()));
 
     // Tổng tiền cộng trong bộ nhớ: bảng Invoices không có cột tổng, và SQLite không cộng được kiểu decimal.
-    private static InvoiceDto WithTotal(InvoiceDto invoice) =>
-        invoice with { Total = invoice.Lines.Sum(line => line.Amount) };
+    private static InvoiceReadModel WithTotal(InvoiceReadModel invoice) =>
+        invoice with
+        {
+            Total = invoice.Lines.Sum(line => line.Amount)
+        };
 }

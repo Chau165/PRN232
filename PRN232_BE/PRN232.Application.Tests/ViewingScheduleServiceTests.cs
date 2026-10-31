@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.Services;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
@@ -109,7 +110,8 @@ public class ViewingScheduleServiceTests
     {
         var repository = new FakeViewingRepository
         {
-            Viewing = SampleViewing(customerId: 10) with { ScheduledAt = null }, OwnerId = 42
+            Viewing = SampleViewing(customerId: 10) with { ScheduledAt = null },
+            OwnerId = 42
         };
 
         var approved = await CreateService(repository)
@@ -201,18 +203,33 @@ public class ViewingScheduleServiceTests
 
     private sealed class FakeViewingRepository : IViewingScheduleRepository
     {
-        public ViewingRoomDto? Room { get; init; } = new(5, "A-101", 7);
+        public ViewingRoomReadModel? Room { get; init; } = new(5, "A-101", 7);
         public bool RoomIsRentable { get; init; } = true;
-        public bool HasOpenRequest { get; init; }
+        public bool HasOpenRequest
+        {
+            get; init;
+        }
         public bool DecideSucceeds { get; init; } = true;
-        public ViewingScheduleDto? Viewing { get; set; }
+        public ViewingScheduleDto? Viewing
+        {
+            get; set;
+        }
+        private ViewingScheduleReadModel? ViewingReadModel => Viewing is null ? null : new ViewingScheduleReadModel(
+            Viewing.ViewingId, Viewing.RoomId, Viewing.RoomCode, Viewing.PropertyId, Viewing.PropertyName,
+            Viewing.CustomerId, Viewing.CustomerName, Viewing.CustomerPhone, Viewing.ScheduledAt, Viewing.Status);
         public int OwnerId { get; init; } = 7;
         public List<(ViewingSchedules Viewing, Notifications Notification)> Added { get; } = [];
         public List<(int ViewingId, string Status, DateTime? ScheduledAtUtc, Notifications Notification)> Decisions { get; } = [];
-        public (int? CustomerId, int? OwnerId) LastScope { get; private set; }
-        public string? LastStatus { get; private set; }
+        public (int? CustomerId, int? OwnerId) LastScope
+        {
+            get; private set;
+        }
+        public string? LastStatus
+        {
+            get; private set;
+        }
 
-        public Task<ViewingRoomDto?> GetRoomAsync(int roomId) =>
+        public Task<ViewingRoomReadModel?> GetRoomAsync(int roomId) =>
             Task.FromResult(Room?.RoomId == roomId ? Room : null);
 
         public Task<bool> IsRoomRentableAsync(int roomId, DateTimeOffset asOfUtc) => Task.FromResult(RoomIsRentable);
@@ -229,19 +246,19 @@ public class ViewingScheduleServiceTests
             return Task.CompletedTask;
         }
 
-        public Task<List<ViewingScheduleDto>> GetAllAsync(int? customerId, int? ownerId, string? status)
+        public Task<List<ViewingScheduleReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status)
         {
             LastScope = (customerId, ownerId);
             LastStatus = status;
-            return Task.FromResult(Viewing is null ? new List<ViewingScheduleDto>() : [Viewing]);
+            return Task.FromResult(ViewingReadModel is null ? new List<ViewingScheduleReadModel>() : [ViewingReadModel]);
         }
 
-        public Task<ViewingScheduleDto?> GetByIdAsync(int viewingId, int? customerId, int? ownerId)
+        public Task<ViewingScheduleReadModel?> GetByIdAsync(int viewingId, int? customerId, int? ownerId)
         {
             var visible = Viewing is not null && Viewing.ViewingId == viewingId &&
                 (customerId is null || Viewing.CustomerId == customerId) &&
                 (ownerId is null || OwnerId == ownerId);
-            return Task.FromResult(visible ? Viewing : null);
+            return Task.FromResult(visible ? ViewingReadModel : null);
         }
 
         public Task<bool> ExistsAsync(int viewingId) => Task.FromResult(Viewing?.ViewingId == viewingId);
@@ -255,7 +272,11 @@ public class ViewingScheduleServiceTests
             }
 
             Decisions.Add((viewingId, status, scheduledAtUtc, customerNotification));
-            Viewing = Viewing! with { Status = status, ScheduledAt = scheduledAtUtc ?? Viewing.ScheduledAt };
+            Viewing = Viewing! with
+            {
+                Status = status,
+                ScheduledAt = scheduledAtUtc ?? Viewing.ScheduledAt
+            };
             return Task.FromResult(true);
         }
     }
