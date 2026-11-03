@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
@@ -41,14 +43,32 @@ builder.Services.AddCors(options =>
 
 // ---- JWT: bind 1 lần thành JwtSettings (POCO, dùng chung cho middleware validate
 // token ở dưới và JwtTokenGenerator lúc issue token trong AuthController) ----
+// Key mẫu nằm công khai trên GitHub (appsettings.json, .env.example): ai có nó cũng tự ký được
+// token Admin. Production mà thiếu key thật thì dừng khởi động luôn, không chạy tiếp với key mẫu.
+// Development/Testing được dùng key dev cố định để chạy local và test không cần cấu hình.
 var jwtKey = builder.Configuration["Jwt:Key"];
-if (jwtKey is null)
+string[] placeholderJwtKeys =
+[
+    "PUT_A_REAL_SECRET_HERE_VIA_USER_SECRETS_DO_NOT_COMMIT",
+    "replace-with-a-random-secret-at-least-32-characters-long",
+    "CHANGE_ME_DEV_ONLY_32_CHARACTERS_MIN",
+];
+var jwtKeyIsUnsafe = string.IsNullOrWhiteSpace(jwtKey) ||
+    Encoding.UTF8.GetByteCount(jwtKey) < 32 ||
+    placeholderJwtKeys.Contains(jwtKey);
+if (jwtKeyIsUnsafe)
 {
-    jwtKey = "CHANGE_ME_DEV_ONLY_32_CHARACTERS_MIN";
+    if (builder.Environment.IsProduction())
+    {
+        throw new InvalidOperationException(
+            "Jwt:Key chưa được cấu hình hoặc đang dùng key mẫu. " +
+            "Đặt biến môi trường Jwt__Key là một chuỗi ngẫu nhiên dài ít nhất 32 ký tự.");
+    }
+    jwtKey = "DEV_ONLY_LOCAL_SIGNING_KEY_NEVER_USE_IN_PRODUCTION";
 }
 var jwtSettings = new JwtSettings
 {
-    Key = jwtKey,
+    Key = jwtKey!,
     Issuer = builder.Configuration["Jwt:Issuer"] ?? "PRN232_BE",
     Audience = builder.Configuration["Jwt:Audience"] ?? "PRN232_FE",
     ExpiryMinutes = builder.Configuration.GetValue<int?>("Jwt:ExpiryMinutes") ?? 120,
@@ -77,24 +97,65 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtSettings.Audience,
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Key)),
     };
+    // Token chỉ hết hạn sau ExpiryMinutes, nên admin khoá tài khoản xong thì token cũ vẫn
+    // dùng được. Mỗi request đều kiểm tra lại user còn tồn tại và còn active trong DB.
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            if (!int.TryParse(context.Principal?.FindFirst("sub")?.Value, out var userId) || userId <= 0)
+            {
+                context.Fail("Token thiếu claim 'sub' hợp lệ.");
+                return;
+            }
+
+            var users = context.HttpContext.RequestServices.GetRequiredService<IUserRepository>();
+            var user = await users.GetByIdAsync(userId);
+            if (user is null || !user.IsActive)
+            {
+                context.Fail("Tài khoản không tồn tại hoặc đã bị khoá.");
+            }
+        }
+    };
 });
 builder.Services.AddAuthorization();
 
 // ---- Rate limiting (ASP.NET Core built-in, không cần package ngoài) ----
+// Mỗi IP (login) hoặc mỗi user (booking) có hạn mức riêng. Trước đây hạn mức tính chung cho
+// cả server: 5 người login trong cùng một phút là người thứ 6 bị chặn.
 builder.Services.AddRateLimiter(options =>
 {
-    options.AddFixedWindowLimiter("LoginPolicy", opt =>
-    {
-        opt.Window = TimeSpan.FromMinutes(1);
-        opt.PermitLimit = 5;
-        opt.QueueLimit = 0;
-    });
-    options.AddFixedWindowLimiter("BookingPolicy", opt =>
-    {
-        opt.Window = TimeSpan.FromMinutes(1);
-        opt.PermitLimit = 10;
-        opt.QueueLimit = 0;
-    });
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("LoginPolicy", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ClientIpPartitionKey(httpContext),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromMinutes(1),
+                PermitLimit = 5,
+                QueueLimit = 0
+            }));
+    options.AddPolicy("BookingPolicy", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            httpContext.User.FindFirst("sub")?.Value is { Length: > 0 } userId
+                ? $"user:{userId}"
+                : ClientIpPartitionKey(httpContext),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromMinutes(1),
+                PermitLimit = 10,
+                QueueLimit = 0
+            }));
+});
+
+// Railway đứng sau reverse proxy: không đọc X-Forwarded-For thì mọi request đều có IP của proxy
+// và lại dùng chung một hạn mức. ForwardLimit mặc định = 1 nên chỉ lấy IP do proxy gắn vào
+// cuối header, client tự thêm IP giả ở đầu header cũng không có tác dụng.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
 });
 
 // ---- DI: mỗi module thêm repository + service của mình vào đây theo đúng mẫu Roles ----
@@ -180,17 +241,25 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+app.UseForwardedHeaders();
+
 app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 app.UseCors("FrontendPolicy");
-app.UseRateLimiter();
+// Rate limiter đứng sau UseAuthentication để BookingPolicy đọc được user từ token.
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+static string ClientIpPartitionKey(HttpContext httpContext)
+{
+    return $"ip:{httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
+}
 
 internal sealed class SlugifyParameterTransformer : IOutboundParameterTransformer
 {

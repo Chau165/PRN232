@@ -12,19 +12,28 @@ namespace PRN232.Api.Controllers;
 public class IdentityDocumentsController : ControllerBase
 {
     private readonly IIdentityDocumentService _service;
+    private readonly ICurrentUserService _currentUser;
 
-    public IdentityDocumentsController(IIdentityDocumentService service)
+    public IdentityDocumentsController(IIdentityDocumentService service, ICurrentUserService currentUser)
     {
         _service = service;
+        _currentUser = currentUser;
     }
 
-    // GET /api/identity-documents?status= — Admin/Manager xem toàn bộ hồ sơ, lọc theo
-    // trạng thái (vd status=Pending để duyệt).
+    // GET /api/identity-documents?status= — Admin xem toàn bộ hồ sơ; Manager chỉ xem hồ sơ
+    // của khách có booking/hợp đồng ở khu trọ của mình. Lọc theo trạng thái (vd status=Pending).
     [HttpGet]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<IEnumerable<IdentityDocumentDto>>> GetAll([FromQuery] string? status)
     {
-        return Ok(await _service.GetAllAsync(status));
+        try
+        {
+            return Ok(await _service.GetAllAsync(status, CurrentUserId(), CurrentRole()));
+        }
+        catch (IdentityDocumentAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
     }
 
     // GET /api/identity-documents/mine — khách thuê xem hồ sơ CCCD của chính mình.
@@ -34,23 +43,24 @@ public class IdentityDocumentsController : ControllerBase
         return Ok(await _service.GetMineAsync(CurrentUserId()));
     }
 
-    // GET /api/identity-documents/{id} — Admin/Manager xem bất kỳ; khách thuê chỉ xem
-    // được hồ sơ của chính mình.
+    // GET /api/identity-documents/{id} — Admin xem bất kỳ; Manager chỉ xem hồ sơ của khách ở
+    // khu trọ của mình; khách thuê chỉ xem được hồ sơ của chính mình.
     [HttpGet("{id:int}")]
     public async Task<ActionResult<IdentityDocumentDto>> GetById(int id)
     {
-        var document = await _service.GetByIdAsync(id);
-        if (document is null)
+        try
         {
-            return NotFound();
+            var document = await _service.GetByIdAsync(id, CurrentUserId(), CurrentRole());
+            if (document is null)
+            {
+                return NotFound();
+            }
+            return Ok(document);
         }
-        if (!User.IsInRole("Admin") && !User.IsInRole("Manager") && document.CustomerId != CurrentUserId())
+        catch (IdentityDocumentAuthorizationException exception)
         {
-            return StatusCode(StatusCodes.Status403Forbidden,
-                new ProblemDetails { Title = "Forbidden", Detail = "Bạn chỉ có thể xem hồ sơ của chính mình." });
+            return ForbidWithProblem(exception.Message);
         }
-
-        return Ok(document);
     }
 
     // POST /api/identity-documents — khách thuê nộp số CCCD (CustomerId lấy từ token).
@@ -86,12 +96,16 @@ public class IdentityDocumentsController : ControllerBase
     {
         try
         {
-            var updated = await _service.ReviewAsync(id, dto, CurrentUserId());
+            var updated = await _service.ReviewAsync(id, dto, CurrentUserId(), CurrentRole());
             if (updated is null)
             {
                 return NotFound();
             }
             return Ok(updated);
+        }
+        catch (IdentityDocumentAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
         }
         catch (IdentityDocumentStatusTransitionException exception)
         {
@@ -101,11 +115,17 @@ public class IdentityDocumentsController : ControllerBase
 
     private int CurrentUserId()
     {
-        var subjectId = User.FindFirst("sub")?.Value;
-        if (subjectId is null)
-        {
-            throw new InvalidOperationException("Token thiếu claim 'sub'.");
-        }
-        return int.Parse(subjectId);
+        return _currentUser.UserId
+            ?? throw new InvalidOperationException("Token thiếu claim 'sub'.");
+    }
+
+    private string CurrentRole()
+    {
+        return _currentUser.Role ?? string.Empty;
+    }
+
+    private ObjectResult ForbidWithProblem(string detail)
+    {
+        return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = detail });
     }
 }
