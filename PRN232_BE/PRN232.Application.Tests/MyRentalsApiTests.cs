@@ -121,7 +121,8 @@ public sealed class MyRentalsApiTests
         Assert.DoesNotContain("customerId", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Supplier", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("FullName", json, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(4, factory.SqlCapture.Commands.Count);
+        // 4 query đọc dữ liệu + 1 query kiểm tra tài khoản còn active khi xác thực token.
+        Assert.Equal(5, factory.SqlCapture.Commands.Count);
     }
 
     [Fact]
@@ -160,7 +161,8 @@ public sealed class MyRentalsApiTests
             .Select(rental => rental.GetProperty("contractId").GetInt32()));
         Assert.DoesNotContain(body.RootElement.EnumerateArray(), rental =>
             rental.GetProperty("contractId").GetInt32() == 2);
-        Assert.Equal(4, factory.SqlCapture.Commands.Count);
+        // 4 query đọc dữ liệu + 1 query kiểm tra tài khoản còn active khi xác thực token.
+        Assert.Equal(5, factory.SqlCapture.Commands.Count);
     }
 
     [Fact]

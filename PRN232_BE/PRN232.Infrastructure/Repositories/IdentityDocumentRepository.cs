@@ -3,6 +3,7 @@ using PRN232.Application.Interfaces;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
 using PRN232.Application.ReadModels;
+using PRN232.Application.States;
 
 namespace PRN232.Infrastructure.Repositories;
 
@@ -15,11 +16,18 @@ public class IdentityDocumentRepository : IIdentityDocumentRepository
         _context = context;
     }
 
-    public Task<List<IdentityDocumentReadModel>> GetAllAsync(string? status)
+    public Task<List<IdentityDocumentReadModel>> GetAllAsync(string? status, int? ownerId)
     {
-        return _context.IdentityDocuments
+        var documents = _context.IdentityDocuments
             .AsNoTracking()
-            .Where(d => status == null || d.Status == status)
+            .Where(d => status == null || d.Status == status);
+        if (ownerId.HasValue)
+        {
+            var customerIds = CustomerIdsOfOwner(ownerId.Value);
+            documents = documents.Where(d => customerIds.Contains(d.CustomerId));
+        }
+
+        return documents
             .OrderBy(d => d.IdentityDocumentId)
             .Select(d => new IdentityDocumentReadModel(
             d.IdentityDocumentId,
@@ -68,6 +76,23 @@ public class IdentityDocumentRepository : IIdentityDocumentRepository
     public Task<IdentityDocuments?> GetTrackedByIdAsync(int id)
     {
         return _context.IdentityDocuments.FirstOrDefaultAsync(d => d.IdentityDocumentId == id);
+    }
+
+    public Task<bool> IsCustomerOfOwnerAsync(int customerId, int ownerId)
+    {
+        return CustomerIdsOfOwner(ownerId).AnyAsync(id => id == customerId);
+    }
+
+    // Khách "thuộc" một chủ trọ khi có booking chưa huỷ hoặc hợp đồng ở phòng thuộc khu trọ của chủ đó.
+    private IQueryable<int> CustomerIdsOfOwner(int ownerId)
+    {
+        var bookingCustomers = _context.Bookings
+            .Where(b => b.Status != BookingStatuses.Cancelled && b.Room!.Property!.OwnerId == ownerId)
+            .Select(b => b.CustomerId);
+        var contractCustomers = _context.Contracts
+            .Where(c => c.Room!.Property!.OwnerId == ownerId)
+            .Select(c => c.CustomerId);
+        return bookingCustomers.Concat(contractCustomers);
     }
 
     public Task<bool> HasPendingOrApprovedAsync(int customerId)

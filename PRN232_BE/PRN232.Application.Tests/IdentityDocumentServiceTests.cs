@@ -15,9 +15,59 @@ public sealed class IdentityDocumentServiceTests
         var repository = new IdentityDocumentRepositoryStub();
         var service = new IdentityDocumentService(repository);
 
-        Assert.Equal([ToDto(repository.ReadModel)], await service.GetAllAsync(null));
+        Assert.Equal([ToDto(repository.ReadModel)], await service.GetAllAsync(null, 1, "Admin"));
         Assert.Equal([ToDto(repository.ReadModel)], await service.GetMineAsync(7));
-        Assert.Equal(ToDto(repository.ReadModel), await service.GetByIdAsync(4));
+        Assert.Equal(ToDto(repository.ReadModel), await service.GetByIdAsync(4, 1, "Admin"));
+    }
+
+    [Fact]
+    public async Task List_is_unscoped_for_admin_scoped_to_owner_for_manager_and_denied_for_customer()
+    {
+        var repository = new IdentityDocumentRepositoryStub();
+        var service = new IdentityDocumentService(repository);
+
+        await service.GetAllAsync("Pending", 1, "Admin");
+        Assert.Null(repository.LastOwnerId);
+
+        await service.GetAllAsync("Pending", 30, "Manager");
+        Assert.Equal(30, repository.LastOwnerId);
+
+        await Assert.ThrowsAsync<IdentityDocumentAuthorizationException>(
+            () => service.GetAllAsync(null, 7, "Customer"));
+    }
+
+    [Fact]
+    public async Task Get_by_id_allows_owner_manager_and_the_customer_only()
+    {
+        var repository = new IdentityDocumentRepositoryStub { CustomerBelongsToOwner = false };
+        var service = new IdentityDocumentService(repository);
+
+        await Assert.ThrowsAsync<IdentityDocumentAuthorizationException>(
+            () => service.GetByIdAsync(4, 30, "Manager"));
+        await Assert.ThrowsAsync<IdentityDocumentAuthorizationException>(
+            () => service.GetByIdAsync(4, 99, "Customer"));
+        Assert.NotNull(await service.GetByIdAsync(4, 7, "Customer"));
+
+        repository.CustomerBelongsToOwner = true;
+        Assert.NotNull(await service.GetByIdAsync(4, 30, "Manager"));
+    }
+
+    [Fact]
+    public async Task Manager_cannot_review_document_of_customer_outside_their_properties()
+    {
+        var repository = new IdentityDocumentRepositoryStub
+        {
+            CustomerBelongsToOwner = false,
+            TrackedDocument = new IdentityDocuments { IdentityDocumentId = 4, CustomerId = 7, CCCDNumber = "012345678901", Status = "Pending" }
+        };
+        var service = new IdentityDocumentService(repository);
+
+        await Assert.ThrowsAsync<IdentityDocumentAuthorizationException>(
+            () => service.ReviewAsync(4, new ReviewIdentityDocumentDto("Approved"), 30, "Manager"));
+        await Assert.ThrowsAsync<IdentityDocumentAuthorizationException>(
+            () => service.ReviewAsync(4, new ReviewIdentityDocumentDto("Approved"), 7, "Customer"));
+        Assert.Equal("Pending", repository.TrackedDocument!.Status);
+        Assert.Equal(0, repository.SaveChangesCallCount);
     }
 
     [Fact]
@@ -69,15 +119,36 @@ public sealed class IdentityDocumentServiceTests
             get; private set;
         }
 
-        public Task<List<IdentityDocumentReadModel>> GetAllAsync(string? status) =>
-            Task.FromResult(new List<IdentityDocumentReadModel> { ReadModel });
+        public int? LastOwnerId
+        {
+            get; private set;
+        }
+
+        public bool CustomerBelongsToOwner
+        {
+            get; set;
+        } = true;
+
+        public IdentityDocuments? TrackedDocument
+        {
+            get; set;
+        }
+
+        public Task<List<IdentityDocumentReadModel>> GetAllAsync(string? status, int? ownerId)
+        {
+            LastOwnerId = ownerId;
+            return Task.FromResult(new List<IdentityDocumentReadModel> { ReadModel });
+        }
+
+        public Task<bool> IsCustomerOfOwnerAsync(int customerId, int ownerId) =>
+            Task.FromResult(CustomerBelongsToOwner);
 
         public Task<List<IdentityDocumentReadModel>> GetByCustomerIdAsync(int customerId) =>
             Task.FromResult(new List<IdentityDocumentReadModel> { ReadModel });
 
         public Task<IdentityDocumentReadModel?> GetByIdAsync(int id) => Task.FromResult<IdentityDocumentReadModel?>(ReadModel);
 
-        public Task<IdentityDocuments?> GetTrackedByIdAsync(int id) => Task.FromResult<IdentityDocuments?>(null);
+        public Task<IdentityDocuments?> GetTrackedByIdAsync(int id) => Task.FromResult(TrackedDocument);
 
         public Task<bool> HasPendingOrApprovedAsync(int customerId) => Task.FromResult(false);
 

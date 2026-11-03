@@ -15,9 +15,16 @@ public class IdentityDocumentService : IIdentityDocumentService
         _repository = repository;
     }
 
-    public async Task<List<IdentityDocumentDto>> GetAllAsync(string? status)
+    // Admin xem tất cả; Manager chỉ xem hồ sơ của khách đang thuê hoặc đặt phòng ở khu trọ của mình.
+    public async Task<List<IdentityDocumentDto>> GetAllAsync(string? status, int userId, string role)
     {
-        var documents = await _repository.GetAllAsync(status);
+        int? ownerId = role switch
+        {
+            RoleNames.Admin => null,
+            RoleNames.Manager => userId,
+            _ => throw new IdentityDocumentAuthorizationException("Bạn không có quyền xem danh sách hồ sơ.")
+        };
+        var documents = await _repository.GetAllAsync(status, ownerId);
         return documents.Select(ConvertToDto).ToList();
     }
 
@@ -27,13 +34,14 @@ public class IdentityDocumentService : IIdentityDocumentService
         return documents.Select(ConvertToDto).ToList();
     }
 
-    public async Task<IdentityDocumentDto?> GetByIdAsync(int id)
+    public async Task<IdentityDocumentDto?> GetByIdAsync(int id, int userId, string role)
     {
         var document = await _repository.GetByIdAsync(id);
         if (document is null)
         {
             return null;
         }
+        await EnsureCanAccessAsync(document.CustomerId, userId, role);
         return ConvertToDto(document);
     }
 
@@ -63,13 +71,19 @@ public class IdentityDocumentService : IIdentityDocumentService
         return ConvertToDto(await GetDocumentResponseAsync(created.IdentityDocumentId));
     }
 
-    public async Task<IdentityDocumentDto?> ReviewAsync(int id, ReviewIdentityDocumentDto dto, int reviewerId)
+    public async Task<IdentityDocumentDto?> ReviewAsync(int id, ReviewIdentityDocumentDto dto, int reviewerId, string role)
     {
+        if (role is not (RoleNames.Admin or RoleNames.Manager))
+        {
+            throw new IdentityDocumentAuthorizationException("Chỉ quản lý hoặc admin mới được duyệt hồ sơ.");
+        }
+
         var entity = await _repository.GetTrackedByIdAsync(id);
         if (entity is null)
         {
             return null;
         }
+        await EnsureCanAccessAsync(entity.CustomerId, reviewerId, role);
         if (!IdentityDocumentStatuses.IsAllowedTransition(entity.Status, dto.Status))
         {
             throw new IdentityDocumentStatusTransitionException(
@@ -86,6 +100,21 @@ public class IdentityDocumentService : IIdentityDocumentService
             return null;
         }
         return ConvertToDto(updated);
+    }
+
+    private async Task EnsureCanAccessAsync(int customerId, int userId, string role)
+    {
+        var allowed = role switch
+        {
+            RoleNames.Admin => true,
+            RoleNames.Manager => await _repository.IsCustomerOfOwnerAsync(customerId, userId),
+            RoleNames.Customer => customerId == userId,
+            _ => false
+        };
+        if (!allowed)
+        {
+            throw new IdentityDocumentAuthorizationException("Bạn không có quyền với hồ sơ này.");
+        }
     }
 
     private static DomainIdentityDocument CreateIdentityDocumentEntity(int customerId, string cccdNumber, string status)
@@ -135,3 +164,5 @@ public sealed class IdentityDocumentPendingExistsException()
 
 public sealed class IdentityDocumentStatusTransitionException(string message)
     : IdentityDocumentBusinessRuleException(message);
+
+public sealed class IdentityDocumentAuthorizationException(string message) : Exception(message);
