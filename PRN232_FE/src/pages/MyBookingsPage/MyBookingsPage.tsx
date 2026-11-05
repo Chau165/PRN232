@@ -1,10 +1,10 @@
-import { useState } from "react"
-import { Link } from "react-router"
+import { useEffect, useState } from "react"
+import { Link, useLocation } from "react-router"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
 import type { BookingDto } from "@/types/booking"
-import { routes } from "@/constants/routes"
+import { availableRoomsPath, routes } from "@/constants/routes"
 import { useBookings } from "@/hooks/useBookings"
 import { useViewingSchedules } from "@/hooks/useViewingSchedules"
 import { bookingErrorMessage, bookingStatusDisplay, formatDateTime, isBookingExpired } from "@/utils/bookingDisplay"
@@ -123,6 +123,16 @@ export default function MyBookingsPage() {
 
 function MyViewings() {
   const { viewings, loading, error, retry } = useViewingSchedules()
+  const location = useLocation()
+  const requestedViewingId = new URLSearchParams(location.search).get("viewingId")
+  const selectedViewingId = requestedViewingId && /^[1-9]\d*$/.test(requestedViewingId) && Number.isSafeInteger(Number(requestedViewingId))
+    ? Number(requestedViewingId)
+    : null
+
+  useEffect(() => {
+    if (selectedViewingId === null || loading) return
+    document.getElementById(`viewing-${selectedViewingId}`)?.scrollIntoView?.({ behavior: "smooth", block: "center" })
+  }, [loading, selectedViewingId, viewings])
 
   return (
     <section>
@@ -147,12 +157,21 @@ function MyViewings() {
             const display = viewingStatusDisplay(viewing)
             return (
               <article
+                id={`viewing-${viewing.viewingId}`}
                 key={viewing.viewingId}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-5 shadow-[0_3px_18px_rgba(16,65,67,.07)]"
+                className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl p-5 shadow-[0_3px_18px_rgba(16,65,67,.07)] ${viewing.viewingId === selectedViewingId ? "bg-teal-50 ring-2 ring-teal-300" : "bg-white"}`}
               >
                 <div>
                   <p className="font-semibold text-slate-800">{viewing.propertyName} · Phòng {viewing.roomCode}</p>
                   <p className="mt-1 text-[13px] text-slate-500">Thời gian: {viewingTimeLabel(viewing)}</p>
+                  {viewing.status === "Approved" && viewing.assignedManagerName && (
+                    <p className="mt-1 text-[13px] text-slate-600">
+                      Manager phụ trách: {viewing.assignedManagerName}
+                      {viewing.assignedManagerPhone && <> · <a className="text-[#087775]" href={`tel:${viewing.assignedManagerPhone}`}>{viewing.assignedManagerPhone}</a></>}
+                    </p>
+                  )}
+                  {viewing.managerNote && <p className="mt-1 whitespace-pre-wrap text-[13px] text-slate-600">{viewing.status === "Rejected" ? "Lý do từ chối" : "Ghi chú"}: {viewing.managerNote}</p>}
+                  <Link to={`${availableRoomsPath(viewing.propertyId)}?roomId=${viewing.roomId}`} className="mt-2 inline-block text-[13px] font-semibold text-[#087775] underline underline-offset-2">Xem phòng {viewing.roomCode}</Link>
                 </div>
                 <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
               </article>

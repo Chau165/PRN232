@@ -14,7 +14,7 @@ public record RoomDto(
 
 public record CreateRoomDto(int PropertyId, int RoomTypeId, string RoomCode, decimal AreaSqm);
 
-public record UpdateRoomDto(int RoomTypeId, string RoomCode, decimal AreaSqm, string Status);
+public record UpdateRoomDto(int RoomTypeId, string RoomCode, decimal AreaSqm);
 
 public record RoomImageDto(int RoomImageId, int RoomId, string ImageUrl, bool IsPrimary);
 

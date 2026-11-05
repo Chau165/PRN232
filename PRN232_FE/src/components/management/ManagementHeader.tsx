@@ -5,6 +5,7 @@ import { useCustomerNotificationsState } from "@/auth/CustomerNotificationsConte
 import Icon from "@/components/common/Icon"
 import { routes } from "@/constants/routes"
 import type { CurrentUser } from "@/types/user"
+import { notificationPath } from "@/services/notificationNavigation"
 
 type ManagementHeaderProps = {
   user: CurrentUser
@@ -76,7 +77,7 @@ export default function ManagementHeader({
                   onClick={() => { setNotificationsOpen(false); navigate(routes.notifications) }}
                   className="text-[11px] font-semibold text-[#087775]"
                 >
-                  Bảo trì
+                   Xem tất cả
                 </button>
               </div>
               {notificationState.loading && notificationState.notifications.length === 0 ? <p role="status" className="px-2 py-3 text-xs text-slate-500">Đang tải thông báo...</p> : notificationState.error ? <div role="alert" className="px-2 py-3 text-xs text-rose-600"><p>{notificationState.error}</p><button onClick={() => void notificationState.refresh()} className="mt-2 font-semibold">Thử lại</button></div> : notificationState.notifications.length === 0 ? <p className="px-2 py-3 text-xs text-slate-500">Bạn chưa có thông báo.</p> : notificationState.notifications.slice(0, 3).map((item) => (
@@ -85,12 +86,13 @@ export default function ManagementHeader({
                     try { await notificationState.markRead(item.notificationId) } catch { return }
                   }
                   setNotificationsOpen(false)
-                  navigate(item.type === "Maintenance" ? routes.managementMaintenance : routes.notifications)
+                  navigate(notificationPath(item.type, currentUser.role))
                 }} className={`block w-full rounded-lg px-2 py-2.5 text-left hover:bg-slate-50 ${item.isRead ? "" : "bg-teal-50/50"}`}>
                   <p className="text-[12px] font-semibold text-slate-700">{item.title}</p>
                   <p className="mt-1 text-[11px] text-slate-500">{item.type === "Maintenance" ? "Bảo trì / Sửa chữa" : item.type}</p>
                 </button>
               ))}
+              <p role="status" className="px-2 text-[10px] text-slate-400">{notificationState.connected ? "Đang kết nối realtime" : "Mất kết nối · đang đồng bộ dự phòng"}</p>
             </div>
           )}
         </div>

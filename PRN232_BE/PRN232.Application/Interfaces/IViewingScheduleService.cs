@@ -8,5 +8,5 @@ public interface IViewingScheduleService
     Task<List<ViewingScheduleDto>> GetAllAsync(int userId, string role, string? status);
     Task<ViewingScheduleDto?> GetByIdAsync(int id, int userId, string role);
     Task<ViewingScheduleDto> ApproveAsync(int id, ApproveViewingScheduleDto dto, int userId, string role);
-    Task<ViewingScheduleDto> RejectAsync(int id, int userId, string role);
+    Task<ViewingScheduleDto> RejectAsync(int id, RejectViewingScheduleDto dto, int userId, string role);
 }

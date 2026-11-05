@@ -11,6 +11,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using PRN232.Api.Controllers;
+using PRN232.Api.Hubs;
+using PRN232.Application.Interfaces;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
 using Xunit;
@@ -20,6 +22,45 @@ namespace PRN232.Application.Tests;
 public class BookingsApiTests
 {
     internal const string Password = "test-password-123";
+
+    [Fact]
+    public async Task Anonymous_cannot_connect_to_notification_hub()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.PostAsync("/hubs/notifications/negotiate?negotiateVersion=1", null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Authenticated_hub_connection_uses_the_jwt_user_identity()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "customer@example.test");
+
+        using var response = await client.PostAsync("/hubs/notifications/negotiate?negotiateVersion=1", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Jwt_query_token_is_accepted_only_for_the_notification_hub()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "customer@example.test");
+        var token = client.DefaultRequestHeaders.Authorization!.Parameter;
+        client.DefaultRequestHeaders.Authorization = null;
+
+        using var hubResponse = await client.PostAsync($"/hubs/notifications/negotiate?negotiateVersion=1&access_token={token}", null);
+        using var apiResponse = await client.GetAsync($"/api/bookings?access_token={token}");
+
+        Assert.Equal(HttpStatusCode.OK, hubResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, apiResponse.StatusCode);
+    }
 
     [Theory]
     [InlineData("GET", "/api/bookings/1")]
@@ -74,10 +115,12 @@ public class BookingsApiTests
         Assert.Equal(3_000_000m, body.GetProperty("depositAmount").GetDecimal());
         Assert.Equal("A101", body.GetProperty("roomCode").GetString());
         Assert.EndsWith($"/api/bookings/{bookingId}", response.Headers.Location!.ToString());
-
         using var scope = factory.Services.CreateScope();
         var saved = await scope.ServiceProvider.GetRequiredService<AppDbContext>().Bookings.SingleAsync();
         Assert.Equal((10, "Pending"), (saved.CustomerId, saved.Status));
+        var pendingPush = Assert.Single(factory.Services.GetRequiredService<CapturingNotificationRealtimePublisher>().Created);
+        Assert.Equal(9, pendingPush.UserId);
+        Assert.Contains("chờ thanh toán cọc", pendingPush.Title);
     }
 
     [Fact]
@@ -115,6 +158,7 @@ public class BookingsApiTests
         });
 
         Assert.Equal(expected, response.StatusCode);
+        Assert.Empty(factory.Services.GetRequiredService<CapturingNotificationRealtimePublisher>().Created);
     }
 
     [Theory]
@@ -159,8 +203,21 @@ public class BookingsApiTests
         var payment = await context.Payments.SingleAsync();
         Assert.Equal((10, (int?)bookingId, 3_000_000m, "MoMo", "Success"),
             (payment.UserId, payment.BookingId, payment.Amount, payment.PaymentMethod, payment.Status));
-        var notification = await context.Notifications.SingleAsync();
-        Assert.Equal((7, "Booking", false), (notification.UserId, notification.Type, notification.IsRead));
+        var notifications = await context.Notifications.OrderBy(notification => notification.NotificationId).ToListAsync();
+        Assert.Collection(notifications,
+            pending =>
+            {
+                Assert.Equal((9, "Booking", false), (pending.UserId, pending.Type, pending.IsRead));
+                Assert.Contains("chờ thanh toán cọc", pending.Title);
+            },
+            deposited =>
+            {
+                Assert.Equal((9, "Booking", false), (deposited.UserId, deposited.Type, deposited.IsRead));
+                Assert.Contains("đã được đặt cọc", deposited.Title);
+            });
+        var pushed = factory.Services.GetRequiredService<CapturingNotificationRealtimePublisher>().Created;
+        Assert.Equal(2, pushed.Count);
+        Assert.All(pushed, notification => Assert.Equal(9, notification.UserId));
     }
 
     [Fact]
@@ -182,6 +239,7 @@ public class BookingsApiTests
         });
 
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        Assert.Equal(2, factory.Services.GetRequiredService<CapturingNotificationRealtimePublisher>().Created.Count);
         using var scope = factory.Services.CreateScope();
         Assert.Equal(1, await scope.ServiceProvider.GetRequiredService<AppDbContext>().Payments.CountAsync());
     }
@@ -306,6 +364,7 @@ public class BookingsApiTests
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Equal("Cancelled", (await context.Bookings.SingleAsync()).Status);
+        Assert.Equal(2, await context.Notifications.CountAsync(notification => notification.UserId == 9));
         Assert.Equal(1, await context.Notifications.CountAsync(notification => notification.UserId == 10));
     }
 
@@ -353,6 +412,10 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
             _connection.Open();
             services.RemoveAll<DbContextOptions<AppDbContext>>();
             services.AddDbContext<AppDbContext>(options => options.UseSqlite(_connection));
+            services.RemoveAll<INotificationRealtimePublisher>();
+            services.AddSingleton<CapturingNotificationRealtimePublisher>();
+            services.AddSingleton<INotificationRealtimePublisher>(provider =>
+                provider.GetRequiredService<CapturingNotificationRealtimePublisher>());
         });
     }
 
@@ -370,10 +433,13 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
         context.Users.AddRange(
             User(10, 1, "Customer A", "customer@example.test", hash),
             User(20, 1, "Customer B", "other@example.test", hash),
-            User(7, 2, "Manager A", "manager@example.test", hash),
-            User(8, 2, "Manager B", "manager-b@example.test", hash),
-            User(9, 3, "Admin", "admin@example.test", hash));
-        context.Properties.Add(new Property { PropertyId = 1, OwnerId = 7, PropertyName = "Sunrise" });
+            User(7, 2, "Manager A", "manager@example.test", hash, phoneNumber: "0911000000"),
+            User(8, 2, "Manager B", "manager-b@example.test", hash, phoneNumber: "0912000000"),
+            User(14, 2, "Inactive Manager", "inactive-manager@example.test", hash, isActive: false),
+            User(9, 3, "Admin", "admin@example.test", hash),
+            User(11, 3, "Admin B", "admin-b@example.test", hash),
+            User(12, 3, "Inactive Admin", "inactive-admin@example.test", hash, isActive: false));
+        context.Properties.Add(new Property { PropertyId = 1, OwnerId = 9, PropertyName = "Sunrise" });
         context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio", Price = 3_000_000m });
         context.Rooms.AddRange(
             new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A101", Status = "Available" },
@@ -391,6 +457,11 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
             Rate(1, 1, 3_500m, "kwh", "usage"),
             Rate(2, 2, 20_000m, "m3", "usage"),
             Rate(3, 3, 100_000m, "room_month", "fixed_room"));
+        context.PropertyManagerAssignments.Add(new PropertyManagerAssignment
+        {
+            PropertyId = 1,
+            ManagerId = 7
+        });
         context.SaveChanges();
     }
 
@@ -415,7 +486,7 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
             EffectiveFrom = new DateOnly(2000, 1, 1)
         };
 
-    private static Users User(int id, int roleId, string name, string email, string hash) =>
+    private static Users User(int id, int roleId, string name, string email, string hash, bool isActive = true, string phoneNumber = "") =>
         new()
         {
             UserId = id,
@@ -423,6 +494,30 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
             FullName = name,
             Email = email,
             PasswordHash = hash,
-            IsActive = true
+            PhoneNumber = phoneNumber,
+            IsActive = isActive
         };
+}
+
+internal sealed class CapturingNotificationRealtimePublisher : INotificationRealtimePublisher
+{
+    public List<PRN232.Domain.Entities.Notifications> Created { get; } = [];
+    public List<(int UserId, int NotificationId, bool IsRead)> ReadUpdates { get; } = [];
+    public Func<IReadOnlyCollection<PRN232.Domain.Entities.Notifications>, Task>? OnCreatedAsync { get; set; }
+
+    public async Task PublishCreatedAsync(IEnumerable<PRN232.Domain.Entities.Notifications> notifications)
+    {
+        var batch = notifications.ToArray();
+        Created.AddRange(batch);
+        if (OnCreatedAsync is not null)
+        {
+            await OnCreatedAsync(batch);
+        }
+    }
+
+    public Task PublishReadUpdatedAsync(int userId, int notificationId, bool isRead)
+    {
+        ReadUpdates.Add((userId, notificationId, isRead));
+        return Task.CompletedTask;
+    }
 }

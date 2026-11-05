@@ -196,6 +196,13 @@ public class AppDbContext : DbContext
             return Set<InvoiceComplaints>();
         }
     }
+    public DbSet<PropertyManagerAssignment> PropertyManagerAssignments
+    {
+        get
+        {
+            return Set<PropertyManagerAssignment>();
+        }
+    }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // ---- composite keys (junction tables) ----
@@ -233,10 +240,29 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<MaintenanceReports>().HasKey(x => x.ReportId);
         modelBuilder.Entity<MaintenanceReportImages>().HasKey(x => x.ImageId);
         modelBuilder.Entity<Notifications>().HasKey(x => x.NotificationId);
+        modelBuilder.Entity<Notifications>()
+            .Property(notification => notification.Body)
+            .HasColumnType("text");
         modelBuilder.Entity<IdentityDocuments>().HasKey(x => x.IdentityDocumentId);
         modelBuilder.Entity<PropertyServiceRates>().HasKey(x => x.RateId);
         modelBuilder.Entity<ViewingSchedules>().HasKey(x => x.ViewingId);
         modelBuilder.Entity<InvoiceComplaints>().HasKey(x => x.ComplaintId);
+        modelBuilder.Entity<PropertyManagerAssignment>()
+            .HasKey(assignment => new { assignment.PropertyId, assignment.ManagerId });
+        modelBuilder.Entity<Invoices>()
+            .HasIndex(invoice => new { invoice.ContractId, invoice.InvoiceMonth })
+            .IsUnique()
+            .HasDatabaseName("UX_Invoices_ContractId_InvoiceMonth");
+        modelBuilder.Entity<PropertyManagerAssignment>()
+            .HasOne(assignment => assignment.Property)
+            .WithMany(property => property.ManagerAssignments)
+            .HasForeignKey(assignment => assignment.PropertyId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PropertyManagerAssignment>()
+            .HasOne(assignment => assignment.Manager)
+            .WithMany(user => user.ManagerAssignments)
+            .HasForeignKey(assignment => assignment.ManagerId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // ---- Users: multiple FKs to the same table, set Restrict to avoid
         // multiple-cascade-path errors ----
@@ -389,14 +415,28 @@ public class AppDbContext : DbContext
             .HasOne(p => p.User).WithMany(u => u.Payments)
             .HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Restrict);
 
-        // ---- ViewingSchedules: WithMany() không cần collection ngược nên không phải sửa entity
-        // Rooms/Users của module khác; Restrict để xoá phòng/người dùng không kéo mất lịch sử hẹn ----
-        modelBuilder.Entity<ViewingSchedules>()
-            .HasOne(v => v.Room).WithMany()
-            .HasForeignKey(v => v.RoomId).OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<ViewingSchedules>()
-            .HasOne(v => v.Customer).WithMany()
-            .HasForeignKey(v => v.CustomerId).OnDelete(DeleteBehavior.Restrict);
+        // ---- ViewingSchedules: Restrict để giữ lịch sử khi phòng/người dùng còn được tham chiếu ----
+        modelBuilder.Entity<ViewingSchedules>(entity =>
+        {
+            if (Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL")
+            {
+                entity.ToTable("ViewingSchedules", table => table.HasCheckConstraint(
+                    "CK_ViewingSchedules_ManagerNote_500",
+                    "\"ManagerNote\" IS NULL OR char_length(\"ManagerNote\") <= 500"));
+            }
+
+            entity.HasOne(v => v.Room).WithMany()
+                .HasForeignKey(v => v.RoomId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(v => v.Customer).WithMany()
+                .HasForeignKey(v => v.CustomerId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(v => v.AssignedManager).WithMany()
+                .HasForeignKey(v => v.AssignedTo).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(v => v.RespondedByUser).WithMany()
+                .HasForeignKey(v => v.RespondedBy).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(v => v.ManagerNote).HasColumnType("text");
+            entity.HasIndex(v => v.AssignedTo)
+                .HasDatabaseName("IX_ViewingSchedules_AssignedTo");
+        });
 
         // ---- InvoiceComplaints: giống ViewingSchedules, không thêm collection ngược vào entity khác;
         // Restrict để không mất lịch sử khiếu nại khi xoá hoá đơn hay người dùng ----

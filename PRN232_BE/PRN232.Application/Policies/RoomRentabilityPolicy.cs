@@ -8,7 +8,8 @@ public static class RoomRentabilityPolicy
 {
     private static readonly string[] RecognizedBookingStatuses =
         { BookingStatuses.Pending, BookingStatuses.Deposited, BookingStatuses.Cancelled };
-    private static readonly string[] RecognizedContractStatuses = { ContractStatuses.Active };
+    private static readonly string[] RecognizedContractStatuses =
+        { ContractStatuses.Active, ContractStatuses.Terminated };
 
     public static Expression<Func<Rooms, bool>> IsRentableAt(DateTimeOffset asOfUtc)
     {
@@ -17,9 +18,10 @@ public static class RoomRentabilityPolicy
         return room =>
             room.Status == RoomStatuses.Available &&
             !room.Bookings.Any(booking =>
-                booking.Status == BookingStatuses.Deposited ||
-                (booking.Status == BookingStatuses.Pending && booking.ExpiryDate > instantUtc) ||
-                !RecognizedBookingStatuses.Contains(booking.Status)) &&
+                booking.Contract == null &&
+                (booking.Status == BookingStatuses.Deposited ||
+                 (booking.Status == BookingStatuses.Pending && booking.ExpiryDate > instantUtc) ||
+                 !RecognizedBookingStatuses.Contains(booking.Status))) &&
             !room.Contracts.Any(contract =>
                 contract.Status == ContractStatuses.Active ||
                 !RecognizedContractStatuses.Contains(contract.Status));

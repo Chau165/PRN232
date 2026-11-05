@@ -26,7 +26,7 @@ public class UtilityReadingsApiTests
     }
 
     [Fact]
-    public async Task Owner_records_the_first_reading_once_per_month_and_the_tenant_can_see_it()
+    public async Task Assigned_manager_records_the_first_reading_once_per_month_and_the_tenant_can_see_it()
     {
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
@@ -54,8 +54,9 @@ public class UtilityReadingsApiTests
     [Theory]
     [InlineData("manager-b@example.test", HttpStatusCode.Forbidden)]
     [InlineData("customer@example.test", HttpStatusCode.Forbidden)]
-    [InlineData("admin@example.test", HttpStatusCode.Created)]
-    public async Task Only_the_owner_or_an_admin_can_record_readings(string email, HttpStatusCode expected)
+    [InlineData("admin@example.test", HttpStatusCode.Forbidden)]
+    [InlineData("manager@example.test", HttpStatusCode.Created)]
+    public async Task Only_an_assigned_manager_can_record_readings(string email, HttpStatusCode expected)
     {
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
@@ -100,7 +101,7 @@ public class UtilityReadingsApiTests
     private static async Task<int> CreateContractAsync(HttpClient client)
     {
         var bookingId = await CreatePaidBookingAsync(client);
-        await LoginAsync(client, "admin@example.test");
+        await LoginAsync(client, "manager@example.test");
         var response = await PostContractAsync(client, bookingId, VietnamToday, VietnamToday.AddYears(1));
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("contractId").GetInt32();

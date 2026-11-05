@@ -13,14 +13,22 @@ export function createViewingSchedule(accessToken: string, request: { roomId: nu
   })
 }
 
-export function approveViewingSchedule(accessToken: string, viewingId: number, scheduledAt: string | null) {
+export function approveViewingSchedule(
+  accessToken: string,
+  viewingId: number,
+  request: { scheduledAt: string | null; assignedTo: number; managerNote: string | null },
+) {
   return apiRequest<ViewingScheduleDto>(`/viewing-schedules/${viewingId}/approve`, {
     accessToken,
     method: "POST",
-    body: JSON.stringify({ scheduledAt }),
+    body: JSON.stringify(request),
   })
 }
 
-export function rejectViewingSchedule(accessToken: string, viewingId: number) {
-  return apiRequest<ViewingScheduleDto>(`/viewing-schedules/${viewingId}/reject`, { accessToken, method: "POST" })
+export function rejectViewingSchedule(accessToken: string, viewingId: number, reason: string) {
+  return apiRequest<ViewingScheduleDto>(`/viewing-schedules/${viewingId}/reject`, {
+    accessToken,
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  })
 }

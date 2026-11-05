@@ -35,11 +35,31 @@ public class InvoiceServiceTests
     }
 
     [Fact]
+    public async Task PreviewAsync_applies_paid_booking_credit_as_a_negative_line_only_in_the_start_month()
+    {
+        var repository = new FakeInvoiceRepository
+        {
+            Contract = SampleContract() with { BookingId = 1, StartDate = October },
+            AvailableCredit = new PrepaidRentCreditReadModel(3_000_000m)
+        };
+
+        var preview = await CreateService(repository).PreviewAsync(
+            new CreateInvoiceDto(1, October, DueDate),
+            7,
+            RoleNames.Manager);
+
+        var creditLine = Assert.Single(preview.Lines, line => line.ItemType == "PrepaidRentCredit");
+        Assert.Equal(-2_500_000m, creditLine.Amount);
+        Assert.Equal(707_500m, preview.Total);
+        Assert.Equal(2_500_000m, preview.PrepaidRentApplied);
+    }
+
+    [Fact]
     public async Task CreateAsync_saves_a_price_snapshot_and_notifies_the_tenant()
     {
         var repository = new FakeInvoiceRepository();
 
-        var created = await CreateService(repository).CreateAsync(new CreateInvoiceDto(1, October, DueDate), 9, RoleNames.Admin);
+        var created = await CreateService(repository).CreateAsync(new CreateInvoiceDto(1, October, DueDate), 7, RoleNames.Manager);
 
         var (invoice, notification) = Assert.Single(repository.Added);
         Assert.Equal((1, October, DueDate, InvoiceStatuses.Unpaid), (invoice.ContractId, invoice.InvoiceMonth, invoice.DueDate, invoice.Status));
@@ -118,7 +138,8 @@ public class InvoiceServiceTests
     [Theory]
     [InlineData(RoleNames.Customer, 10)]
     [InlineData(RoleNames.Manager, 8)]
-    public async Task Only_the_owner_or_an_admin_can_bill_a_contract(string role, int userId)
+    [InlineData(RoleNames.Admin, 7)]
+    public async Task Only_an_assigned_manager_can_bill_a_contract(string role, int userId)
     {
         await Assert.ThrowsAsync<InvoiceAuthorizationException>(() => CreateService(new FakeInvoiceRepository())
             .PreviewAsync(new CreateInvoiceDto(1, October, DueDate), userId, role));
@@ -128,10 +149,10 @@ public class InvoiceServiceTests
     public async Task Rejects_missing_or_inactive_contracts()
     {
         await Assert.ThrowsAsync<InvoiceNotFoundException>(() => CreateService(new FakeInvoiceRepository { Contract = null })
-            .PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 9, RoleNames.Admin));
+            .PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 7, RoleNames.Manager));
         await Assert.ThrowsAsync<InvoiceConflictException>(() =>
             CreateService(new FakeInvoiceRepository { Contract = SampleContract() with { Status = "Terminated" } })
-                .PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 9, RoleNames.Admin));
+                .PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 7, RoleNames.Manager));
     }
 
     [Theory]
@@ -169,6 +190,37 @@ public class InvoiceServiceTests
             (payment.UserId, payment.InvoiceId, payment.Amount, payment.PaymentMethod, payment.Status));
         Assert.Equal((7, NotificationTypes.Invoice), (notification.UserId, notification.Type));
         Assert.Contains("A-101", notification.Title);
+        Assert.Equal(InvoiceStatuses.Paid, paid.Status);
+    }
+
+    [Fact]
+    public async Task PayAsync_charges_only_the_remaining_net_payable_after_booking_credit()
+    {
+        var repository = new FakeInvoiceRepository
+        {
+            PaymentTarget = SamplePaymentTarget() with { Total = 500_000m }
+        };
+        var gateway = new FakePaymentGateway();
+
+        await CreateService(repository, gateway).PayAsync(5, new PayInvoiceDto(PaymentMethods.VNPay), 10);
+
+        Assert.Equal((PaymentMethods.VNPay, 500_000m), Assert.Single(gateway.Charges));
+        Assert.Equal(500_000m, Assert.Single(repository.Paid).Payment.Amount);
+    }
+
+    [Fact]
+    public async Task PayAsync_does_not_call_gateway_or_create_payment_when_no_amount_is_due()
+    {
+        var repository = new FakeInvoiceRepository
+        {
+            PaymentTarget = SamplePaymentTarget() with { Total = 0m }
+        };
+        var gateway = new FakePaymentGateway();
+
+        var paid = await CreateService(repository, gateway).PayAsync(5, new PayInvoiceDto(PaymentMethods.MoMo), 10);
+
+        Assert.Empty(gateway.Charges);
+        Assert.Empty(repository.Paid);
         Assert.Equal(InvoiceStatuses.Paid, paid.Status);
     }
 
@@ -228,10 +280,38 @@ public class InvoiceServiceTests
         Assert.Empty(gateway.Charges);
     }
 
+    [Fact]
+    public async Task RecordCashPaymentAsync_records_only_the_remaining_amount_after_credit()
+    {
+        var repository = new FakeInvoiceRepository
+        {
+            PaymentTarget = SamplePaymentTarget() with { Total = 500_000m }
+        };
+
+        await CreateService(repository).RecordCashPaymentAsync(5, 7, RoleNames.Manager);
+
+        Assert.Equal(500_000m, Assert.Single(repository.Paid).Payment.Amount);
+    }
+
+    [Fact]
+    public async Task RecordCashPaymentAsync_does_not_create_a_zero_value_payment()
+    {
+        var repository = new FakeInvoiceRepository
+        {
+            PaymentTarget = SamplePaymentTarget() with { Total = 0m }
+        };
+
+        var paid = await CreateService(repository).RecordCashPaymentAsync(5, 7, RoleNames.Manager);
+
+        Assert.Empty(repository.Paid);
+        Assert.Equal(InvoiceStatuses.Paid, paid.Status);
+    }
+
     [Theory]
     [InlineData(RoleNames.Customer, 10)]
     [InlineData(RoleNames.Manager, 8)]
-    public async Task RecordCashPaymentAsync_allows_only_the_owner_or_an_admin(string role, int userId)
+    [InlineData(RoleNames.Admin, 7)]
+    public async Task RecordCashPaymentAsync_requires_an_assigned_manager(string role, int userId)
     {
         var repository = new FakeInvoiceRepository();
 
@@ -240,11 +320,22 @@ public class InvoiceServiceTests
         Assert.Empty(repository.Paid);
     }
 
+    [Fact]
+    public async Task RecordCashPaymentAsync_rejects_assignment_revoked_before_commit()
+    {
+        var repository = new FakeInvoiceRepository { RevokeAssignmentWhenMarkingPaid = true };
+
+        await Assert.ThrowsAsync<InvoiceAuthorizationException>(() =>
+            CreateService(repository).RecordCashPaymentAsync(5, 7, RoleNames.Manager));
+
+        Assert.Empty(repository.Paid);
+    }
+
     private static InvoiceService CreateService(FakeInvoiceRepository repository, FakePaymentGateway? gateway = null) =>
         new(repository, gateway ?? new FakePaymentGateway(), new FixedTimeProvider(Now));
 
     private static InvoicePaymentReadModel SamplePaymentTarget() =>
-        new(5, 10, 7, "A-101", October, InvoiceStatuses.Unpaid, 3_207_500m);
+        new(5, 10, 7, "A-101", October, InvoiceStatuses.Unpaid, 3_207_500m, 1);
 
     private static InvoiceContractReadModel SampleContract() => new(
         1, 7, 10, "Customer A", "A-101", 1, "Sunrise", 1, 2_500_000m, ContractStatuses.Active,
@@ -261,7 +352,11 @@ public class InvoiceServiceTests
         }
         public bool AddSucceeds { get; init; } = true;
         public InvoicePaymentReadModel? PaymentTarget { get; init; } = SamplePaymentTarget();
+        public PrepaidRentCreditReadModel? AvailableCredit { get; init; }
         public bool MarkPaidSucceeds { get; init; } = true;
+        public bool RevokeAssignmentWhenMarkingPaid { get; init; }
+        public bool NoAmountDueSettled { get; private set; }
+        private bool _managerAssignmentActive = true;
         public List<(Invoices Invoice, Notifications Notification)> Added { get; } = [];
         public List<(int InvoiceId, Payments Payment, Notifications Notification)> Paid { get; } = [];
         public (int? CustomerId, int? OwnerId, int? ContractId, string? Status) LastQuery
@@ -272,6 +367,12 @@ public class InvoiceServiceTests
         public Task<InvoiceContractReadModel?> GetContractAsync(int contractId) =>
             Task.FromResult(Contract?.ContractId == contractId ? Contract : null);
 
+        public Task<bool> HasActiveManagerAssignmentAsync(int propertyId, int managerId) =>
+            Task.FromResult(_managerAssignmentActive && propertyId == 1 && managerId == 7);
+
+        public Task<PrepaidRentCreditReadModel?> GetAvailablePrepaidRentCreditAsync(int contractId) =>
+            Task.FromResult(AvailableCredit);
+
         public Task<List<BillableServiceReadModel>> GetBillableServicesAsync(int propertyId, int roomTypeId, DateOnly month) =>
             Task.FromResult(Services);
 
@@ -279,7 +380,7 @@ public class InvoiceServiceTests
 
         public Task<bool> ExistsForMonthAsync(int contractId, DateOnly month) => Task.FromResult(InvoiceExists);
 
-        public Task<bool> AddIfAbsentAsync(Invoices invoice, Notifications customerNotification)
+        public Task<bool> AddIfAbsentAsync(Invoices invoice, Notifications customerNotification, int managerId = 0)
         {
             if (!AddSucceeds)
             {
@@ -302,7 +403,7 @@ public class InvoiceServiceTests
             var invoice = Added.Select(item => item.Invoice).SingleOrDefault(item => item.InvoiceId == invoiceId);
             if (invoice is null && PaymentTarget?.InvoiceId == invoiceId)
             {
-                var status = Paid.Count > 0 ? InvoiceStatuses.Paid : PaymentTarget.Status;
+                var status = Paid.Count > 0 || NoAmountDueSettled ? InvoiceStatuses.Paid : PaymentTarget.Status;
                 return Task.FromResult<InvoiceReadModel?>(new InvoiceReadModel(invoiceId, 1, "A-101", "Sunrise", "Customer A",
                     October, DueDate, status, PaymentTarget.Total, []));
             }
@@ -318,11 +419,70 @@ public class InvoiceServiceTests
         public Task<InvoicePaymentReadModel?> GetForPaymentAsync(int invoiceId) =>
             Task.FromResult(PaymentTarget?.InvoiceId == invoiceId ? PaymentTarget : null);
 
-        public Task<bool> MarkPaidAsync(int invoiceId, Payments payment, Notifications notification)
+        public async Task<InvoicePaymentAttemptStatus> TryPayOnlineAsync(
+            int invoiceId,
+            int customerId,
+            string paymentMethod,
+            Func<decimal, Task<bool>> charge,
+            Notifications notification)
         {
+            if (PaymentTarget?.InvoiceId != invoiceId)
+            {
+                return InvoicePaymentAttemptStatus.NotFound;
+            }
+            if (PaymentTarget.CustomerId != customerId)
+            {
+                return InvoicePaymentAttemptStatus.Forbidden;
+            }
+            if (PaymentTarget.Status == InvoiceStatuses.Paid)
+            {
+                return InvoicePaymentAttemptStatus.Conflict;
+            }
+            if (PaymentTarget.Total <= 0m)
+            {
+                NoAmountDueSettled = true;
+                return InvoicePaymentAttemptStatus.NoAmountDue;
+            }
+            if (!await charge(PaymentTarget.Total))
+            {
+                return InvoicePaymentAttemptStatus.Declined;
+            }
+            if (!MarkPaidSucceeds)
+            {
+                return InvoicePaymentAttemptStatus.Conflict;
+            }
+
+            Paid.Add((invoiceId, new Payments
+            {
+                UserId = customerId,
+                InvoiceId = invoiceId,
+                Amount = PaymentTarget.Total,
+                PaymentMethod = paymentMethod,
+                Status = PaymentStatuses.Success
+            }, notification));
+            return InvoicePaymentAttemptStatus.Completed;
+        }
+
+        public Task<bool> MarkPaidAsync(
+            int invoiceId,
+            Payments payment,
+            Notifications notification,
+            int? managerId = null)
+        {
+            if (managerId.HasValue && RevokeAssignmentWhenMarkingPaid)
+            {
+                _managerAssignmentActive = false;
+                return Task.FromResult(false);
+            }
             if (!MarkPaidSucceeds)
             {
                 return Task.FromResult(false);
+            }
+
+            if (payment.Amount <= 0m)
+            {
+                NoAmountDueSettled = true;
+                return Task.FromResult(true);
             }
 
             Paid.Add((invoiceId, payment, notification));

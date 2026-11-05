@@ -862,12 +862,23 @@ internal sealed class MaintenanceApiFactory : WebApplicationFactory<MaintenanceR
         var hash = BCrypt.Net.BCrypt.HashPassword(MaintenanceFlowApiTests.Password, workFactor: 4);
         context.Roles.AddRange(new Roles { RoleId = 1, RoleName = "Customer" }, new Roles { RoleId = 2, RoleName = "Manager" }, new Roles { RoleId = 3, RoleName = "Admin" });
         context.Users.AddRange(User(10, 1, "Customer A", "customer@example.test", hash), User(20, 1, "Customer B", "other@example.test", hash), User(7, 2, "Manager A", "manager@example.test", hash), User(8, 2, "Manager B", "manager-b@example.test", hash), User(9, 3, "Admin", "admin@example.test", hash), User(11, 2, "Inactive Manager", "inactive@example.test", hash, false), User(12, 3, "Admin B", "admin-b@example.test", hash), User(13, 3, "Inactive Admin", "inactive-admin@example.test", hash, false));
-        context.Properties.Add(new Property { PropertyId = 1, OwnerId = 7 });
+        context.Properties.Add(new Property { PropertyId = 1, OwnerId = 9 });
         context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio" });
         context.Rooms.AddRange(new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A101" }, new Rooms { RoomId = 2, PropertyId = 1, RoomTypeId = 1, RoomCode = "A202" });
         context.Contracts.AddRange(Contract(1, 10, 1), Contract(2, 20, 2));
         context.MaintenanceRequests.AddRange(Request(1, 1, 7, "Approved"), Request(2, 2, 8, "Approved"), Request(3, 1, null, "Pending"), Request(4, 1, 7, "Completed"));
         context.MaintenanceReports.Add(new MaintenanceReports { ReportId = 1, RequestId = 4, ReportedBy = 7, Description = "Existing report", CreatedAt = DateTime.UtcNow, Images = [new MaintenanceReportImages { ImageUrl = "maintenance/4/existing.png" }] });
+        context.PropertyManagerAssignments.AddRange(
+            new PropertyManagerAssignment
+            {
+                PropertyId = 1,
+                ManagerId = 7
+            },
+            new PropertyManagerAssignment
+            {
+                PropertyId = 1,
+                ManagerId = 8
+            });
         context.SaveChanges();
     }
     protected override void Dispose(bool disposing)

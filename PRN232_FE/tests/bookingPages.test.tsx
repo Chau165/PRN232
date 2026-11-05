@@ -167,7 +167,7 @@ describe("MyBookingsPage", () => {
     renderAt("/my-bookings")
 
     expect(await screen.findByText("Sunrise · Phòng A101")).toBeTruthy()
-    expect(screen.getByText("Thời gian: Chủ trọ sắp xếp")).toBeTruthy()
+    expect(screen.getByText("Thời gian: Chờ Admin phân lịch")).toBeTruthy()
     expect(screen.getByText("Chờ xác nhận")).toBeTruthy()
   })
 

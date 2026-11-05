@@ -5,8 +5,15 @@ namespace PRN232.Application.Interfaces;
 
 public interface IRoomRepository
 {
-    Task<List<RoomSummaryReadModel>> GetAllAsync(int? propertyId, string? status, string? city, decimal? maxPrice);
-    Task<RoomSummaryReadModel?> GetByIdAsync(int id);
+    Task<List<RoomSummaryReadModel>> GetAllAsync(
+        int? propertyId,
+        string? status,
+        string? city,
+        decimal? maxPrice,
+        int? managerId = null,
+        int? roomTypeId = null,
+        string? search = null);
+    Task<RoomSummaryReadModel?> GetByIdAsync(int id, int? managerId = null);
     Task<List<RentableRoomReadModel>> GetRentableRoomsAsync(DateTimeOffset asOfUtc);
     Task<List<PropertyAvailabilityReadModel>> GetPropertyAvailabilityAsync(DateTimeOffset asOfUtc);
     Task<Rooms?> GetTrackedByIdAsync(int id);
@@ -16,6 +23,7 @@ public interface IRoomRepository
     Task<bool> PropertyExistsAsync(int propertyId);
     Task<int?> GetPropertyOwnerIdAsync(int propertyId);
     Task<bool> RoomTypeExistsAsync(int roomTypeId);
+    Task<bool> RoomCodeExistsAsync(int propertyId, string roomCode, int? excludedRoomId = null);
     Task<bool> HasDependentsAsync(int roomId);
     Task SaveChangesAsync();
 

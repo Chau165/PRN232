@@ -12,17 +12,20 @@ public class MaintenanceService : IMaintenanceService
     private readonly INotificationService _notificationService;
     private readonly IMaintenanceReportImageStorage _imageStorage;
     private readonly TimeProvider _timeProvider;
+    private readonly INotificationRealtimePublisher? _realtimePublisher;
 
     public MaintenanceService(
         IMaintenanceRepository repository,
         INotificationService notificationService,
         IMaintenanceReportImageStorage imageStorage,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        INotificationRealtimePublisher? realtimePublisher = null)
     {
         _repository = repository;
         _notificationService = notificationService;
         _imageStorage = imageStorage;
         _timeProvider = timeProvider;
+        _realtimePublisher = realtimePublisher;
     }
 
     public async Task<List<MaintenanceRequestDto>> GetAllAsync(int userId, string role, string? status, int? assignedTo)
@@ -101,16 +104,20 @@ public class MaintenanceService : IMaintenanceService
         var adminIds = await _notificationService.GetActiveAdminUserIdsAsync();
         var changedAt = _timeProvider.GetUtcNow().UtcDateTime;
         var initialLog = CreateInitialLogEntity(customerId, initialStatus, changedAt);
-        await _repository.AddWithInitialLogAsync(request, initialLog, requestId => _notificationService.BuildMaintenanceNotifications(
+        IReadOnlyCollection<Notifications> notifications = [];
+        await _repository.AddWithInitialLogAsync(request, initialLog, requestId => notifications = _notificationService.BuildMaintenanceNotifications(
                 adminIds, $"Có yêu cầu bảo trì mới #{requestId} - Phòng {contract.RoomCode}")
             .Concat(_notificationService.BuildMaintenanceNotifications(
                 [customerId], $"Bạn đã gửi yêu cầu sửa chữa #{requestId} cho phòng {contract.RoomCode}. Yêu cầu đang chờ duyệt."))
             .ToArray());
-
         var created = await _repository.GetByIdAsync(request.RequestId, customerId, null);
         if (created is null)
         {
             throw new InvalidOperationException("Created maintenance request was not found.");
+        }
+        if (_realtimePublisher is not null)
+        {
+            await _realtimePublisher.PublishCreatedAsync(notifications);
         }
         return ConvertToDto(created);
     }
@@ -166,6 +173,10 @@ public class MaintenanceService : IMaintenanceService
         {
             throw new MaintenanceNotFoundException("Contract does not exist.");
         }
+        if (!await _repository.HasActiveManagerAssignmentAsync(contract.ContractId, dto.AssignedTo.Value))
+        {
+            throw new MaintenanceAssigneeException("Assignee must be actively assigned to this property.");
+        }
         ValidateContractDate(contract);
         if (request.EquipmentId is int equipmentId)
         {
@@ -185,7 +196,10 @@ public class MaintenanceService : IMaintenanceService
         {
             throw new MaintenanceStatusTransitionException("Request status changed before the update completed.");
         }
-
+        if (_realtimePublisher is not null)
+        {
+            await _realtimePublisher.PublishCreatedAsync(notifications);
+        }
         var updatedRequest = await _repository.GetByIdAsync(id, null, null);
         if (updatedRequest is null)
         {
@@ -248,6 +262,10 @@ public class MaintenanceService : IMaintenanceService
             }
             throw new MaintenanceNotFoundException("Maintenance request does not exist.");
         }
+        if (!await _repository.HasActiveManagerAssignmentAsync(request.ContractId, managerId))
+        {
+            throw new MaintenanceAuthorizationException("This request is not on a property currently assigned to you.");
+        }
         if (request.Status != MaintenanceRequestStatuses.Approved)
         {
             throw new MaintenanceStatusTransitionException("Only Approved requests can be completed.");
@@ -300,6 +318,10 @@ public class MaintenanceService : IMaintenanceService
             if (createdReport is null)
             {
                 throw new InvalidOperationException("Created maintenance report was not found.");
+            }
+            if (_realtimePublisher is not null)
+            {
+                await _realtimePublisher.PublishCreatedAsync(completionNotifications);
             }
             return await AddReadUrlsAsync(createdReport);
         }

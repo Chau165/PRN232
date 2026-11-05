@@ -5,7 +5,8 @@ public sealed record ReadingContractReadModel(
     int OwnerId,
     string Status,
     DateOnly StartDate,
-    DateOnly EndDate);
+    DateOnly EndDate,
+    int PropertyId = 0);
 
 public sealed record LatestReadingReadModel(
     DateOnly ReadingMonth,

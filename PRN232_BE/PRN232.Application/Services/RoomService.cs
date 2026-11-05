@@ -15,15 +15,29 @@ public class RoomService : IRoomService
         _repository = repository;
     }
 
-    public async Task<List<RoomDto>> GetAllAsync(int? propertyId, string? status, string? city, decimal? maxPrice)
+    public async Task<List<RoomDto>> GetAllAsync(
+        int? propertyId,
+        string? status,
+        string? city,
+        decimal? maxPrice,
+        int? managerId = null,
+        int? roomTypeId = null,
+        string? search = null)
     {
-        var rooms = await _repository.GetAllAsync(propertyId, status, city, maxPrice);
+        var rooms = await _repository.GetAllAsync(
+            propertyId,
+            status,
+            city,
+            maxPrice,
+            managerId,
+            roomTypeId,
+            search);
         return rooms.Select(ConvertToDto).ToList();
     }
 
-    public async Task<RoomDto?> GetByIdAsync(int id)
+    public async Task<RoomDto?> GetByIdAsync(int id, int? managerId = null)
     {
-        var room = await _repository.GetByIdAsync(id);
+        var room = await _repository.GetByIdAsync(id, managerId);
         if (room is null)
         {
             return null;
@@ -45,17 +59,13 @@ public class RoomService : IRoomService
 
     public async Task<RoomDto> CreateAsync(CreateRoomDto dto, int requestingUserId, bool isAdmin)
     {
+        if (!isAdmin)
+        {
+            throw new RoomForbiddenException();
+        }
         if (!await _repository.PropertyExistsAsync(dto.PropertyId))
         {
             throw new RoomPropertyNotFoundException();
-        }
-        if (!isAdmin)
-        {
-            var ownerId = await _repository.GetPropertyOwnerIdAsync(dto.PropertyId);
-            if (ownerId != requestingUserId)
-            {
-                throw new RoomForbiddenException();
-            }
         }
         if (!await _repository.RoomTypeExistsAsync(dto.RoomTypeId))
         {
@@ -68,6 +78,10 @@ public class RoomService : IRoomService
         if (dto.AreaSqm <= 0)
         {
             throw new RoomValidationException("Diện tích phòng phải lớn hơn 0.");
+        }
+        if (await _repository.RoomCodeExistsAsync(dto.PropertyId, dto.RoomCode))
+        {
+            throw new RoomValidationException("Mã phòng đã tồn tại trong khu trọ.");
         }
 
         var status = RoomStatuses.Available;
@@ -85,7 +99,10 @@ public class RoomService : IRoomService
         {
             return null;
         }
-        await EnsureOwnerOrAdminAsync(entity.RoomId, requestingUserId, isAdmin);
+        if (!isAdmin)
+        {
+            throw new RoomForbiddenException();
+        }
 
         if (!await _repository.RoomTypeExistsAsync(dto.RoomTypeId))
         {
@@ -99,10 +116,9 @@ public class RoomService : IRoomService
         {
             throw new RoomValidationException("Diện tích phòng phải lớn hơn 0.");
         }
-        if (!RoomStatuses.All.Contains(dto.Status))
+        if (await _repository.RoomCodeExistsAsync(entity.PropertyId, dto.RoomCode, id))
         {
-            throw new RoomValidationException(
-                $"Trạng thái không hợp lệ — chỉ nhận: {string.Join(", ", RoomStatuses.All)}.");
+            throw new RoomValidationException("Mã phòng đã tồn tại trong khu trọ.");
         }
 
         ApplyUpdateToEntity(dto, entity);
@@ -123,9 +139,13 @@ public class RoomService : IRoomService
         {
             return false;
         }
-        await EnsureOwnerOrAdminAsync(entity.RoomId, requestingUserId, isAdmin);
+        if (!isAdmin)
+        {
+            throw new RoomForbiddenException();
+        }
 
-        if (await _repository.HasDependentsAsync(id))
+        if (entity.Status is RoomStatuses.Occupied or RoomStatuses.Reserved ||
+            await _repository.HasDependentsAsync(id))
         {
             throw new RoomHasDependentsException();
         }
@@ -242,7 +262,6 @@ public class RoomService : IRoomService
         entity.RoomTypeId = dto.RoomTypeId;
         entity.RoomCode = dto.RoomCode.Trim();
         entity.AreaSqm = dto.AreaSqm;
-        entity.Status = dto.Status;
     }
 
     private static RoomImages ConvertToEntity(AddRoomImageDto dto)
@@ -324,7 +343,7 @@ public sealed class RoomNotFoundException() : RoomBusinessRuleException("Phòng 
 public sealed class RoomAmenityNotFoundException() : RoomBusinessRuleException("Tiện ích không tồn tại.");
 
 public sealed class RoomForbiddenException()
-    : RoomBusinessRuleException("Bạn không phải chủ sở hữu khu trọ chứa phòng này.");
+    : RoomBusinessRuleException("Chỉ Admin được phép thay đổi cấu hình phòng.");
 
 public sealed class RoomHasDependentsException()
     : RoomBusinessRuleException("Không thể xoá phòng đang có thiết bị/hợp đồng/booking gắn vào.");

@@ -29,6 +29,15 @@ PRN232_BE/
 Luồng gọi: `Controller → Service (interface) → Repository (interface) → AppDbContext`.
 Không có Views vì FE là React riêng (`PRN232_FE`), backend chỉ trả JSON.
 
+Khi tạo/sửa khu trọ, backend tra tọa độ bằng Nominatim; nếu dịch vụ lỗi hoặc
+không tìm thấy địa chỉ, backend thử Photon (giới hạn kết quả ở Việt Nam).
+Mỗi nguồn có thời gian chờ tối đa 8 giây. Có thể đổi máy chủ qua
+`Geocoding:BaseUrl` (Nominatim) và `Geocoding:PhotonBaseUrl` (Photon; mặc định
+`https://photon.komoot.io`). Photon trả GeoJSON theo thứ tự kinh độ, vĩ độ:
+[tài liệu API](https://github.com/komoot/photon/blob/master/docs/api-v1.md).
+Không tìm thấy địa chỉ trả HTTP 400; không gọi được nguồn dự phòng trả HTTP 502.
+Tọa độ phụ thuộc dữ liệu bản đồ, không bảo đảm chính xác tới số nhà.
+
 Module mẫu viết sẵn đầy đủ (copy đúng pattern cho module của bạn): **Roles**
 — `PRN232.Application/DTOs/RoleDto.cs`, `PRN232.Application/Interfaces/IRoleRepository.cs`
 + `IRoleService.cs`, `PRN232.Infrastructure/Repositories/RoleRepository.cs`,

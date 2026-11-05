@@ -23,9 +23,9 @@ public class UtilityReadingService : IUtilityReadingService
 
     public async Task<UtilityReadingDto> CreateAsync(CreateUtilityReadingDto dto, int userId, string role)
     {
-        if (role is not (RoleNames.Manager or RoleNames.Admin))
+        if (role != RoleNames.Manager)
         {
-            throw new UtilityReadingAuthorizationException("Only property managers can record meter readings.");
+            throw new UtilityReadingAuthorizationException("Only an assigned property manager can record meter readings.");
         }
 
         var contract = await _repository.GetContractAsync(dto.ContractId);
@@ -33,7 +33,7 @@ public class UtilityReadingService : IUtilityReadingService
         {
             throw new UtilityReadingNotFoundException("Contract does not exist.");
         }
-        if (role == RoleNames.Manager && contract.OwnerId != userId)
+        if (!await _repository.HasActiveManagerAssignmentAsync(contract.PropertyId, userId))
         {
             throw new UtilityReadingAuthorizationException("You cannot record readings for this contract.");
         }
@@ -90,7 +90,7 @@ public class UtilityReadingService : IUtilityReadingService
         var reading = ConvertToEntity(dto, contract.ContractId, electricStart, waterStart);
         // Repository kiểm tra lại "chưa có tháng này hoặc tháng sau" ngay lúc ghi,
         // phòng khi hai người cùng nhập chỉ số cho một hợp đồng.
-        if (!await _repository.AddIfLatestAsync(reading))
+        if (!await _repository.AddIfLatestAsync(reading, userId))
         {
             throw new UtilityReadingConflictException("A reading for this or a later month already exists.");
         }
@@ -105,16 +105,16 @@ public class UtilityReadingService : IUtilityReadingService
 
     public async Task<List<UtilityReadingDto>> GetAllAsync(int userId, string role, int? contractId)
     {
-        var (customerId, ownerId) = GetScope(userId, role);
-        var readings = await _repository.GetAllAsync(customerId, ownerId, contractId);
+        var (customerId, managerId) = GetScope(userId, role);
+        var readings = await _repository.GetAllAsync(customerId, managerId, contractId);
         return readings.Select(ConvertToDto).ToList();
     }
 
     public async Task<UtilityReadingDto?> GetByIdAsync(int id, int userId, string role)
     {
-        var (customerId, ownerId) = GetScope(userId, role);
-        var reading = await _repository.GetByIdAsync(id, customerId, ownerId);
-        if (reading is null && (customerId.HasValue || ownerId.HasValue) && await _repository.ExistsAsync(id))
+        var (customerId, managerId) = GetScope(userId, role);
+        var reading = await _repository.GetByIdAsync(id, customerId, managerId);
+        if (reading is null && (customerId.HasValue || managerId.HasValue) && await _repository.ExistsAsync(id))
         {
             throw new UtilityReadingAuthorizationException("You cannot access this reading.");
         }
@@ -157,7 +157,7 @@ public class UtilityReadingService : IUtilityReadingService
         };
     }
 
-    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role)
+    private static (int? CustomerId, int? ManagerId) GetScope(int userId, string role)
     {
         var scope = AccessScope.For(userId, role);
         if (scope is null)

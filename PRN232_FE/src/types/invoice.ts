@@ -19,6 +19,13 @@ export interface InvoiceDto {
   status: string
   total: number
   lines: InvoiceLineDto[]
+  prepaidRentApplied?: number
+  netPayable?: number
+  amountPaid?: number
+  remainingPayable?: number
+  paymentMethod?: string | null
+  paymentDateUtc?: string | null
+  displayStatus?: string | null
 }
 
 export interface InvoiceRequest {

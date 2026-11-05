@@ -113,6 +113,15 @@ export default function AvailableRoomsPage() {
     ? Math.ceil(roomPage.totalCount / roomPage.pageSize)
     : 0
 
+  useEffect(() => {
+    const rawRoomId = new URLSearchParams(location.search).get("roomId")
+    if (!rawRoomId || !/^[1-9]\d*$/.test(rawRoomId) || !roomPage) return
+    const roomId = Number(rawRoomId)
+    if (Number.isSafeInteger(roomId) && roomPage.items.some((room) => room.roomId === roomId)) {
+      setSelectedRoomId(roomId)
+    }
+  }, [location.search, roomPage])
+
   return (
     <main className="min-h-screen bg-[#fcfdfd] text-slate-800">
       <Navbar />
