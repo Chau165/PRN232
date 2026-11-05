@@ -39,7 +39,7 @@ export default function MaintenanceDetailDrawer({ request, logs, loading, error,
                 <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-[#087775]" />
                 <div>
                   <p className="text-[14px] font-semibold text-slate-700">{statusLabels[log.newStatus as MaintenanceRequestDto["status"]] ?? log.newStatus}</p>
-                  <p className="mt-0.5 text-[12px] text-slate-400">{new Date(log.changedAt).toLocaleString("vi-VN")}{log.changedByName ? ` · ${log.changedByName}` : ""}</p>
+                  <p className="mt-0.5 text-[12px] text-slate-400">{new Date(log.changedAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}{log.changedByName ? ` · ${log.changedByName}` : ""}</p>
                 </div>
               </li>
             ))}
