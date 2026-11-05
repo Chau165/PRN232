@@ -23,15 +23,24 @@ public class RoomsController : ControllerBase
         [FromQuery] int? propertyId,
         [FromQuery] string? status,
         [FromQuery] string? city,
-        [FromQuery] decimal? maxPrice)
+        [FromQuery] decimal? maxPrice,
+        [FromQuery] int? roomTypeId,
+        [FromQuery] string? search)
     {
-        return Ok(await _roomService.GetAllAsync(propertyId, status, city, maxPrice));
+        return Ok(await _roomService.GetAllAsync(
+            propertyId,
+            status,
+            city,
+            maxPrice,
+            ManagerScopeId(),
+            roomTypeId,
+            search));
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<RoomDto>> GetById(int id)
     {
-        var room = await _roomService.GetByIdAsync(id);
+        var room = await _roomService.GetByIdAsync(id, ManagerScopeId());
         if (room is null)
         {
             return NotFound();
@@ -40,7 +49,7 @@ public class RoomsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<RoomDto>> Create(CreateRoomDto dto)
     {
         try
@@ -66,7 +75,7 @@ public class RoomsController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<RoomDto>> Update(int id, UpdateRoomDto dto)
     {
         try
@@ -93,7 +102,7 @@ public class RoomsController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(int id)
     {
         try
@@ -234,5 +243,10 @@ public class RoomsController : ControllerBase
     private bool IsAdmin()
     {
         return User.IsInRole("Admin");
+    }
+
+    private int? ManagerScopeId()
+    {
+        return User.IsInRole("Manager") ? CurrentUserId() : null;
     }
 }

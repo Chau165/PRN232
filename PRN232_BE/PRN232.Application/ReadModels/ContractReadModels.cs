@@ -9,7 +9,11 @@ public sealed record ContractBookingReadModel(
     string Status,
     decimal DepositAmount,
     decimal MonthlyRent,
-    bool HasContract);
+    bool HasContract,
+    bool HasSuccessfulPayment = false,
+    string? LessorName = null,
+    string? LessorAddress = null,
+    int PropertyId = 0);
 
 public sealed record ContractReadModel(
     int ContractId,
@@ -26,4 +30,11 @@ public sealed record ContractReadModel(
     decimal MonthlyRent,
     decimal DepositAmount,
     string Status,
-    string? ProcessedByStaffName);
+    string? ProcessedByStaffName,
+    decimal PrepaidRentAmount = 0m,
+    decimal PrepaidRentApplied = 0m,
+    decimal RemainingPrepaidCredit = 0m,
+    string? PropertyAddress = null,
+    int? LessorUserId = null,
+    string? LessorName = null,
+    string? LessorAddress = null);

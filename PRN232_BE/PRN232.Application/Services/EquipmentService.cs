@@ -1,11 +1,15 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
+using PRN232.Application.States;
 using PRN232.Domain.Entities;
 
 namespace PRN232.Application.Services;
 
 public class EquipmentService : IEquipmentService
 {
+    private const int DefaultPageSize = 50;
+    private const int MaximumPageSize = 50;
     private readonly IEquipmentRepository _repository;
 
     public EquipmentService(IEquipmentRepository repository)
@@ -13,15 +17,35 @@ public class EquipmentService : IEquipmentService
         _repository = repository;
     }
 
-    public async Task<List<EquipmentDto>> GetAllAsync(int? roomId)
+    public async Task<List<EquipmentDto>> GetAllAsync(
+        int? roomId,
+        int? propertyId,
+        string? status,
+        string? search,
+        int requestingUserId,
+        string role,
+        int? page = null,
+        int? pageSize = null)
     {
-        var equipment = await _repository.GetAllAsync(roomId);
+        EnsureManagementRole(role);
+        int? managerId = role == RoleNames.Admin ? null : requestingUserId;
+        var paging = NormalizePaging(page, pageSize);
+        var equipment = await _repository.GetAllAsync(
+            roomId,
+            propertyId,
+            status,
+            search,
+            managerId,
+            paging?.Page,
+            paging?.PageSize);
         return equipment.Select(ConvertToDto).ToList();
     }
 
-    public async Task<EquipmentDto?> GetByIdAsync(int id)
+    public async Task<EquipmentDto?> GetByIdAsync(int id, int requestingUserId, string role)
     {
-        var equipment = await _repository.GetByIdAsync(id);
+        EnsureManagementRole(role);
+        int? managerId = role == RoleNames.Admin ? null : requestingUserId;
+        var equipment = await _repository.GetByIdAsync(id, managerId);
         if (equipment is null)
         {
             return null;
@@ -29,74 +53,121 @@ public class EquipmentService : IEquipmentService
         return ConvertToDto(equipment);
     }
 
-    public async Task<EquipmentDto> CreateAsync(CreateEquipmentDto dto, int requestingUserId, bool isAdmin)
+    public async Task<EquipmentDto> CreateAsync(CreateEquipmentDto dto, int requestingUserId, string role)
     {
+        EnsureManagementRole(role);
         if (!await _repository.RoomExistsAsync(dto.RoomId))
         {
             throw new EquipmentRoomNotFoundException();
         }
-        await EnsureOwnerOrAdminAsync(dto.RoomId, requestingUserId, isAdmin);
-        Validate(dto.Name, dto.Supplier, dto.Status);
+        await EnsureRoomAccessAsync(dto.RoomId, requestingUserId, role);
+        Validate(dto);
 
         var entity = ConvertToEntity(dto);
 
         await _repository.AddAsync(entity);
         await _repository.SaveChangesAsync();
-        return ConvertToDto(entity);
+        var created = await _repository.GetByIdAsync(
+            entity.EquipmentId,
+            role == RoleNames.Admin ? null : requestingUserId);
+        if (created is null)
+        {
+            throw new InvalidOperationException("Created equipment was not found.");
+        }
+        return ConvertToDto(created);
     }
 
-    public async Task<EquipmentDto?> UpdateAsync(int id, UpdateEquipmentDto dto, int requestingUserId, bool isAdmin)
+    public async Task<EquipmentDto?> UpdateAsync(int id, UpdateEquipmentDto dto, int requestingUserId, string role)
     {
-        var entity = await _repository.GetTrackedByIdAsync(id);
+        EnsureManagementRole(role);
+        var entity = await _repository.GetTrackedByIdAsync(
+            id,
+            role == RoleNames.Admin ? null : requestingUserId);
         if (entity is null)
         {
             return null;
         }
-        await EnsureOwnerOrAdminAsync(entity.RoomId, requestingUserId, isAdmin);
-        Validate(dto.Name, dto.Supplier, dto.Status);
+        await EnsureRoomAccessAsync(entity.RoomId, requestingUserId, role);
+        Validate(dto);
 
         ApplyUpdateToEntity(dto, entity);
 
         await _repository.SaveChangesAsync();
-        return ConvertToDto(entity);
+        var updated = await _repository.GetByIdAsync(
+            entity.EquipmentId,
+            role == RoleNames.Admin ? null : requestingUserId);
+        if (updated is null)
+        {
+            throw new InvalidOperationException("Updated equipment was not found.");
+        }
+        return ConvertToDto(updated);
     }
 
-    public async Task<bool> DeleteAsync(int id, int requestingUserId, bool isAdmin)
+    public async Task<bool> DeleteAsync(int id, int requestingUserId, string role)
     {
-        var entity = await _repository.GetTrackedByIdAsync(id);
+        EnsureManagementRole(role);
+        var entity = await _repository.GetTrackedByIdAsync(
+            id,
+            role == RoleNames.Admin ? null : requestingUserId);
         if (entity is null)
         {
             return false;
         }
-        await EnsureOwnerOrAdminAsync(entity.RoomId, requestingUserId, isAdmin);
+        await EnsureRoomAccessAsync(entity.RoomId, requestingUserId, role);
+        if (await _repository.HasMaintenanceDependenciesAsync(id))
+        {
+            throw new EquipmentDependencyConflictException();
+        }
 
         _repository.Remove(entity);
         await _repository.SaveChangesAsync();
         return true;
     }
 
-    private async Task EnsureOwnerOrAdminAsync(int roomId, int requestingUserId, bool isAdmin)
+    private async Task EnsureRoomAccessAsync(int roomId, int requestingUserId, string role)
     {
-        if (isAdmin)
+        if (role == RoleNames.Admin)
         {
             return;
         }
-        var ownerId = await _repository.GetOwnerIdAsync(roomId);
-        if (ownerId != requestingUserId)
+        if (!await _repository.HasRoomAccessAsync(roomId, requestingUserId))
         {
             throw new EquipmentForbiddenException();
         }
     }
 
-    private static void Validate(string name, string? supplier, string status)
+    private static void Validate(CreateEquipmentDto dto)
     {
-        if (string.IsNullOrWhiteSpace(name))
+        Validate(dto.Name, dto.Supplier, dto.Status, dto.InstallDate, dto.WarrantyExpiry);
+    }
+
+    private static void Validate(UpdateEquipmentDto dto)
+    {
+        Validate(dto.Name, dto.Supplier, dto.Status, dto.InstallDate, dto.WarrantyExpiry);
+    }
+
+    private static void Validate(
+        string name,
+        string? supplier,
+        string status,
+        DateOnly installDate,
+        DateOnly warrantyExpiry)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 200)
         {
-            throw new EquipmentValidationException("Tên thiết bị không được để trống.");
+            throw new EquipmentValidationException("Tên thiết bị là bắt buộc và không quá 200 ký tự.");
         }
-        if (string.IsNullOrWhiteSpace(status))
+        if (string.IsNullOrWhiteSpace(supplier) || supplier.Trim().Length > 200)
         {
-            throw new EquipmentValidationException("Trạng thái thiết bị không được để trống.");
+            throw new EquipmentValidationException("Nhà cung cấp là bắt buộc và không quá 200 ký tự.");
+        }
+        if (warrantyExpiry < installDate)
+        {
+            throw new EquipmentValidationException("Hạn bảo hành không được trước ngày lắp đặt.");
+        }
+        if (!EquipmentStatuses.IsValid(status.Trim()))
+        {
+            throw new EquipmentValidationException("Trạng thái thiết bị không được hỗ trợ.");
         }
     }
 
@@ -122,16 +193,53 @@ public class EquipmentService : IEquipmentService
         entity.Status = dto.Status.Trim();
     }
 
-    private static EquipmentDto ConvertToDto(Equipments entity)
+    private static EquipmentDto ConvertToDto(EquipmentReadModel equipment)
     {
         return new EquipmentDto(
-            entity.EquipmentId,
-            entity.RoomId,
-            entity.Name,
-            entity.InstallDate,
-            entity.WarrantyExpiry,
-            entity.Supplier,
-            entity.Status);
+            equipment.EquipmentId,
+            equipment.RoomId,
+            equipment.Name,
+            equipment.InstallDate,
+            equipment.WarrantyExpiry,
+            equipment.Supplier,
+            equipment.Status,
+            equipment.RoomCode,
+            equipment.PropertyId,
+            equipment.PropertyName);
+    }
+
+    private static void EnsureManagementRole(string role)
+    {
+        if (role is not (RoleNames.Admin or RoleNames.Manager))
+        {
+            throw new EquipmentForbiddenException();
+        }
+    }
+
+    private static (int Page, int PageSize)? NormalizePaging(int? page, int? pageSize)
+    {
+        if (!page.HasValue && !pageSize.HasValue)
+        {
+            return null;
+        }
+
+        var normalizedPage = page ?? 1;
+        var normalizedPageSize = pageSize ?? DefaultPageSize;
+        if (normalizedPage < 1)
+        {
+            throw new EquipmentValidationException("Trang phải lớn hơn hoặc bằng 1.");
+        }
+        if (normalizedPageSize is < 1 or > MaximumPageSize)
+        {
+            throw new EquipmentValidationException(
+                $"Kích thước trang phải từ 1 đến {MaximumPageSize}.");
+        }
+        if ((long)(normalizedPage - 1) * normalizedPageSize > int.MaxValue)
+        {
+            throw new EquipmentValidationException("Trang yêu cầu vượt quá giới hạn hỗ trợ.");
+        }
+
+        return (normalizedPage, normalizedPageSize);
     }
 }
 
@@ -142,4 +250,7 @@ public sealed class EquipmentValidationException(string message) : EquipmentBusi
 public sealed class EquipmentRoomNotFoundException() : EquipmentBusinessRuleException("Phòng không tồn tại.");
 
 public sealed class EquipmentForbiddenException()
-    : EquipmentBusinessRuleException("Bạn không phải chủ sở hữu khu trọ chứa phòng này.");
+    : EquipmentBusinessRuleException("Bạn chưa được phân công quản lý khu trọ chứa phòng này.");
+
+public sealed class EquipmentDependencyConflictException()
+    : EquipmentBusinessRuleException("Không thể xóa thiết bị đã có lịch sử bảo trì liên quan.");

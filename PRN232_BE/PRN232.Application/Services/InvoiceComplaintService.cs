@@ -14,11 +14,16 @@ public class InvoiceComplaintService : IInvoiceComplaintService
 
     private readonly IInvoiceComplaintRepository _repository;
     private readonly TimeProvider _timeProvider;
+    private readonly INotificationRealtimePublisher? _realtimePublisher;
 
-    public InvoiceComplaintService(IInvoiceComplaintRepository repository, TimeProvider timeProvider)
+    public InvoiceComplaintService(
+        IInvoiceComplaintRepository repository,
+        TimeProvider timeProvider,
+        INotificationRealtimePublisher? realtimePublisher = null)
     {
         _repository = repository;
         _timeProvider = timeProvider;
+        _realtimePublisher = realtimePublisher;
     }
 
     public async Task<InvoiceComplaintDto> CreateAsync(CreateInvoiceComplaintDto dto, int customerId)
@@ -46,14 +51,18 @@ public class InvoiceComplaintService : IInvoiceComplaintService
         }
 
         var complaint = CreateComplaintEntity(invoice.InvoiceId, customerId, feeType, content, _timeProvider.GetUtcNow().UtcDateTime);
-        await _repository.AddAsync(complaint, new Notifications
+        var notification = new Notifications
         {
             UserId = invoice.OwnerId,
             Title = $"Khách khiếu nại hoá đơn tháng {Period(invoice.InvoiceMonth)} - Phòng {invoice.RoomCode}",
             Type = NotificationTypes.Complaint,
             IsRead = false
-        });
-
+        };
+        await _repository.AddAsync(complaint, notification);
+        if (_realtimePublisher is not null)
+        {
+            await _realtimePublisher.PublishCreatedAsync([notification]);
+        }
         var created = await _repository.GetByIdAsync(complaint.ComplaintId, customerId, null);
         if (created is null)
         {
@@ -69,16 +78,16 @@ public class InvoiceComplaintService : IInvoiceComplaintService
             throw new ComplaintBusinessRuleException("Status must be New, InProgress, or Resolved.");
         }
 
-        var (customerId, ownerId) = GetScope(userId, role);
-        var complaints = await _repository.GetAllAsync(customerId, ownerId, status);
+        var (customerId, managerId) = GetScope(userId, role);
+        var complaints = await _repository.GetAllAsync(customerId, managerId, status);
         return complaints.Select(ConvertToDto).ToList();
     }
 
     public async Task<InvoiceComplaintDto?> GetByIdAsync(int id, int userId, string role)
     {
-        var (customerId, ownerId) = GetScope(userId, role);
-        var complaint = await _repository.GetByIdAsync(id, customerId, ownerId);
-        if (complaint is null && (customerId.HasValue || ownerId.HasValue) && await _repository.ExistsAsync(id))
+        var (customerId, managerId) = GetScope(userId, role);
+        var complaint = await _repository.GetByIdAsync(id, customerId, managerId);
+        if (complaint is null && (customerId.HasValue || managerId.HasValue) && await _repository.ExistsAsync(id))
         {
             throw new ComplaintAuthorizationException("You cannot access this complaint.");
         }
@@ -109,6 +118,12 @@ public class InvoiceComplaintService : IInvoiceComplaintService
         {
             return complaint;
         }
+        int? managerId = role == RoleNames.Manager ? userId : null;
+        if (managerId.HasValue &&
+            !await _repository.HasActiveManagerAssignmentAsync(complaint.ComplaintId, managerId.Value))
+        {
+            throw new ComplaintAuthorizationException("You are not assigned to manage this property's complaints.");
+        }
 
         var label = dto.Status switch
         {
@@ -116,19 +131,27 @@ public class InvoiceComplaintService : IInvoiceComplaintService
             ComplaintStatuses.Resolved => "đã được xử lý",
             _ => "được mở lại"
         };
-        await _repository.UpdateStatusAsync(complaint.ComplaintId, dto.Status, new Notifications
+        var notification = new Notifications
         {
             UserId = complaint.CustomerId,
             Title = $"Khiếu nại hoá đơn tháng {Period(complaint.InvoiceMonth)} - Phòng {complaint.RoomCode} {label}",
             Type = NotificationTypes.Complaint,
             IsRead = false
-        });
-
+        };
+        if (!await _repository.UpdateStatusAsync(complaint.ComplaintId, dto.Status, notification, managerId))
+        {
+            throw new ComplaintAuthorizationException("The property assignment changed before the complaint was updated.");
+        }
+        if (_realtimePublisher is not null)
+        {
+            await _realtimePublisher.PublishCreatedAsync([notification]);
+        }
         var updated = await _repository.GetByIdAsync(complaint.ComplaintId, null, null);
         if (updated is null)
         {
             throw new InvalidOperationException("Updated complaint was not found.");
         }
+
         return ConvertToDto(updated);
     }
 
@@ -167,7 +190,7 @@ public class InvoiceComplaintService : IInvoiceComplaintService
         };
     }
 
-    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role)
+    private static (int? CustomerId, int? ManagerId) GetScope(int userId, string role)
     {
         var scope = AccessScope.For(userId, role);
         if (scope is null)

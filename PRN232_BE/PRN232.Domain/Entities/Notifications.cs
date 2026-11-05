@@ -12,6 +12,8 @@ public class Notifications
     }
     public string Title { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
+    public string? Body { get; set; }
+    public int? RelatedEntityId { get; set; }
     public bool IsRead
     {
         get; set;

@@ -10,6 +10,7 @@ public interface IMaintenanceRepository
     Task<MaintenanceRequestStateReadModel?> GetStateByIdAsync(int id, int? assignedManagerId);
     Task<bool> RequestExistsAsync(int id);
     Task<MaintenanceContractReadModel?> GetContractAsync(int contractId);
+    Task<bool> HasActiveManagerAssignmentAsync(int contractId, int managerId);
     Task<int?> GetEquipmentRoomIdAsync(int equipmentId);
     Task<MaintenanceUserAssignmentReadModel?> GetUserAssignmentAsync(int userId);
     Task<MaintenanceRequests> AddWithInitialLogAsync(

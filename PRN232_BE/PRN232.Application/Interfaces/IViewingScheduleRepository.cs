@@ -6,11 +6,21 @@ namespace PRN232.Application.Interfaces;
 public interface IViewingScheduleRepository
 {
     Task<ViewingRoomReadModel?> GetRoomAsync(int roomId);
+    Task<ViewingManagerReadModel?> GetManagerAsync(int userId);
+    Task<bool> HasActiveManagerAssignmentAsync(int propertyId, int managerId);
     Task<bool> IsRoomRentableAsync(int roomId, DateTimeOffset asOfUtc);
     Task<bool> HasOpenRequestAsync(int customerId, int roomId, DateTimeOffset asOfUtc);
-    Task AddAsync(ViewingSchedules viewing, Notifications ownerNotification);
-    Task<List<ViewingScheduleReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status);
-    Task<ViewingScheduleReadModel?> GetByIdAsync(int viewingId, int? customerId, int? ownerId);
+    Task AddAsync(ViewingSchedules viewing, Func<int, IReadOnlyCollection<Notifications>> notificationFactory);
+    Task<List<ViewingScheduleReadModel>> GetAllAsync(int? customerId, int? assignedTo, string? status);
+    Task<ViewingScheduleReadModel?> GetByIdAsync(int viewingId, int? customerId, int? assignedTo);
     Task<bool> ExistsAsync(int viewingId);
-    Task<bool> DecideAsync(int viewingId, string status, DateTime? scheduledAtUtc, Notifications customerNotification);
+    Task<bool> DecideAsync(
+        int viewingId,
+        string status,
+        int? assignedTo,
+        string? managerNote,
+        int respondedBy,
+        DateTime respondedAtUtc,
+        DateTime? scheduledAtUtc,
+        IReadOnlyCollection<Notifications> notifications);
 }

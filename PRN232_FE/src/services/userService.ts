@@ -90,3 +90,11 @@ export function getPropertiesOwnedBy(accessToken: string, ownerId: string | numb
     { accessToken },
   )
 }
+
+export function getProperties(accessToken: string, signal?: AbortSignal) {
+  return apiRequest<PropertyDto[]>("/properties", {
+    accessToken,
+    signal,
+    cache: "no-store",
+  })
+}

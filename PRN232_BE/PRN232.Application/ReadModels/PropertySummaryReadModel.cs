@@ -11,4 +11,6 @@ public sealed record PropertySummaryReadModel(
     string City,
     decimal Latitude,
     decimal Longitude,
-    int RoomCount);
+    int RoomCount,
+    string? PrimaryImageUrl = null,
+    string? Description = null);

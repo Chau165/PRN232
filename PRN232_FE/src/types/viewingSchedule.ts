@@ -12,4 +12,10 @@ export interface ViewingScheduleDto {
   // null nghĩa là khách để chủ trọ sắp xếp giờ xem.
   scheduledAt: string | null
   status: ViewingStatus
+  assignedTo: number | null
+  assignedManagerName: string | null
+  assignedManagerPhone: string | null
+  managerNote: string | null
+  respondedBy: number | null
+  respondedAt: string | null
 }

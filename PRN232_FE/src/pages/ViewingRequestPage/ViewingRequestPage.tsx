@@ -17,7 +17,7 @@ export default function ViewingRequestPage() {
   const roomId = parsePositiveRouteId(params.get("roomId") ?? undefined)
 
   return (
-    <CustomerPageShell title="Đặt lịch xem phòng" description="Chọn giờ bạn muốn đến xem, hoặc để chủ trọ sắp xếp.">
+    <CustomerPageShell title="Đặt lịch xem phòng" description="Chọn giờ bạn muốn đến xem, hoặc để Admin phân công Manager và xác nhận lịch.">
       <div className="max-w-2xl rounded-2xl bg-white p-7 shadow-[0_5px_24px_rgba(16,65,67,.08)]">
         {roomId ? <ViewingRequestForm roomId={roomId} /> : <Notice message="Không tìm thấy phòng cần xem." />}
       </div>
@@ -43,7 +43,7 @@ function ViewingRequestForm({ roomId }: { roomId: number }) {
     )
   }
   if (created) {
-    return <Notice message={`Đã gửi yêu cầu xem phòng ${created.roomCode} (${viewingTimeLabel(created)}). Chủ trọ sẽ xác nhận lịch hẹn.`} />
+    return <Notice message={`Đã gửi yêu cầu xem phòng ${created.roomCode} (${viewingTimeLabel(created)}). Admin sẽ phân công Manager và xác nhận lịch hẹn.`} />
   }
 
   const room = resource.data
@@ -97,7 +97,7 @@ function ViewingRequestForm({ roomId }: { roomId: number }) {
         )}
         <label className="flex items-center gap-2 text-sm text-slate-600">
           <input type="radio" name="timeChoice" checked={ownerDecides} onChange={() => setOwnerDecides(true)} />
-          Để chủ trọ sắp xếp
+          Để Admin phân công lịch
         </label>
       </fieldset>
       {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}

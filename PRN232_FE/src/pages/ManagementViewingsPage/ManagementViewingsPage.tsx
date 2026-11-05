@@ -1,38 +1,87 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { Link, useLocation } from "react-router"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementPage from "@/components/management/ManagementPage"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
 import { useAuth } from "@/auth/AuthContext"
 import { approveViewingSchedule, rejectViewingSchedule } from "@/services/viewingScheduleService"
+import { getRoles, getUsers } from "@/services/userService"
+import type { BackendUserDto } from "@/types/auth"
 import type { ViewingScheduleDto } from "@/types/viewingSchedule"
 import { useViewingSchedules } from "@/hooks/useViewingSchedules"
 import { bookingErrorMessage } from "@/utils/bookingDisplay"
+import { availableRoomsPath } from "@/constants/routes"
 import { localInputToIso, toLocalInput, viewingStatusDisplay, viewingTimeLabel } from "@/utils/viewingDisplay"
 
-// Khách để chủ trọ sắp xếp, hoặc giờ khách chọn đã qua: phải chọn giờ mới khi chấp thuận.
 function hasUpcomingTime(viewing: ViewingScheduleDto) {
   return viewing.scheduledAt !== null && Date.parse(viewing.scheduledAt) > Date.now()
 }
 
+function positiveQueryId(search: string, key: string): number | null {
+  const value = new URLSearchParams(search).get(key)
+  if (!value || !/^[1-9]\d*$/.test(value)) return null
+  const id = Number(value)
+  return Number.isSafeInteger(id) ? id : null
+}
+
 export default function ManagementViewingsPage() {
-  const { accessToken } = useAuth()
+  const { accessToken, user } = useAuth()
+  const isAdmin = user?.role === "ADMIN"
+  const location = useLocation()
+  const selectedViewingId = positiveQueryId(location.search, "viewingId")
   const { viewings, loading, error, retry, replace } = useViewingSchedules()
+  const [managers, setManagers] = useState<BackendUserDto[]>([])
+  const [managerError, setManagerError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [picker, setPicker] = useState<ViewingScheduleDto | null>(null)
   const [pickerTime, setPickerTime] = useState("")
+  const [assignedTo, setAssignedTo] = useState("")
+  const [managerNote, setManagerNote] = useState("")
   const [pickerError, setPickerError] = useState<string | null>(null)
+  const [rejecting, setRejecting] = useState<ViewingScheduleDto | null>(null)
+  const [rejectReason, setRejectReason] = useState("")
+  const [rejectError, setRejectError] = useState<string | null>(null)
   const [toast, setToast] = useState("")
 
-  const run = async (viewing: ViewingScheduleDto, action: (token: string) => Promise<ViewingScheduleDto>, success: string) => {
+  useEffect(() => {
+    if (!isAdmin || !accessToken) return
+    let active = true
+    void getRoles()
+      .then(async (roles) => {
+        const managerRole = roles.find((role) => role.roleName.trim().toLowerCase() === "manager")
+        if (!managerRole) throw new Error("Backend chưa khai báo role Manager.")
+        return getUsers(accessToken, managerRole.roleId)
+      })
+      .then((rows) => {
+        if (active) setManagers(rows.filter((manager) => manager.roleName.trim().toUpperCase() === "MANAGER" && manager.isActive === true))
+      })
+      .catch((cause: unknown) => {
+        if (active) setManagerError(cause instanceof Error ? cause.message : "Không thể tải danh sách Manager.")
+      })
+    return () => { active = false }
+  }, [accessToken, isAdmin])
+
+  useEffect(() => {
+    if (selectedViewingId === null || loading) return
+    document.getElementById(`viewing-${selectedViewingId}`)?.scrollIntoView?.({ behavior: "smooth", block: "center" })
+  }, [loading, selectedViewingId, viewings])
+
+  const run = async (
+    viewing: ViewingScheduleDto,
+    action: (token: string) => Promise<ViewingScheduleDto>,
+    success: string,
+  ) => {
     if (!accessToken || busyId !== null) return
     setBusyId(viewing.viewingId)
     try {
       replace(await action(accessToken))
       setToast(success)
       setPicker(null)
+      setRejecting(null)
     } catch (actionError) {
       setToast(bookingErrorMessage(actionError, "Yêu cầu này vừa được xử lý, vui lòng tải lại trang."))
+      retry()
     } finally {
       setBusyId(null)
     }
@@ -41,124 +90,150 @@ export default function ManagementViewingsPage() {
   const openPicker = (viewing: ViewingScheduleDto) => {
     setPicker(viewing)
     setPickerTime(hasUpcomingTime(viewing) ? toLocalInput(new Date(viewing.scheduledAt!)) : "")
+    setAssignedTo("")
+    setManagerNote("")
     setPickerError(null)
   }
 
-  const approveWithPickedTime = () => {
+  const approve = () => {
     if (!picker) return
+    const managerId = Number(assignedTo)
+    if (!Number.isSafeInteger(managerId) || managerId < 1 || !managers.some((manager) => Number(manager.userId) === managerId)) {
+      setPickerError("Vui lòng chọn một Manager đang hoạt động.")
+      return
+    }
     if (!pickerTime || Date.parse(pickerTime) <= Date.now()) {
       setPickerError("Vui lòng chọn thời điểm xem trong tương lai.")
       return
     }
-    void run(picker, (token) => approveViewingSchedule(token, picker.viewingId, localInputToIso(pickerTime)),
-      `Đã hẹn ${picker.customerName} xem phòng ${picker.roomCode}.`)
+    if (managerNote.length > 500) {
+      setPickerError("Ghi chú tối đa 500 ký tự.")
+      return
+    }
+    void run(picker, (token) => approveViewingSchedule(token, picker.viewingId, {
+      scheduledAt: localInputToIso(pickerTime),
+      assignedTo: managerId,
+      managerNote: managerNote.trim() || null,
+    }), `Đã phân công Manager và xác nhận lịch xem phòng ${picker.roomCode}.`)
   }
 
-  const reject = (viewing: ViewingScheduleDto) => {
-    if (!window.confirm(`Từ chối lịch xem phòng ${viewing.roomCode} của ${viewing.customerName}?`)) return
-    void run(viewing, (token) => rejectViewingSchedule(token, viewing.viewingId),
-      `Đã từ chối lịch xem phòng của ${viewing.customerName}.`)
+  const reject = () => {
+    if (!rejecting) return
+    const reason = rejectReason.trim()
+    if (!reason) {
+      setRejectError("Vui lòng nhập lý do từ chối.")
+      return
+    }
+    if (reason.length > 500) {
+      setRejectError("Lý do tối đa 500 ký tự.")
+      return
+    }
+    void run(rejecting, (token) => rejectViewingSchedule(token, rejecting.viewingId, reason),
+      `Đã từ chối lịch xem phòng của ${rejecting.customerName}.`)
   }
 
   return (
-    <ManagementPage title="Lịch xem phòng" description="Xem và xử lý các lịch hẹn xem phòng từ khách thuê.">
+    <ManagementPage
+      title="Lịch xem phòng"
+      description={isAdmin
+        ? "Xem mọi yêu cầu, phân công Manager và xác nhận hoặc từ chối lịch hẹn."
+        : "Các lịch xem phòng đã được phân công cho bạn. Thông tin khách và lịch hẹn ở chế độ chỉ đọc."}
+    >
       {loading && <p role="status" className="text-[14px] text-slate-500">Đang tải lịch xem phòng...</p>}
       {!loading && error && (
         <div role="alert" className="rounded-2xl bg-white p-6 text-center shadow-[0_3px_18px_rgba(16,65,67,.05)]">
           <p className="text-[14px] text-slate-700">{error}</p>
-          <button type="button" onClick={retry} className="mt-4 rounded-lg bg-[#087775] px-4 py-2 text-[13px] font-bold text-white">
-            Thử lại
-          </button>
+          <button type="button" onClick={retry} className="mt-4 rounded-lg bg-[#087775] px-4 py-2 text-[13px] font-bold text-white">Thử lại</button>
         </div>
       )}
       {!loading && !error && (
-        <ManagementDataTable headers={["Người đặt", "Số điện thoại", "Ngày xem", "Phòng", "Trạng thái", "Thao tác"]}>
+        <ManagementDataTable headers={["Khách đặt", "Số điện thoại", "Ngày xem", "Phòng", "Trạng thái", ...(isAdmin ? ["Thao tác"] : [])]}>
           {viewings.length === 0 ? (
-            <p className="px-5 py-8 text-center text-[13px] text-slate-500">Chưa có lịch xem phòng nào.</p>
+            <p className="px-5 py-8 text-center text-[13px] text-slate-500">
+              {isAdmin ? "Chưa có yêu cầu xem phòng nào." : "Chưa có lịch xem phòng được phân công cho bạn."}
+            </p>
           ) : (
             <div className="divide-y divide-slate-100">
               {viewings.map((viewing) => {
                 const display = viewingStatusDisplay(viewing)
                 const pending = viewing.status === "Pending"
+                const selected = viewing.viewingId === selectedViewingId
                 return (
-                  <div key={viewing.viewingId} className="grid gap-3 px-5 py-5 lg:grid-cols-6 lg:items-center">
+                  <article
+                    id={`viewing-${viewing.viewingId}`}
+                    key={viewing.viewingId}
+                    className={`grid gap-3 px-5 py-5 lg:grid-cols-6 lg:items-center ${selected ? "bg-teal-50 ring-2 ring-inset ring-teal-300" : ""}`}
+                  >
                     <span className="text-[13px] font-semibold text-slate-700">
-                      {viewing.customerName}
-                      <small className="block font-normal text-slate-400">#{viewing.viewingId}</small>
+                      {viewing.customerName}<small className="block font-normal text-slate-400">#{viewing.viewingId}</small>
                     </span>
-                    <span className="text-[13px] text-slate-600">{viewing.customerPhone || "—"}</span>
+                    <a className="text-[13px] text-slate-600 hover:text-[#087775]" href={`tel:${viewing.customerPhone}`}>{viewing.customerPhone || "—"}</a>
                     <span className="text-[13px] text-slate-600">{viewingTimeLabel(viewing)}</span>
                     <span className="text-[13px] text-slate-600">
                       {viewing.propertyName}
-                      <small className="block text-slate-400">Phòng {viewing.roomCode}</small>
+                      <Link to={`${availableRoomsPath(viewing.propertyId)}?roomId=${viewing.roomId}`} className="block text-[#087775] underline underline-offset-2">
+                        Phòng {viewing.roomCode} · Xem phòng
+                      </Link>
                     </span>
-                    <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
-                    {pending && (
+                    <div>
+                      <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
+                      {viewing.assignedManagerName && <p className="mt-2 text-xs text-slate-500">Manager: {viewing.assignedManagerName}{viewing.assignedManagerPhone ? ` · ${viewing.assignedManagerPhone}` : ""}</p>}
+                      {viewing.managerNote && <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600">Ghi chú: {viewing.managerNote}</p>}
+                    </div>
+                    {isAdmin && (
                       <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          disabled={busyId !== null}
-                          onClick={() => openPicker(viewing)}
-                          className="rounded-lg bg-slate-100 px-3 py-2 text-[12px] font-bold text-slate-600 disabled:opacity-40"
-                        >
-                          Chọn lịch
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busyId !== null}
-                          onClick={() => reject(viewing)}
-                          className="rounded-lg bg-rose-50 px-3 py-2 text-[12px] font-bold text-rose-600 disabled:opacity-40"
-                        >
-                          Từ chối
-                        </button>
-                        {hasUpcomingTime(viewing) && (
-                          <button
-                            type="button"
-                            disabled={busyId !== null}
-                            onClick={() => void run(viewing, (token) => approveViewingSchedule(token, viewing.viewingId, null),
-                              `Đã chấp thuận lịch xem phòng của ${viewing.customerName}.`)}
-                            className="rounded-lg bg-teal-50 px-3 py-2 text-[12px] font-bold text-[#087775] disabled:opacity-40"
-                          >
-                            Chấp thuận
-                          </button>
-                        )}
+                        {pending ? <>
+                          <button type="button" disabled={busyId !== null} onClick={() => openPicker(viewing)} className="rounded-lg bg-teal-50 px-3 py-2 text-[12px] font-bold text-[#087775] disabled:opacity-40">Phân công & duyệt</button>
+                          <button type="button" disabled={busyId !== null} onClick={() => { setRejecting(viewing); setRejectReason(""); setRejectError(null) }} className="rounded-lg bg-rose-50 px-3 py-2 text-[12px] font-bold text-rose-600 disabled:opacity-40">Từ chối</button>
+                        </> : <span className="text-xs text-slate-400">Đã xử lý</span>}
                       </div>
                     )}
-                  </div>
+                  </article>
                 )
               })}
             </div>
           )}
         </ManagementDataTable>
       )}
-      {picker && (
+
+      {picker && isAdmin && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-6">
-          <div role="dialog" aria-modal="true" aria-labelledby="viewing-picker-title" className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
-            <h2 id="viewing-picker-title" className="font-display text-xl font-bold text-slate-900">Chọn lịch xem phòng</h2>
-            <p className="mt-2 text-sm text-slate-500">
-              Hẹn {picker.customerName} xem phòng {picker.roomCode}. Lưu lịch sẽ chấp thuận yêu cầu và báo cho khách.
-            </p>
-            <input
-              type="datetime-local"
-              aria-label="Ngày giờ xem phòng"
-              min={toLocalInput()}
-              value={pickerTime}
-              onChange={(event) => setPickerTime(event.target.value)}
-              className="mt-5 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"
-            />
+          <div role="dialog" aria-modal="true" aria-labelledby="viewing-picker-title" className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 id="viewing-picker-title" className="font-display text-xl font-bold text-slate-900">Phân công và xác nhận lịch</h2>
+            <p className="mt-2 text-sm text-slate-500">{picker.customerName} · {picker.propertyName} · Phòng {picker.roomCode}</p>
+            <label className="mt-5 block text-sm font-semibold text-slate-700" htmlFor="viewing-manager">Manager phụ trách</label>
+            <select id="viewing-manager" required value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
+              <option value="">Chọn Manager đang hoạt động</option>
+              {managers.map((manager) => <option key={manager.userId} value={manager.userId}>{manager.fullName}{manager.phoneNumber ? ` · ${manager.phoneNumber}` : ""}</option>)}
+            </select>
+            {managerError && <p role="alert" className="mt-2 text-xs text-rose-600">{managerError}</p>}
+            {managers.length === 0 && !managerError && <p className="mt-2 text-xs text-amber-700">Không có Manager đang hoạt động để phân công.</p>}
+            <label className="mt-4 block text-sm font-semibold text-slate-700" htmlFor="viewing-time">Thời gian xác nhận</label>
+            <input id="viewing-time" type="datetime-local" required min={toLocalInput()} value={pickerTime} onChange={(event) => setPickerTime(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm" />
+            <label className="mt-4 block text-sm font-semibold text-slate-700" htmlFor="viewing-note">Ghi chú cho Manager / khách (không bắt buộc)</label>
+            <textarea id="viewing-note" maxLength={500} rows={3} value={managerNote} onChange={(event) => setManagerNote(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+            <p className="mt-1 text-right text-xs text-slate-400">{managerNote.length}/500</p>
             {pickerError && <p role="alert" className="mt-3 text-sm text-rose-600">{pickerError}</p>}
             <div className="mt-5 flex gap-2">
-              <button type="button" onClick={() => setPicker(null)} className="flex-1 rounded-lg bg-slate-100 py-3 text-sm font-bold text-slate-600">
-                Huỷ
-              </button>
-              <button
-                type="button"
-                disabled={busyId !== null}
-                onClick={approveWithPickedTime}
-                className="flex-1 rounded-lg bg-[#087775] py-3 text-sm font-bold text-white disabled:opacity-40"
-              >
-                Lưu lịch
-              </button>
+              <button type="button" onClick={() => setPicker(null)} className="flex-1 rounded-lg bg-slate-100 py-3 text-sm font-bold text-slate-600">Huỷ</button>
+              <button type="button" disabled={busyId !== null || managers.length === 0} onClick={approve} className="flex-1 rounded-lg bg-[#087775] py-3 text-sm font-bold text-white disabled:opacity-40">Xác nhận & thông báo</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {rejecting && isAdmin && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-6">
+          <div role="dialog" aria-modal="true" aria-labelledby="viewing-reject-title" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 id="viewing-reject-title" className="font-display text-xl font-bold text-slate-900">Từ chối yêu cầu xem phòng</h2>
+            <p className="mt-2 text-sm text-slate-500">Yêu cầu #{rejecting.viewingId} · {rejecting.customerName}</p>
+            <label className="mt-5 block text-sm font-semibold text-slate-700" htmlFor="viewing-reject-reason">Lý do từ chối</label>
+            <textarea id="viewing-reject-reason" required maxLength={500} rows={4} value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+            <p className="mt-1 text-right text-xs text-slate-400">{rejectReason.length}/500</p>
+            {rejectError && <p role="alert" className="mt-3 text-sm text-rose-600">{rejectError}</p>}
+            <div className="mt-5 flex gap-2">
+              <button type="button" onClick={() => setRejecting(null)} className="flex-1 rounded-lg bg-slate-100 py-3 text-sm font-bold text-slate-600">Huỷ</button>
+              <button type="button" disabled={busyId !== null} onClick={reject} className="flex-1 rounded-lg bg-rose-600 py-3 text-sm font-bold text-white disabled:opacity-40">Từ chối & thông báo</button>
             </div>
           </div>
         </div>

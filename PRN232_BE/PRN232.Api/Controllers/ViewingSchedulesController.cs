@@ -98,17 +98,17 @@ public class ViewingSchedulesController : ControllerBase
     }
 
     [HttpPost("{id:int}/approve")]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = RoleNames.Admin)]
     public Task<ActionResult<ViewingScheduleDto>> Approve(int id, ApproveViewingScheduleDto dto)
     {
         return HandleAsync((userId, role) => _viewingService.ApproveAsync(id, dto, userId, role));
     }
 
     [HttpPost("{id:int}/reject")]
-    [Authorize(Roles = "Admin,Manager")]
-    public Task<ActionResult<ViewingScheduleDto>> Reject(int id)
+    [Authorize(Roles = RoleNames.Admin)]
+    public Task<ActionResult<ViewingScheduleDto>> Reject(int id, RejectViewingScheduleDto dto)
     {
-        return HandleAsync((userId, role) => _viewingService.RejectAsync(id, userId, role));
+        return HandleAsync((userId, role) => _viewingService.RejectAsync(id, dto, userId, role));
     }
 
     // Cháº¥p thuáº­n vÃ  tá»« chá»‘i tráº£ vá» cÃ¹ng cÃ¡c loáº¡i lá»—i nÃªn dÃ¹ng chung má»™t chá»— chuyá»ƒn exception -> mÃ£ HTTP.

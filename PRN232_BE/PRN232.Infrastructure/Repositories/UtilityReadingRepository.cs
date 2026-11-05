@@ -26,8 +26,18 @@ public class UtilityReadingRepository : IUtilityReadingRepository
             contract.Room!.Property!.OwnerId,
             contract.Status,
             contract.StartDate,
-            contract.EndDate))
+            contract.EndDate,
+            contract.Room!.PropertyId))
             .FirstOrDefaultAsync();
+    }
+
+    public Task<bool> HasActiveManagerAssignmentAsync(int propertyId, int managerId)
+    {
+        return _context.PropertyManagerAssignments.AnyAsync(assignment =>
+            assignment.PropertyId == propertyId &&
+            assignment.ManagerId == managerId &&
+            assignment.Manager!.IsActive &&
+            assignment.Manager.Role!.RoleName == PRN232.Application.States.RoleNames.Manager);
     }
 
     public Task<LatestReadingReadModel?> GetLatestAsync(int contractId)
@@ -40,7 +50,7 @@ public class UtilityReadingRepository : IUtilityReadingRepository
             .FirstOrDefaultAsync();
     }
 
-    public async Task<bool> AddIfLatestAsync(UtilityReadings reading)
+    public async Task<bool> AddIfLatestAsync(UtilityReadings reading, int managerId = 0)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
         if (_context.Database.IsNpgsql())
@@ -49,6 +59,17 @@ public class UtilityReadingRepository : IUtilityReadingRepository
             // người sau kiểm tra lại sẽ thấy tháng vừa ghi và bị từ chối.
             await _context.Database.ExecuteSqlInterpolatedAsync(
                 $"SELECT 1 FROM \"Contracts\" WHERE \"ContractId\" = {reading.ContractId} FOR UPDATE");
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT assignment.\"PropertyId\" FROM \"PropertyManagerAssignments\" assignment JOIN \"Rooms\" room ON room.\"PropertyId\" = assignment.\"PropertyId\" JOIN \"Contracts\" contract ON contract.\"RoomId\" = room.\"RoomId\" WHERE contract.\"ContractId\" = {reading.ContractId} AND assignment.\"ManagerId\" = {managerId} FOR SHARE OF assignment");
+        }
+
+        var propertyId = await _context.Contracts
+            .Where(contract => contract.ContractId == reading.ContractId)
+            .Select(contract => (int?)contract.Room!.PropertyId)
+            .FirstOrDefaultAsync();
+        if (!propertyId.HasValue || !await HasActiveManagerAssignmentAsync(propertyId.Value, managerId))
+        {
+            return false;
         }
 
         var monthTaken = await _context.UtilityReadings.AnyAsync(existing =>
@@ -64,9 +85,9 @@ public class UtilityReadingRepository : IUtilityReadingRepository
         return true;
     }
 
-    public Task<List<UtilityReadingReadModel>> GetAllAsync(int? customerId, int? ownerId, int? contractId)
+    public Task<List<UtilityReadingReadModel>> GetAllAsync(int? customerId, int? managerId, int? contractId)
     {
-        return InScope(customerId, ownerId)
+        return InScope(customerId, managerId)
             .Where(reading => contractId == null || reading.ContractId == contractId)
             .OrderByDescending(reading => reading.ReadingMonth)
             .ThenByDescending(reading => reading.ReadingId)
@@ -74,9 +95,9 @@ public class UtilityReadingRepository : IUtilityReadingRepository
             .ToListAsync();
     }
 
-    public Task<UtilityReadingReadModel?> GetByIdAsync(int readingId, int? customerId, int? ownerId)
+    public Task<UtilityReadingReadModel?> GetByIdAsync(int readingId, int? customerId, int? managerId)
     {
-        return InScope(customerId, ownerId)
+        return InScope(customerId, managerId)
             .Where(reading => reading.ReadingId == readingId)
             .Select(ToReadModel)
             .FirstOrDefaultAsync();
@@ -88,12 +109,15 @@ public class UtilityReadingRepository : IUtilityReadingRepository
     }
 
     // Lọc dùng chung cho GetById và GetAll; tham số nào null thì không lọc theo tiêu chí đó.
-    private IQueryable<UtilityReadings> InScope(int? customerId, int? ownerId)
+    private IQueryable<UtilityReadings> InScope(int? customerId, int? managerId)
     {
         return _context.UtilityReadings
             .AsNoTracking()
             .Where(reading => customerId == null || reading.Contract!.CustomerId == customerId)
-            .Where(reading => ownerId == null || reading.Contract!.Room!.Property!.OwnerId == ownerId);
+            .Where(reading => managerId == null || reading.Contract!.Room!.Property!.ManagerAssignments.Any(assignment =>
+                assignment.ManagerId == managerId &&
+                assignment.Manager!.IsActive &&
+                assignment.Manager.Role!.RoleName == PRN232.Application.States.RoleNames.Manager));
     }
 
     private static readonly Expression<Func<UtilityReadings, UtilityReadingReadModel>> ToReadModel = reading => new UtilityReadingReadModel(

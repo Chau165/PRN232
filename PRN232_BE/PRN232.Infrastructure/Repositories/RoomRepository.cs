@@ -15,14 +15,31 @@ public class RoomRepository : IRoomRepository
         _context = context;
     }
 
-    public Task<List<RoomSummaryReadModel>> GetAllAsync(int? propertyId, string? status, string? city, decimal? maxPrice)
+    public Task<List<RoomSummaryReadModel>> GetAllAsync(
+        int? propertyId,
+        string? status,
+        string? city,
+        decimal? maxPrice,
+        int? managerId = null,
+        int? roomTypeId = null,
+        string? search = null)
     {
+        var normalizedSearch = string.IsNullOrWhiteSpace(search)
+            ? null
+            : search.Trim().ToLower();
+
         return _context.Rooms
             .AsNoTracking()
             .Where(r => propertyId == null || r.PropertyId == propertyId)
             .Where(r => status == null || r.Status == status)
             .Where(r => city == null || r.Property!.City == city)
             .Where(r => maxPrice == null || r.RoomType!.Price <= maxPrice)
+            .Where(r => roomTypeId == null || r.RoomTypeId == roomTypeId)
+            .Where(r => normalizedSearch == null || r.RoomCode.ToLower().Contains(normalizedSearch))
+            .Where(r => managerId == null || r.Property!.ManagerAssignments.Any(
+                assignment => assignment.ManagerId == managerId &&
+                    assignment.Manager!.IsActive &&
+                    assignment.Manager.Role!.RoleName == PRN232.Application.States.RoleNames.Manager))
             .OrderBy(r => r.RoomId)
             .Select(r => new RoomSummaryReadModel(
             r.RoomId,
@@ -38,11 +55,15 @@ public class RoomRepository : IRoomRepository
             .ToListAsync();
     }
 
-    public Task<RoomSummaryReadModel?> GetByIdAsync(int id)
+    public Task<RoomSummaryReadModel?> GetByIdAsync(int id, int? managerId = null)
     {
         return _context.Rooms
             .AsNoTracking()
             .Where(r => r.RoomId == id)
+            .Where(r => managerId == null || r.Property!.ManagerAssignments.Any(
+                assignment => assignment.ManagerId == managerId &&
+                    assignment.Manager!.IsActive &&
+                    assignment.Manager.Role!.RoleName == PRN232.Application.States.RoleNames.Manager))
             .Select(r => new RoomSummaryReadModel(
             r.RoomId,
             r.PropertyId,
@@ -123,11 +144,26 @@ public class RoomRepository : IRoomRepository
         return _context.RoomTypes.AnyAsync(rt => rt.RoomTypeId == roomTypeId);
     }
 
+    public Task<bool> RoomCodeExistsAsync(
+        int propertyId,
+        string roomCode,
+        int? excludedRoomId = null)
+    {
+        var normalizedRoomCode = roomCode.Trim().ToLower();
+        return _context.Rooms.AnyAsync(room =>
+            room.PropertyId == propertyId &&
+            room.RoomCode.ToLower() == normalizedRoomCode &&
+            (excludedRoomId == null || room.RoomId != excludedRoomId));
+    }
+
     public async Task<bool> HasDependentsAsync(int roomId)
     {
-        return await _context.Equipments.AnyAsync(e => e.RoomId == roomId) ||
-            await _context.Contracts.AnyAsync(c => c.RoomId == roomId) ||
-            await _context.Bookings.AnyAsync(b => b.RoomId == roomId);
+        return await _context.Equipments.AnyAsync(equipment => equipment.RoomId == roomId) ||
+            await _context.Contracts.AnyAsync(contract => contract.RoomId == roomId) ||
+            await _context.Bookings.AnyAsync(booking => booking.RoomId == roomId) ||
+            await _context.RoomImages.AnyAsync(image => image.RoomId == roomId) ||
+            await _context.RoomAmenities.AnyAsync(amenity => amenity.RoomId == roomId) ||
+            await _context.ViewingSchedules.AnyAsync(viewing => viewing.RoomId == roomId);
     }
 
     public Task SaveChangesAsync()

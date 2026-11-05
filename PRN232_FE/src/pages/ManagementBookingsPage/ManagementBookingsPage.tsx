@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Link } from "react-router"
+import { useAuth } from "@/auth/AuthContext"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementPage from "@/components/management/ManagementPage"
 import StatusBadge from "@/components/customer/StatusBadge"
@@ -11,6 +12,7 @@ import { bookingErrorMessage, bookingStatusDisplay, formatDateTime } from "@/uti
 import { formatVnd } from "@/utils/publicFormatting"
 
 export default function ManagementBookingsPage() {
+  const { user } = useAuth()
   const { bookings, loading, error, retry, cancel: cancelById, cancellingId } = useBookings()
   const [toast, setToast] = useState("")
 
@@ -71,7 +73,7 @@ export default function ManagementBookingsPage() {
                     <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
                     {/* Booking đã lên hợp đồng thì không còn thao tác: BE cũng chặn huỷ trường hợp này. */}
                     <div className="flex flex-wrap gap-2">
-                      {booking.status === "Deposited" && booking.contractId === null && (
+                      {user?.role === "MANAGER" && booking.status === "Deposited" && booking.contractId === null && (
                         <Link
                           to={`${routes.managementCreateContract}?bookingId=${booking.bookingId}`}
                           className="rounded-lg bg-[#087775] px-3 py-2 text-[12px] font-bold text-white hover:bg-[#066a68]"

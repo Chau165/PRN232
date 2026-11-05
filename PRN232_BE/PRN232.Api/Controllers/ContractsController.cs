@@ -61,8 +61,139 @@ public class ContractsController : ControllerBase
         }
     }
 
+    [HttpGet("{id:int}/billing-timeline")]
+    public async Task<ActionResult<ContractBillingTimelineDto>> GetBillingTimeline(
+        int id,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            var timeline = await _contractService.GetBillingTimelineAsync(
+                id,
+                userId,
+                role,
+                cancellationToken);
+            return timeline is null ? NotFound() : Ok(timeline);
+        }
+        catch (ContractAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
+    }
+
+    [HttpPut("{id:int}/extend")]
+    [Authorize(Roles = "Manager")]
+    public async Task<ActionResult<ContractDto>> Extend(
+        int id,
+        ExtendContractRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            return Ok(await _contractService.ExtendContractAsync(
+                id,
+                request,
+                userId,
+                role,
+                cancellationToken));
+        }
+        catch (ContractBusinessRuleException exception)
+        {
+            return BadRequest(new ProblemDetails { Title = "Invalid contract extension", Detail = exception.Message });
+        }
+        catch (ContractNotFoundException exception)
+        {
+            return NotFound(new ProblemDetails { Title = "Contract not found", Detail = exception.Message });
+        }
+        catch (ContractAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
+        catch (ContractConflictException exception)
+        {
+            return Conflict(new ProblemDetails { Title = "Contract cannot be extended", Detail = exception.Message });
+        }
+    }
+
+    [HttpPost("{id:int}/terminate")]
+    [Authorize(Roles = "Manager")]
+    public async Task<ActionResult<TerminateContractResponseDto>> Terminate(
+        int id,
+        TerminateContractRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            return Ok(await _contractService.TerminateContractAsync(
+                id,
+                request,
+                userId,
+                role,
+                cancellationToken));
+        }
+        catch (ContractBusinessRuleException exception)
+        {
+            return BadRequest(new ProblemDetails { Title = "Invalid checkout confirmation", Detail = exception.Message });
+        }
+        catch (ContractNotFoundException exception)
+        {
+            return NotFound(new ProblemDetails { Title = "Contract not found", Detail = exception.Message });
+        }
+        catch (ContractAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
+        catch (ContractConflictException exception)
+        {
+            return Conflict(new ProblemDetails { Title = "Contract cannot be terminated", Detail = exception.Message });
+        }
+    }
+
+    [HttpPost("{id:int}/room-ready")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> MarkRoomReady(int id, CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            await _contractService.MarkTerminatedRoomReadyAsync(id, userId, role, cancellationToken);
+            return NoContent();
+        }
+        catch (ContractNotFoundException exception)
+        {
+            return NotFound(new ProblemDetails { Title = "Contract not found", Detail = exception.Message });
+        }
+        catch (ContractAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
+        catch (ContractConflictException exception)
+        {
+            return Conflict(new ProblemDetails { Title = "Room is not ready", Detail = exception.Message });
+        }
+    }
+
     [HttpPost]
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "Manager")]
     public async Task<ActionResult<ContractDto>> Create(CreateContractDto dto)
     {
         if (!TryGetCurrentUser(out var userId, out var role))

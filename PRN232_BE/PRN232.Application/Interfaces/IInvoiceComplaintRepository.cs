@@ -10,5 +10,10 @@ public interface IInvoiceComplaintRepository
     Task<List<InvoiceComplaintReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status);
     Task<InvoiceComplaintReadModel?> GetByIdAsync(int complaintId, int? customerId, int? ownerId);
     Task<bool> ExistsAsync(int complaintId);
-    Task UpdateStatusAsync(int complaintId, string status, Notifications customerNotification);
+    Task<bool> HasActiveManagerAssignmentAsync(int complaintId, int managerId);
+    Task<bool> UpdateStatusAsync(
+        int complaintId,
+        string status,
+        Notifications customerNotification,
+        int? managerId = null);
 }

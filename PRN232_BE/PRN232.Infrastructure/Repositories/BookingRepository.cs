@@ -22,11 +22,12 @@ public class BookingRepository : IBookingRepository
         return _context.Rooms
             .AsNoTracking()
             .Where(room => room.RoomId == roomId)
-            .Select(room => new BookingRoomReadModel(room.RoomId, room.RoomType!.Price))
+            .Select(room => new BookingRoomReadModel(room.RoomId, room.RoomCode, room.Property!.OwnerId, room.RoomType!.Price))
             .FirstOrDefaultAsync();
     }
 
-    public async Task<bool> AddIfRoomRentableAsync(Bookings booking, DateTimeOffset asOfUtc)
+    public async Task<bool> AddIfRoomRentableAsync(
+        Bookings booking, Func<int, Notifications> notificationFactory, DateTimeOffset asOfUtc)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
 
@@ -40,32 +41,37 @@ public class BookingRepository : IBookingRepository
 
         var isRentable = await RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc)
             .AnyAsync(room => room.RoomId == booking.RoomId);
-        if (!isRentable)
-        {
-            return false;
-        }
+        if (!isRentable) return false;
 
         await _context.Bookings.AddAsync(booking);
+        await _context.SaveChangesAsync();
+        await _context.Notifications.AddAsync(notificationFactory(booking.BookingId));
         await _context.SaveChangesAsync();
         await transaction.CommitAsync();
         return true;
     }
 
-    public Task<List<BookingReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status)
+    public Task<List<BookingReadModel>> GetAllAsync(int? customerId, int? managerId, string? status)
     {
-        return InScope(customerId, ownerId)
+        return InScope(customerId, managerId)
             .Where(booking => status == null || booking.Status == status)
             .OrderByDescending(booking => booking.BookingId)
             .Select(ToReadModel)
             .ToListAsync();
     }
 
-    public Task<BookingReadModel?> GetByIdAsync(int bookingId, int? customerId, int? ownerId)
+    public Task<BookingReadModel?> GetByIdAsync(int bookingId, int? customerId, int? managerId)
     {
-        return InScope(customerId, ownerId)
+        return InScope(customerId, managerId)
             .Where(booking => booking.BookingId == bookingId)
             .Select(ToReadModel)
             .FirstOrDefaultAsync();
+    }
+
+    public Task<bool> IsPropertyOwnerAsync(int propertyId, int adminId)
+    {
+        return _context.Properties.AnyAsync(property =>
+            property.PropertyId == propertyId && property.OwnerId == adminId);
     }
 
     public Task<bool> ExistsAsync(int bookingId)
@@ -116,7 +122,11 @@ public class BookingRepository : IBookingRepository
         return true;
     }
 
-    public async Task<bool> CancelAsync(int bookingId, string expectedStatus, Notifications? customerNotification)
+    public async Task<bool> CancelAsync(
+        int bookingId,
+        string expectedStatus,
+        Notifications? customerNotification,
+        int? managerId = null)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
         if (_context.Database.IsNpgsql())
@@ -124,6 +134,29 @@ public class BookingRepository : IBookingRepository
             // Tạo hợp đồng cũng khoá dòng booking này, nên huỷ và lập hợp đồng không thể chạy chen nhau.
             await _context.Database.ExecuteSqlInterpolatedAsync(
                 $"SELECT 1 FROM \"Bookings\" WHERE \"BookingId\" = {bookingId} FOR UPDATE");
+            if (managerId.HasValue)
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT assignment.\"PropertyId\" FROM \"PropertyManagerAssignments\" assignment JOIN \"Rooms\" room ON room.\"PropertyId\" = assignment.\"PropertyId\" JOIN \"Bookings\" booking ON booking.\"RoomId\" = room.\"RoomId\" WHERE booking.\"BookingId\" = {bookingId} AND assignment.\"ManagerId\" = {managerId.Value} FOR SHARE OF assignment");
+            }
+        }
+
+        if (managerId.HasValue)
+        {
+            var propertyId = await _context.Bookings
+                .Where(booking => booking.BookingId == bookingId)
+                .Select(booking => (int?)booking.Room!.PropertyId)
+                .FirstOrDefaultAsync();
+            var hasActiveAssignment = propertyId.HasValue &&
+                await _context.PropertyManagerAssignments.AnyAsync(assignment =>
+                    assignment.PropertyId == propertyId.Value &&
+                    assignment.ManagerId == managerId.Value &&
+                    assignment.Manager!.IsActive &&
+                    assignment.Manager.Role!.RoleName == RoleNames.Manager);
+            if (!hasActiveAssignment)
+            {
+                return false;
+            }
         }
 
         // Chỉ huỷ khi trạng thái vẫn đúng như lúc service kiểm tra: nếu khách vừa thanh toán xong
@@ -148,12 +181,15 @@ public class BookingRepository : IBookingRepository
     }
 
     // Lọc dùng chung cho GetById và GetAll; tham số nào null thì không lọc theo tiêu chí đó.
-    private IQueryable<Bookings> InScope(int? customerId, int? ownerId)
+    private IQueryable<Bookings> InScope(int? customerId, int? managerId)
     {
         return _context.Bookings
             .AsNoTracking()
             .Where(booking => customerId == null || booking.CustomerId == customerId)
-            .Where(booking => ownerId == null || booking.Room!.Property!.OwnerId == ownerId);
+            .Where(booking => managerId == null || booking.Room!.Property!.ManagerAssignments.Any(assignment =>
+                assignment.ManagerId == managerId &&
+                assignment.Manager!.IsActive &&
+                assignment.Manager.Role!.RoleName == RoleNames.Manager));
     }
 
     private static readonly Expression<Func<Bookings, BookingReadModel>> ToReadModel = booking => new BookingReadModel(

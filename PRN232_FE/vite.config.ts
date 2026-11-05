@@ -46,6 +46,11 @@ export default defineConfig(({ mode }) => {
           target: apiProxyTarget,
           changeOrigin: true,
         },
+        "/hubs": {
+          target: apiProxyTarget,
+          changeOrigin: true,
+          ws: true,
+        },
       },
       watch: {
         ignored: ["**/.figma/**"],

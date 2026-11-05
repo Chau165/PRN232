@@ -85,6 +85,25 @@ public class InvoiceComplaintServiceTests
     }
 
     [Fact]
+    public async Task UpdateStatusAsync_rejects_manager_without_active_property_assignment()
+    {
+        var repository = new FakeComplaintRepository
+        {
+            Complaint = SampleComplaintReadModel(),
+            ManagerAssignmentActive = false
+        };
+
+        await Assert.ThrowsAsync<ComplaintAuthorizationException>(() =>
+            CreateService(repository).UpdateStatusAsync(
+                1,
+                new UpdateComplaintStatusDto(ComplaintStatuses.Resolved),
+                7,
+                RoleNames.Manager));
+
+        Assert.Empty(repository.Updates);
+    }
+
+    [Fact]
     public async Task UpdateStatusAsync_does_nothing_when_the_status_is_unchanged()
     {
         var repository = new FakeComplaintRepository { Complaint = SampleComplaintReadModel() };
@@ -143,6 +162,7 @@ public class InvoiceComplaintServiceTests
         {
             get; set;
         }
+        public bool ManagerAssignmentActive { get; init; } = true;
         public List<(InvoiceComplaints Complaint, Notifications Notification)> Added { get; } = [];
         public List<(int ComplaintId, string Status, Notifications Notification)> Updates { get; } = [];
         public (int? CustomerId, int? OwnerId, string? Status) LastQuery
@@ -178,14 +198,25 @@ public class InvoiceComplaintServiceTests
 
         public Task<bool> ExistsAsync(int complaintId) => Task.FromResult(Complaint?.ComplaintId == complaintId);
 
-        public Task UpdateStatusAsync(int complaintId, string status, Notifications customerNotification)
+        public Task<bool> HasActiveManagerAssignmentAsync(int complaintId, int managerId) =>
+            Task.FromResult(ManagerAssignmentActive && complaintId == 1 && managerId == 7);
+
+        public Task<bool> UpdateStatusAsync(
+            int complaintId,
+            string status,
+            Notifications customerNotification,
+            int? managerId = null)
         {
+            if (managerId.HasValue && !ManagerAssignmentActive)
+            {
+                return Task.FromResult(false);
+            }
             Updates.Add((complaintId, status, customerNotification));
             Complaint = Complaint! with
             {
                 Status = status
             };
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
     }
 

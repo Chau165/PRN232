@@ -11,7 +11,9 @@ public record PropertyDto(
     string City,
     decimal Latitude,
     decimal Longitude,
-    int RoomCount);
+    int RoomCount,
+    string? PrimaryImageUrl = null,
+    string? Description = null);
 
 // OwnerId KHÔNG nằm trong Create/Update DTO — lấy từ claim "sub" của JWT (user đang
 // đăng nhập), không tin client tự khai báo OwnerId của người khác.
@@ -21,8 +23,7 @@ public record CreatePropertyDto(
     string Ward,
     string District,
     string City,
-    decimal Latitude,
-    decimal Longitude);
+    string? Description = null);
 
 public record UpdatePropertyDto(
     string PropertyName,
@@ -30,5 +31,8 @@ public record UpdatePropertyDto(
     string Ward,
     string District,
     string City,
-    decimal Latitude,
-    decimal Longitude);
+    string? Description = null);
+
+public sealed record AddressCoordinates(decimal Latitude, decimal Longitude);
+
+public sealed record PropertyImageInput(string FileName, string ContentType, byte[] Content);

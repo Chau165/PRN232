@@ -61,6 +61,9 @@ const contract = (overrides: Partial<ContractDto> = {}): ContractDto => ({
   contractId: 1, bookingId: 9, roomId: 1, roomCode: "A101", propertyId: 1, propertyName: "Sunrise",
   customerId: 10, customerName: "Nguyễn An", customerPhone: "0908123456", startDate: "2026-06-01", endDate: "2099-05-31",
   monthlyRent: 3_000_000, depositAmount: 3_000_000, status: "Active", processedByStaffName: "Manager A",
+  prepaidRentAmount: 3_000_000, prepaidRentApplied: 0, remainingPrepaidCredit: 3_000_000,
+  propertyAddress: "12 Sunrise St", lessorUserId: 2, lessorName: "Owner A", lessorAddress: "12 Sunrise St",
+  displayStatus: "Active",
   ...overrides,
 })
 

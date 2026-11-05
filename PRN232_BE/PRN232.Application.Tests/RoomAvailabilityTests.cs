@@ -105,6 +105,27 @@ public class RoomAvailabilityTests
     }
 
     [Fact]
+    public async Task Terminated_contract_and_its_deposited_booking_do_not_keep_a_ready_room_occupied()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        database.Context.Rooms.Add(CreateRoom(20));
+        database.Context.Bookings.Add(CreateBooking(20, 20, BookingStatuses.Deposited, UtcAsOf.AddDays(30)));
+        var terminated = CreateContract(
+            20,
+            20,
+            ContractStatuses.Terminated,
+            new DateOnly(2026, 1, 1),
+            new DateOnly(2026, 10, 31));
+        terminated.BookingId = 20;
+        database.Context.Contracts.Add(terminated);
+        await database.Context.SaveChangesAsync();
+
+        var rooms = await new RoomService(new RoomRepository(database.Context)).GetRentableRoomsAsync(LocalAsOf);
+
+        Assert.Contains(rooms, room => room.RoomId == 20);
+    }
+
+    [Fact]
     public async Task GetPropertyAvailabilityAsync_returns_zero_and_null_when_no_room_is_rentable()
     {
         await using var context = await CreateInMemoryContextAsync();
@@ -151,42 +172,32 @@ public class RoomAvailabilityTests
         Assert.Contains("COUNT(", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("MIN(", sql, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("CustomerId", sql, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("ContractId", sql, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task RoomUpdate_accepts_reserved_and_keeps_owner_and_role_checks()
+    public async Task RoomUpdate_changes_configuration_without_allowing_status_changes_or_manager_writes()
     {
         await using var database = await TestDatabase.CreateAsync();
-        database.Context.Rooms.Add(CreateRoom(1));
+        database.Context.Rooms.Add(CreateRoom(1, RoomStatuses.Occupied));
         await database.Context.SaveChangesAsync();
         var service = new RoomService(new RoomRepository(database.Context));
 
-        var updated = await service.UpdateAsync(1, new UpdateRoomDto(1, "A-1", 20, RoomStatuses.Reserved), 10, false);
+        var updated = await service.UpdateAsync(1, new UpdateRoomDto(1, "A-1", 20), 99, true);
 
-        Assert.Equal(RoomStatuses.Reserved, updated!.Status);
+        Assert.Equal(RoomStatuses.Occupied, updated!.Status);
         await Assert.ThrowsAsync<RoomForbiddenException>(() =>
-            service.UpdateAsync(1, new UpdateRoomDto(1, "A-1", 20, RoomStatuses.Available), 20, false));
+            service.UpdateAsync(1, new UpdateRoomDto(1, "A-1", 20), 20, false));
         await Assert.ThrowsAsync<RoomValidationException>(() =>
-            service.UpdateAsync(1, new UpdateRoomDto(1, "A-1", 20, "Unknown"), 10, false));
+            service.UpdateAsync(1, new UpdateRoomDto(1, " ", 20), 10, true));
         await Assert.ThrowsAsync<RoomValidationException>(() =>
-            service.UpdateAsync(1, new UpdateRoomDto(1, " ", 20, RoomStatuses.Available), 10, false));
-        await Assert.ThrowsAsync<RoomValidationException>(() =>
-            service.UpdateAsync(1, new UpdateRoomDto(1, "A-1", 0, RoomStatuses.Available), 10, false));
+            service.UpdateAsync(1, new UpdateRoomDto(1, "A-1", 0), 10, true));
         await Assert.ThrowsAsync<RoomTypeNotFoundException>(() =>
-            service.UpdateAsync(1, new UpdateRoomDto(999, "A-1", 20, RoomStatuses.Available), 10, false));
-        Assert.Null(await service.UpdateAsync(999, new UpdateRoomDto(1, "A-999", 20, RoomStatuses.Available), 10, false));
-
-        var adminUpdated = await service.UpdateAsync(
-            1,
-            new UpdateRoomDto(1, "A-1", 20, RoomStatuses.Available),
-            99,
-            true);
-        Assert.Equal(RoomStatuses.Available, adminUpdated!.Status);
+            service.UpdateAsync(1, new UpdateRoomDto(999, "A-1", 20), 10, true));
+        Assert.Null(await service.UpdateAsync(999, new UpdateRoomDto(1, "A-999", 20), 10, true));
 
         var updateAction = typeof(RoomsController).GetMethod(nameof(RoomsController.Update))!;
         var authorization = Assert.Single(updateAction.GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true));
-        Assert.Equal("Admin,Manager", ((AuthorizeAttribute)authorization).Roles);
+        Assert.Equal("Admin", ((AuthorizeAttribute)authorization).Roles);
     }
 
     private static Rooms CreateRoom(

@@ -18,12 +18,18 @@ public class BookingService : IBookingService
     private readonly IBookingRepository _repository;
     private readonly IPaymentGateway _paymentGateway;
     private readonly TimeProvider _timeProvider;
+    private readonly INotificationRealtimePublisher? _realtimePublisher;
 
-    public BookingService(IBookingRepository repository, IPaymentGateway paymentGateway, TimeProvider timeProvider)
+    public BookingService(
+        IBookingRepository repository,
+        IPaymentGateway paymentGateway,
+        TimeProvider timeProvider,
+        INotificationRealtimePublisher? realtimePublisher = null)
     {
         _repository = repository;
         _paymentGateway = paymentGateway;
         _timeProvider = timeProvider;
+        _realtimePublisher = realtimePublisher;
     }
 
     public async Task<BookingDto> CreateAsync(CreateBookingDto dto, int customerId)
@@ -36,16 +42,26 @@ public class BookingService : IBookingService
 
         var now = _timeProvider.GetUtcNow();
         var booking = CreateBookingEntity(room, customerId, now);
+        Notifications? pendingNotification = null;
 
-        if (!await _repository.AddIfRoomRentableAsync(booking, now))
+        if (!await _repository.AddIfRoomRentableAsync(booking, bookingId => pendingNotification = new Notifications
+            {
+                UserId = room.OwnerId,
+                Title = $"Booking #{bookingId} - Phòng {room.RoomCode} đang chờ thanh toán cọc",
+                Type = NotificationTypes.Booking,
+                IsRead = false
+            }, now))
         {
             throw new BookingRoomUnavailableException("Room is not available for booking.");
         }
-
         var created = await _repository.GetByIdAsync(booking.BookingId, customerId, null);
         if (created is null)
         {
             throw new InvalidOperationException("Created booking was not found.");
+        }
+        if (pendingNotification is not null && _realtimePublisher is not null)
+        {
+            await _realtimePublisher.PublishCreatedAsync([pendingNotification]);
         }
         return ConvertToDto(created);
     }
@@ -58,16 +74,16 @@ public class BookingService : IBookingService
             throw new BookingBusinessRuleException("Status must be Pending, Deposited, or Cancelled.");
         }
 
-        var (customerId, ownerId) = GetScope(userId, role);
-        var bookings = await _repository.GetAllAsync(customerId, ownerId, status);
+        var (customerId, managerId) = GetScope(userId, role);
+        var bookings = await _repository.GetAllAsync(customerId, managerId, status);
         return bookings.Select(ConvertToDto).ToList();
     }
 
     public async Task<BookingDto?> GetByIdAsync(int id, int userId, string role)
     {
-        var (customerId, ownerId) = GetScope(userId, role);
-        var booking = await _repository.GetByIdAsync(id, customerId, ownerId);
-        if (booking is null && (customerId.HasValue || ownerId.HasValue) && await _repository.ExistsAsync(id))
+        var (customerId, managerId) = GetScope(userId, role);
+        var booking = await _repository.GetByIdAsync(id, customerId, managerId);
+        if (booking is null && (customerId.HasValue || managerId.HasValue) && await _repository.ExistsAsync(id))
         {
             throw new BookingAuthorizationException("You cannot access this booking.");
         }
@@ -132,11 +148,14 @@ public class BookingService : IBookingService
         {
             throw new BookingStatusConflictException("Only pending bookings can be paid.");
         }
-
         var paid = await _repository.GetByIdAsync(id, customerId, null);
         if (paid is null)
         {
             throw new InvalidOperationException("Paid booking was not found.");
+        }
+        if (_realtimePublisher is not null)
+        {
+            await _realtimePublisher.PublishCreatedAsync([notification]);
         }
         return ConvertToDto(paid);
     }
@@ -156,6 +175,11 @@ public class BookingService : IBookingService
         {
             throw new BookingStatusConflictException("This booking already has a contract and cannot be cancelled.");
         }
+        if (role == RoleNames.Admin &&
+            !await _repository.IsPropertyOwnerAsync(booking.PropertyId, userId))
+        {
+            throw new BookingAuthorizationException("Only the property owner can cancel this booking as an Admin.");
+        }
         // Khách chỉ tự huỷ được khi chưa trả cọc; booking đã cọc phải do quản lý/admin huỷ
         // (hoàn cọc xử lý ngoài hệ thống vì thanh toán là giả lập).
         if (role == RoleNames.Customer && booking.Status != BookingStatuses.Pending)
@@ -174,15 +198,19 @@ public class BookingService : IBookingService
                 IsRead = false
             };
         }
-        if (!await _repository.CancelAsync(id, booking.Status, notification))
+        int? managerId = role == RoleNames.Manager ? userId : null;
+        if (!await _repository.CancelAsync(id, booking.Status, notification, managerId))
         {
             throw new BookingStatusConflictException("Booking status has changed. Please reload and try again.");
         }
-
         var cancelled = await _repository.GetByIdAsync(id, null, null);
         if (cancelled is null)
         {
             throw new InvalidOperationException("Cancelled booking was not found.");
+        }
+        if (notification is not null && _realtimePublisher is not null)
+        {
+            await _realtimePublisher.PublishCreatedAsync([notification]);
         }
         return ConvertToDto(cancelled);
     }
@@ -199,7 +227,7 @@ public class BookingService : IBookingService
         };
     }
 
-    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role)
+    private static (int? CustomerId, int? ManagerId) GetScope(int userId, string role)
     {
         var scope = AccessScope.For(userId, role);
         if (scope is null)

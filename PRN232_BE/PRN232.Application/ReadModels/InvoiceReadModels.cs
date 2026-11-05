@@ -12,7 +12,8 @@ public sealed record InvoiceContractReadModel(
     decimal MonthlyRent,
     string Status,
     DateOnly StartDate,
-    DateOnly EndDate);
+    DateOnly EndDate,
+    int? BookingId = null);
 
 public sealed record BillableServiceReadModel(
     int ServiceId,
@@ -24,6 +25,8 @@ public sealed record BillableServiceReadModel(
 
 public sealed record MonthUsageReadModel(decimal ElectricUsage, decimal WaterUsage);
 
+public sealed record PrepaidRentCreditReadModel(decimal AvailableAmount);
+
 public sealed record InvoicePaymentReadModel(
     int InvoiceId,
     int CustomerId,
@@ -31,7 +34,8 @@ public sealed record InvoicePaymentReadModel(
     string RoomCode,
     DateOnly InvoiceMonth,
     string Status,
-    decimal Total);
+    decimal Total,
+    int PropertyId = 0);
 
 public sealed record InvoiceLineReadModel(
     string ItemType,
@@ -51,4 +55,12 @@ public sealed record InvoiceReadModel(
     DateOnly DueDate,
     string Status,
     decimal Total,
-    IReadOnlyList<InvoiceLineReadModel> Lines);
+    IReadOnlyList<InvoiceLineReadModel> Lines,
+    decimal PrepaidRentApplied = 0m,
+    decimal AmountPaid = 0m,
+    string? PaymentMethod = null,
+    DateTime? PaymentDateUtc = null)
+{
+    public decimal NetPayable => Math.Max(0m, Total);
+    public decimal RemainingPayable => Math.Max(0m, NetPayable - AmountPaid);
+}

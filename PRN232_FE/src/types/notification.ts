@@ -3,4 +3,6 @@ export interface NotificationDto {
   title: string
   type: string
   isRead: boolean
+  relatedEntityId?: number | null
+  body?: string | null
 }

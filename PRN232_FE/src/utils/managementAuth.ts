@@ -1,14 +1,7 @@
 import { getCurrentUserSnapshot } from "@/auth/currentUserStore"
 import type { CurrentUser } from "@/types/user"
 
-export type ManagementPermission =
-  | "viewAreas"
-  | "viewReports"
-  | "manageManagers"
-  | "manageUsers"
-  | "createProperty"
-  | "deleteProperty"
-  | "assignManager"
+export type ManagementPermission = "viewReports" | "manageManagers" | "manageUsers" | "createProperty" | "deleteProperty" | "assignManager"
 
 export function getCurrentUser(): CurrentUser {
   const user = getCurrentUserSnapshot()
@@ -21,7 +14,6 @@ export function hasPermission(
   permission: ManagementPermission,
 ) {
   const adminPermissions: ManagementPermission[] = [
-    "viewAreas",
     "viewReports",
     "manageManagers",
     "manageUsers",

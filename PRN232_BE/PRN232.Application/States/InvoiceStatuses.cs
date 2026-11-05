@@ -19,4 +19,5 @@ public static class InvoiceItemTypes
     public const string Electricity = "Electricity";
     public const string Water = "Water";
     public const string Service = "Service";
+    public const string PrepaidRentCredit = "PrepaidRentCredit";
 }

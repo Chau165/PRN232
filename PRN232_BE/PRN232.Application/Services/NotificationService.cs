@@ -8,10 +8,12 @@ namespace PRN232.Application.Services;
 public class NotificationService : INotificationService
 {
     private readonly INotificationRepository _repository;
+    private readonly INotificationRealtimePublisher? _realtimePublisher;
 
-    public NotificationService(INotificationRepository repository)
+    public NotificationService(INotificationRepository repository, INotificationRealtimePublisher? realtimePublisher = null)
     {
         _repository = repository;
+        _realtimePublisher = realtimePublisher;
     }
 
     public async Task<List<NotificationDto>> GetAllAsync(int userId, bool? isRead, string? type)
@@ -39,6 +41,10 @@ public class NotificationService : INotificationService
 
         notification.IsRead = isRead.Value;
         await _repository.SaveAsync();
+        if (_realtimePublisher is not null)
+        {
+            await _realtimePublisher.PublishReadUpdatedAsync(userId, id, isRead.Value);
+        }
     }
 
     public Task<List<int>> GetActiveAdminUserIdsAsync()
@@ -66,7 +72,9 @@ public class NotificationService : INotificationService
             entity.NotificationId,
             entity.Title,
             entity.Type,
-            entity.IsRead);
+            entity.IsRead,
+            entity.RelatedEntityId,
+            entity.Body);
     }
 }
 

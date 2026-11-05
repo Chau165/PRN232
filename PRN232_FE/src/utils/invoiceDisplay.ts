@@ -21,6 +21,7 @@ export function invoiceLineLabel(line: InvoiceLineDto) {
     ? ` (${line.quantity.toLocaleString("vi-VN")} ${unitLabels[line.unitCode] ?? line.unitCode} × ${formatVnd(line.unitPrice)})`
     : ""
   if (line.itemType === "Rent") return "Tiền phòng"
+  if (line.itemType === "PrepaidRentCredit") return "Tiền cọc đã khấu trừ vào tiền phòng"
   if (line.itemType === "Electricity") return `Điện${usage}`
   if (line.itemType === "Water") return `Nước${usage}`
   return line.description

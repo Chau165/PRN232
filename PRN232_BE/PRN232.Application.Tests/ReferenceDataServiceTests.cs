@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
 using PRN232.Application.Services;
 using PRN232.Domain.Entities;
 using Xunit;
@@ -23,17 +24,21 @@ public sealed class ReferenceDataServiceTests
         var service = new EquipmentService(repository);
 
         Assert.Equal(
-            [new EquipmentDto(4, 8, "Old name", default, default, "Old supplier", "Active")],
-            await service.GetAllAsync(8));
-        Assert.Equal(new EquipmentDto(4, 8, "Old name", default, default, "Old supplier", "Active"), await service.GetByIdAsync(4));
+            [new EquipmentDto(4, 8, "Old name", default, default, "Old supplier", "Operational", "A101", 1, "Sunrise")],
+            await service.GetAllAsync(8, null, null, null, 9, "Admin"));
+        Assert.Equal(
+            new EquipmentDto(4, 8, "Old name", default, default, "Old supplier", "Operational", "A101", 1, "Sunrise"),
+            await service.GetByIdAsync(4, 9, "Admin"));
 
         var updated = await service.UpdateAsync(
             4,
-            new UpdateEquipmentDto(" New name ", default, default, " supplier ", " Maintained "),
+            new UpdateEquipmentDto(" New name ", default, default, " supplier ", " Operational "),
             requestingUserId: 9,
-            isAdmin: true);
+            role: "Admin");
 
-        Assert.Equal(new EquipmentDto(4, 8, "New name", default, default, "supplier", "Maintained"), updated);
+        Assert.Equal(
+            new EquipmentDto(4, 8, "New name", default, default, "supplier", "Operational", "A101", 1, "Sunrise"),
+            updated);
         Assert.Equal(8, entity.RoomId);
         Assert.Equal(1, repository.SaveChangesCallCount);
     }
@@ -58,12 +63,43 @@ public sealed class ReferenceDataServiceTests
             get; private set;
         }
 
-        public Task<List<Equipments>> GetAllAsync(int? roomId) =>
-            Task.FromResult(new List<Equipments> { equipment });
+        public Task<List<EquipmentReadModel>> GetAllAsync(
+            int? roomId,
+            int? propertyId,
+            string? status,
+            string? search,
+            int? managerId,
+            int? page,
+            int? pageSize) =>
+            Task.FromResult(new List<EquipmentReadModel>
+            {
+                new(
+                    equipment.EquipmentId,
+                    equipment.RoomId,
+                    "A101",
+                    1,
+                    "Sunrise",
+                    equipment.Name,
+                    equipment.InstallDate,
+                    equipment.WarrantyExpiry,
+                    equipment.Supplier,
+                    "Operational")
+            });
 
-        public Task<Equipments?> GetByIdAsync(int id) => Task.FromResult<Equipments?>(equipment);
+        public Task<EquipmentReadModel?> GetByIdAsync(int id, int? managerId) =>
+            Task.FromResult<EquipmentReadModel?>(new(
+                equipment.EquipmentId,
+                equipment.RoomId,
+                "A101",
+                1,
+                "Sunrise",
+                equipment.Name,
+                equipment.InstallDate,
+                equipment.WarrantyExpiry,
+                equipment.Supplier,
+                "Operational"));
 
-        public Task<Equipments?> GetTrackedByIdAsync(int id) => Task.FromResult<Equipments?>(equipment);
+        public Task<Equipments?> GetTrackedByIdAsync(int id, int? managerId) => Task.FromResult<Equipments?>(equipment);
 
         public Task<Equipments> AddAsync(Equipments value) => Task.FromResult(value);
 
@@ -71,9 +107,11 @@ public sealed class ReferenceDataServiceTests
         {
         }
 
-        public Task<int?> GetOwnerIdAsync(int roomId) => Task.FromResult<int?>(9);
-
         public Task<bool> RoomExistsAsync(int roomId) => Task.FromResult(true);
+
+        public Task<bool> HasRoomAccessAsync(int roomId, int managerId) => Task.FromResult(true);
+
+        public Task<bool> HasMaintenanceDependenciesAsync(int equipmentId) => Task.FromResult(false);
 
         public Task SaveChangesAsync()
         {
