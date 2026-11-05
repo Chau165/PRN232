@@ -5,9 +5,15 @@ import '../features/auth/login_screen.dart';
 import '../features/auth/register_screen.dart';
 import '../features/auth/splash_screen.dart';
 import '../features/customer/customer_shell_screen.dart';
+import '../features/customer/data/customer_mock_data.dart';
+import '../features/customer/models/customer_models.dart';
 import '../features/customer/screens/customer_bills_screen.dart';
 import '../features/customer/screens/customer_explore_screen.dart';
 import '../features/customer/screens/customer_my_room_screen.dart';
+import '../features/customer/screens/deposit_screen.dart';
+import '../features/customer/screens/payment_success_screen.dart';
+import '../features/customer/screens/property_detail_screen.dart';
+import '../features/customer/screens/room_detail_screen.dart';
 import '../features/manager/manager_shell_screen.dart';
 import '../features/manager/screens/manager_billing_screen.dart';
 import '../features/manager/screens/manager_dashboard_screen.dart';
@@ -73,11 +79,59 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const RegisterScreen(),
     ),
 
-    // Common Profile & Notifications
+    // Notifications
     GoRoute(
       path: AppRoutes.notifications,
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const NotificationsScreen(),
+    ),
+
+    // Full-screen customer details
+    GoRoute(
+      path: AppRoutes.propertyDetail,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) {
+        final property = state.extra is PropertyItem
+            ? state.extra as PropertyItem
+            : CustomerMockData.properties.first;
+        return PropertyDetailScreen(property: property);
+      },
+    ),
+    GoRoute(
+      path: AppRoutes.roomDetail,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) {
+        final extraMap = state.extra as Map<String, dynamic>?;
+        final property = extraMap?['property'] as PropertyItem? ??
+            CustomerMockData.properties.first;
+        final room = extraMap?['room'] as RoomItem? ?? property.rooms.first;
+        return RoomDetailScreen(property: property, room: room);
+      },
+    ),
+    GoRoute(
+      path: AppRoutes.deposit,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) {
+        final extraMap = state.extra as Map<String, dynamic>?;
+        final property = extraMap?['property'] as PropertyItem? ??
+            CustomerMockData.properties.first;
+        final room = extraMap?['room'] as RoomItem? ?? property.rooms.first;
+        return DepositScreen(property: property, room: room);
+      },
+    ),
+    GoRoute(
+      path: AppRoutes.paymentSuccess,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) {
+        final extraMap = state.extra as Map<String, dynamic>? ?? {};
+        return PaymentSuccessScreen(
+          title: extraMap['title'] as String? ?? 'Thanh toán thành công',
+          subtitle: extraMap['subtitle'] as String? ?? 'Giao dịch đã được ghi nhận',
+          amount: extraMap['amount'] as num? ?? 0,
+          method: extraMap['method'] as String? ?? 'VNPay',
+          code: extraMap['code'] as String? ?? 'TXN-000000',
+        );
+      },
     ),
 
     // ==========================================

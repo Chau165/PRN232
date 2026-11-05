@@ -1,192 +1,234 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
-import '../../../core/utils/formatters.dart';
-import '../../../core/widgets/app_card.dart';
-import '../../../core/widgets/status_badge.dart';
+import '../data/customer_mock_data.dart';
+import '../models/customer_models.dart';
+import '../widgets/explore_map_view.dart';
+import '../widgets/property_card_widget.dart';
 
-class CustomerExploreScreen extends StatelessWidget {
+class CustomerExploreScreen extends StatefulWidget {
   const CustomerExploreScreen({super.key});
 
   @override
+  State<CustomerExploreScreen> createState() => _CustomerExploreScreenState();
+}
+
+class _CustomerExploreScreenState extends State<CustomerExploreScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  bool _isMapView = false;
+  String _selectedDistrict = 'Tất cả';
+
+  final List<String> _districts = [
+    'Tất cả',
+    'Gò Vấp',
+    'Bình Thạnh',
+    'TP. Thủ Đức',
+    'Quận 7',
+    'Dưới 3 triệu',
+  ];
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<PropertyItem> get _filteredProperties {
+    return CustomerMockData.properties.where((p) {
+      final matchesQuery = _searchController.text.trim().isEmpty ||
+          p.propertyName
+              .toLowerCase()
+              .contains(_searchController.text.trim().toLowerCase()) ||
+          p.district
+              .toLowerCase()
+              .contains(_searchController.text.trim().toLowerCase());
+
+      final matchesDistrict = _selectedDistrict == 'Tất cả' ||
+          (_selectedDistrict == 'Dưới 3 triệu'
+              ? p.startingPrice <= 3000000
+              : p.district.contains(_selectedDistrict));
+
+      return matchesQuery && matchesDistrict;
+    }).toList();
+  }
+
+  void _navigateToDetail(PropertyItem property) {
+    context.push('/property-detail', extra: property);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final properties = _filteredProperties;
+
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Search & Filter Header Placeholder
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.border),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x0A0F172A),
-                    blurRadius: 10,
-                    offset: Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.search, color: AppColors.primary, size: 22),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Tìm theo quận, tên đường, khu vực...',
-                      style: AppTypography.bodyMedium.copyWith(color: AppColors.textLight),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryLight,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.tune_rounded, size: 18, color: AppColors.primary),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Quick Category Chips
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildChip('Tất cả', isSelected: true),
-                  _buildChip('Gò Vấp'),
-                  _buildChip('Bình Thạnh'),
-                  _buildChip('Quận 7'),
-                  _buildChip('Thủ Đức'),
-                  _buildChip('Dưới 3 triệu'),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Khu trọ nổi bật', style: AppTypography.headingMedium),
-                Text('Xem tất cả',
-                    style: AppTypography.labelMedium
-                        .copyWith(color: AppColors.primary)),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Demo Property Card 1
-            _buildPropertyCard(
-              title: 'Nhà trọ Bình An',
-              address: '12 Đường Số 5, Phường 10, Gò Vấp',
-              price: 3200000,
-              availableRooms: 3,
-            ),
-            const SizedBox(height: 16),
-
-            // Demo Property Card 2
-            _buildPropertyCard(
-              title: 'Căn Hộ Mini Xanh House',
-              address: '88 Nguyễn Xí, Phường 26, Bình Thạnh',
-              price: 4500000,
-              availableRooms: 2,
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildChip(String label, {bool isSelected = false}) {
-    return Container(
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-      decoration: BoxDecoration(
-        color: isSelected ? AppColors.primary : AppColors.surfaceVariant,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: AppTypography.labelSmall.copyWith(
-          color: isSelected ? Colors.white : AppColors.textSecondary,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPropertyCard({
-    required String title,
-    required String address,
-    required num price,
-    required int availableRooms,
-  }) {
-    return AppCard(
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      body: Column(
         children: [
+          // Search & Filter Bar
           Container(
-            height: 140,
-            decoration: const BoxDecoration(
-              color: AppColors.primaryLight,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-            ),
-            alignment: Alignment.center,
-            child: const Icon(Icons.apartment_rounded,
-                size: 48, color: AppColors.primary),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+            color: Colors.white,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(title, style: AppTypography.headingMedium),
-                    StatusBadge(
-                      label: '$availableRooms phòng trống',
-                      tone: StatusTone.green,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.location_on_outlined,
-                        size: 15, color: AppColors.textMuted),
-                    const SizedBox(width: 4),
                     Expanded(
-                      child: Text(address,
-                          style: AppTypography.bodySmall,
-                          overflow: TextOverflow.ellipsis),
+                      child: Container(
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceVariant,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.borderLight),
+                        ),
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (_) => setState(() {}),
+                          style: AppTypography.bodyMedium,
+                          decoration: InputDecoration(
+                            hintText: 'Tìm theo quận, tên đường, khu trọ...',
+                            hintStyle: AppTypography.bodySmall
+                                .copyWith(color: AppColors.textLight),
+                            prefixIcon: const Icon(Icons.search_rounded,
+                                color: AppColors.primary, size: 20),
+                            suffixIcon: _searchController.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear_rounded,
+                                        size: 16),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() {});
+                                    },
+                                  )
+                                : null,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Map / List Toggle Button
+                    InkWell(
+                      onTap: () {
+                        setState(() => _isMapView = !_isMapView);
+                      },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        height: 46,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: _isMapView
+                              ? AppColors.primary
+                              : AppColors.primaryLight,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _isMapView
+                                  ? Icons.view_agenda_outlined
+                                  : Icons.map_outlined,
+                              size: 18,
+                              color: _isMapView
+                                  ? Colors.white
+                                  : AppColors.primary,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              _isMapView ? 'Danh sách' : 'Bản đồ',
+                              style: AppTypography.labelSmall.copyWith(
+                                color: _isMapView
+                                    ? Colors.white
+                                    : AppColors.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),
-                const Divider(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Từ ${Formatters.formatShortPrice(price)}',
-                      style: AppTypography.headingLarge
-                          .copyWith(color: AppColors.primary),
-                    ),
-                    Text('Xem chi tiết →',
-                        style: AppTypography.labelSmall
-                            .copyWith(color: AppColors.primary)),
-                  ],
+                const SizedBox(height: 10),
+
+                // District Chips
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: _districts.map((district) {
+                      final isSelected = _selectedDistrict == district;
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() => _selectedDistrict = district);
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppColors.primary
+                                : AppColors.surfaceVariant,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            district,
+                            style: AppTypography.labelSmall.copyWith(
+                              color: isSelected
+                                  ? Colors.white
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
                 ),
               ],
             ),
+          ),
+          const Divider(height: 1),
+
+          // Main View (List or Map)
+          Expanded(
+            child: _isMapView
+                ? ExploreMapView(
+                    properties: properties,
+                    onPropertySelected: _navigateToDetail,
+                  )
+                : properties.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.search_off_rounded,
+                                size: 56, color: AppColors.textMuted),
+                            const SizedBox(height: 12),
+                            Text('Không tìm thấy khu trọ phù hợp.',
+                                style: AppTypography.headingSmall),
+                            const SizedBox(height: 4),
+                            Text('Thử tìm kiếm với từ khóa hoặc quận khác.',
+                                style: AppTypography.bodySmall),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: properties.length,
+                        separatorBuilder: (_, _) =>
+                            const SizedBox(height: 16),
+                        itemBuilder: (context, index) {
+                          final prop = properties[index];
+                          return PropertyCardWidget(
+                            property: prop,
+                            onTap: () => _navigateToDetail(prop),
+                          );
+                        },
+                      ),
           ),
         ],
       ),

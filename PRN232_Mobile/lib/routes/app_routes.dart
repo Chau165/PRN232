@@ -10,13 +10,19 @@ class AppRoutes {
   static const String profile = '/profile';
   static const String notifications = '/notifications';
 
-  // Customer Routes
+  // Sub-screens
+  static const String propertyDetail = '/property-detail';
+  static const String roomDetail = '/room-detail';
+  static const String deposit = '/deposit';
+  static const String paymentSuccess = '/payment-success';
+
+  // Customer Routes (Shell)
   static const String customerExplore = '/customer/explore';
   static const String customerMyRoom = '/customer/my-room';
   static const String customerBills = '/customer/bills';
   static const String customerProfile = '/customer/profile';
 
-  // Manager Routes
+  // Manager Routes (Shell)
   static const String managerDashboard = '/manager/dashboard';
   static const String managerRooms = '/manager/rooms';
   static const String managerTasks = '/manager/tasks';
