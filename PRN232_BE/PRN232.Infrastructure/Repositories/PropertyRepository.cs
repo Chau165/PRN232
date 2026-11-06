@@ -56,6 +56,29 @@ public class PropertyRepository : IPropertyRepository
             .FirstOrDefaultAsync();
     }
 
+    public Task<List<PropertyServiceRateReadModel>> GetServiceRatesAsync(
+        int propertyId, DateOnly? month, CancellationToken cancellationToken)
+    {
+        var rates = _context.PropertyServiceRates
+            .AsNoTracking()
+            .Where(rate => rate.PropertyId == propertyId);
+        if (month.HasValue)
+        {
+            // EffectiveTo is exclusive, matching the invoice billing query.
+            var monthStart = month.Value;
+            rates = rates.Where(rate => rate.EffectiveFrom <= monthStart &&
+                (rate.EffectiveTo == null || rate.EffectiveTo > monthStart));
+        }
+
+        return rates.OrderBy(rate => rate.ServiceId)
+            .ThenByDescending(rate => rate.EffectiveFrom)
+            .ThenBy(rate => rate.RateId)
+            .Select(rate => new PropertyServiceRateReadModel(
+                rate.RateId, rate.PropertyId, rate.ServiceId, rate.Service!.Name, rate.Price,
+                rate.UnitCode, rate.BillingBasis, rate.EffectiveFrom, rate.EffectiveTo))
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<Property?> GetTrackedByIdAsync(int id)
     {
         return _context.Properties.FirstOrDefaultAsync(p => p.PropertyId == id);

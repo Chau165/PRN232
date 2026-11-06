@@ -41,6 +41,45 @@ public class PropertiesController : ControllerBase
         return Ok(property);
     }
 
+    /// <summary>Read property rates, optionally effective at a month start. EffectiveTo is exclusive.</summary>
+    [HttpGet("{id:int}/service-rates")]
+    [Authorize(Roles = "Admin,Manager")]
+    [ProducesResponseType(typeof(List<PropertyServiceRateDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<List<PropertyServiceRateDto>>> GetServiceRates(
+        int id, [FromQuery] DateOnly? month, CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(User.FindFirst("sub")?.Value, out var userId) || userId <= 0)
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            var rates = await _propertyService.GetServiceRatesAsync(id, month, userId, IsAdmin(), cancellationToken);
+            if (rates is null)
+            {
+                return NotFound();
+            }
+            return Ok(rates);
+        }
+        catch (PropertyForbiddenException exception)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden,
+                new ProblemDetails { Title = "Not the owner", Detail = exception.Message });
+        }
+        catch (PropertyValidationException exception)
+        {
+            return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                ["month"] = [exception.Message]
+            }));
+        }
+    }
+
     [HttpPost]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<PropertyDto>> Create(CreatePropertyDto dto)

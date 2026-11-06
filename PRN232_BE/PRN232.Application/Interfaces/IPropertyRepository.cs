@@ -6,6 +6,7 @@ public interface IPropertyRepository
 {
     Task<List<PropertySummaryReadModel>> GetAllAsync(int? ownerId);
     Task<PropertySummaryReadModel?> GetByIdAsync(int id);
+    Task<List<PropertyServiceRateReadModel>> GetServiceRatesAsync(int propertyId, DateOnly? month, CancellationToken cancellationToken);
     Task<PRN232.Domain.Entities.Property?> GetTrackedByIdAsync(int id);
     Task<PRN232.Domain.Entities.Property> AddAsync(PRN232.Domain.Entities.Property property);
     void Remove(PRN232.Domain.Entities.Property property);

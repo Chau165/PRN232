@@ -246,7 +246,12 @@ app.UseForwardedHeaders();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.UseHttpsRedirection();
+// Local Vite proxies /api to HTTP port 5102. Redirecting that request to
+// HTTPS would bypass the proxy and require browser certificate/CORS setup.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 app.UseCors("FrontendPolicy");
 // Rate limiter đứng sau UseAuthentication để BookingPolicy đọc được user từ token.
 app.UseAuthentication();

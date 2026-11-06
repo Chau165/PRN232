@@ -29,6 +29,30 @@ public class PropertyService : IPropertyService
         return ConvertToDto(property);
     }
 
+    public async Task<List<PropertyServiceRateDto>?> GetServiceRatesAsync(
+        int id, DateOnly? month, int requestingUserId, bool isAdmin, CancellationToken cancellationToken)
+    {
+        if (month.HasValue && month.Value.Day != 1)
+        {
+            throw new PropertyValidationException("Month must be the first day of a month (yyyy-MM-01).");
+        }
+
+        var property = await _repository.GetByIdAsync(id);
+        if (property is null)
+        {
+            return null;
+        }
+        if (!isAdmin && property.OwnerId != requestingUserId)
+        {
+            throw new PropertyForbiddenException();
+        }
+
+        var rates = await _repository.GetServiceRatesAsync(id, month, cancellationToken);
+        return rates.Select(rate => new PropertyServiceRateDto(
+            rate.RateId, rate.PropertyId, rate.ServiceId, rate.ServiceName, rate.Price,
+            rate.UnitCode, rate.BillingBasis, rate.EffectiveFrom, rate.EffectiveTo)).ToList();
+    }
+
     public async Task<PropertyDto> CreateAsync(CreatePropertyDto dto, int ownerId)
     {
         if (string.IsNullOrWhiteSpace(dto.PropertyName))

@@ -6,6 +6,7 @@ public interface IPropertyService
 {
     Task<List<PropertyDto>> GetAllAsync(int? ownerId);
     Task<PropertyDto?> GetByIdAsync(int id);
+    Task<List<PropertyServiceRateDto>?> GetServiceRatesAsync(int id, DateOnly? month, int requestingUserId, bool isAdmin, CancellationToken cancellationToken);
     Task<PropertyDto> CreateAsync(CreatePropertyDto dto, int ownerId);
     Task<PropertyDto?> UpdateAsync(int id, UpdatePropertyDto dto, int requestingUserId, bool isAdmin);
     Task<bool> DeleteAsync(int id, int requestingUserId, bool isAdmin);
