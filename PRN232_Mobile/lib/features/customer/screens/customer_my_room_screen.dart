@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/status_badge.dart';
+import '../../../routes/app_routes.dart';
 import '../data/customer_mock_data.dart';
 import '../models/customer_models.dart';
 import '../widgets/report_damage_bottom_sheet.dart';
@@ -59,14 +61,7 @@ class _CustomerMyRoomScreenState extends State<CustomerMyRoomScreen> {
           IconButton(
             tooltip: 'Hợp đồng thuê',
             icon: const Icon(Icons.description_outlined, color: AppColors.textPrimary),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Hợp đồng HD-2026-204 có hiệu lực đến 31/12/2026'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            },
+            onPressed: () => context.push(AppRoutes.customerContracts),
           ),
         ],
       ),
@@ -253,10 +248,22 @@ class _CustomerMyRoomScreenState extends State<CustomerMyRoomScreen> {
             const SizedBox(height: 24),
 
             // Recent Maintenance History
-            Text('Lịch sử sửa chữa gần đây',
-                style: AppTypography.headingMedium),
-            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Lịch sử sửa chữa gần đây',
+                    style: AppTypography.headingMedium),
+                TextButton(
+                  onPressed: () => context.push(AppRoutes.customerMaintenance),
+                  child: Text('Xem tất cả →',
+                      style: AppTypography.labelMedium
+                          .copyWith(color: AppColors.primary)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             AppCard(
+              onTap: () => context.push(AppRoutes.customerMaintenance),
               padding: const EdgeInsets.all(14),
               child: Row(
                 children: [

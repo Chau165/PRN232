@@ -40,11 +40,11 @@ class ManagerRoomModel {
   final double area;
   final num price;
   final num depositAmount;
-  final String status; // Occupied, Available, Reserved, Maintenance
+  String status; // Occupied, Available, Reserved, Maintenance
   final List<TenantModel> tenants;
   final DateTime? contractEnd;
 
-  const ManagerRoomModel({
+  ManagerRoomModel({
     required this.roomId,
     required this.roomCode,
     required this.typeName,
@@ -104,6 +104,9 @@ class ManagerTaskModel {
   final String? priority; // Bình thường, Khẩn cấp
   String? technicianName;
   final List<String> evidenceImages;
+  num? actualCost;
+  String? completionNotes;
+  String? invoiceReceiptImage;
 
   ManagerTaskModel({
     required this.id,
@@ -122,6 +125,9 @@ class ManagerTaskModel {
     this.priority,
     this.technicianName,
     this.evidenceImages = const [],
+    this.actualCost,
+    this.completionNotes,
+    this.invoiceReceiptImage,
   });
 
   bool get isPending => status == TaskStatus.pending;
@@ -193,4 +199,102 @@ class ManagerInvoiceModel {
   bool get isPaid => status == 'Paid';
   bool get isUnpaid => status == 'Unpaid';
   bool get isOverdue => status == 'Overdue';
+}
+
+// ==========================================
+// BỔ SUNG CÁC MODEL FULL NGHIỆP VỤ MANAGER
+// ==========================================
+
+class ManagerContractModel {
+  final int id;
+  final String contractCode;
+  final int propertyId;
+  final String propertyName;
+  final int roomId;
+  final String roomCode;
+  final String roomTypeName;
+  final String primaryTenantName;
+  final String tenantPhone;
+  final String tenantCccd;
+  final DateTime startDate;
+  DateTime endDate;
+  num monthlyRent;
+  final num depositAmount;
+  String status; // Active, ExpiringSoon, Terminated, Pending
+  String? notes;
+
+  ManagerContractModel({
+    required this.id,
+    required this.contractCode,
+    required this.propertyId,
+    required this.propertyName,
+    required this.roomId,
+    required this.roomCode,
+    required this.roomTypeName,
+    required this.primaryTenantName,
+    required this.tenantPhone,
+    required this.tenantCccd,
+    required this.startDate,
+    required this.endDate,
+    required this.monthlyRent,
+    required this.depositAmount,
+    required this.status,
+    this.notes,
+  });
+
+  bool get isActive => status == 'Active';
+  bool get isExpiringSoon => status == 'ExpiringSoon';
+  bool get isTerminated => status == 'Terminated';
+}
+
+class ManagerEquipmentModel {
+  final int id;
+  final String code;
+  final String name;
+  final String roomCode;
+  final String category;
+  String status; // Tốt, Cần sửa, Hỏng
+  final String installedDate;
+  final num? price;
+
+  ManagerEquipmentModel({
+    required this.id,
+    required this.code,
+    required this.name,
+    required this.roomCode,
+    required this.category,
+    required this.status,
+    required this.installedDate,
+    this.price,
+  });
+}
+
+class ManagerIdentityReviewModel {
+  final int id;
+  final String tenantName;
+  final String tenantPhone;
+  final String roomCode;
+  final String idNumber;
+  final String frontImageUrl;
+  final String backImageUrl;
+  String status; // Pending, Verified, Rejected
+  String? rejectReason;
+  final DateTime uploadedAt;
+
+  ManagerIdentityReviewModel({
+    required this.id,
+    required this.tenantName,
+    required this.tenantPhone,
+    required this.roomCode,
+    required this.idNumber,
+    required this.frontImageUrl,
+    required this.backImageUrl,
+    required this.status,
+    this.rejectReason,
+    required this.uploadedAt,
+  });
+
+  bool get isPending => status == 'Pending';
+  bool get isVerified => status == 'Verified';
+  bool get isRejected => status == 'Rejected';
 }

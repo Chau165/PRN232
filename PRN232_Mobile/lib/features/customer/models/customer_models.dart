@@ -152,3 +152,200 @@ class InvoiceModel {
   bool get isUnpaid => status == 'Unpaid';
   bool get isPaid => status == 'Paid';
 }
+
+// ==========================================
+// BỔ SUNG CÁC MODEL FULL NGHIỆP VỤ CUSTOMER
+// ==========================================
+
+class CustomerViewingModel {
+  final int id;
+  final int propertyId;
+  final String propertyName;
+  final String propertyAddress;
+  final int roomId;
+  final String roomCode;
+  final DateTime viewingDate;
+  final String slotTime;
+  final String? note;
+  String status; // Pending, Confirmed, Cancelled, Completed
+
+  CustomerViewingModel({
+    required this.id,
+    required this.propertyId,
+    required this.propertyName,
+    required this.propertyAddress,
+    required this.roomId,
+    required this.roomCode,
+    required this.viewingDate,
+    required this.slotTime,
+    this.note,
+    required this.status,
+  });
+
+  bool get isPending => status == 'Pending';
+  bool get isConfirmed => status == 'Confirmed';
+  bool get isCancelled => status == 'Cancelled';
+}
+
+class CustomerBookingModel {
+  final int id;
+  final String bookingCode;
+  final int propertyId;
+  final String propertyName;
+  final String propertyAddress;
+  final int roomId;
+  final String roomCode;
+  final String roomTypeName;
+  final num depositAmount;
+  final num monthlyPrice;
+  final String paymentMethod;
+  final DateTime bookingDate;
+  final DateTime moveInDate;
+  String status; // Pending, Confirmed, Cancelled, Expired, ContractCreated
+
+  CustomerBookingModel({
+    required this.id,
+    required this.bookingCode,
+    required this.propertyId,
+    required this.propertyName,
+    required this.propertyAddress,
+    required this.roomId,
+    required this.roomCode,
+    required this.roomTypeName,
+    required this.depositAmount,
+    required this.monthlyPrice,
+    required this.paymentMethod,
+    required this.bookingDate,
+    required this.moveInDate,
+    required this.status,
+  });
+
+  bool get isPending => status == 'Pending';
+  bool get isConfirmed => status == 'Confirmed';
+  bool get isCancelled => status == 'Cancelled';
+}
+
+class ContractTimelineItem {
+  final String periodName;
+  final DateTime dueDate;
+  final num amount;
+  final bool isPaid;
+
+  const ContractTimelineItem({
+    required this.periodName,
+    required this.dueDate,
+    required this.amount,
+    required this.isPaid,
+  });
+}
+
+class CustomerContractModel {
+  final int id;
+  final String contractCode;
+  final int propertyId;
+  final String propertyName;
+  final String propertyAddress;
+  final int roomId;
+  final String roomCode;
+  final String roomTypeName;
+  final String primaryTenantName;
+  final String tenantCccd;
+  final String tenantPhone;
+  final DateTime startDate;
+  DateTime endDate;
+  num monthlyRent;
+  final num depositAmount;
+  final int paymentCycleMonths;
+  final String terms;
+  String status; // Active, ExpiringSoon, Terminated, Pending
+  final List<ContractTimelineItem> billingTimeline;
+
+  CustomerContractModel({
+    required this.id,
+    required this.contractCode,
+    required this.propertyId,
+    required this.propertyName,
+    required this.propertyAddress,
+    required this.roomId,
+    required this.roomCode,
+    required this.roomTypeName,
+    required this.primaryTenantName,
+    required this.tenantCccd,
+    required this.tenantPhone,
+    required this.startDate,
+    required this.endDate,
+    required this.monthlyRent,
+    required this.depositAmount,
+    this.paymentCycleMonths = 1,
+    required this.terms,
+    required this.status,
+    required this.billingTimeline,
+  });
+
+  bool get isActive => status == 'Active' || status == 'ExpiringSoon';
+  bool get isTerminated => status == 'Terminated';
+}
+
+class IdentityDocumentModel {
+  final int id;
+  final String fullName;
+  final String idNumber;
+  final DateTime? issueDate;
+  final String frontImageUrl;
+  final String backImageUrl;
+  String status; // Pending, Verified, Rejected
+  String? rejectReason;
+  final DateTime uploadedAt;
+
+  IdentityDocumentModel({
+    required this.id,
+    required this.fullName,
+    required this.idNumber,
+    this.issueDate,
+    required this.frontImageUrl,
+    required this.backImageUrl,
+    required this.status,
+    this.rejectReason,
+    required this.uploadedAt,
+  });
+
+  bool get isPending => status == 'Pending';
+  bool get isVerified => status == 'Verified';
+  bool get isRejected => status == 'Rejected';
+}
+
+class CustomerMaintenanceModel {
+  final int id;
+  final String title;
+  final String description;
+  final String roomCode;
+  final String propertyName;
+  final String priority; // Normal, Urgent
+  final List<String> images;
+  String status; // Pending, InProgress, Completed, Cancelled
+  final DateTime createdAt;
+  String? technicianName;
+  String? technicianPhone;
+  num? actualCost;
+  DateTime? completedDate;
+
+  CustomerMaintenanceModel({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.roomCode,
+    required this.propertyName,
+    required this.priority,
+    this.images = const [],
+    required this.status,
+    required this.createdAt,
+    this.technicianName,
+    this.technicianPhone,
+    this.actualCost,
+    this.completedDate,
+  });
+
+  bool get isPending => status == 'Pending';
+  bool get isInProgress => status == 'InProgress';
+  bool get isCompleted => status == 'Completed';
+}

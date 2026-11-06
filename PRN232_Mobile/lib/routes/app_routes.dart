@@ -22,12 +22,24 @@ class AppRoutes {
   static const String customerBills = '/customer/bills';
   static const String customerProfile = '/customer/profile';
 
+  // Customer Extended Sub-screens
+  static const String customerBookings = '/customer/my-bookings';
+  static const String customerContracts = '/customer/my-contracts';
+  static const String customerIdentity = '/customer/identity';
+  static const String customerMaintenance = '/customer/my-maintenance';
+
   // Manager Routes (Shell)
   static const String managerDashboard = '/manager/dashboard';
   static const String managerRooms = '/manager/rooms';
   static const String managerTasks = '/manager/tasks';
   static const String managerBilling = '/manager/billing';
   static const String managerProfile = '/manager/profile';
+
+  // Manager Extended Sub-screens
+  static const String managerContracts = '/manager/contracts';
+  static const String managerCreateContract = '/manager/contracts/create';
+  static const String managerEquipments = '/manager/equipments';
+  static const String managerIdentityReviews = '/manager/identity-reviews';
 
   // Default initial locations according to role
   static const String customerInitial = customerExplore;

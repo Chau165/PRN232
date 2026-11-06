@@ -15,39 +15,40 @@ class ProfileScreen extends StatelessWidget {
 
   void _showEditProfileBottomSheet(BuildContext context) {
     final user = authState.currentUser;
-    if (user == null) return;
-
-    final nameController = TextEditingController(text: user.fullName);
-    final phoneController = TextEditingController(text: user.phoneNumber);
+    final nameController = TextEditingController(text: user?.fullName);
+    final phoneController = TextEditingController(text: user?.phoneNumber);
 
     AppBottomSheet.show(
       context: context,
-      title: 'Chỉnh sửa thông tin',
-      subtitle: 'Cập nhật tên và số điện thoại liên hệ',
+      title: 'Chỉnh sửa thông tin cá nhân',
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           AppTextField(
             label: 'Họ và tên',
             controller: nameController,
-            prefixIcon: const Icon(Icons.person_outline),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           AppTextField(
             label: 'Số điện thoại',
             controller: phoneController,
             keyboardType: TextInputType.phone,
-            prefixIcon: const Icon(Icons.phone_outlined),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           AppButton(
             text: 'Lưu thay đổi',
-            onPressed: () async {
+            onPressed: () {
               if (nameController.text.trim().isNotEmpty) {
-                await authState.updateProfile(
+                authState.updateProfile(
                   fullName: nameController.text.trim(),
                   phoneNumber: phoneController.text.trim(),
                 );
-                if (context.mounted) Navigator.pop(context);
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Đã cập nhật thông tin cá nhân thành công!'),
+                  ),
+                );
               }
             },
           ),
@@ -57,34 +58,27 @@ class ProfileScreen extends StatelessWidget {
   }
 
   void _showChangePasswordBottomSheet(BuildContext context) {
-    final currentPassController = TextEditingController();
-    final newPassController = TextEditingController();
-    final confirmPassController = TextEditingController();
+    final oldPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
 
     AppBottomSheet.show(
       context: context,
       title: 'Đổi mật khẩu',
-      subtitle: 'Mật khẩu mới tối thiểu 6 ký tự',
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           AppTextField(
             label: 'Mật khẩu hiện tại',
-            controller: currentPassController,
             isPassword: true,
+            controller: oldPasswordController,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           AppTextField(
             label: 'Mật khẩu mới',
-            controller: newPassController,
             isPassword: true,
+            controller: newPasswordController,
           ),
-          const SizedBox(height: 14),
-          AppTextField(
-            label: 'Xác nhận mật khẩu mới',
-            controller: confirmPassController,
-            isPassword: true,
-          ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           AppButton(
             text: 'Cập nhật mật khẩu',
             onPressed: () {
@@ -141,22 +135,28 @@ class ProfileScreen extends StatelessWidget {
         }
 
         return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: AppBar(
+            title: const Text('Tài Khoản & Hồ Sơ'),
+            backgroundColor: Colors.white,
+            elevation: 0,
+          ),
           body: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Profile Avatar & Info Card
                 AppCard(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(18),
                   child: Row(
                     children: [
                       Container(
-                        width: 64,
-                        height: 64,
+                        width: 60,
+                        height: 60,
                         decoration: BoxDecoration(
                           color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(18),
                         ),
                         alignment: Alignment.center,
                         child: Text(
@@ -201,7 +201,96 @@ class ProfileScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
+
+                // Extended Business Features for Customer
+                if (user.isCustomer) ...[
+                  Text('Quản lý thuê trọ & Giấy tờ', style: AppTypography.headingMedium),
+                  const SizedBox(height: 10),
+                  AppCard(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.bookmark_border_rounded,
+                              color: AppColors.primary),
+                          title: Text('Lịch hẹn & Cọc phòng', style: AppTypography.labelLarge),
+                          subtitle: Text('Theo dõi các cuộc hẹn xem phòng và đơn cọc', style: AppTypography.bodySmall),
+                          trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+                          onTap: () => context.push(AppRoutes.customerBookings),
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.description_outlined,
+                              color: AppColors.primary),
+                          title: Text('Hợp đồng thuê của tôi', style: AppTypography.labelLarge),
+                          subtitle: Text('Xem điều khoản và timeline công nợ', style: AppTypography.bodySmall),
+                          trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+                          onTap: () => context.push(AppRoutes.customerContracts),
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.badge_outlined,
+                              color: AppColors.primary),
+                          title: Text('Hồ sơ định danh CCCD', style: AppTypography.labelLarge),
+                          subtitle: Text('Đăng ký lưu trú và xác thực tài khoản', style: AppTypography.bodySmall),
+                          trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+                          onTap: () => context.push(AppRoutes.customerIdentity),
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.handyman_outlined,
+                              color: AppColors.primary),
+                          title: Text('Lịch sử báo hỏng & sửa chữa', style: AppTypography.labelLarge),
+                          subtitle: Text('Tiến trình xử lý sự cố thiết bị trong phòng', style: AppTypography.bodySmall),
+                          trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+                          onTap: () => context.push(AppRoutes.customerMaintenance),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+
+                // Extended Business Features for Manager
+                if (user.isManager) ...[
+                  Text('Nghiệp vụ quản lý mở rộng', style: AppTypography.headingMedium),
+                  const SizedBox(height: 10),
+                  AppCard(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.description_outlined,
+                              color: AppColors.primary),
+                          title: Text('Quản lý hợp đồng thuê', style: AppTypography.labelLarge),
+                          subtitle: Text('Lập mới, gia hạn và thanh lý hợp đồng', style: AppTypography.bodySmall),
+                          trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+                          onTap: () => context.push(AppRoutes.managerContracts),
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.devices_other_rounded,
+                              color: AppColors.primary),
+                          title: Text('Kiểm kê tài sản & Thiết bị', style: AppTypography.labelLarge),
+                          subtitle: Text('Quản lý trang thiết bị các phòng', style: AppTypography.bodySmall),
+                          trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+                          onTap: () => context.push(AppRoutes.managerEquipments),
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.verified_user_outlined,
+                              color: AppColors.primary),
+                          title: Text('Kiểm duyệt CCCD khách thuê', style: AppTypography.labelLarge),
+                          subtitle: Text('Duyệt hồ sơ định danh và lưu trú', style: AppTypography.bodySmall),
+                          trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+                          onTap: () => context.push(AppRoutes.managerIdentityReviews),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
 
                 // Quick Switch Role (Tester Tool)
                 AppCard(
@@ -222,7 +311,7 @@ class ProfileScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Bạn đang ở chế độ: ${user.isManager ? "QUẢN LÝ (MANAGER)" : "KHÁCH THUÊ (CUSTOMER)"}. Nhấn nút dưới đây để hoán đổi nhanh:',
+                        'Bạn đang ở vai trò: ${user.isManager ? "QUẢN LÝ (MANAGER)" : "KHÁCH THUÊ (CUSTOMER)"}. Nhấn nút dưới đây để hoán đổi nhanh:',
                         style: AppTypography.bodySmall
                             .copyWith(color: AppColors.primaryDark),
                       ),
@@ -232,7 +321,7 @@ class ProfileScreen extends StatelessWidget {
                           Expanded(
                             child: AppButton(
                               text: 'Sang Khách Thuê',
-                              height: 40,
+                              height: 38,
                               variant: user.isCustomer
                                   ? AppButtonVariant.primary
                                   : AppButtonVariant.outline,
@@ -250,7 +339,7 @@ class ProfileScreen extends StatelessWidget {
                           Expanded(
                             child: AppButton(
                               text: 'Sang Quản Lý',
-                              height: 40,
+                              height: 38,
                               variant: user.isManager
                                   ? AppButtonVariant.primary
                                   : AppButtonVariant.outline,
@@ -310,7 +399,7 @@ class ProfileScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
 
                 // Logout Button
                 AppButton(

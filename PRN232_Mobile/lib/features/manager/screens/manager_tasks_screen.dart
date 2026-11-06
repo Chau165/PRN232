@@ -8,6 +8,7 @@ import '../../../core/widgets/status_badge.dart';
 import '../data/manager_mock_data.dart';
 import '../models/manager_models.dart';
 import '../widgets/assign_technician_sheet.dart';
+import '../widgets/maintenance_report_sheet.dart';
 
 class ManagerTasksScreen extends StatefulWidget {
   const ManagerTasksScreen({super.key});
@@ -98,15 +99,20 @@ class _ManagerTasksScreenState extends State<ManagerTasksScreen> {
     }
   }
 
-  void _completeMaintenance(ManagerTaskModel task) {
-    setState(() => task.status = TaskStatus.completed);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Đã hoàn tất xử lý sự cố tại ${task.roomCode}!'),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+  void _completeMaintenance(ManagerTaskModel task) async {
+    final success = await MaintenanceReportSheet.show(context, task: task);
+    if (success == true) {
+      setState(() {});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã hoàn tất nghiệm thu & báo cáo chi phí sự cố tại ${task.roomCode}!'),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   @override

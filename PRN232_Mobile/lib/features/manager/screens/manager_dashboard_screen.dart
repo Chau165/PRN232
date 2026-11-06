@@ -195,7 +195,79 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 14),
+
+            // Quick Operations Row
+            Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () => context.push(AppRoutes.managerContracts),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Column(
+                        children: [
+                          const Icon(Icons.description_outlined, color: AppColors.primary, size: 22),
+                          const SizedBox(height: 4),
+                          Text('Hợp đồng', style: AppTypography.labelSmall.copyWith(fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: InkWell(
+                    onTap: () => context.push(AppRoutes.managerEquipments),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Column(
+                        children: [
+                          const Icon(Icons.devices_other_rounded, color: AppColors.primary, size: 22),
+                          const SizedBox(height: 4),
+                          Text('Thiết bị', style: AppTypography.labelSmall.copyWith(fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: InkWell(
+                    onTap: () => context.push(AppRoutes.managerIdentityReviews),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Column(
+                        children: [
+                          const Icon(Icons.verified_user_outlined, color: AppColors.primary, size: 22),
+                          const SizedBox(height: 4),
+                          Text('Duyệt CCCD', style: AppTypography.labelSmall.copyWith(fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
 
             // Urgent Tasks Section
             Row(
