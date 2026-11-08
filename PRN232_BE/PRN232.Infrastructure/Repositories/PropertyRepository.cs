@@ -79,6 +79,43 @@ public class PropertyRepository : IPropertyRepository
             .ToListAsync(cancellationToken);
     }
 
+    public Task<bool> ServiceExistsAsync(int serviceId, CancellationToken cancellationToken)
+    {
+        return _context.Services.AnyAsync(service => service.ServiceId == serviceId, cancellationToken);
+    }
+
+    public async Task<bool> AddServiceRateIfNoOverlapAsync(PropertyServiceRates rate, CancellationToken cancellationToken)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        if (_context.Database.IsNpgsql())
+        {
+            // Serialize writers even when no rate exists yet for this property/service.
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"Properties\" WHERE \"PropertyId\" = {rate.PropertyId} FOR UPDATE", cancellationToken);
+        }
+        var overlaps = await _context.PropertyServiceRates.AnyAsync(existing =>
+            existing.PropertyId == rate.PropertyId && existing.ServiceId == rate.ServiceId &&
+            (rate.EffectiveTo == null || existing.EffectiveFrom < rate.EffectiveTo) &&
+            (existing.EffectiveTo == null || existing.EffectiveTo > rate.EffectiveFrom), cancellationToken);
+        if (overlaps)
+        {
+            return false;
+        }
+
+        await _context.PropertyServiceRates.AddAsync(rate, cancellationToken);
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return true;
+        }
+        catch (DbUpdateException exception) when (exception.InnerException is Npgsql.PostgresException { SqlState: "23P01" })
+        {
+            // Also honor the PostgreSQL exclusion constraint if another writer bypasses this API.
+            return false;
+        }
+    }
+
     public Task<Property?> GetTrackedByIdAsync(int id)
     {
         return _context.Properties.FirstOrDefaultAsync(p => p.PropertyId == id);

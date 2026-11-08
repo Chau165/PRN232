@@ -53,6 +53,52 @@ public class PropertyService : IPropertyService
             rate.UnitCode, rate.BillingBasis, rate.EffectiveFrom, rate.EffectiveTo)).ToList();
     }
 
+    public async Task<PropertyServiceRateDto> CreateServiceRateAsync(
+        int id, CreatePropertyServiceRateDto dto, CancellationToken cancellationToken)
+    {
+        if (dto.ServiceId <= 0 || dto.Price < 0 || dto.Price > 9999999999999999.99m ||
+            decimal.Round(dto.Price, 2) != dto.Price)
+        {
+            throw new PropertyValidationException("ServiceId must be positive; price must be nonnegative with at most two decimal places and fit numeric(18,2).");
+        }
+        if (dto.EffectiveFrom == default || dto.EffectiveFrom.Day != 1 ||
+            (dto.EffectiveTo.HasValue && (dto.EffectiveTo.Value.Day != 1 || dto.EffectiveTo <= dto.EffectiveFrom)))
+        {
+            throw new PropertyValidationException("Effective dates must be month starts; EffectiveTo must be after EffectiveFrom.");
+        }
+        var validBasis = (dto.UnitCode, dto.BillingBasis) is
+            ("kwh", "usage") or ("m3", "usage") or ("room_month", "fixed_room") or
+            ("person_month", "occupant") or ("vehicle_month", "vehicle");
+        if (!validBasis)
+        {
+            throw new PropertyValidationException("Invalid unitCode/billingBasis pair.");
+        }
+        if (await _repository.GetByIdAsync(id) is null)
+        {
+            throw new PropertyRateNotFoundException("Property does not exist.");
+        }
+        if (!await _repository.ServiceExistsAsync(dto.ServiceId, cancellationToken))
+        {
+            throw new PropertyRateNotFoundException("Service does not exist.");
+        }
+
+        var rate = new PRN232.Domain.Entities.PropertyServiceRates
+        {
+            PropertyId = id, ServiceId = dto.ServiceId, Price = dto.Price,
+            UnitCode = dto.UnitCode, BillingBasis = dto.BillingBasis,
+            EffectiveFrom = dto.EffectiveFrom, EffectiveTo = dto.EffectiveTo
+        };
+        if (!await _repository.AddServiceRateIfNoOverlapAsync(rate, cancellationToken))
+        {
+            throw new PropertyRateConflictException("This period overlaps an existing rate for this property's service. Existing rates were not changed.");
+        }
+        var rates = await _repository.GetServiceRatesAsync(id, null, cancellationToken);
+        var created = rates.Single(item => item.RateId == rate.RateId);
+        return new PropertyServiceRateDto(created.RateId, created.PropertyId, created.ServiceId,
+            created.ServiceName, created.Price, created.UnitCode, created.BillingBasis,
+            created.EffectiveFrom, created.EffectiveTo);
+    }
+
     public async Task<PropertyDto> CreateAsync(CreatePropertyDto dto, int ownerId)
     {
         if (string.IsNullOrWhiteSpace(dto.PropertyName))
@@ -174,6 +220,9 @@ public class PropertyService : IPropertyService
 }
 
 public class PropertyBusinessRuleException(string message) : Exception(message);
+
+public sealed class PropertyRateNotFoundException(string message) : PropertyBusinessRuleException(message);
+public sealed class PropertyRateConflictException(string message) : PropertyBusinessRuleException(message);
 
 public sealed class PropertyValidationException(string message) : PropertyBusinessRuleException(message);
 

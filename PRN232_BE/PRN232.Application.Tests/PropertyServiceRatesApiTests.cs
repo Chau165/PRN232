@@ -12,6 +12,115 @@ namespace PRN232.Application.Tests;
 
 public class PropertyServiceRatesApiTests
 {
+    private static CreatePropertyServiceRateDto NewRate(int serviceId = 1) => new(
+        serviceId, 4000, "kwh", "usage", new DateOnly(2027, 1, 1));
+
+    [Theory]
+    [InlineData(null, HttpStatusCode.Unauthorized)]
+    [InlineData("customer@example.test", HttpStatusCode.Forbidden)]
+    [InlineData("manager@example.test", HttpStatusCode.Forbidden)]
+    [InlineData("manager-b@example.test", HttpStatusCode.Forbidden)]
+    public async Task Only_admin_can_create_rates(string? email, HttpStatusCode expected)
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        if (email is not null) await LoginAsync(client, email);
+        var response = await client.PostAsJsonAsync("/api/properties/1/service-rates", NewRate());
+        Assert.Equal(expected, response.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        Assert.Equal(3, await scope.ServiceProvider.GetRequiredService<AppDbContext>().PropertyServiceRates.CountAsync());
+    }
+
+    [Fact]
+    public async Task Admin_creates_adjacent_rate_and_preserves_history_and_other_properties()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            (await context.PropertyServiceRates.SingleAsync(rate => rate.RateId == 1)).EffectiveTo = new DateOnly(2027, 1, 1);
+            context.Properties.Add(new Property { PropertyId = 2, OwnerId = 8, PropertyName = "Other" });
+            await context.SaveChangesAsync();
+        }
+        await LoginAsync(client, "admin@example.test");
+        var response = await client.PostAsJsonAsync("/api/properties/1/service-rates", NewRate());
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.NotNull(response.Headers.Location);
+        var created = (await response.Content.ReadFromJsonAsync<PropertyServiceRateDto>())!;
+        Assert.True(created.RateId > 3);
+        Assert.Equal(1, created.PropertyId);
+        Assert.Equal(4000m, created.Price);
+        Assert.Equal("Electricity - per kWh", created.ServiceName);
+        var january = await client.GetFromJsonAsync<List<PropertyServiceRateDto>>("/api/properties/1/service-rates?month=2027-01-01");
+        Assert.Equal(created.RateId, Assert.Single(january!, rate => rate.ServiceId == 1).RateId);
+        // The same service/period is independent for a different property.
+        Assert.Equal(HttpStatusCode.Created,
+            (await client.PostAsJsonAsync("/api/properties/2/service-rates", NewRate())).StatusCode);
+        using var verifyScope = factory.Services.CreateScope();
+        var verify = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(3500m, (await verify.PropertyServiceRates.SingleAsync(rate => rate.RateId == 1)).Price);
+    }
+
+    [Fact]
+    public async Task Open_ended_and_duplicate_overlaps_are_rejected_without_changing_existing_rate()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "admin@example.test");
+        foreach (var input in new[]
+        {
+            NewRate(),
+            NewRate() with { EffectiveFrom = new DateOnly(2000, 1, 1) },
+            NewRate() with { EffectiveFrom = new DateOnly(1999, 1, 1), EffectiveTo = new DateOnly(2001, 1, 1) }
+        })
+            Assert.Equal(HttpStatusCode.Conflict,
+                (await client.PostAsJsonAsync("/api/properties/1/service-rates", input)).StatusCode);
+        // An interval ending exactly when the existing interval starts is allowed.
+        Assert.Equal(HttpStatusCode.Created,
+            (await client.PostAsJsonAsync("/api/properties/1/service-rates",
+                NewRate() with { EffectiveFrom = new DateOnly(1999, 1, 1), EffectiveTo = new DateOnly(2000, 1, 1) })).StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var original = await scope.ServiceProvider.GetRequiredService<AppDbContext>().PropertyServiceRates.SingleAsync(rate => rate.RateId == 1);
+        Assert.Equal(3500m, original.Price);
+        Assert.Null(original.EffectiveTo);
+    }
+
+    [Fact]
+    public async Task Invalid_rate_inputs_are_rejected()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "admin@example.test");
+        var valid = NewRate();
+        foreach (var input in new[]
+        {
+            valid with { ServiceId = 0 }, valid with { Price = -1 }, valid with { Price = 1.001m },
+            valid with { Price = 10000000000000000m }, valid with { EffectiveFrom = default },
+            valid with { EffectiveFrom = new DateOnly(2027, 1, 2) },
+            valid with { EffectiveTo = new DateOnly(2027, 1, 1) },
+            valid with { EffectiveTo = new DateOnly(2027, 2, 2) },
+            valid with { UnitCode = "kwh", BillingBasis = "fixed_room" },
+            valid with { UnitCode = null! }, valid with { BillingBasis = null! }
+        })
+            Assert.Equal(HttpStatusCode.BadRequest,
+                (await client.PostAsJsonAsync("/api/properties/1/service-rates", input)).StatusCode);
+        using var scope = factory.Services.CreateScope();
+        Assert.Equal(3, await scope.ServiceProvider.GetRequiredService<AppDbContext>().PropertyServiceRates.CountAsync());
+    }
+
+    [Fact]
+    public async Task Missing_property_or_service_returns_not_found()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "admin@example.test");
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.PostAsJsonAsync("/api/properties/999/service-rates", NewRate())).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await client.PostAsJsonAsync("/api/properties/1/service-rates", NewRate(999))).StatusCode);
+    }
+
     [Fact]
     public async Task Anonymous_cannot_read_property_rates()
     {
