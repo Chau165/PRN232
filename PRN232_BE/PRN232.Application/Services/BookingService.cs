@@ -115,6 +115,7 @@ public class BookingService : IBookingService
             UserId = customerId,
             BookingId = id,
             Amount = booking.DepositAmount,
+            PaidAtUtc = _timeProvider.GetUtcNow().UtcDateTime,
             PaymentMethod = dto.PaymentMethod,
             Status = PaymentStatuses.Success
         };

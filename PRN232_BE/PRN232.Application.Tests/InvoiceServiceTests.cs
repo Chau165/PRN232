@@ -164,6 +164,8 @@ public class InvoiceServiceTests
 
         Assert.Equal((PaymentMethods.MoMo, 3_207_500m), Assert.Single(gateway.Charges));
         var (invoiceId, payment, notification) = Assert.Single(repository.Paid);
+        Assert.Equal(Now.UtcDateTime, payment.PaidAtUtc);
+        Assert.Equal(DateTimeKind.Utc, payment.PaidAtUtc!.Value.Kind);
         Assert.Equal(5, invoiceId);
         Assert.Equal((10, (int?)5, 3_207_500m, PaymentMethods.MoMo, PaymentStatuses.Success),
             (payment.UserId, payment.InvoiceId, payment.Amount, payment.PaymentMethod, payment.Status));
@@ -223,6 +225,8 @@ public class InvoiceServiceTests
         await CreateService(repository, gateway).RecordCashPaymentAsync(5, 7, RoleNames.Manager);
 
         var (_, payment, notification) = Assert.Single(repository.Paid);
+        Assert.Equal(Now.UtcDateTime, payment.PaidAtUtc);
+        Assert.Equal(DateTimeKind.Utc, payment.PaidAtUtc!.Value.Kind);
         Assert.Equal((10, PaymentMethods.Cash, 3_207_500m), (payment.UserId, payment.PaymentMethod, payment.Amount));
         Assert.Equal(10, notification.UserId);
         Assert.Empty(gateway.Charges);

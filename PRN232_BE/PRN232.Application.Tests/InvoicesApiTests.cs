@@ -163,6 +163,7 @@ public class InvoicesApiTests
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var payment = await context.Payments.SingleAsync(item => item.InvoiceId == invoiceId);
+        Assert.NotNull(payment.PaidAtUtc);
         Assert.Equal((10, 3_355_000m, "MoMo", "Success"), (payment.UserId, payment.Amount, payment.PaymentMethod, payment.Status));
         Assert.Equal(1, await context.Notifications.CountAsync(notification => notification.UserId == 7 && notification.Type == "Invoice"));
     }

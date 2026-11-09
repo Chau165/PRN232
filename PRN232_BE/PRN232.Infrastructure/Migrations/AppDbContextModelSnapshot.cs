@@ -483,6 +483,9 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<int?>("InvoiceId")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("PaidAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("PaymentMethod")
                         .IsRequired()
                         .HasColumnType("text");

@@ -146,6 +146,7 @@ public class InvoiceService : IInvoiceService
             UserId = invoice.CustomerId,
             InvoiceId = invoice.InvoiceId,
             Amount = invoice.Total,
+            PaidAtUtc = _timeProvider.GetUtcNow().UtcDateTime,
             PaymentMethod = paymentMethod,
             Status = PaymentStatuses.Success
         };
