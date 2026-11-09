@@ -80,6 +80,7 @@ export default function HomePage() {
         query={query}
         onSearch={applySearch}
         onPageChange={changePage}
+        onClear={() => updateSearch(new URLSearchParams())}
       />
       <MapSection />
       <Footer />

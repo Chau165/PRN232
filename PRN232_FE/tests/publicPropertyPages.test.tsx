@@ -19,6 +19,13 @@ import type {
   PublicRoomDetail,
 } from "@/types/publicBrowsing"
 
+vi.mock("@/services/publicBrowsingService", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/services/publicBrowsingService")>()
+  return { ...actual, publicApi: { ...actual.publicApi, listAmenities: vi.fn().mockResolvedValue([
+    { amenityId: 3, name: "Wi-Fi" }, { amenityId: 9, name: "Máy lạnh" },
+  ]) } }
+})
+
 function property(
   propertyId: number,
   overrides: Partial<PublicPropertyDetail> = {},
@@ -548,9 +555,9 @@ describe("public property detail and room listing", () => {
     fireEvent.change(screen.getByLabelText("Loại phòng"), {
       target: { value: "Studio" },
     })
-    fireEvent.change(screen.getByLabelText("Mã tiện ích"), {
-      target: { value: "9, 3, 9" },
-    })
+    fireEvent.click(screen.getByRole("combobox", { name: "Tiện ích mong muốn" }))
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Máy lạnh" }))
+    fireEvent.click(screen.getByRole("checkbox", { name: "Wi-Fi" }))
     fireEvent.change(screen.getByLabelText("Sắp xếp"), {
       target: { value: "price_asc" },
     })

@@ -93,6 +93,34 @@ describe("public browsing query contracts", () => {
 })
 
 describe("public browsing API client", () => {
+  it("rejects malformed amenity catalogs instead of inventing fallback options", async () => {
+    for (const payload of [null, {}, [{ amenityId: 0, name: "Invalid" }], [{ amenityId: 1, name: "" }], [{ amenityId: "1", name: "Invalid" }]]) {
+      const client = createPublicApiClient("https://api.example.test", createFetchMock(payload))
+      await expect(client.listAmenities()).rejects.toMatchObject({ kind: "unexpected" })
+    }
+  })
+
+  it("loads named amenities anonymously from the existing backend endpoint", async () => {
+    const amenities = [
+      { amenityId: 4, name: "Wi-Fi" },
+      { amenityId: 9, name: "Máy lạnh" },
+    ]
+
+    const fetchMock = createFetchMock(amenities)
+
+    const client = createPublicApiClient("https://api.example.test", fetchMock)
+
+    await expect(client.listAmenities()).resolves.toEqual(amenities)
+
+    const [input, init] = fetchMock.mock.calls[0]
+
+    expect(new URL(String(input)).pathname).toBe("/api/amenities")
+
+    expect(init?.credentials).toBe("omit")
+
+    expect(new Headers(init?.headers).has("Authorization")).toBe(false)
+  })
+
   it("normalizes an API origin and calls the anonymous property listing allow-list", async () => {
     const payload: PublicPage<PublicPropertyCard> = {
       items: [],
@@ -283,7 +311,8 @@ describe("public browsing API client", () => {
     const abortError = new TypeError("aborted")
     const abortFetch = vi.fn<typeof fetch>().mockRejectedValue(abortError)
     const abortClient = createPublicApiClient("/api", abortFetch)
-    await expect(abortClient.listProperties({}, controller.signal)).rejects.toBe(abortError)
+    await expect(abortClient.listProperties({}, controller.signal),
+    ).rejects.toBe(abortError)
 
     const malformedClient = createPublicApiClient(
       "/api",

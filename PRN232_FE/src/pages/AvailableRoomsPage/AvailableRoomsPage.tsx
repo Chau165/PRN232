@@ -25,6 +25,8 @@ import {
   roomSearchParams,
   type RoomSearchDraft,
 } from "@/utils/publicQueryState"
+import AmenityMultiSelect from "@/components/common/AmenityMultiSelect"
+import { usePublicAmenities } from "@/hooks/usePublicAmenities"
 
 export default function AvailableRoomsPage() {
   const { propertyId: routePropertyId } = useParams()
@@ -38,6 +40,8 @@ export default function AvailableRoomsPage() {
   const [draft, setDraft] = useState(() => roomSearchDraft(query))
   const [filterError, setFilterError] = useState<string | null>(null)
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null)
+  const amenities = usePublicAmenities()
+  const canApplyAmenities = draft.amenityIds.length === 0 || amenities.status === "success"
 
   useEffect(() => setDraft(roomSearchDraft(query)), [query])
 
@@ -60,22 +64,25 @@ export default function AvailableRoomsPage() {
         : publicApi.listRooms(propertyId, query, signal),
   )
 
-  function updateDraft(field: keyof RoomSearchDraft, value: string) {
+  function updateDraft<Field extends keyof RoomSearchDraft>(field: Field, value: RoomSearchDraft[Field]) {
     setDraft((current) => ({ ...current, [field]: value }))
   }
 
   function submitFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!canApplyAmenities) return
+    const availableIds = new Set(amenities.status === "success" ? amenities.data.map((amenity) => amenity.amenityId) : [])
+    const searchDraft = { ...draft, amenityIds: draft.amenityIds.filter((id) => availableIds.has(id)) }
     try {
       buildRoomListParams({
         minPrice: draft.minPrice,
         maxPrice: draft.maxPrice,
         roomTypeName: draft.roomTypeName,
-        amenityIds: draft.amenityIds.split(/[ ,]+/).filter(Boolean),
+        amenityIds: searchDraft.amenityIds,
         sortBy: draft.sortBy,
       })
       setFilterError(null)
-      const search = roomSearchParams(draft).toString()
+      const search = roomSearchParams(searchDraft).toString()
       navigate({
         pathname: location.pathname,
         search: `?${search}`,
@@ -241,18 +248,6 @@ export default function AvailableRoomsPage() {
                   />
                 </label>
                 <label className="text-[12px] font-medium text-slate-500">
-                  Mã tiện ích
-                  <input
-                    aria-label="Mã tiện ích"
-                    value={draft.amenityIds}
-                    onChange={(event) =>
-                      updateDraft("amenityIds", event.target.value)
-                    }
-                    placeholder="Ví dụ: 2, 5"
-                    className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[13px] text-slate-700"
-                  />
-                </label>
-                <label className="text-[12px] font-medium text-slate-500">
                   Sắp xếp
                   <select
                     aria-label="Sắp xếp"
@@ -268,12 +263,33 @@ export default function AvailableRoomsPage() {
                   </select>
                 </label>
               </div>
-              <button
-                type="submit"
-                className="mt-4 rounded-lg bg-[#087775] px-5 py-2.5 text-[13px] font-bold text-white"
-              >
-                Áp dụng bộ lọc
-              </button>
+              <div className="mt-4">
+                <AmenityMultiSelect
+                  resource={amenities}
+                  selectedAmenityIds={draft.amenityIds}
+                  onChange={(ids) => updateDraft("amenityIds", ids)}
+                />
+              </div>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft(roomSearchDraft({}))
+                    setFilterError(null)
+                    navigate({ pathname: location.pathname, search: "", hash: location.hash })
+                  }}
+                  className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm text-slate-600 focus-visible:outline-2 focus-visible:outline-teal-700"
+                >
+                  Xóa bộ lọc
+                </button>
+                <button
+                  type="submit"
+                  disabled={!canApplyAmenities}
+                  className="rounded-lg bg-[#087775] px-5 py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
+                >
+                  Áp dụng bộ lọc
+                </button>
+              </div>
               {filterError && (
                 <p role="alert" className="mt-3 text-[13px] text-rose-700">
                   {filterError}

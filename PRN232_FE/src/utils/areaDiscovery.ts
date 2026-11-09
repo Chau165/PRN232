@@ -14,16 +14,18 @@ export interface ResolvedArea {
   city?: string
 }
 
-export type MatchedAreaLevel = "district" | "ward"
-export type AreaDiscoveryStep = "location" | "reverse-geocode" | "properties"
-export type AreaDiscoveryErrorKind =
-  | "location-unavailable"
+export type MatchedAreaLevel = "district" | "ward" | "city"
+
+export type AreaDiscoveryStep = "location" | "geocode" | "reverse-geocode" | "properties"
+export type AreaDiscoveryErrorKind = "location-unavailable"
   | "permission-denied"
   | "reverse-geocode"
   | "area-not-specific"
-  | "area-api"
+  | "area-api" | "geocode"
 
 export interface AreaDiscoveryResult {
+  locationLabel?: string
+
   coordinates: AreaCoordinates
   area: ResolvedArea
   matchedLevel: MatchedAreaLevel
@@ -48,7 +50,8 @@ interface ReverseGeocodeResponse {
 }
 
 export class AreaDiscoveryError extends Error {
-  constructor(readonly kind: AreaDiscoveryErrorKind, message: string) {
+  constructor(readonly kind: AreaDiscoveryErrorKind, message: string,
+  ) {
     super(message)
     this.name = "AreaDiscoveryError"
   }
@@ -124,7 +127,8 @@ function areaFromReverseGeocode(response: unknown): ResolvedArea {
   return area
 }
 
-function getCurrentCoordinates(geolocation: Geolocation | null): Promise<AreaCoordinates> {
+function getCurrentCoordinates(geolocation: Geolocation | null,
+): Promise<AreaCoordinates> {
   if (!geolocation) {
     return Promise.reject(
       new AreaDiscoveryError(
@@ -249,6 +253,148 @@ async function loadProperties(
   }
 }
 
+export async function discoverEnteredArea(
+  location: string,
+
+  options: Omit<DiscoverCurrentAreaOptions, "geolocation">,
+): Promise<AreaDiscoveryResult> {
+  const {
+    fetchImplementation,
+    listPropertiesByArea,
+    signal,
+    onProgress,
+    onLocation,
+  } = options
+
+  if (!location.trim()) {
+    throw new AreaDiscoveryError(
+      "geocode",
+      "Hãy nhập địa điểm hoặc chọn vị trí hiện tại của bạn.",
+    )
+  }
+
+  onProgress?.("geocode")
+
+  let coordinates: AreaCoordinates
+
+  let area: ResolvedArea
+
+  let locationLabel: string
+
+  try {
+    const url = new URL(
+      import.meta.env.VITE_GEOCODING_URL?.trim() ||
+        "https://photon.komoot.io/api/",
+    )
+
+    if (!["https:", "http:"].includes(url.protocol))
+      throw new Error("Invalid URL")
+
+    url.searchParams.set("q", location.trim())
+
+    url.searchParams.set("countrycode", "VN")
+
+    url.searchParams.set("limit", "1")
+
+    const response = await fetchImplementation(url.toString(), {
+      headers: { Accept: "application/json", "Accept-Language": "vi" },
+
+      credentials: "omit",
+
+      signal,
+    })
+
+    if (!response.ok) throw new Error("Geocoding unavailable")
+
+    const payload = await response.json()
+
+    const feature = payload?.features?.[0]
+
+    if (!feature) {
+      throw new AreaDiscoveryError(
+        "geocode",
+        "Không tìm thấy địa điểm. Hãy nhập địa chỉ cụ thể hơn, kèm quận hoặc thành phố.",
+      )
+    }
+
+    const [longitude, latitude] = feature.geometry?.coordinates ?? []
+
+    if (
+      typeof latitude !== "number" ||
+      typeof longitude !== "number" ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      Math.abs(latitude) > 90 ||
+      Math.abs(longitude) > 180
+    )
+      throw new Error("Invalid coordinates")
+
+    coordinates = { latitude, longitude }
+
+    try {
+      area = areaFromReverseGeocode({ features: [feature] })
+    } catch {
+      area = {}
+    }
+
+    const properties = feature.properties ?? {}
+
+    // Administrative places may expose their name without a separate city/district field.
+
+    if (properties.osm_value === "city" || properties.type === "city") {
+      area = { city: readLocationName(properties, ["name", "city", "state"]) }
+    }
+
+    locationLabel =
+      [
+        ...new Set(
+          [
+            readLocationName(properties, ["name", "street"]),
+            area.ward,
+            area.district,
+            area.city,
+          ].filter(Boolean),
+        ),
+      ].join(", ") || location.trim()
+  } catch (error) {
+    if (isAbortError(error) || signal?.aborted) throw error
+
+    if (error instanceof AreaDiscoveryError && error.kind === "geocode")
+      throw error
+
+    throw new AreaDiscoveryError(
+      "geocode",
+      "Không thể xác định địa điểm. Vui lòng thử lại hoặc nhập địa chỉ cụ thể hơn.",
+    )
+  }
+
+  signal?.throwIfAborted()
+
+  onLocation?.(coordinates)
+
+  // Use the selected point's administrative area, with city-wide search allowed for typed places.
+
+  if (!area.district && !area.ward && !area.city) {
+    area = await reverseGeocode(coordinates, fetchImplementation, signal)
+  }
+
+  const matchedLevel = area.district ? "district" : area.ward ? "ward" : "city"
+
+  const query: PublicPropertyAreaQuery = {
+    ...(area.city ? { city: area.city } : {}),
+
+    ...(matchedLevel === "district" ? { district: area.district } : {}),
+
+    ...(matchedLevel === "ward" ? { ward: area.ward } : {}),
+  }
+
+  onProgress?.("properties")
+
+  const properties = await loadProperties(query, listPropertiesByArea, signal)
+
+  return { coordinates, area, matchedLevel, properties, locationLabel }
+}
+
 export async function discoverCurrentArea({
   geolocation,
   fetchImplementation,
@@ -314,7 +460,8 @@ export function buildGoogleMapsDirectionsUrl(
     property.district,
     property.city,
   ]
-    .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+    .filter((part): part is string => typeof part === "string" && part.trim().length > 0,
+    )
     .map((part) => part.trim())
     .join(", ")
   const destination = hasUsableCoordinates

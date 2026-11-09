@@ -8,6 +8,7 @@ import {
   type PublicApiErrorKind,
 } from "@/services/publicBrowsingError"
 import type {
+  PublicAmenitySummary,
   PublicPage,
   PublicPropertyAreaCard,
   PublicPropertyAreaQuery,
@@ -129,6 +130,19 @@ export function createPublicApiClient(
   }
 
   return {
+    async listAmenities(signal?: AbortSignal): Promise<PublicAmenitySummary[]> {
+      const response = await get<unknown>("/amenities", new URLSearchParams(), signal)
+      if (!Array.isArray(response) || response.some((amenity: unknown) => {
+        if (typeof amenity !== "object" || amenity === null) return true
+        const option = amenity as Partial<PublicAmenitySummary>
+        return !Number.isSafeInteger(option.amenityId) || Number(option.amenityId) < 1 ||
+          typeof option.name !== "string" || !option.name.trim()
+      })) {
+        throw new PublicApiError("unexpected", "Dữ liệu tiện ích nhận được không hợp lệ.")
+      }
+      const amenities = response as PublicAmenitySummary[]
+      return [...new Map(amenities.map((amenity) => [amenity.amenityId, amenity])).values()]
+    },
     async listProperties(
       query: PublicPropertyListQuery = {},
       signal?: AbortSignal,

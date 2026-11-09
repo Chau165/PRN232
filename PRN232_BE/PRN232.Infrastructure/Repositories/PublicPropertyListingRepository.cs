@@ -544,7 +544,9 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
 
         foreach (var amenityId in criteria.AmenityIds)
         {
-            rooms = rooms.Where(room => room.RoomAmenities.Any(link => link.AmenityId == amenityId));
+            rooms = rooms.Where(room =>
+                room.RoomAmenities.Any(link => link.AmenityId == amenityId) ||
+                room.Property!.PropertyAmenities.Any(link => link.AmenityId == amenityId));
         }
 
         return rooms;
