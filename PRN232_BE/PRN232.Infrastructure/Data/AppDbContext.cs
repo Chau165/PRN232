@@ -133,6 +133,7 @@ public class AppDbContext : DbContext
             return Set<InvoiceDetails>();
         }
     }
+    public DbSet<PaymentRequests> PaymentRequests => Set<PaymentRequests>();
     public DbSet<Payments> Payments
     {
         get
@@ -225,6 +226,25 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Invoices>().HasKey(x => x.InvoiceId);
         modelBuilder.Entity<InvoiceDetails>().HasKey(x => x.InvoiceDetailId);
         modelBuilder.Entity<Payments>().HasKey(x => x.PaymentId);
+        modelBuilder.Entity<PaymentRequests>(entity =>
+        {
+            entity.HasKey(request => request.PaymentRequestId);
+            entity.Property(request => request.Amount).HasPrecision(18, 2);
+            entity.Property(request => request.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(request => request.Provider).HasMaxLength(32).IsRequired();
+            entity.Property(request => request.Status).HasMaxLength(32).IsRequired();
+            entity.Property(request => request.PaymentLinkId).HasMaxLength(128);
+            entity.Property(request => request.CheckoutUrl).HasMaxLength(2048);
+            entity.Property(request => request.ProviderReference).HasMaxLength(256);
+            entity.Property(request => request.LastErrorCode).HasMaxLength(128);
+            entity.Property(request => request.LastErrorMessage).HasMaxLength(1000);
+            entity.HasOne(request => request.Invoice).WithMany(invoice => invoice.PaymentRequests)
+                .HasForeignKey(request => request.InvoiceId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(request => request.Customer).WithMany(user => user.PaymentRequests)
+                .HasForeignKey(request => request.CustomerId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(request => request.Payment).WithOne(payment => payment.PaymentRequest)
+                .HasForeignKey<PaymentRequests>(request => request.PaymentId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<MaintenanceRequests>().HasKey(x => x.RequestId);
         modelBuilder.Entity<MaintenanceRequests>()
             .Property(request => request.AssignmentNote)

@@ -34,6 +34,7 @@ public class Payments
     public string Status { get; set; } = string.Empty;
     // UTC settlement time. Null for legacy payments whose original time is unknown.
     public DateTime? PaidAtUtc { get; set; }
+    public PaymentRequests? PaymentRequest { get; set; }
 
     public Users? User
     {
