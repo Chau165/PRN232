@@ -229,6 +229,23 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<PaymentRequests>(entity =>
         {
             entity.HasKey(request => request.PaymentRequestId);
+            entity.HasIndex(request => request.OrderCode).IsUnique();
+            entity.HasIndex(request => request.PaymentLinkId).IsUnique()
+                .HasFilter("\"PaymentLinkId\" IS NOT NULL");
+            // An uncertain receipt must be resolved before issuing another checkout.
+            entity.HasIndex(request => request.InvoiceId).IsUnique()
+                .HasDatabaseName("UX_PaymentRequests_InvoiceId_Active")
+                .HasFilter("\"Status\" IN ('Creating', 'Pending', 'RequiresReview')");
+            entity.ToTable("PaymentRequests", table =>
+            {
+                table.HasCheckConstraint("CK_PaymentRequests_Amount_Positive", "\"Amount\" > 0");
+                table.HasCheckConstraint("CK_PaymentRequests_OrderCode_Positive", "\"OrderCode\" > 0");
+                table.HasCheckConstraint("CK_PaymentRequests_Currency", "\"Currency\" = 'VND'");
+                table.HasCheckConstraint("CK_PaymentRequests_Status",
+                    "\"Status\" IN ('Creating', 'Pending', 'Succeeded', 'Cancelled', 'Expired', 'Create-failed', 'RequiresReview')");
+                table.HasCheckConstraint("CK_PaymentRequests_UpdatedAt", "\"UpdatedAtUtc\" >= \"CreatedAtUtc\"");
+                table.HasCheckConstraint("CK_PaymentRequests_ExpiresAt", "\"ExpiresAtUtc\" IS NULL OR \"ExpiresAtUtc\" > \"CreatedAtUtc\"");
+            });
             entity.Property(request => request.Amount).HasPrecision(18, 2);
             entity.Property(request => request.Currency).HasMaxLength(3).IsRequired();
             entity.Property(request => request.Provider).HasMaxLength(32).IsRequired();
