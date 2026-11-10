@@ -25,6 +25,7 @@ public static class PayOSConfiguration
         if (section.GetValue<bool>(nameof(PayOSSettings.Enabled)))
         {
             services.AddScoped<IInvoiceCheckoutGateway, PayOSInvoiceCheckoutGateway>();
+            services.AddScoped<IPayOSWebhookVerifier, PayOSWebhookVerifier>();
             services.AddSingleton(provider =>
             {
                 var settings = provider.GetRequiredService<IOptions<PayOSSettings>>().Value;
@@ -33,7 +34,11 @@ public static class PayOSConfiguration
                 return new PayOSClient(settings.ClientId, settings.ApiKey, settings.ChecksumKey);
             });
         }
-        else services.AddScoped<IInvoiceCheckoutGateway, DisabledInvoiceCheckoutGateway>();
+        else
+        {
+            services.AddScoped<IInvoiceCheckoutGateway, DisabledInvoiceCheckoutGateway>();
+            services.AddScoped<IPayOSWebhookVerifier, DisabledPayOSWebhookVerifier>();
+        }
         return services;
     }
 

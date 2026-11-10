@@ -134,6 +134,7 @@ public class AppDbContext : DbContext
         }
     }
     public DbSet<PaymentRequests> PaymentRequests => Set<PaymentRequests>();
+    public DbSet<PaymentWebhookReceipts> PaymentWebhookReceipts => Set<PaymentWebhookReceipts>();
     public DbSet<Payments> Payments
     {
         get
@@ -261,6 +262,23 @@ public class AppDbContext : DbContext
                 .HasForeignKey(request => request.CustomerId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(request => request.Payment).WithOne(payment => payment.PaymentRequest)
                 .HasForeignKey<PaymentRequests>(request => request.PaymentId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<PaymentWebhookReceipts>(entity =>
+        {
+            entity.HasKey(receipt => receipt.PaymentWebhookReceiptId);
+            entity.Property(receipt => receipt.Provider).HasMaxLength(32).IsRequired();
+            entity.Property(receipt => receipt.Reference).HasMaxLength(256).IsRequired();
+            entity.Property(receipt => receipt.PaymentLinkId).HasMaxLength(128).IsRequired();
+            entity.Property(receipt => receipt.Amount).HasPrecision(18, 2);
+            entity.Property(receipt => receipt.Currency).HasMaxLength(16).IsRequired();
+            entity.Property(receipt => receipt.DataCode).HasMaxLength(32).IsRequired();
+            entity.Property(receipt => receipt.TransactionDateTime).HasMaxLength(64);
+            entity.Property(receipt => receipt.Fingerprint).HasMaxLength(64).IsRequired();
+            entity.Property(receipt => receipt.ConflictingFingerprint).HasMaxLength(64);
+            entity.Property(receipt => receipt.Outcome).HasMaxLength(32).IsRequired();
+            entity.HasIndex(receipt => new { receipt.Provider, receipt.Reference }).IsUnique();
+            entity.HasOne(receipt => receipt.PaymentRequest).WithMany()
+                .HasForeignKey(receipt => receipt.PaymentRequestId).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<MaintenanceRequests>().HasKey(x => x.RequestId);
         modelBuilder.Entity<MaintenanceRequests>()

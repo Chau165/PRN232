@@ -572,6 +572,80 @@ namespace PRN232.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.PaymentWebhookReceipts", b =>
+                {
+                    b.Property<int>("PaymentWebhookReceiptId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("PaymentWebhookReceiptId"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ConflictingFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("DataCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("OrderCode")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("PaymentLinkId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int?>("PaymentRequestId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("ReceivedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("TransactionDateTime")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("PaymentWebhookReceiptId");
+
+                    b.HasIndex("PaymentRequestId");
+
+                    b.HasIndex("Provider", "Reference")
+                        .IsUnique();
+
+                    b.ToTable("PaymentWebhookReceipts");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.Payments", b =>
                 {
                     b.Property<int>("PaymentId")
@@ -1237,6 +1311,16 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("Invoice");
 
                     b.Navigation("Payment");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.PaymentWebhookReceipts", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.PaymentRequests", "PaymentRequest")
+                        .WithMany()
+                        .HasForeignKey("PaymentRequestId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("PaymentRequest");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Payments", b =>
