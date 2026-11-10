@@ -214,6 +214,11 @@ builder.Services.AddScoped<IUtilityReadingRepository, UtilityReadingRepository>(
 builder.Services.AddScoped<IUtilityReadingService, UtilityReadingService>();
 builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
+builder.Services.AddScoped<IInvoicePaymentLinkRepository, InvoicePaymentLinkRepository>();
+builder.Services.AddScoped<IInvoicePaymentLinkService>(provider => new InvoicePaymentLinkService(
+    provider.GetRequiredService<IInvoicePaymentLinkRepository>(), provider.GetRequiredService<IInvoiceCheckoutGateway>(),
+    provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PayOSSettings>>().Value,
+    provider.GetRequiredService<TimeProvider>()));
 builder.Services.AddScoped<IReceivablesRepository, ReceivablesRepository>();
 builder.Services.AddScoped<IReceivablesService, ReceivablesService>();
 builder.Services.AddScoped<IRevenueRepository, RevenueRepository>();

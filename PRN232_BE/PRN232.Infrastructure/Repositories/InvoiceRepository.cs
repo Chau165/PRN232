@@ -156,6 +156,11 @@ public class InvoiceRepository : IInvoiceRepository
     public async Task<bool> MarkPaidAsync(int invoiceId, Payments payment, Notifications notification)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
+        if (_context.Database.IsNpgsql())
+            await _context.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"Invoices\" WHERE \"InvoiceId\" = {invoiceId} FOR UPDATE");
+        if (await _context.PaymentRequests.AnyAsync(request => request.InvoiceId == invoiceId &&
+            (request.Status == PaymentRequestStatuses.Creating || request.Status == PaymentRequestStatuses.Pending ||
+             request.Status == PaymentRequestStatuses.RequiresReview))) return false;
 
         // Điều kiện "chưa Paid" nằm ngay trong câu UPDATE: hai lần trả cùng lúc thì lần sau không khớp dòng nào.
         var updated = await _context.Invoices

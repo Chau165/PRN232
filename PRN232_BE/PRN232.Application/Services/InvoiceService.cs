@@ -160,7 +160,7 @@ public class InvoiceService : IInvoiceService
         // Repository chỉ chuyển sang Paid khi hoá đơn vẫn chưa thanh toán: hai lần trả cùng lúc thì chỉ một lần được ghi.
         if (!await _repository.MarkPaidAsync(invoice.InvoiceId, payment, notification))
         {
-            throw new InvoiceConflictException("This invoice has already been paid.");
+            throw new InvoiceConflictException("This invoice is already paid or has an active online checkout that must be resolved first.");
         }
 
         var paid = await _repository.GetByIdAsync(invoice.InvoiceId, null, null);

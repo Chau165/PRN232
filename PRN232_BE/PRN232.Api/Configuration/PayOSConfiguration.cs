@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Options;
 using PayOS;
 using PRN232.Application.Settings;
+using PRN232.Application.Interfaces;
+using PRN232.Infrastructure.PaymentGateways;
 
 namespace PRN232.Api.Configuration;
 
@@ -22,6 +24,7 @@ public static class PayOSConfiguration
 
         if (section.GetValue<bool>(nameof(PayOSSettings.Enabled)))
         {
+            services.AddScoped<IInvoiceCheckoutGateway, PayOSInvoiceCheckoutGateway>();
             services.AddSingleton(provider =>
             {
                 var settings = provider.GetRequiredService<IOptions<PayOSSettings>>().Value;
@@ -30,6 +33,7 @@ public static class PayOSConfiguration
                 return new PayOSClient(settings.ClientId, settings.ApiKey, settings.ChecksumKey);
             });
         }
+        else services.AddScoped<IInvoiceCheckoutGateway, DisabledInvoiceCheckoutGateway>();
         return services;
     }
 
