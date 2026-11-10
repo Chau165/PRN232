@@ -18,8 +18,10 @@ using PRN232.Api.Security;
 using PRN232.Api.Swagger;
 using PRN232.Infrastructure.Storage;
 using PRN232.Infrastructure.PaymentGateways;
+using PRN232.Api.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddPayOSConfiguration(builder.Configuration, builder.Environment);
 
 // ---- Database: Supabase Postgres via Npgsql ----
 builder.Services.AddDbContext<AppDbContext>(options =>
