@@ -6,11 +6,14 @@ using System.Globalization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using PayOS;
 using PRN232.Application.Interfaces;
+using PRN232.Application.DTOs;
+using PRN232.Application.Policies;
 using PRN232.Infrastructure.PaymentGateways;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
@@ -41,7 +44,8 @@ public class PayOSWebhookApiTests
     private static Dictionary<string, object> Data() => new()
     {
         ["orderCode"] = 123L, ["amount"] = 3355000L, ["description"] = "HOADON", ["accountNumber"] = "0000000000",
-        ["reference"] = "TEST-REF-1", ["transactionDateTime"] = "2026-11-11 10:00:00", ["currency"] = "VND",
+        ["reference"] = "TEST-REF-1", ["transactionDateTime"] = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow,
+            TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh")).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), ["currency"] = "VND",
         ["paymentLinkId"] = "test-link", ["code"] = "00", ["desc"] = "success",
         ["counterAccountBankId"] = "", ["counterAccountBankName"] = "", ["counterAccountName"] = "",
         ["counterAccountNumber"] = "", ["virtualAccountName"] = "", ["virtualAccountNumber"] = ""
@@ -58,7 +62,7 @@ public class PayOSWebhookApiTests
     }
 
     [Fact]
-    public async Task Valid_anonymous_webhook_is_durable_idempotent_and_does_not_settle_invoice()
+    public async Task Valid_anonymous_webhook_settles_atomically_and_is_idempotent()
     {
         using var factory = new BookingsApiFactory();
         using var app = factory.WithWebHostBuilder(Configure);
@@ -72,23 +76,48 @@ public class PayOSWebhookApiTests
         {
             var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var receipt = await context.PaymentWebhookReceipts.SingleAsync();
-            Assert.Equal("Verified", receipt.Outcome);
+            Assert.Equal("Settled", receipt.Outcome);
             Assert.Equal(3355000m, receipt.Amount);
             Assert.NotNull(receipt.PaymentRequestId);
             receivedAt = receipt.ReceivedAtUtc;
             var request = await context.PaymentRequests.SingleAsync();
-            Assert.Equal("Pending", request.Status);
+            Assert.Equal("Succeeded", request.Status);
             Assert.Equal(receivedAt, request.WebhookReceivedAtUtc);
             Assert.Equal("TEST-REF-1", request.ProviderReference);
-            Assert.Null(request.PaymentId);
-            Assert.Equal("Unpaid", (await context.Invoices.SingleAsync()).Status);
-            Assert.Equal(0, await context.Payments.CountAsync(payment => payment.InvoiceId != null));
+            Assert.NotNull(request.PaymentId);
+            Assert.Equal(receivedAt, request.ConfirmedAtUtc);
+            Assert.Equal("Paid", (await context.Invoices.SingleAsync()).Status);
+            var payment = await context.Payments.SingleAsync(item => item.InvoiceId != null);
+            Assert.Equal(request.PaymentId, payment.PaymentId);
+            Assert.Equal("PayOS", payment.PaymentMethod);
+            Assert.Equal("Success", payment.Status);
+            Assert.Equal(request.Amount, payment.Amount);
+            Assert.True(PRN232.Application.Policies.PayOSTransactionTime.TryGetUtc(receipt.TransactionDateTime, out var expectedPaidAt));
+            Assert.Equal(expectedPaidAt, payment.PaidAtUtc);
+            Assert.Equal(2, await context.Notifications.CountAsync(notification => notification.Title.Contains("payOS")));
         }
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Url, payload)).StatusCode);
         using var verifyScope = app.Services.CreateScope();
         var verify = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Equal(1, await verify.PaymentWebhookReceipts.CountAsync());
         Assert.Equal(receivedAt, (await verify.PaymentRequests.SingleAsync()).WebhookReceivedAtUtc);
+        Assert.Equal(1, await verify.Payments.CountAsync(payment => payment.InvoiceId != null));
+        Assert.Equal(2, await verify.Notifications.CountAsync(notification => notification.Title.Contains("payOS")));
+        var requestId = (await verify.PaymentRequests.SingleAsync()).PaymentRequestId;
+        await BookingsApiTests.LoginAsync(client, "customer@example.test");
+        var status = (await client.GetFromJsonAsync<PaymentRequestStatusDto>($"/api/payment-requests/{requestId}"))!;
+        Assert.Equal("Succeeded", status.Status);
+        Assert.Equal("Paid", status.InvoiceStatus);
+        Assert.NotNull(status.PaymentId);
+        Assert.NotNull(status.PaidAtUtc);
+        await BookingsApiTests.LoginAsync(client, "manager@example.test");
+        var today = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh"));
+        var month = today.ToString("yyyy-MM-01", CultureInfo.InvariantCulture);
+        var revenue = (await client.GetFromJsonAsync<RevenueReportDto>($"/api/reports/revenue?fromMonth={month}&toMonth={month}"))!;
+        Assert.Equal(3355000m, revenue.TotalCollected);
+        Assert.Equal(1, revenue.PaymentCount);
+        var debt = (await client.GetFromJsonAsync<ReceivablesReportDto>("/api/reports/receivables"))!;
+        Assert.Equal(0m, debt.OutstandingAmount);
     }
 
     [Theory]
@@ -175,7 +204,8 @@ public class PayOSWebhookApiTests
         Assert.Equal("RequiresReview", receipt.Outcome);
         Assert.NotNull(receipt.ConflictingFingerprint);
         Assert.Equal(3355000m, receipt.Amount);
-        Assert.Equal("RequiresReview", (await context.PaymentRequests.SingleAsync()).Status);
+        Assert.Equal("Succeeded", (await context.PaymentRequests.SingleAsync()).Status);
+        Assert.Equal(1, await context.Payments.CountAsync(payment => payment.InvoiceId != null));
     }
 
     [Fact]
@@ -235,7 +265,8 @@ public class PayOSWebhookApiTests
         Assert.Equal(2, await context.PaymentWebhookReceipts.CountAsync());
         Assert.Equal("RequiresReview", (await context.PaymentWebhookReceipts.SingleAsync(receipt => receipt.Reference == "TEST-REF-2")).Outcome);
         Assert.Equal("TEST-REF-1", (await context.PaymentRequests.SingleAsync()).ProviderReference);
-        Assert.Equal("RequiresReview", (await context.PaymentRequests.SingleAsync()).Status);
+        Assert.Equal("Succeeded", (await context.PaymentRequests.SingleAsync()).Status);
+        Assert.Equal(1, await context.Payments.CountAsync(payment => payment.InvoiceId != null));
     }
 
     private static async Task SeedAsync(IServiceProvider services, HttpClient client)
@@ -246,9 +277,163 @@ public class PayOSWebhookApiTests
         context.PaymentRequests.Add(new PaymentRequests
         {
             InvoiceId = invoiceId, CustomerId = 10, Amount = 3355000, OrderCode = 123,
-            PaymentLinkId = "test-link", Status = "Pending", CreatedAtUtc = DateTime.UtcNow,
+            PaymentLinkId = "test-link", Status = "Pending", CreatedAtUtc = DateTime.UtcNow.AddMinutes(-1),
             UpdatedAtUtc = DateTime.UtcNow, ExpiresAtUtc = DateTime.UtcNow.AddMinutes(30)
         });
         await context.SaveChangesAsync();
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("invalid")]
+    [InlineData("future")]
+    [InlineData("before-request")]
+    public async Task Invalid_transaction_time_requires_review_without_inventing_paid_at(string scenario)
+    {
+        using var factory = new BookingsApiFactory();
+        using var app = factory.WithWebHostBuilder(Configure);
+        using var client = app.CreateClient();
+        await SeedAsync(app.Services, client);
+        var data = Data();
+        data["transactionDateTime"] = scenario switch
+        {
+            "missing" => "", "invalid" => "not-a-timestamp",
+            "future" => DateTime.UtcNow.AddDays(1).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
+            _ => "2020-01-01 00:00:00"
+        };
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Url, await Signed(data))).StatusCode);
+        using var scope = app.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal("RequiresReview", (await context.PaymentWebhookReceipts.SingleAsync()).Outcome);
+        Assert.Equal("Unpaid", (await context.Invoices.SingleAsync()).Status);
+        Assert.Equal(0, await context.Payments.CountAsync(payment => payment.InvoiceId != null));
+    }
+
+    [Fact]
+    public async Task Delayed_webhook_can_settle_payment_that_happened_before_checkout_expiry()
+    {
+        using var factory = new BookingsApiFactory();
+        using var app = factory.WithWebHostBuilder(Configure);
+        using var client = app.CreateClient();
+        await SeedAsync(app.Services, client);
+        using (var scope = app.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var request = await context.PaymentRequests.SingleAsync();
+            request.CreatedAtUtc = DateTime.UtcNow.AddHours(-2);
+            request.ExpiresAtUtc = DateTime.UtcNow.AddHours(-1);
+            await context.SaveChangesAsync();
+        }
+        var data = Data();
+        var paidAt = DateTime.UtcNow.AddMinutes(-90);
+        data["transactionDateTime"] = paidAt.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Url, await Signed(data))).StatusCode);
+        using var verifyScope = app.Services.CreateScope();
+        var payment = await verifyScope.ServiceProvider.GetRequiredService<AppDbContext>().Payments.SingleAsync(item => item.InvoiceId != null);
+        Assert.True(PayOSTransactionTime.TryGetUtc((string)data["transactionDateTime"], out var expected));
+        Assert.Equal(expected, payment.PaidAtUtc);
+    }
+
+    [Fact]
+    public async Task Settlement_failure_rolls_back_invoice_payment_request_receipt_and_notifications_then_retry_succeeds()
+    {
+        using var factory = new BookingsApiFactory();
+        var failure = new NotificationFailure();
+        using var app = factory.WithWebHostBuilder(builder =>
+        {
+            Configure(builder);
+            builder.ConfigureTestServices(services =>
+            {
+                var original = services.Last(descriptor => descriptor.ServiceType == typeof(DbContextOptions<AppDbContext>));
+                services.RemoveAll<DbContextOptions<AppDbContext>>();
+                services.AddScoped(provider =>
+                {
+                    var options = (DbContextOptions<AppDbContext>)(original.ImplementationInstance ?? original.ImplementationFactory!(provider));
+                    return new DbContextOptionsBuilder<AppDbContext>(options).AddInterceptors(failure).Options;
+                });
+            });
+        });
+        using var client = app.CreateClient();
+        await SeedAsync(app.Services, client);
+        var payload = await Signed(Data());
+        failure.Fail = true;
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await client.PostAsJsonAsync(Url, payload)).StatusCode);
+        Assert.True(failure.Triggered);
+        using (var scope = app.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.Equal("Unpaid", (await context.Invoices.SingleAsync()).Status);
+            Assert.Equal("Pending", (await context.PaymentRequests.SingleAsync()).Status);
+            Assert.Null((await context.PaymentRequests.SingleAsync()).PaymentId);
+            Assert.Equal(0, await context.PaymentWebhookReceipts.CountAsync());
+            Assert.Equal(0, await context.Payments.CountAsync(payment => payment.InvoiceId != null));
+            Assert.Equal(0, await context.Notifications.CountAsync(notification => notification.Title.Contains("payOS")));
+        }
+        failure.Fail = false;
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Url, payload)).StatusCode);
+        using var retryScope = app.Services.CreateScope();
+        var retry = retryScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal("Paid", (await retry.Invoices.SingleAsync()).Status);
+        Assert.Equal(1, await retry.Payments.CountAsync(payment => payment.InvoiceId != null));
+    }
+
+    private class NotificationFailure : SaveChangesInterceptor
+    {
+        public bool Fail;
+        public bool Triggered;
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (Fail && eventData.Context!.ChangeTracker.Entries<Notifications>().Any(entry =>
+                entry.State == EntityState.Added && entry.Entity.Title.Contains("payOS")))
+            {
+                Triggered = true;
+                throw new DbUpdateException("Deliberate test failure before settlement save.");
+            }
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task Replayed_verified_B7_receipt_is_settled_once_without_replacing_original_receipt_time()
+    {
+        using var factory = new BookingsApiFactory();
+        using var app = factory.WithWebHostBuilder(Configure);
+        using var client = app.CreateClient();
+        await SeedAsync(app.Services, client);
+        var data = Data();
+        var receivedAt = DateTime.UtcNow;
+        using (var scope = app.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var request = await context.PaymentRequests.SingleAsync();
+            var transactionTime = (string)data["transactionDateTime"];
+            var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(new
+            {
+                OrderCode = 123L, PaymentLinkId = "test-link", Amount = 3355000m, Currency = "VND",
+                Code = "00", Reference = "TEST-REF-1", TransactionDateTime = transactionTime
+            }))));
+            context.PaymentWebhookReceipts.Add(new PaymentWebhookReceipts
+            {
+                Reference = "TEST-REF-1", OrderCode = 123, PaymentLinkId = "test-link", Amount = 3355000,
+                Currency = "VND", DataCode = "00", TransactionDateTime = transactionTime,
+                Fingerprint = fingerprint, Outcome = "Verified", ReceivedAtUtc = receivedAt,
+                PaymentRequestId = request.PaymentRequestId
+            });
+            request.WebhookReceivedAtUtc = receivedAt;
+            request.ProviderReference = "TEST-REF-1";
+            await context.SaveChangesAsync();
+        }
+        var payload = await Signed(data);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Url, payload)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Url, payload)).StatusCode);
+        using var verifyScope = app.Services.CreateScope();
+        var verify = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var receipt = await verify.PaymentWebhookReceipts.SingleAsync();
+        Assert.Equal("Settled", receipt.Outcome);
+        Assert.Equal(receivedAt, receipt.ReceivedAtUtc);
+        Assert.Equal(receivedAt, (await verify.PaymentRequests.SingleAsync()).WebhookReceivedAtUtc);
+        Assert.Equal("Succeeded", (await verify.PaymentRequests.SingleAsync()).Status);
+        Assert.Equal(1, await verify.Payments.CountAsync(payment => payment.InvoiceId != null));
     }
 }

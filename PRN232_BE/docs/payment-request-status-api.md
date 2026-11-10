@@ -35,7 +35,8 @@ Response example (illustrative):
 
 Status is the stored application status, including exactly Create-failed. The GET
 does not contact payOS, verify receipt, update status, reconcile a timeout, write
-Payments or mark an invoice Paid. Webhook/settlement are later steps B7/B8.
+Payments or mark an invoice Paid. Webhook/settlement are implemented separately
+in B7/B8; see payos-settlement.md.
 
 IsExpired is true for stored Expired, or Creating/Pending with a local deadline
 at or before the server's current UTC instant. It is a UI hint, not a provider

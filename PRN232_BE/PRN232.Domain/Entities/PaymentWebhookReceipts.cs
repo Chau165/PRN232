@@ -1,6 +1,6 @@
 namespace PRN232.Domain.Entities;
 
-// Authenticated provider events retained before settlement (B8). No raw payload/PII.
+// Authenticated provider events retained for settlement/review. No raw payload/PII.
 public class PaymentWebhookReceipts
 {
     public int PaymentWebhookReceiptId { get; set; }

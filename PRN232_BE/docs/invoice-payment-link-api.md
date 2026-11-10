@@ -64,10 +64,10 @@ cash for that invoice until the later cash/cancel/reconciliation workflow exists
 With payOS disabled and no active checkout, existing demo/cash behavior remains.
 Booking deposits remain simulated and are outside B5.
 
-B6 status API, B7 webhook verification and B8 settlement are NOT implemented by
-this change. Do not treat browser return URLs or link creation as payment success.
-Do not open real customer checkouts for production use before those steps and
-reconciliation are implemented. No real payOS calls or money movements are made
+B6 status API, B7 webhook verification and B8 settlement are now implemented in
+their subsequent steps; see payos-settlement.md. Do not treat browser return URLs
+or link creation as payment success. Reconciliation and production rollout still
+remain separate steps. No real payOS calls or money movements are made
 by automated tests, which use a fake gateway and SQLite. PostgreSQL concurrency
 behavior still requires validation in an isolated PostgreSQL integration setup.
 No new migration or frontend change is needed for this endpoint itself.

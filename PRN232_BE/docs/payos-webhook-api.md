@@ -18,9 +18,12 @@ request link. Account names/numbers and full JSON payloads are not retained.
 
 ## Outcomes
 
-- Verified: order and link match a PayOS request, VND and amount match both the
+- Settled (B8): order and link match a PayOS request, VND and amount match both the
   request snapshot and current invoice total, customer still matches, invoice is
-  payable, request is Creating/Pending and its local deadline has not passed.
+  payable, request is Creating/Pending and the verified transaction time is within
+  the checkout window. The receipt/payment/invoice/request/notifications commit together.
+- Verified: legacy B7 event retained before B8. An identical authenticated replay
+  now attempts settlement after rechecking all current data.
 - RequiresReview: wrong amount/currency/link, late receipt, terminal request,
   changed/already-paid invoice, conflicting reference or an additional transfer
   reference for the same request. Terminal requests are not reactivated, to avoid
@@ -52,12 +55,11 @@ Configure a public HTTPS URL ending in `/api/payments/payos/webhook` on the payO
 channel when ready. localhost alone cannot receive provider requests. No webhook
 was registered and no real transaction was performed by this change.
 
-**B7 deliberately does not set Succeeded/Paid, create Payments or add notifications.**
-Those are B8. Verified events remain in the receipt table for that next step.
-ConfirmedAtUtc and Payments.PaidAtUtc are not invented here. The provider timestamp
-is retained as text for later validated timezone conversion. B7 alone is not a
-complete production payment flow; do not collect real customer money until B8
-and reconciliation are ready.
+The original B7 only ingested events. B8 now settles eligible authenticated
+events atomically; see `payos-settlement.md` for timestamp policy, rollback and
+replay behavior. Late or inconsistent transfers still require review. Provider
+registration, reconciliation, cash/online coordination and FE rollout remain
+separate steps; this endpoint alone is not the complete production rollout.
 
 Tests use independently generated test HMAC signatures and the real SDK verifier
 inside an isolated SQLite API host. No production keys, outbound provider calls
