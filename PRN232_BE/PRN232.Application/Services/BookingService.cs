@@ -4,6 +4,8 @@ using PRN232.Application.Policies;
 using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace PRN232.Application.Services;
 
@@ -19,17 +21,20 @@ public class BookingService : IBookingService
     private readonly IPaymentGateway _paymentGateway;
     private readonly TimeProvider _timeProvider;
     private readonly INotificationRealtimePublisher? _realtimePublisher;
+    private readonly ILogger<BookingService> _logger;
 
     public BookingService(
         IBookingRepository repository,
         IPaymentGateway paymentGateway,
         TimeProvider timeProvider,
-        INotificationRealtimePublisher? realtimePublisher = null)
+        INotificationRealtimePublisher? realtimePublisher = null,
+        ILogger<BookingService>? logger = null)
     {
         _repository = repository;
         _paymentGateway = paymentGateway;
         _timeProvider = timeProvider;
         _realtimePublisher = realtimePublisher;
+        _logger = logger ?? NullLogger<BookingService>.Instance;
     }
 
     public async Task<BookingDto> CreateAsync(CreateBookingDto dto, int customerId)
@@ -123,6 +128,8 @@ public class BookingService : IBookingService
 
         if (!await _paymentGateway.ChargeAsync(dto.PaymentMethod, booking.DepositAmount))
         {
+            _logger.LogWarning("Deposit payment declined for booking {BookingId} by customer {CustomerId} via {PaymentMethod}.",
+                id, customerId, dto.PaymentMethod);
             throw new BookingPaymentFailedException("The payment was declined.");
         }
 
@@ -146,8 +153,13 @@ public class BookingService : IBookingService
         // có thể đã có một lần bấm thanh toán khác chạy xong trước.
         if (!await _repository.MarkDepositedAsync(id, now, now.Add(DepositHoldPeriod).UtcDateTime, payment, notification))
         {
+            // Đã trừ tiền nhưng không ghi nhận được (một lần thanh toán khác vừa xong trước): cần đối soát.
+            _logger.LogError("Deposit for booking {BookingId} was charged ({Amount} via {PaymentMethod}) but the booking was no longer pending; reconcile this payment.",
+                id, booking.DepositAmount, dto.PaymentMethod);
             throw new BookingStatusConflictException("Only pending bookings can be paid.");
         }
+        _logger.LogInformation("Booking {BookingId} deposit paid by customer {CustomerId}: {Amount} via {PaymentMethod}.",
+            id, customerId, booking.DepositAmount, dto.PaymentMethod);
         var paid = await _repository.GetByIdAsync(id, customerId, null);
         if (paid is null)
         {
