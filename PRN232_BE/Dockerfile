@@ -21,4 +21,7 @@ COPY --from=build /app/publish .
 # thay vì cố định cổng. Chạy local qua docker-compose thì PORT mặc định 8080.
 ENV PORT=8080
 EXPOSE 8080
+# Không chạy bằng root: image aspnet:8.0 có sẵn user "app" (UID trong biến APP_UID).
+# Cổng 8080 > 1024 nên user thường bind được; app chỉ đọc /app, không ghi file.
+USER $APP_UID
 ENTRYPOINT ["sh", "-c", "ASPNETCORE_URLS=http://+:${PORT} dotnet PRN232.Api.dll"]
