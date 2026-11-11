@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   getRoom: vi.fn(),
   getRoles: vi.fn(),
   getUsers: vi.fn(),
+  getAssignments: vi.fn(),
   user: { id: "10", name: "Customer A", phone: "0900", role: "CUSTOMER" as string },
 }))
 
@@ -37,6 +38,7 @@ vi.mock("@/services/viewingScheduleService", () => ({
   rejectViewingSchedule: mocks.rejectViewingSchedule,
 }))
 vi.mock("@/services/userService", () => ({ getRoles: mocks.getRoles, getUsers: mocks.getUsers }))
+vi.mock("@/services/propertyManagerAssignmentService", () => ({ getPropertyManagerAssignments: mocks.getAssignments }))
 vi.mock("@/services/publicBrowsingService", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/publicBrowsingService")>()),
   publicApi: { getRoom: mocks.getRoom },
@@ -52,6 +54,10 @@ const viewing = (overrides: Partial<ViewingScheduleDto> = {}): ViewingScheduleDt
   assignedTo: null, assignedManagerName: null, assignedManagerPhone: null,
   managerNote: null, respondedBy: null, respondedAt: null,
   ...overrides,
+})
+
+const assignment = (managerId: number, managerIsActive = true) => ({
+  propertyId: 1, propertyName: "Sunrise", managerId, managerName: `Manager ${managerId}`, managerEmail: "m@example.test", managerIsActive,
 })
 
 const room: PublicRoomDetail = {
@@ -74,11 +80,13 @@ beforeEach(() => {
   mocks.rejectViewingSchedule.mockReset()
   mocks.getRoles.mockReset()
   mocks.getUsers.mockReset()
+  mocks.getAssignments.mockReset()
   mocks.user = { id: "10", name: "Customer A", phone: "0900", role: "CUSTOMER" }
   mocks.getRoom.mockResolvedValue(room)
   mocks.getViewingSchedules.mockResolvedValue([])
   mocks.getRoles.mockResolvedValue([{ roleId: 2, roleName: "Manager" }])
   mocks.getUsers.mockResolvedValue([{ userId: 7, fullName: "Manager A", phoneNumber: "0911", roleName: "Manager", isActive: true }])
+  mocks.getAssignments.mockResolvedValue([assignment(7)])
 })
 
 describe("ViewingRequestPage", () => {
@@ -135,6 +143,37 @@ describe("ManagementViewingsPage", () => {
       assignedTo: 7,
       managerNote: "Use the side entrance.",
     })
+  })
+
+  it("only offers Managers assigned to the viewing's property", async () => {
+    mocks.user = { id: "9", name: "Admin", phone: "0900", role: "ADMIN" }
+    mocks.getViewingSchedules.mockResolvedValue([viewing({ scheduledAt: null })])
+    mocks.getUsers.mockResolvedValue([
+      { userId: 7, fullName: "Manager A", phoneNumber: "0911", roleName: "Manager", isActive: true },
+      { userId: 8, fullName: "Manager B", phoneNumber: "0922", roleName: "Manager", isActive: true },
+    ])
+    mocks.getAssignments.mockResolvedValue([assignment(7)])
+    render(<MemoryRouter><ManagementViewingsPage /></MemoryRouter>)
+
+    await screen.findByText("Nguyễn An")
+    fireEvent.click(screen.getByRole("button", { name: "Phân công & duyệt" }))
+
+    expect(await screen.findByRole("option", { name: "Manager A · 0911" })).toBeTruthy()
+    expect(screen.queryByRole("option", { name: "Manager B · 0922" })).toBeNull()
+    expect(mocks.getAssignments).toHaveBeenCalledWith("token", 1, expect.anything())
+  })
+
+  it("blocks approval and explains when no Manager is assigned to the property", async () => {
+    mocks.user = { id: "9", name: "Admin", phone: "0900", role: "ADMIN" }
+    mocks.getViewingSchedules.mockResolvedValue([viewing({ scheduledAt: null })])
+    mocks.getAssignments.mockResolvedValue([assignment(7, false)])
+    render(<MemoryRouter><ManagementViewingsPage /></MemoryRouter>)
+
+    await screen.findByText("Nguyễn An")
+    fireEvent.click(screen.getByRole("button", { name: "Phân công & duyệt" }))
+
+    expect(await screen.findByText(/chưa có Manager nào được phân công/)).toBeTruthy()
+    expect((screen.getByRole("button", { name: "Xác nhận & thông báo" }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it("keeps Manager view read-only and scopes decision actions to Admin", async () => {
