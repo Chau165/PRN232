@@ -475,6 +475,9 @@ namespace PRN232.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<int?>("BookingId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("CheckoutUrl")
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)");
@@ -496,7 +499,7 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<DateTime?>("ExpiresAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("InvoiceId")
+                    b.Property<int?>("InvoiceId")
                         .HasColumnType("integer");
 
                     b.Property<string>("LastErrorCode")
@@ -539,12 +542,17 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.HasKey("PaymentRequestId");
 
+                    b.HasIndex("BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PaymentRequests_BookingId_Active")
+                        .HasFilter("\"BookingId\" IS NOT NULL AND \"Status\" IN ('Creating', 'Pending', 'RequiresReview')");
+
                     b.HasIndex("CustomerId");
 
                     b.HasIndex("InvoiceId")
                         .IsUnique()
                         .HasDatabaseName("UX_PaymentRequests_InvoiceId_Active")
-                        .HasFilter("\"Status\" IN ('Creating', 'Pending', 'RequiresReview')");
+                        .HasFilter("\"InvoiceId\" IS NOT NULL AND \"Status\" IN ('Creating', 'Pending', 'RequiresReview')");
 
                     b.HasIndex("OrderCode")
                         .IsUnique();
@@ -561,6 +569,8 @@ namespace PRN232.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_PaymentRequests_Amount_Positive", "\"Amount\" > 0");
 
                             t.HasCheckConstraint("CK_PaymentRequests_Currency", "\"Currency\" = 'VND'");
+
+                            t.HasCheckConstraint("CK_PaymentRequests_ExactlyOneTarget", "(\"InvoiceId\" IS NOT NULL AND \"BookingId\" IS NULL) OR (\"InvoiceId\" IS NULL AND \"BookingId\" IS NOT NULL)");
 
                             t.HasCheckConstraint("CK_PaymentRequests_ExpiresAt", "\"ExpiresAtUtc\" IS NULL OR \"ExpiresAtUtc\" > \"CreatedAtUtc\"");
 
@@ -1363,6 +1373,11 @@ namespace PRN232.Infrastructure.Migrations
 
             modelBuilder.Entity("PRN232.Domain.Entities.PaymentRequests", b =>
                 {
+                    b.HasOne("PRN232.Domain.Entities.Bookings", "Booking")
+                        .WithMany("PaymentRequests")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PRN232.Domain.Entities.Users", "Customer")
                         .WithMany("PaymentRequests")
                         .HasForeignKey("CustomerId")
@@ -1372,13 +1387,14 @@ namespace PRN232.Infrastructure.Migrations
                     b.HasOne("PRN232.Domain.Entities.Invoices", "Invoice")
                         .WithMany("PaymentRequests")
                         .HasForeignKey("InvoiceId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("PRN232.Domain.Entities.Payments", "Payment")
                         .WithOne("PaymentRequest")
                         .HasForeignKey("PRN232.Domain.Entities.PaymentRequests", "PaymentId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Booking");
 
                     b.Navigation("Customer");
 
@@ -1638,6 +1654,8 @@ namespace PRN232.Infrastructure.Migrations
             modelBuilder.Entity("PRN232.Domain.Entities.Bookings", b =>
                 {
                     b.Navigation("Contract");
+
+                    b.Navigation("PaymentRequests");
 
                     b.Navigation("Payments");
                 });

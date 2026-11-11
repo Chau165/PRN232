@@ -1,11 +1,12 @@
 namespace PRN232.Domain.Entities;
 
-// An invoice checkout attempt, not money received. A successful settlement links
+// An invoice or booking checkout attempt, not money received. A successful settlement links
 // to Payments; cash/legacy payments do not require a PaymentRequest.
 public class PaymentRequests
 {
     public int PaymentRequestId { get; set; }
-    public int InvoiceId { get; set; }
+    public int? InvoiceId { get; set; }
+    public int? BookingId { get; set; }
     public int CustomerId { get; set; }
     public decimal Amount { get; set; }
     public string Currency { get; set; } = "VND";
@@ -28,6 +29,7 @@ public class PaymentRequests
     public int? PaymentId { get; set; }
 
     public Invoices? Invoice { get; set; }
+    public Bookings? Booking { get; set; }
     public Users? Customer { get; set; }
     public Payments? Payment { get; set; }
 }

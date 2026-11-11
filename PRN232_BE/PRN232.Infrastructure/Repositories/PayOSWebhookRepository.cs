@@ -70,6 +70,14 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
     private async Task SettleAsync(PaymentWebhookReceipts receipt, PaymentRequests request, DateTime confirmedAtUtc, bool isWebhook,
         CancellationToken cancellationToken)
     {
+        if (!request.InvoiceId.HasValue)
+        {
+            // P2 stores the new target safely. Booking settlement is implemented in P3.
+            receipt.Outcome = "RequiresReview";
+            if (isWebhook) request.WebhookReceivedAtUtc ??= receipt.ReceivedAtUtc;
+            MarkReview(request, "BOOKING_CHECKOUT_NOT_SUPPORTED", confirmedAtUtc);
+            return;
+        }
         var invoice = await context.Invoices.AsNoTracking().Where(item => item.InvoiceId == request.InvoiceId)
             .Select(item => new { item.Status, item.InvoiceMonth, item.Contract!.CustomerId,
                 item.Contract.Room!.RoomCode, item.Contract.Room.Property!.OwnerId,
@@ -103,7 +111,7 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
                 MarkReview(request, "POSSIBLE_DUPLICATE_PAYMENT", confirmedAtUtc);
                 context.PaymentReviewCases.Add(new PaymentReviewCases
                 {
-                    Receipt = receipt, InvoiceId = request.InvoiceId, ExistingPaymentId = originalPaymentId.Value,
+                    Receipt = receipt, InvoiceId = request.InvoiceId.Value, ExistingPaymentId = originalPaymentId.Value,
                     CreatedAtUtc = confirmedAtUtc
                 });
                 var admins = await context.Users.AsNoTracking().Where(item => item.IsActive && item.Role!.RoleName == RoleNames.Admin)
@@ -155,13 +163,20 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
 
     private async Task<PaymentRequests?> LockRequestAsync(long orderCode, CancellationToken cancellationToken)
     {
-        var invoiceId = await context.PaymentRequests.Where(request => request.OrderCode == orderCode)
-            .Select(request => (int?)request.InvoiceId).FirstOrDefaultAsync(cancellationToken);
-        if (!invoiceId.HasValue) return null;
+        var target = await context.PaymentRequests.AsNoTracking().Where(request => request.OrderCode == orderCode)
+            .Select(request => new { request.InvoiceId, request.BookingId }).FirstOrDefaultAsync(cancellationToken);
+        if (target is null) return null;
         if (context.Database.IsNpgsql())
-            await context.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT 1 FROM \"Invoices\" WHERE \"InvoiceId\" = {invoiceId.Value} FOR UPDATE", cancellationToken);
-        // Same invoice-first lock order as checkout creation and settlement.
+        {
+            if (target.InvoiceId.HasValue)
+                await context.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT 1 FROM \"Invoices\" WHERE \"InvoiceId\" = {target.InvoiceId.Value} FOR UPDATE", cancellationToken);
+            else if (target.BookingId.HasValue)
+                await context.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT 1 FROM \"Bookings\" WHERE \"BookingId\" = {target.BookingId.Value} FOR UPDATE", cancellationToken);
+        }
+        // Invoice requests retain their invoice-first lock order. The booking
+        // branch only retains receipts in P2; its settlement lock policy belongs to P3.
         var result = await context.PaymentRequests.SingleAsync(request => request.OrderCode == orderCode, cancellationToken);
         await context.Entry(result).ReloadAsync(cancellationToken);
         return result;

@@ -237,9 +237,14 @@ public class AppDbContext : DbContext
             // An uncertain receipt must be resolved before issuing another checkout.
             entity.HasIndex(request => request.InvoiceId).IsUnique()
                 .HasDatabaseName("UX_PaymentRequests_InvoiceId_Active")
-                .HasFilter("\"Status\" IN ('Creating', 'Pending', 'RequiresReview')");
+                .HasFilter("\"InvoiceId\" IS NOT NULL AND \"Status\" IN ('Creating', 'Pending', 'RequiresReview')");
+            entity.HasIndex(request => request.BookingId).IsUnique()
+                .HasDatabaseName("UX_PaymentRequests_BookingId_Active")
+                .HasFilter("\"BookingId\" IS NOT NULL AND \"Status\" IN ('Creating', 'Pending', 'RequiresReview')");
             entity.ToTable("PaymentRequests", table =>
             {
+                table.HasCheckConstraint("CK_PaymentRequests_ExactlyOneTarget",
+                    "(\"InvoiceId\" IS NOT NULL AND \"BookingId\" IS NULL) OR (\"InvoiceId\" IS NULL AND \"BookingId\" IS NOT NULL)");
                 table.HasCheckConstraint("CK_PaymentRequests_Amount_Positive", "\"Amount\" > 0");
                 table.HasCheckConstraint("CK_PaymentRequests_OrderCode_Positive", "\"OrderCode\" > 0");
                 table.HasCheckConstraint("CK_PaymentRequests_Currency", "\"Currency\" = 'VND'");
@@ -259,6 +264,8 @@ public class AppDbContext : DbContext
             entity.Property(request => request.LastErrorMessage).HasMaxLength(1000);
             entity.HasOne(request => request.Invoice).WithMany(invoice => invoice.PaymentRequests)
                 .HasForeignKey(request => request.InvoiceId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(request => request.Booking).WithMany(booking => booking.PaymentRequests)
+                .HasForeignKey(request => request.BookingId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(request => request.Customer).WithMany(user => user.PaymentRequests)
                 .HasForeignKey(request => request.CustomerId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(request => request.Payment).WithOne(payment => payment.PaymentRequest)

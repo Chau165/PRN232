@@ -37,4 +37,5 @@ public class Bookings
         get; set;
     }
     public ICollection<Payments> Payments { get; set; } = new List<Payments>();
+    public ICollection<PaymentRequests> PaymentRequests { get; set; } = new List<PaymentRequests>();
 }

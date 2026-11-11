@@ -77,7 +77,7 @@ public class InvoicePaymentLinkService(IInvoicePaymentLinkRepository repository,
     }
 
     private static InvoicePaymentLinkDto Dto(PaymentRequests request, bool reused, bool includeUrl = true) => new(
-        request.PaymentRequestId, request.InvoiceId, request.Status, request.Amount, request.Currency,
+        request.PaymentRequestId, request.InvoiceId ?? throw new InvoiceStatusLinkConflictException("This request is not an invoice checkout."), request.Status, request.Amount, request.Currency,
         includeUrl ? request.CheckoutUrl : null, UtcTimestamp.ForResponse(request.ExpiresAtUtc), reused);
 }
 

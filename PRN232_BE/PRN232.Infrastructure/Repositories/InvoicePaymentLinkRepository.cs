@@ -67,8 +67,9 @@ public class InvoicePaymentLinkRepository(AppDbContext context) : IInvoicePaymen
     {
         var invoiceId = await context.PaymentRequests.Where(request => request.PaymentRequestId == requestId)
             .Select(request => request.InvoiceId).SingleAsync(cancellationToken);
+        if (!invoiceId.HasValue) throw new InvoiceStatusLinkConflictException("This request is not an invoice checkout.");
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-        await LockInvoice(invoiceId, cancellationToken);
+        await LockInvoice(invoiceId.Value, cancellationToken);
         var request = await context.PaymentRequests.SingleAsync(item => item.PaymentRequestId == requestId, cancellationToken);
         await context.Entry(request).ReloadAsync(cancellationToken);
         if (request.Status == expectedStatus)

@@ -11,13 +11,13 @@ namespace PRN232.Infrastructure.Repositories;
 public class PaymentReconciliationRepository(AppDbContext context) : IPaymentReconciliationRepository
 {
     public Task<PaymentReconciliationReadModel?> GetAsync(int id, CancellationToken cancellationToken) =>
-        context.PaymentRequests.AsNoTracking().Where(item => item.PaymentRequestId == id && item.Provider == "PayOS")
+        context.PaymentRequests.AsNoTracking().Where(item => item.PaymentRequestId == id && item.Provider == "PayOS" && item.InvoiceId.HasValue)
             .Select(item => new PaymentReconciliationReadModel(item.PaymentRequestId, item.OrderCode,
                 item.Invoice!.Contract!.Room!.Property!.OwnerId, item.Status, item.LastErrorCode, item.UpdatedAtUtc))
             .SingleOrDefaultAsync(cancellationToken);
 
     public Task<List<int>> FindDueAsync(DateTime cutoffUtc, int limit, CancellationToken cancellationToken) =>
-        context.PaymentRequests.AsNoTracking().Where(item => item.Provider == "PayOS" && item.UpdatedAtUtc <= cutoffUtc &&
+        context.PaymentRequests.AsNoTracking().Where(item => item.Provider == "PayOS" && item.InvoiceId.HasValue && item.UpdatedAtUtc <= cutoffUtc &&
             (item.Status == PaymentRequestStatuses.Creating || item.Status == PaymentRequestStatuses.Pending ||
              (item.Status == PaymentRequestStatuses.RequiresReview && item.LastErrorCode == "EXPIRED_CHECKOUT_UNRESOLVED")))
             .OrderBy(item => item.UpdatedAtUtc).ThenBy(item => item.PaymentRequestId)
@@ -33,6 +33,7 @@ public class PaymentReconciliationRepository(AppDbContext context) : IPaymentRec
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         var invoiceId = await context.PaymentRequests.Where(item => item.PaymentRequestId == id)
             .Select(item => item.InvoiceId).SingleAsync(cancellationToken);
+        if (!invoiceId.HasValue) throw new InvoiceStatusLinkConflictException("This request is not an invoice checkout.");
         if (context.Database.IsNpgsql())
             await context.Database.ExecuteSqlInterpolatedAsync(
                 $"SELECT 1 FROM \"Invoices\" WHERE \"InvoiceId\" = {invoiceId} FOR UPDATE", cancellationToken);
