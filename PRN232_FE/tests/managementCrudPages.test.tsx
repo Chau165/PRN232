@@ -110,6 +110,30 @@ beforeEach(() => {
 })
 
 describe("management property and room CRUD", () => {
+  it("renders the property's API image and assigned manager name without the manager email", async () => {
+    adminSession()
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+      if (url.endsWith("/users/me")) return jsonResponse(admin)
+      if (url.endsWith("/properties/21/managers")) return jsonResponse([{
+        propertyId: 21, managerId: 8, managerName: "Nguyễn Hoàng An",
+        managerEmail: "manager.private@example.test", managerIsActive: true,
+      }])
+      if (url.endsWith("/properties")) return jsonResponse([{
+        ...property, primaryImageUrl: "https://images.example.test/property-21.jpg",
+      }])
+      return jsonResponse([], 200)
+    }))
+    renderManagementPage(<ManagementPropertiesPage />)
+    expect(await screen.findByText("Nguyễn Hoàng An")).toBeTruthy()
+    const image = screen.getByRole("img", { name: `Ảnh ${property.propertyName}` })
+    expect(image.getAttribute("src")).toBe("https://images.example.test/property-21.jpg")
+    expect(screen.queryByText("manager.private@example.test")).toBeNull()
+    fireEvent.error(image)
+    expect(screen.queryByRole("img", { name: `Ảnh ${property.propertyName}` })).toBeNull()
+    expect(screen.getByText("Chưa có ảnh")).toBeTruthy()
+  })
+
   it("creates a property through the management API and sends no client owner id", async () => {
     adminSession()
     const calls: Array<{ url: string; init?: RequestInit }> = []

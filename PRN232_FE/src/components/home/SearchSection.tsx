@@ -82,7 +82,7 @@ export default function SearchSection({
 
   return (
     <section id="tim-phong" className="scroll-mt-24">
-      <div className="mx-auto max-w-[1020px] px-6 py-10 lg:py-12">
+      <div className="public-container py-10 lg:py-12">
         <form
           onSubmit={submit}
           className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"

@@ -99,7 +99,8 @@ public sealed class PublicPropertyListingPostgreSqlTests
 
         Assert.InRange(filteredPage.Items.Count, 0, 1);
         Assert.True(filteredPage.TotalCount >= filteredPage.Items.Count);
-        Assert.Equal(6, sqlCapture.Commands.Count);
+        // Location filters resolve distinct stored names before the three listing queries.
+        Assert.Equal(7, sqlCapture.Commands.Count);
     }
 
     [PostgreSqlFact]

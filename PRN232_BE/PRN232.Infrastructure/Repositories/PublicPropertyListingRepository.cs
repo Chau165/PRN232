@@ -42,7 +42,9 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
         var matchingRooms = ApplyRoomFilters(
             RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc),
             criteria);
-        var eligibleProperties = ApplyPropertyFilters(_context.Properties.AsNoTracking(), criteria)
+        var filteredProperties = await ApplyPropertyFiltersAsync(
+            _context.Properties.AsNoTracking(), criteria, cancellationToken);
+        var eligibleProperties = filteredProperties
             .Where(property => matchingRooms.Any(room => room.PropertyId == property.PropertyId));
 
         var totalCount = await eligibleProperties.CountAsync(cancellationToken);
@@ -552,9 +554,10 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
         return rooms;
     }
 
-    private static IQueryable<Property> ApplyPropertyFilters(
+    private static async Task<IQueryable<Property>> ApplyPropertyFiltersAsync(
         IQueryable<Property> properties,
-        PublicPropertySearchCriteria criteria)
+        PublicPropertySearchCriteria criteria,
+        CancellationToken cancellationToken)
     {
         if (criteria.Keyword is not null)
         {
@@ -567,20 +570,36 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 property.City.ToLower().Contains(keyword));
         }
 
+        if (criteria.City is null && criteria.District is null && criteria.Ward is null)
+        {
+            return properties;
+        }
+
+        // Resolve normalized names against distinct stored locations, then keep filtering,
+        // counts, sorting and pagination in SQL. No database unaccent extension required.
+        var locations = await properties.Select(property => new { property.City, property.District, property.Ward })
+            .Distinct()
+            .ToListAsync(cancellationToken);
         if (criteria.City is not null)
         {
-            var city = criteria.City.ToLowerInvariant();
-            properties = properties.Where(property => property.City.Trim().ToLower() == city);
+            var city = PublicAreaNameNormalizer.Normalize(criteria.City);
+            var cityNames = locations.Where(location => PublicAreaNameNormalizer.Normalize(location.City) == city)
+                .Select(location => location.City).Distinct().ToArray();
+            properties = properties.Where(property => cityNames.Contains(property.City));
         }
         if (criteria.District is not null)
         {
-            var district = criteria.District.ToLowerInvariant();
-            properties = properties.Where(property => property.District.Trim().ToLower() == district);
+            var district = PublicAreaNameNormalizer.Normalize(criteria.District);
+            var districtNames = locations.Where(location => PublicAreaNameNormalizer.Normalize(location.District) == district)
+                .Select(location => location.District).Distinct().ToArray();
+            properties = properties.Where(property => districtNames.Contains(property.District));
         }
         if (criteria.Ward is not null)
         {
-            var ward = criteria.Ward.ToLowerInvariant();
-            properties = properties.Where(property => property.Ward.Trim().ToLower() == ward);
+            var ward = PublicAreaNameNormalizer.Normalize(criteria.Ward);
+            var wardNames = locations.Where(location => PublicAreaNameNormalizer.Normalize(location.Ward) == ward)
+                .Select(location => location.Ward).Distinct().ToArray();
+            properties = properties.Where(property => wardNames.Contains(property.Ward));
         }
 
         return properties;

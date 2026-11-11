@@ -64,6 +64,16 @@ public static class PublicAreaNameNormalizer
         var tokens = characters.ToString()
             .Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .ToList();
+        // Seeded addresses retain former administrative areas as "Khu vực ... cũ".
+        // Strip the annotation, not arbitrary substrings of the actual place name.
+        if (tokens.Count > 2 && tokens[0] == "khu" && tokens[1] == "vuc")
+        {
+            tokens.RemoveRange(0, 2);
+            if (tokens.Count > 1 && tokens[^1] == "cu")
+            {
+                tokens.RemoveAt(tokens.Count - 1);
+            }
+        }
         RemovePrefixes(tokens);
         while (tokens.Count > 1 && Suffixes.Contains(tokens[^1]))
         {

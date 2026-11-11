@@ -141,7 +141,7 @@ export default function MapSection() {
 
   return (
     <section id="khu-vuc" className="scroll-mt-24">
-      <div className="mx-auto max-w-[1180px] px-6 pb-20 pt-4 lg:pt-8">
+      <div className="public-container pb-20 pt-4 lg:pt-8">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[.16em] text-[#087775]">

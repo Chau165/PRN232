@@ -344,8 +344,10 @@ describe("Phase 4A Admin user APIs", () => {
     vi.stubGlobal("fetch", fetchMock)
     renderPage(<ManagementPropertiesPage />)
 
-    expect(await screen.findByText("manager@example.test")).toBeTruthy()
-    expect(await screen.findByText("manager-two@example.test")).toBeTruthy()
+    expect(await screen.findByText(manager.fullName)).toBeTruthy()
+    expect(await screen.findByText("Manager Thứ Hai")).toBeTruthy()
+    expect(screen.queryByText("manager@example.test")).toBeNull()
+    expect(screen.queryByText("manager-two@example.test")).toBeNull()
     expect(screen.getByText("Chủ sở hữu: Admin Thật")).toBeTruthy()
     expect(screen.queryByLabelText("Chọn nhiều Manager")).toBeNull()
     expect(screen.queryByRole("button", { name: "Gán Manager" })).toBeNull()
