@@ -22,6 +22,7 @@ using PRN232.Api.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddPayOSConfiguration(builder.Configuration, builder.Environment);
+builder.Services.AddPayOSPayoutConfiguration(builder.Configuration);
 
 // ---- Database: Supabase Postgres via Npgsql ----
 builder.Services.AddDbContext<AppDbContext>(options =>
