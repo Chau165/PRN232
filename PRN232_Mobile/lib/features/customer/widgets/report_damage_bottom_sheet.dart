@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/maintenance_service.dart';
 import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_text_field.dart';
@@ -10,14 +11,28 @@ import '../data/customer_mock_data.dart';
 import '../models/customer_models.dart';
 
 class ReportDamageBottomSheet extends StatefulWidget {
-  const ReportDamageBottomSheet({super.key});
+  final int? contractId;
+  final String? roomCode;
 
-  static Future<bool?> show(BuildContext context) {
+  const ReportDamageBottomSheet({
+    super.key,
+    this.contractId,
+    this.roomCode,
+  });
+
+  static Future<bool?> show(
+    BuildContext context, {
+    int? contractId,
+    String? roomCode,
+  }) {
     return AppBottomSheet.show<bool>(
       context: context,
       title: 'Báo hỏng / Yêu cầu sửa chữa',
-      subtitle: 'Phòng 204 • Nhà trọ Bình An',
-      child: const ReportDamageBottomSheet(),
+      subtitle: roomCode != null ? 'Phòng $roomCode' : 'Phòng đang thuê',
+      child: ReportDamageBottomSheet(
+        contractId: contractId,
+        roomCode: roomCode,
+      ),
     );
   }
 
@@ -27,6 +42,7 @@ class ReportDamageBottomSheet extends StatefulWidget {
 }
 
 class _ReportDamageBottomSheetState extends State<ReportDamageBottomSheet> {
+  final MaintenanceService _maintenanceService = MaintenanceService();
   final ImagePicker _picker = ImagePicker();
   final List<XFile> _selectedImages = [];
   final _descriptionController = TextEditingController();
@@ -49,12 +65,7 @@ class _ReportDamageBottomSheetState extends State<ReportDamageBottomSheet> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final XFile? file = await _picker.pickImage(
-        source: source,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
-      );
+      final file = await _picker.pickImage(source: source, imageQuality: 75);
       if (file != null) {
         setState(() {
           _selectedImages.add(file);
@@ -74,10 +85,22 @@ class _ReportDamageBottomSheetState extends State<ReportDamageBottomSheet> {
     }
 
     setState(() => _isSubmitting = true);
-    await Future.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
-    setState(() => _isSubmitting = false);
-    Navigator.pop(context, true);
+    try {
+      await _maintenanceService.createRequest(
+        contractId: widget.contractId ?? 1,
+        equipmentId: _selectedEquipment?.id,
+        description: _descriptionController.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
   }
 
   @override
@@ -118,93 +141,43 @@ class _ReportDamageBottomSheetState extends State<ReportDamageBottomSheet> {
         const SizedBox(height: 18),
 
         // Description
-        Text('2. Mô tả hiện tượng hư hỏng', style: AppTypography.labelLarge),
-        const SizedBox(height: 8),
         AppTextField(
-          hint: 'Mô tả chi tiết (vd: Máy lạnh kêu to và chảy nước ở máng xả...)',
+          label: '2. Mô tả hiện trạng hư hỏng',
           controller: _descriptionController,
+          hint: 'Ví dụ: Máy lạnh không mát, kêu to và bị chảy nước...',
           maxLines: 3,
         ),
         const SizedBox(height: 18),
 
-        // Photo Upload / Camera
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('3. Hình ảnh chụp sự cố thực tế',
-                style: AppTypography.labelLarge),
-            Text('${_selectedImages.length}/3 ảnh',
-                style: AppTypography.bodySmall),
-          ],
-        ),
-        const SizedBox(height: 10),
-
-        Row(
-          children: [
-            // Camera Button
-            Expanded(
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(42),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                  side: const BorderSide(color: AppColors.primary),
-                ),
-                icon: const Icon(Icons.camera_alt_rounded, size: 18),
-                label: const Text('Chụp ảnh'),
-                onPressed: _selectedImages.length >= 3
-                    ? null
-                    : () => _pickImage(ImageSource.camera),
-              ),
-            ),
-            const SizedBox(width: 10),
-            // Gallery Button
-            Expanded(
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(42),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                  side: const BorderSide(color: AppColors.primary),
-                ),
-                icon: const Icon(Icons.photo_library_outlined, size: 18),
-                label: const Text('Thư viện'),
-                onPressed: _selectedImages.length >= 3
-                    ? null
-                    : () => _pickImage(ImageSource.gallery),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-
-        // Thumbnail Previews
-        if (_selectedImages.isNotEmpty)
-          SizedBox(
-            height: 80,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _selectedImages.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 10),
-              itemBuilder: (context, index) {
-                final file = _selectedImages[index];
+        // Photos
+        Text('3. Hình ảnh chụp thực tế (tùy chọn)',
+            style: AppTypography.labelLarge),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              ..._selectedImages.map((img) {
                 return Stack(
                   children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.file(
-                        File(file.path),
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
+                    Container(
+                      width: 80,
+                      height: 80,
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        image: DecorationImage(
+                          image: FileImage(File(img.path)),
+                          fit: BoxFit.cover,
+                        ),
                       ),
                     ),
                     Positioned(
                       top: 4,
-                      right: 4,
+                      right: 12,
                       child: GestureDetector(
                         onTap: () {
-                          setState(() => _selectedImages.removeAt(index));
+                          setState(() => _selectedImages.remove(img));
                         },
                         child: Container(
                           padding: const EdgeInsets.all(2),
@@ -212,25 +185,77 @@ class _ReportDamageBottomSheetState extends State<ReportDamageBottomSheet> {
                             color: Colors.black54,
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.close,
+                          child: const Icon(Icons.close_rounded,
                               size: 14, color: Colors.white),
                         ),
                       ),
                     ),
                   ],
                 );
-              },
-            ),
+              }),
+              InkWell(
+                onTap: () => _pickImage(ImageSource.camera),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceVariant,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: AppColors.border, style: BorderStyle.solid),
+                  ),
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.camera_alt_outlined,
+                          size: 22, color: AppColors.primary),
+                      SizedBox(height: 4),
+                      Text('Chụp ảnh',
+                          style: TextStyle(
+                              fontSize: 10, color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: () => _pickImage(ImageSource.gallery),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceVariant,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: AppColors.border, style: BorderStyle.solid),
+                  ),
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.photo_library_outlined,
+                          size: 22, color: AppColors.primary),
+                      SizedBox(height: 4),
+                      Text('Thư viện',
+                          style: TextStyle(
+                              fontSize: 10, color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
+        ),
         const SizedBox(height: 24),
 
+        // Submit Button
         AppButton(
-          text: 'Gửi phiếu báo hỏng',
+          text: 'Gửi yêu cầu sửa chữa',
           isLoading: _isSubmitting,
-          icon: const Icon(Icons.send_rounded, size: 18, color: Colors.white),
           onPressed: _submit,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
       ],
     );
   }

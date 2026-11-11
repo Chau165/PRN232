@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/viewing_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../core/widgets/app_button.dart';
@@ -85,10 +86,39 @@ class _ViewingRequestBottomSheetState extends State<ViewingRequestBottomSheet> {
 
   void _submit() async {
     setState(() => _isSubmitting = true);
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (!mounted) return;
-    setState(() => _isSubmitting = false);
-    Navigator.pop(context, true);
+    final targetRoomId = widget.room?.roomId ??
+        (widget.property.rooms.isNotEmpty
+            ? widget.property.rooms.first.roomId
+            : 1);
+    final parts = _selectedSlot.split(':');
+    final hour = int.tryParse(parts[0]) ?? 9;
+    final minute = int.tryParse(parts[1]) ?? 0;
+    final scheduledAt = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+      hour,
+      minute,
+    );
+
+    try {
+      await ViewingService().createViewing(
+        roomId: targetRoomId,
+        scheduledAt: scheduledAt,
+        note: _noteController.text.trim().isNotEmpty
+            ? _noteController.text.trim()
+            : null,
+      );
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
   }
 
   @override
@@ -129,62 +159,63 @@ class _ViewingRequestBottomSheetState extends State<ViewingRequestBottomSheet> {
             ),
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
 
         // Time Slot Selection
-        Text('2. Chọn khung giờ tiện lợi', style: AppTypography.labelLarge),
+        Text('2. Chọn khung giờ', style: AppTypography.labelLarge),
         const SizedBox(height: 8),
         Wrap(
-          spacing: 10,
-          runSpacing: 10,
+          spacing: 8,
+          runSpacing: 8,
           children: _timeSlots.map((slot) {
             final isSelected = _selectedSlot == slot;
             return ChoiceChip(
               label: Text(slot),
               selected: isSelected,
+              onSelected: (selected) {
+                if (selected) setState(() => _selectedSlot = slot);
+              },
               selectedColor: AppColors.primary,
               backgroundColor: AppColors.surfaceVariant,
-              labelStyle: TextStyle(
+              labelStyle: AppTypography.labelMedium.copyWith(
                 color: isSelected ? Colors.white : AppColors.textPrimary,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                fontSize: 13,
               ),
-              side: BorderSide(
-                color: isSelected ? AppColors.primary : AppColors.border,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(
+                  color: isSelected ? AppColors.primary : AppColors.borderLight,
+                ),
               ),
-              onSelected: (val) {
-                if (val) setState(() => _selectedSlot = slot);
-              },
             );
           }).toList(),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
 
-        // Contact phone
+        // Contact Phone
         AppTextField(
-          label: 'Số điện thoại liên hệ xác nhận',
+          label: 'Số điện thoại liên hệ',
           controller: _phoneController,
           keyboardType: TextInputType.phone,
-          prefixIcon: const Icon(Icons.phone_outlined),
+          prefixIcon: const Icon(Icons.phone_rounded, size: 18),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
 
         // Note
         AppTextField(
-          label: 'Ghi chú cho Quản lý (tùy chọn)',
-          hint: 'vd: Em muốn xem thêm chỗ phơi đồ và bãi gửi xe...',
+          label: 'Ghi chú cho Quản lý (nếu có)',
           controller: _noteController,
+          hint: 'Ví dụ: Tôi muốn xem thêm chỗ để xe máy...',
           maxLines: 2,
         ),
         const SizedBox(height: 24),
 
+        // Submit Button
         AppButton(
-          text: 'Gửi yêu cầu đặt lịch hẹn',
+          text: 'Gửi yêu cầu hẹn xem',
           isLoading: _isSubmitting,
-          icon: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
           onPressed: _submit,
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
       ],
     );
   }

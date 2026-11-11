@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/contract_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../core/widgets/app_button.dart';
@@ -17,12 +18,30 @@ class MyContractsScreen extends StatefulWidget {
 }
 
 class _MyContractsScreenState extends State<MyContractsScreen> {
-  late List<CustomerContractModel> _contracts;
+  final ContractService _contractService = ContractService();
+  List<CustomerContractModel> _contracts = [];
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     _contracts = List.from(CustomerMockData.myContracts);
+    _loadContracts();
+  }
+
+  Future<void> _loadContracts() async {
+    setState(() => _isLoading = true);
+    try {
+      final list = await _contractService.getCustomerContracts();
+      if (mounted) {
+        setState(() {
+          _contracts = list;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void _showContractDetail(CustomerContractModel contract) {
@@ -62,17 +81,19 @@ class _MyContractsScreenState extends State<MyContractsScreen> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Tiền thuê/tháng', style: AppTypography.bodySmall),
-                        Text(Formatters.formatCurrency(contract.monthlyRent),
-                            style: AppTypography.headingSmall),
+                        Text('Khách thuê', style: AppTypography.bodySmall),
+                        Text(contract.primaryTenantName, style: AppTypography.headingSmall),
+                        Text(contract.tenantPhone, style: AppTypography.bodySmall),
                       ],
                     ),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text('Tiền cọc giữ chân', style: AppTypography.bodySmall),
-                        Text(Formatters.formatCurrency(contract.depositAmount),
-                            style: AppTypography.labelLarge.copyWith(color: AppColors.primary)),
+                        Text('Tiền phòng/tháng', style: AppTypography.bodySmall),
+                        Text(Formatters.formatCurrency(contract.monthlyRent),
+                            style: AppTypography.headingSmall.copyWith(color: AppColors.primary)),
+                        Text('Cọc: ${Formatters.formatCurrency(contract.depositAmount)}',
+                            style: AppTypography.bodySmall),
                       ],
                     ),
                   ],
@@ -80,149 +101,134 @@ class _MyContractsScreenState extends State<MyContractsScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
 
-          // Parties information
-          Text('Thông tin các bên', style: AppTypography.headingSmall),
+          // Timeline công nợ các kỳ
+          Text('Tiến độ thanh toán tiền thuê (Billing Timeline)', style: AppTypography.headingSmall),
           const SizedBox(height: 8),
-          AppCard(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                _buildInfoRow('Bên cho thuê (Bên A):', contract.propertyName),
-                const Divider(height: 14),
-                _buildInfoRow('Đại diện thuê (Bên B):', contract.primaryTenantName),
-                const Divider(height: 14),
-                _buildInfoRow('Số CCCD / Định danh:', contract.tenantCccd),
-                const Divider(height: 14),
-                _buildInfoRow('Số điện thoại liên lạc:', contract.tenantPhone),
-                const Divider(height: 14),
-                _buildInfoRow(
-                  'Thời hạn hợp đồng:',
-                  '${Formatters.formatDate(contract.startDate)} → ${Formatters.formatDate(contract.endDate)}',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-
-          // Contract terms
-          Text('Điều khoản hợp đồng', style: AppTypography.headingSmall),
-          const SizedBox(height: 8),
-          AppCard(
-            padding: const EdgeInsets.all(14),
-            child: Text(
-              contract.terms,
-              style: AppTypography.bodySmall.copyWith(height: 1.5),
-            ),
-          ),
-          const SizedBox(height: 18),
-
-          // Billing Timeline
-          if (contract.billingTimeline.isNotEmpty) ...[
-            Text('Dòng thời gian công nợ kỳ thuê', style: AppTypography.headingSmall),
-            const SizedBox(height: 8),
-            AppCard(
-              padding: EdgeInsets.zero,
-              child: ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: contract.billingTimeline.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (ctx, idx) {
-                  final item = contract.billingTimeline[idx];
-                  return ListTile(
-                    leading: Icon(
-                      item.isPaid ? Icons.check_circle_rounded : Icons.pending_actions_rounded,
-                      color: item.isPaid ? AppColors.success : AppColors.warning,
-                      size: 22,
-                    ),
-                    title: Text(item.periodName, style: AppTypography.labelMedium),
-                    subtitle: Text('Hạn đóng: ${Formatters.formatDate(item.dueDate)}',
-                        style: AppTypography.bodySmall),
-                    trailing: Text(
-                      Formatters.formatCurrency(item.amount),
-                      style: AppTypography.labelMedium.copyWith(
-                        color: item.isPaid ? AppColors.textPrimary : AppColors.warning,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  );
-                },
+          if (contract.billingTimeline.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceVariant,
+                borderRadius: BorderRadius.circular(10),
               ),
-            ),
-            const SizedBox(height: 18),
-          ],
+              child: const Text('Kỳ thanh toán tự động tạo vào ngày 01 hàng tháng.'),
+            )
+          else
+            ...contract.billingTimeline.map((item) {
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: item.isPaid ? AppColors.surfaceVariant : Colors.white,
+                  border: Border.all(color: item.isPaid ? Colors.transparent : AppColors.primary),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          item.isPaid ? Icons.check_circle_rounded : Icons.pending_actions_rounded,
+                          size: 20,
+                          color: item.isPaid ? AppColors.success : AppColors.warning,
+                        ),
+                        const SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(item.periodName, style: AppTypography.labelLarge),
+                            Text('Hạn: ${Formatters.formatDate(item.dueDate)}',
+                                style: AppTypography.bodySmall),
+                          ],
+                        ),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(Formatters.formatCurrency(item.amount), style: AppTypography.labelLarge),
+                        Text(
+                          item.isPaid ? 'Đã thanh toán' : 'Chưa thu',
+                          style: AppTypography.labelSmall.copyWith(
+                            color: item.isPaid ? AppColors.success : AppColors.danger,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+          const SizedBox(height: 16),
 
+          // Terms
+          Text('Điều khoản thuê', style: AppTypography.headingSmall),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceVariant,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(contract.terms, style: AppTypography.bodySmall),
+          ),
+          const SizedBox(height: 24),
           AppButton(
-            text: 'Đóng chi tiết',
-            variant: AppButtonVariant.outline,
+            text: 'Đóng',
+            variant: AppButtonVariant.secondary,
             onPressed: () => Navigator.pop(context),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
         ],
       ),
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary)),
-        Text(value, style: AppTypography.labelMedium),
-      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final activeContracts = _contracts.where((c) => c.isActive).toList();
-    final pastContracts = _contracts.where((c) => !c.isActive).toList();
-
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Hợp Đồng Thuê Của Tôi'),
+        title: const Text('Hợp Đồng Của Tôi'),
         backgroundColor: Colors.white,
         elevation: 0,
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Active Contracts
-          Text('Hợp đồng đang hiệu lực', style: AppTypography.headingMedium),
-          const SizedBox(height: 10),
-          if (activeContracts.isEmpty)
-            const AppCard(
-              child: Center(
-                child: Text('Hiện tại bạn chưa có hợp đồng thuê nào đang hoạt động'),
-              ),
-            )
-          else
-            ...activeContracts.map((c) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _buildContractCard(c),
-                )),
-          const SizedBox(height: 24),
-
-          // Past Contracts History
-          if (pastContracts.isNotEmpty) ...[
-            Text('Lịch sử hợp đồng trước đây', style: AppTypography.headingMedium),
-            const SizedBox(height: 10),
-            ...pastContracts.map((c) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _buildContractCard(c),
-                )),
-          ],
-        ],
-      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          : RefreshIndicator(
+              onRefresh: _loadContracts,
+              color: AppColors.primary,
+              child: _contracts.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.assignment_late_outlined, size: 64, color: AppColors.textMuted),
+                          const SizedBox(height: 12),
+                          Text('Bạn chưa có hợp đồng thuê nào', style: AppTypography.bodyMedium),
+                        ],
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _contracts.length,
+                      separatorBuilder: (context, index) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final c = _contracts[index];
+                        return _buildContractCard(c);
+                      },
+                    ),
+            ),
     );
   }
 
   Widget _buildContractCard(CustomerContractModel contract) {
     return AppCard(
       onTap: () => _showContractDetail(contract),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

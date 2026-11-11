@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/equipment_service.dart';
 import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
@@ -17,7 +18,9 @@ class ManagerEquipmentScreen extends StatefulWidget {
 }
 
 class _ManagerEquipmentScreenState extends State<ManagerEquipmentScreen> {
-  late List<ManagerEquipmentModel> _equipments;
+  final EquipmentService _equipmentService = EquipmentService();
+  List<ManagerEquipmentModel> _equipments = [];
+  bool _isLoading = false;
   String _selectedFilter = 'Tất cả';
 
   final List<String> _filters = ['Tất cả', 'Tốt', 'Cần sửa', 'Hỏng'];
@@ -26,6 +29,22 @@ class _ManagerEquipmentScreenState extends State<ManagerEquipmentScreen> {
   void initState() {
     super.initState();
     _equipments = List.from(ManagerMockData.equipments);
+    _loadEquipments();
+  }
+
+  Future<void> _loadEquipments() async {
+    setState(() => _isLoading = true);
+    try {
+      final list = await _equipmentService.getEquipments();
+      if (mounted) {
+        setState(() {
+          _equipments = list;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   List<ManagerEquipmentModel> get _filteredEquipments {
@@ -211,6 +230,7 @@ class _ManagerEquipmentScreenState extends State<ManagerEquipmentScreen> {
       ),
       body: Column(
         children: [
+          if (_isLoading) const LinearProgressIndicator(minHeight: 2),
           // Filter Chips
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/manager_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/status_badge.dart';
@@ -16,7 +17,9 @@ class ManagerRoomsScreen extends StatefulWidget {
 }
 
 class _ManagerRoomsScreenState extends State<ManagerRoomsScreen> {
-  late List<ManagerRoomModel> _rooms;
+  final ManagerService _managerService = ManagerService();
+  List<ManagerRoomModel> _rooms = [];
+  bool _isLoading = false;
   String _selectedFilter = 'Tất cả';
 
   final List<String> _filters = [
@@ -31,6 +34,22 @@ class _ManagerRoomsScreenState extends State<ManagerRoomsScreen> {
   void initState() {
     super.initState();
     _rooms = List.from(ManagerMockData.rooms);
+    _loadRooms();
+  }
+
+  Future<void> _loadRooms() async {
+    setState(() => _isLoading = true);
+    try {
+      final list = await _managerService.getRooms();
+      if (mounted) {
+        setState(() {
+          _rooms = list;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   List<ManagerRoomModel> get _filteredRooms {
@@ -85,6 +104,7 @@ class _ManagerRoomsScreenState extends State<ManagerRoomsScreen> {
       ),
       body: Column(
         children: [
+          if (_isLoading) const LinearProgressIndicator(minHeight: 2),
           // Filter Chips
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),

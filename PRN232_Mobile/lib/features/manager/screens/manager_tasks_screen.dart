@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/booking_service.dart';
+import '../../../core/services/maintenance_service.dart';
+import '../../../core/services/viewing_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
@@ -18,13 +21,45 @@ class ManagerTasksScreen extends StatefulWidget {
 }
 
 class _ManagerTasksScreenState extends State<ManagerTasksScreen> {
+  final ViewingService _viewingService = ViewingService();
+  final BookingService _bookingService = BookingService();
+  final MaintenanceService _maintenanceService = MaintenanceService();
+
   int _currentTab = 0; // 0: Hẹn xem, 1: Duyệt cọc, 2: Bảo trì
-  late List<ManagerTaskModel> _tasks;
+  List<ManagerTaskModel> _tasks = [];
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     _tasks = List.from(ManagerMockData.tasks);
+    _loadTasks();
+  }
+
+  Future<void> _loadTasks() async {
+    setState(() => _isLoading = true);
+    try {
+      final viewings = await _viewingService.getManagerViewings();
+      final bookings = await _bookingService.getBookings();
+      final depositTasks = bookings.map((b) => ManagerTaskModel.fromBookingJson({
+            'bookingId': b.id,
+            'roomCode': b.roomCode,
+            'propertyName': b.propertyName,
+            'customerName': 'Khách thuê',
+            'customerPhone': '',
+            'depositAmount': b.depositAmount,
+            'status': b.status,
+          })).toList();
+      final maintenance = await _maintenanceService.getManagerRequests();
+      if (mounted) {
+        setState(() {
+          _tasks = [...viewings, ...depositTasks, ...maintenance];
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   List<ManagerTaskModel> get _viewingTasks =>
@@ -38,6 +73,7 @@ class _ManagerTasksScreenState extends State<ManagerTasksScreen> {
 
   void _approveViewing(ManagerTaskModel task) {
     setState(() => task.status = TaskStatus.approved);
+    _viewingService.approveViewing(task.id);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Đã xác nhận lịch hẹn xem phòng với ${task.customerName}!'),
@@ -49,6 +85,7 @@ class _ManagerTasksScreenState extends State<ManagerTasksScreen> {
 
   void _rejectViewing(ManagerTaskModel task) {
     setState(() => task.status = TaskStatus.rejected);
+    _viewingService.rejectViewing(task.id);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Đã từ chối lịch xem phòng của ${task.customerName}.'),
@@ -140,6 +177,7 @@ class _ManagerTasksScreenState extends State<ManagerTasksScreen> {
               ],
             ),
           ),
+          if (_isLoading) const LinearProgressIndicator(minHeight: 2),
           const Divider(height: 1),
 
           Expanded(

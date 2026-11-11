@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/auth/auth_state.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../core/services/notification_service.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/status_badge.dart';
@@ -32,6 +33,7 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
+  final NotificationService _notificationService = NotificationService();
   final List<NotificationItem> _items = [
     NotificationItem(
       id: 1,
@@ -75,6 +77,23 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     ),
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
+  }
+
+  Future<void> _loadNotifications() async {
+    try {
+      final list = await _notificationService.getNotifications();
+      if (list.isNotEmpty && mounted) {
+        setState(() {
+          _items.insertAll(0, list);
+        });
+      }
+    } catch (_) {}
+  }
+
   void _markAllRead() {
     setState(() {
       for (var item in _items) {
@@ -89,6 +108,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (!item.isRead) {
         item.isRead = true;
         authState.markNotificationRead();
+        _notificationService.markAsRead(item.id);
       }
     });
   }

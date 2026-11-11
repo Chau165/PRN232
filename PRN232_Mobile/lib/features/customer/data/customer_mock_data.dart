@@ -504,4 +504,21 @@ class CustomerMockData {
       images: const [],
     ),
   ];
+
+  // Aliases và helper methods cho Network Fallback
+  static List<CustomerBookingModel> get bookings => myBookings;
+  static List<CustomerViewingModel> get viewings => myViewings;
+  static List<CustomerContractModel> get contracts => myContracts;
+  static List<InvoiceModel> get invoices => myInvoices;
+  static List<CustomerMaintenanceModel> get maintenanceRequests => myMaintenanceRequests;
+  static List<IdentityDocumentModel> get identityDocuments =>
+      myIdentityDocument != null ? [myIdentityDocument!] : [];
+  static List<EquipmentItem> get myEquipments => myRoomEquipments;
+  static RoomItem get myCurrentRoom => properties.first.rooms[1];
+
+  static PropertyItem getPropertyById(int id) =>
+      properties.firstWhere((p) => p.propertyId == id, orElse: () => properties.first);
+
+  static RoomItem getRoomById(int id) =>
+      properties.expand((p) => p.rooms).firstWhere((r) => r.roomId == id, orElse: () => properties.first.rooms.first);
 }

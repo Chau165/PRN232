@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/maintenance_service.dart';
+import '../../../core/services/manager_service.dart';
+import '../../../core/services/viewing_service.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/status_badge.dart';
@@ -17,19 +20,45 @@ class ManagerDashboardScreen extends StatefulWidget {
 }
 
 class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
-  late List<ManagerTaskModel> _urgentTasks;
+  final ManagerService _managerService = ManagerService();
+  final ViewingService _viewingService = ViewingService();
+  final MaintenanceService _maintenanceService = MaintenanceService();
+
+  List<ManagerTaskModel> _urgentTasks = [];
+  List<ManagerRoomModel> _rooms = [];
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     _urgentTasks = List.from(ManagerMockData.tasks);
+    _rooms = List.from(ManagerMockData.rooms);
+    _loadDashboardData();
+  }
+
+  Future<void> _loadDashboardData() async {
+    setState(() => _isLoading = true);
+    try {
+      final rooms = await _managerService.getRooms();
+      final viewings = await _viewingService.getManagerViewings();
+      final maintenance = await _maintenanceService.getManagerRequests();
+      if (mounted) {
+        setState(() {
+          _rooms = rooms;
+          _urgentTasks = [...viewings, ...maintenance];
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   int get _occupiedCount =>
-      ManagerMockData.rooms.where((r) => r.isOccupied).length;
+      _rooms.where((r) => r.isOccupied).length;
 
   int get _availableCount =>
-      ManagerMockData.rooms.where((r) => r.isAvailable).length;
+      _rooms.where((r) => r.isAvailable).length;
 
   int get _pendingTaskCount =>
       _urgentTasks.where((t) => t.isPending).length;
@@ -38,6 +67,9 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
     setState(() {
       task.status = TaskStatus.approved;
     });
+    if (task.type == TaskType.viewing) {
+      _viewingService.approveViewing(task.id);
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Đã phê duyệt "${task.title}" thành công!'),
@@ -51,6 +83,9 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
     setState(() {
       task.status = TaskStatus.rejected;
     });
+    if (task.type == TaskType.viewing) {
+      _viewingService.rejectViewing(task.id);
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Đã từ chối "${task.title}".'),
@@ -62,7 +97,7 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final totalRooms = ManagerMockData.rooms.length;
+    final totalRooms = _rooms.isNotEmpty ? _rooms.length : 1;
     final occupancyRate = ((_occupiedCount / totalRooms) * 100).toStringAsFixed(1);
 
     return Scaffold(
@@ -98,6 +133,7 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_isLoading) const Padding(padding: EdgeInsets.only(bottom: 12), child: LinearProgressIndicator(minHeight: 2)),
             // 4 KPI Cards
             GridView.count(
               shrinkWrap: true,
