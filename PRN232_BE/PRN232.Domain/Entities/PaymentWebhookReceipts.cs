@@ -5,6 +5,7 @@ public class PaymentWebhookReceipts
 {
     public int PaymentWebhookReceiptId { get; set; }
     public string Provider { get; set; } = "PayOS";
+    public string Source { get; set; } = "Webhook";
     public string Reference { get; set; } = string.Empty;
     public long OrderCode { get; set; }
     public string PaymentLinkId { get; set; } = string.Empty;

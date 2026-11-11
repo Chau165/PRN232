@@ -219,6 +219,10 @@ builder.Services.AddScoped<IPaymentRequestStatusRepository, PaymentRequestStatus
 builder.Services.AddScoped<IPaymentRequestStatusService, PaymentRequestStatusService>();
 builder.Services.AddScoped<IPayOSWebhookRepository, PayOSWebhookRepository>();
 builder.Services.AddScoped<IPayOSWebhookService, PayOSWebhookService>();
+builder.Services.AddScoped<IPaymentReconciliationRepository, PaymentReconciliationRepository>();
+builder.Services.AddScoped<IPaymentReconciliationService, PaymentReconciliationService>();
+builder.Services.AddSingleton(provider => provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PayOSSettings>>().Value);
+builder.Services.AddHostedService<PRN232.Api.Workers.PaymentReconciliationWorker>();
 builder.Services.AddScoped<IInvoicePaymentLinkService>(provider => new InvoicePaymentLinkService(
     provider.GetRequiredService<IInvoicePaymentLinkRepository>(), provider.GetRequiredService<IInvoiceCheckoutGateway>(),
     provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PayOSSettings>>().Value,

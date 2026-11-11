@@ -9,7 +9,13 @@ namespace PRN232.Infrastructure.Repositories;
 
 public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookRepository
 {
-    public async Task RecordAsync(PaymentWebhookReceipts receipt, bool providerSuccess, CancellationToken cancellationToken)
+    public Task RecordAsync(PaymentWebhookReceipts receipt, bool providerSuccess, CancellationToken cancellationToken) =>
+        RecordCoreAsync(receipt, providerSuccess, true, cancellationToken);
+
+    public Task RecordReconciliationAsync(PaymentWebhookReceipts receipt, CancellationToken cancellationToken) =>
+        RecordCoreAsync(receipt, true, false, cancellationToken);
+
+    private async Task RecordCoreAsync(PaymentWebhookReceipts receipt, bool providerSuccess, bool isWebhook, CancellationToken cancellationToken)
     {
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         if (context.Database.IsNpgsql())
@@ -19,7 +25,7 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
             item.Provider == "PayOS" && item.Reference == receipt.Reference, cancellationToken);
         if (existing is not null)
         {
-            if (existing.Fingerprint != receipt.Fingerprint)
+            if (existing.Fingerprint != receipt.Fingerprint && !Equivalent(existing, receipt))
             {
                 existing.Outcome = "RequiresReview";
                 existing.ConflictingFingerprint = receipt.Fingerprint;
@@ -34,8 +40,14 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
             {
                 // Replay a durable B7 event that predates settlement support.
                 var replayRequest = await LockRequestAsync(existing.OrderCode, cancellationToken);
-                if (replayRequest is not null) await SettleAsync(existing, replayRequest, receipt.ReceivedAtUtc, cancellationToken);
+                if (replayRequest is not null) await SettleAsync(existing, replayRequest, receipt.ReceivedAtUtc, existing.Source == "Webhook", cancellationToken);
                 else existing.Outcome = "RequiresReview";
+                await context.SaveChangesAsync(cancellationToken);
+            }
+            else if (isWebhook && providerSuccess && existing.Source == "Reconciliation" && existing.Outcome == "Settled")
+            {
+                var settledRequest = await LockRequestAsync(existing.OrderCode, cancellationToken);
+                if (settledRequest is not null) settledRequest.WebhookReceivedAtUtc ??= receipt.ReceivedAtUtc;
                 await context.SaveChangesAsync(cancellationToken);
             }
             await transaction.CommitAsync(cancellationToken);
@@ -48,14 +60,14 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
         else if (!providerSuccess) receipt.Outcome = "IgnoredStatus";
         else
         {
-            await SettleAsync(receipt, request, receipt.ReceivedAtUtc, cancellationToken);
+            await SettleAsync(receipt, request, receipt.ReceivedAtUtc, isWebhook, cancellationToken);
         }
         context.PaymentWebhookReceipts.Add(receipt);
         await context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private async Task SettleAsync(PaymentWebhookReceipts receipt, PaymentRequests request, DateTime confirmedAtUtc,
+    private async Task SettleAsync(PaymentWebhookReceipts receipt, PaymentRequests request, DateTime confirmedAtUtc, bool isWebhook,
         CancellationToken cancellationToken)
     {
         var invoice = await context.Invoices.AsNoTracking().Where(item => item.InvoiceId == request.InvoiceId)
@@ -72,7 +84,7 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
             (request.Status is PaymentRequestStatuses.Creating or PaymentRequestStatuses.Pending) &&
             (invoice.Status is InvoiceStatuses.Unpaid or InvoiceStatuses.Overdue) &&
             (request.ProviderReference is null || request.ProviderReference == receipt.Reference) && validTime;
-        request.WebhookReceivedAtUtc ??= receipt.ReceivedAtUtc;
+        if (isWebhook) request.WebhookReceivedAtUtc ??= receipt.ReceivedAtUtc;
         request.UpdatedAtUtc = confirmedAtUtc;
         if (!eligible)
         {
@@ -135,4 +147,10 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
         request.LastErrorCode = code;
         request.UpdatedAtUtc = nowUtc;
     }
+
+    private static bool Equivalent(PaymentWebhookReceipts first, PaymentWebhookReceipts second) =>
+        first.OrderCode == second.OrderCode && first.PaymentLinkId == second.PaymentLinkId &&
+        first.Amount == second.Amount && first.Currency == second.Currency && first.DataCode == second.DataCode &&
+        first.Reference == second.Reference && PayOSTransactionTime.TryGetUtc(first.TransactionDateTime, out var a) &&
+        PayOSTransactionTime.TryGetUtc(second.TransactionDateTime, out var b) && a == b;
 }

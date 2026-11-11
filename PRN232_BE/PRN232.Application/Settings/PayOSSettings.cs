@@ -5,6 +5,10 @@ public class PayOSSettings
 {
     public const string SectionName = "PayOS";
     public bool Enabled { get; set; }
+    public bool ReconciliationEnabled { get; set; }
+    public int ReconciliationIntervalSeconds { get; set; } = 60;
+    public int ReconciliationMinAgeSeconds { get; set; } = 60;
+    public int ReconciliationBatchSize { get; set; } = 20;
     public string ClientId { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public string ChecksumKey { get; set; } = string.Empty;

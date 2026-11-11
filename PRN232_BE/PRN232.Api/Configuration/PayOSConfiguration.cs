@@ -13,6 +13,9 @@ public static class PayOSConfiguration
     {
         var section = configuration.GetSection(PayOSSettings.SectionName);
         services.AddOptions<PayOSSettings>().Bind(section)
+            .Validate(settings => settings.ReconciliationIntervalSeconds is >= 10 and <= 3600 &&
+                settings.ReconciliationMinAgeSeconds is >= 30 and <= 3600 && settings.ReconciliationBatchSize is >= 1 and <= 100,
+                "PayOS reconciliation: interval 10..3600, minimum age 30..3600 seconds, batch size 1..100.")
             .Validate(settings => !settings.Enabled || HasCredential(settings.ClientId), "PayOS:ClientId is required when enabled.")
             .Validate(settings => !settings.Enabled || HasCredential(settings.ApiKey), "PayOS:ApiKey is required when enabled.")
             .Validate(settings => !settings.Enabled || HasCredential(settings.ChecksumKey), "PayOS:ChecksumKey is required when enabled.")
@@ -26,6 +29,7 @@ public static class PayOSConfiguration
         {
             services.AddScoped<IInvoiceCheckoutGateway, PayOSInvoiceCheckoutGateway>();
             services.AddScoped<IPayOSWebhookVerifier, PayOSWebhookVerifier>();
+            services.AddScoped<IPayOSReconciliationGateway, PayOSReconciliationGateway>();
             services.AddSingleton(provider =>
             {
                 var settings = provider.GetRequiredService<IOptions<PayOSSettings>>().Value;
@@ -38,6 +42,7 @@ public static class PayOSConfiguration
         {
             services.AddScoped<IInvoiceCheckoutGateway, DisabledInvoiceCheckoutGateway>();
             services.AddScoped<IPayOSWebhookVerifier, DisabledPayOSWebhookVerifier>();
+            services.AddScoped<IPayOSReconciliationGateway, DisabledPayOSReconciliationGateway>();
         }
         return services;
     }

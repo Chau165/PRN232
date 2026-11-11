@@ -266,6 +266,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<PaymentWebhookReceipts>(entity =>
         {
             entity.HasKey(receipt => receipt.PaymentWebhookReceiptId);
+            entity.Property(receipt => receipt.Source).HasMaxLength(32).HasDefaultValue("Webhook").IsRequired();
             entity.Property(receipt => receipt.Provider).HasMaxLength(32).IsRequired();
             entity.Property(receipt => receipt.Reference).HasMaxLength(256).IsRequired();
             entity.Property(receipt => receipt.PaymentLinkId).HasMaxLength(128).IsRequired();

@@ -632,6 +632,13 @@ namespace PRN232.Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Webhook");
+
                     b.Property<string>("TransactionDateTime")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");

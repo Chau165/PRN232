@@ -1,6 +1,4 @@
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
+using PRN232.Application.Policies;
 using PRN232.Application.Interfaces;
 using PRN232.Domain.Entities;
 
@@ -26,13 +24,9 @@ public class PayOSWebhookService(IPayOSWebhookVerifier verifier, IPayOSWebhookRe
             OrderCode = notice.OrderCode, PaymentLinkId = notice.PaymentLinkId, Amount = notice.Amount,
             Currency = notice.Currency, DataCode = notice.Code, Reference = notice.Reference,
             TransactionDateTime = notice.TransactionDateTime,
-            Fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
-            {
-                notice.OrderCode, notice.PaymentLinkId, notice.Amount, notice.Currency,
-                notice.Code, notice.Reference, notice.TransactionDateTime
-            })))),
             ReceivedAtUtc = timeProvider.GetUtcNow().UtcDateTime
         };
+        receipt.Fingerprint = PayOSReceiptFactory.Fingerprint(receipt);
         await repository.RecordAsync(receipt,
             notice.EnvelopeSuccess && notice.EnvelopeCode == "00" && notice.Code == "00", cancellationToken);
     }
