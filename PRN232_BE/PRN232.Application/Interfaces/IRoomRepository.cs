@@ -30,6 +30,8 @@ public interface IRoomRepository
     // ảnh phòng
     Task<List<RoomImageReadModel>> GetImagesAsync(int roomId);
     Task<RoomImages> AddImageAsync(int roomId, RoomImages image);
+    Task<bool> SetPrimaryImageAsync(int roomId, int imageId);
+    Task<bool> IsImageUrlInUseAsync(string imageUrl, int excludedImageId);
     Task<bool> RemoveImageAsync(int roomId, int imageId);
 
     // tiện ích gắn cho phòng (RoomAmenities)

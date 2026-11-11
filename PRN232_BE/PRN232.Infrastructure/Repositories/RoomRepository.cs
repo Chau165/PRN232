@@ -184,17 +184,39 @@ public class RoomRepository : IRoomRepository
 
     public async Task<RoomImages> AddImageAsync(int roomId, RoomImages image)
     {
+        var images = await _context.RoomImages.Where(i => i.RoomId == roomId).ToListAsync();
+        image.IsPrimary = image.IsPrimary || !images.Any(i => i.IsPrimary);
         if (image.IsPrimary)
         {
-            // chỉ 1 ảnh primary / phòng — gỡ cờ primary của mấy ảnh cũ trước khi thêm ảnh mới
-            await _context.RoomImages
-                .Where(i => i.RoomId == roomId && i.IsPrimary)
-                .ExecuteUpdateAsync(update => update.SetProperty(i => i.IsPrimary, false));
+            foreach (var existing in images)
+            {
+                existing.IsPrimary = false;
+            }
         }
 
         image.RoomId = roomId;
         await _context.RoomImages.AddAsync(image);
         return image;
+    }
+
+    public async Task<bool> SetPrimaryImageAsync(int roomId, int imageId)
+    {
+        var images = await _context.RoomImages.Where(i => i.RoomId == roomId).ToListAsync();
+        if (!images.Any(i => i.RoomImageId == imageId))
+        {
+            return false;
+        }
+        foreach (var image in images)
+        {
+            image.IsPrimary = image.RoomImageId == imageId;
+        }
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public Task<bool> IsImageUrlInUseAsync(string imageUrl, int excludedImageId)
+    {
+        return _context.RoomImages.AnyAsync(image => image.ImageUrl == imageUrl && image.RoomImageId != excludedImageId);
     }
 
     public async Task<bool> RemoveImageAsync(int roomId, int imageId)
@@ -205,6 +227,17 @@ public class RoomRepository : IRoomRepository
             return false;
         }
         _context.RoomImages.Remove(image);
+        if (image.IsPrimary)
+        {
+            var replacement = await _context.RoomImages
+                .Where(i => i.RoomId == roomId && i.RoomImageId != imageId)
+                .OrderBy(i => i.RoomImageId)
+                .FirstOrDefaultAsync();
+            if (replacement is not null)
+            {
+                replacement.IsPrimary = true;
+            }
+        }
         await _context.SaveChangesAsync();
         return true;
     }

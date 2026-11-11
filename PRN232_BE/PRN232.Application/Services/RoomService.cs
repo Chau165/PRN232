@@ -9,10 +9,12 @@ namespace PRN232.Application.Services;
 public class RoomService : IRoomService
 {
     private readonly IRoomRepository _repository;
+    private readonly IRoomImageStorage? _imageStorage;
 
-    public RoomService(IRoomRepository repository)
+    public RoomService(IRoomRepository repository, IRoomImageStorage? imageStorage = null)
     {
         _repository = repository;
+        _imageStorage = imageStorage;
     }
 
     public async Task<List<RoomDto>> GetAllAsync(
@@ -171,7 +173,7 @@ public class RoomService : IRoomService
         {
             return null;
         }
-        await EnsureOwnerOrAdminAsync(roomId, requestingUserId, isAdmin);
+        await EnsureImageAccessAsync(roomId, requestingUserId, isAdmin);
         if (string.IsNullOrWhiteSpace(dto.ImageUrl))
         {
             throw new RoomValidationException("URL ảnh không được để trống.");
@@ -182,14 +184,113 @@ public class RoomService : IRoomService
         return ConvertToDto(image);
     }
 
+    public async Task<RoomImageDto?> UploadImageAsync(
+        int roomId, RoomImageInput image, bool isPrimary, int requestingUserId, bool isAdmin)
+    {
+        if (await _repository.GetTrackedByIdAsync(roomId) is null)
+        {
+            return null;
+        }
+        await EnsureImageAccessAsync(roomId, requestingUserId, isAdmin);
+        ValidateImage(image);
+        if (_imageStorage is null)
+        {
+            throw new RoomImageStorageException();
+        }
+
+        string imageUrl;
+        try
+        {
+            imageUrl = await _imageStorage.UploadAsync(image);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            throw new RoomImageStorageException();
+        }
+
+        try
+        {
+            var entity = await _repository.AddImageAsync(roomId, new RoomImages
+            {
+                ImageUrl = imageUrl,
+                IsPrimary = isPrimary
+            });
+            await _repository.SaveChangesAsync();
+            return ConvertToDto(entity);
+        }
+        catch
+        {
+            // Preserve the database error if compensating storage cleanup fails.
+            try { await _imageStorage.DeleteAsync(imageUrl); }
+            catch { }
+            throw;
+        }
+    }
+
+    public async Task<bool> SetPrimaryImageAsync(int roomId, int imageId, int requestingUserId, bool isAdmin)
+    {
+        if (await _repository.GetTrackedByIdAsync(roomId) is null)
+        {
+            return false;
+        }
+        await EnsureImageAccessAsync(roomId, requestingUserId, isAdmin);
+        return await _repository.SetPrimaryImageAsync(roomId, imageId);
+    }
+
     public async Task<bool> RemoveImageAsync(int roomId, int imageId, int requestingUserId, bool isAdmin)
     {
         if (await _repository.GetTrackedByIdAsync(roomId) is null)
         {
             return false;
         }
-        await EnsureOwnerOrAdminAsync(roomId, requestingUserId, isAdmin);
+        await EnsureImageAccessAsync(roomId, requestingUserId, isAdmin);
+        var image = (await _repository.GetImagesAsync(roomId)).FirstOrDefault(i => i.RoomImageId == imageId);
+        if (image is null)
+        {
+            return false;
+        }
+        // Delete the object first: on a storage failure the record remains available for retry.
+        if (_imageStorage is not null && !await _repository.IsImageUrlInUseAsync(image.ImageUrl, imageId))
+        {
+            try { await _imageStorage.DeleteAsync(image.ImageUrl); }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+            {
+                throw new RoomImageStorageException();
+            }
+        }
         return await _repository.RemoveImageAsync(roomId, imageId);
+    }
+
+    private async Task EnsureImageAccessAsync(int roomId, int requestingUserId, bool isAdmin)
+    {
+        if (!isAdmin && await _repository.GetByIdAsync(roomId, requestingUserId) is null)
+        {
+            throw new RoomForbiddenException();
+        }
+    }
+
+    private static void ValidateImage(RoomImageInput image)
+    {
+        if (image.Content.Length is 0 or > 5 * 1024 * 1024)
+        {
+            throw new RoomValidationException("Ảnh phải có dung lượng từ 1 byte đến 5 MiB.");
+        }
+        var extension = Path.GetExtension(image.FileName).ToLowerInvariant();
+        var content = image.Content.AsSpan();
+        var isJpeg = image.ContentType == "image/jpeg" &&
+                     (extension is ".jpg" or ".jpeg") && content.Length >= 4 &&
+                     content.StartsWith(new byte[] { 0xFF, 0xD8, 0xFF }) &&
+                     content[^2..].SequenceEqual(new byte[] { 0xFF, 0xD9 });
+        var isPng = image.ContentType == "image/png" && extension == ".png" && content.Length >= 20 &&
+                    content.StartsWith(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }) &&
+                    content[^8..].SequenceEqual(new byte[] { 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82 });
+        var isWebp = image.ContentType == "image/webp" && extension == ".webp" && content.Length >= 20 &&
+                     content[..4].SequenceEqual("RIFF"u8) && content[8..12].SequenceEqual("WEBP"u8) &&
+                     System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(content[4..8]) == content.Length - 8;
+        if (!isJpeg && !isPng && !isWebp)
+        {
+            throw new RoomValidationException("Ảnh phải là tệp JPEG, PNG hoặc WebP hợp lệ.");
+        }
     }
 
     public async Task<List<AmenityDto>?> GetAmenitiesAsync(int roomId)

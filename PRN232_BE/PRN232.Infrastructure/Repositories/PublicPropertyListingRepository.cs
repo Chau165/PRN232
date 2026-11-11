@@ -1,5 +1,6 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Normalizers;
@@ -14,10 +15,18 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
     private const int MaximumAmenitiesSummary = 5;
 
     private readonly AppDbContext _context;
+    private readonly string? _roomImageUrlPrefix;
 
-    public PublicPropertyListingRepository(AppDbContext context)
+    public PublicPropertyListingRepository(AppDbContext context, IConfiguration? configuration = null)
     {
         _context = context;
+        var baseUrl = configuration?["Supabase:Url"]?.TrimEnd('/');
+        var bucket = configuration?["Supabase:RoomBucket"]?.Trim();
+        if (Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps &&
+            uri.AbsolutePath == "/" && uri.Query.Length == 0 && uri.Fragment.Length == 0 && uri.UserInfo.Length == 0)
+        {
+            _roomImageUrlPrefix = $"{baseUrl}/storage/v1/object/public/{Uri.EscapeDataString(string.IsNullOrEmpty(bucket) ? "room-images" : bucket)}/rooms/";
+        }
     }
 
     public async Task<bool> AmenityIdsExistAsync(int[] amenityIds, CancellationToken cancellationToken)
@@ -406,6 +415,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             })
             .ToListAsync(cancellationToken);
         var roomIds = pageRows.Select(room => room.RoomId).ToArray();
+        var images = await GetPublicRoomImagesAsync(roomIds, cancellationToken);
         var amenityRows = await _context.RoomAmenities
             .AsNoTracking()
             .Where(link => roomIds.Contains(link.RoomId))
@@ -435,7 +445,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 room.RoomTypeName,
                 room.BaseRent,
                 room.AreaSqm,
-                null,
+                images.FirstOrDefault(image => image.RoomId == room.RoomId && image.IsPrimary)?.ImageUrl,
                 amenitiesByRoom.TryGetValue(room.RoomId, out var amenities)
                     ? amenities
                      : Array.Empty<PublicAmenitySummaryReadModel>()))
@@ -508,6 +518,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 link.Service.Price))
             .ToListAsync(cancellationToken);
 
+        var images = await GetPublicRoomImagesAsync([roomId], cancellationToken);
         if (transaction is not null)
         {
             await transaction.CommitAsync(cancellationToken);
@@ -520,10 +531,36 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             room.RoomType,
             room.BaseRent,
             room.Property,
-            Array.Empty<string>(),
+            images.Select(image => image.ImageUrl).ToArray(),
             amenities,
             services,
             Array.Empty<PublicRoomEquipmentReadModel>());
+    }
+
+    private async Task<List<RoomImageReadModel>> GetPublicRoomImagesAsync(int[] roomIds, CancellationToken cancellationToken)
+    {
+        if (_roomImageUrlPrefix is null || roomIds.Length == 0)
+        {
+            return [];
+        }
+        var images = await _context.RoomImages.AsNoTracking()
+            .Where(image => roomIds.Contains(image.RoomId))
+            .OrderByDescending(image => image.IsPrimary).ThenBy(image => image.RoomImageId)
+            .Select(image => new RoomImageReadModel(image.RoomImageId, image.RoomId, image.ImageUrl, image.IsPrimary))
+            .ToListAsync(cancellationToken);
+        return images.Where(image => IsPublicRoomImage(image.ImageUrl)).ToList();
+    }
+
+    private bool IsPublicRoomImage(string imageUrl)
+    {
+        if (_roomImageUrlPrefix is null || !imageUrl.StartsWith(_roomImageUrlPrefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+        var fileName = imageUrl[_roomImageUrlPrefix.Length..];
+        return Path.GetExtension(fileName) is ".jpg" or ".jpeg" or ".png" or ".webp" &&
+               Guid.TryParseExact(Path.GetFileNameWithoutExtension(fileName), "N", out _) &&
+               !fileName.Contains('/') && !fileName.Contains('\\');
     }
 
     private static IQueryable<Rooms> ApplyRoomFilters(

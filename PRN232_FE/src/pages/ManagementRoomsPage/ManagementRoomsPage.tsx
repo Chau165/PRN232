@@ -425,9 +425,11 @@ export default function ManagementRoomsPage() {
         )}
       </ManagementDataTable>
 
-      {detailRoom && (
+      {detailRoom && accessToken && (
         <RoomDetailDrawer
           room={detailRoom}
+          accessToken={accessToken}
+          onImagesChanged={() => setReload((value) => value + 1)}
           onClose={() => setDetailRoom(null)}
         />
       )}
