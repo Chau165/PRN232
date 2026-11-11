@@ -1,0 +1,23 @@
+import { apiRequest } from "@/api/apiClient"
+
+export interface RevenueReport {
+  totalCollected: number
+  paymentCount: number
+  unknownDateAmount: number
+  unknownDatePaymentCount: number
+  byProperty: { propertyId: number; propertyName: string; collectedAmount: number; paymentCount: number; unknownDateAmount: number; unknownDatePaymentCount: number }[]
+}
+export interface ReceivablesReport {
+  asOfDate: string
+  outstandingAmount: number
+  outstandingInvoiceCount: number
+  overdueAmount: number
+  overdueInvoiceCount: number
+}
+export function getRevenueReport(token: string, month: string, signal?: AbortSignal) {
+  const query = new URLSearchParams({ fromMonth: `${month}-01`, toMonth: `${month}-01` })
+  return apiRequest<RevenueReport>(`/reports/revenue?${query}`, { accessToken: token, signal, cache: "no-store" })
+}
+export function getReceivablesReport(token: string, signal?: AbortSignal) {
+  return apiRequest<ReceivablesReport>("/reports/receivables", { accessToken: token, signal, cache: "no-store" })
+}

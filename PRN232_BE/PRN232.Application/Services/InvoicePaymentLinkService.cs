@@ -2,6 +2,7 @@ using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Settings;
 using PRN232.Application.States;
+using PRN232.Application.Policies;
 using PRN232.Domain.Entities;
 
 namespace PRN232.Application.Services;
@@ -77,7 +78,7 @@ public class InvoicePaymentLinkService(IInvoicePaymentLinkRepository repository,
 
     private static InvoicePaymentLinkDto Dto(PaymentRequests request, bool reused, bool includeUrl = true) => new(
         request.PaymentRequestId, request.InvoiceId, request.Status, request.Amount, request.Currency,
-        includeUrl ? request.CheckoutUrl : null, request.ExpiresAtUtc, reused);
+        includeUrl ? request.CheckoutUrl : null, UtcTimestamp.ForResponse(request.ExpiresAtUtc), reused);
 }
 
 public sealed class InvoiceStatusLinkConflictException(string message) : Exception(message);

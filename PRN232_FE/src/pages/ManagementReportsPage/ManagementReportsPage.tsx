@@ -1,103 +1,47 @@
+import { useEffect, useState } from "react"
+import { useAuth } from "@/auth/AuthContext"
 import ManagementPage from "@/components/management/ManagementPage"
 import ManagementStatCard from "@/components/management/ManagementStatCard"
-import { getCurrentUser } from "@/utils/managementAuth"
-import { getManagementScope } from "@/utils/managementScope"
+import { getReceivablesReport, getRevenueReport, type ReceivablesReport, type RevenueReport } from "@/services/reportService"
+import { formatVnd } from "@/utils/publicFormatting"
 
 export default function ManagementReportsPage() {
-  const user = getCurrentUser()
-  const scope = getManagementScope(user)
-  const totalRooms = user.role === "ADMIN" ? 180 : scope.rooms.length
-  const occupied =
-    user.role === "ADMIN"
-      ? 132
-      : scope.rooms.filter((room) => room.status === "Đang thuê").length
-  return (
-    <ManagementPage
-      title="Báo cáo"
-      description={
-        user.role === "ADMIN"
-          ? "Báo cáo tổng hợp toàn hệ thống theo thời gian thực mock."
-          : "Báo cáo giới hạn trong các khu trọ được phân công."
-      }
-    >
+  const { accessToken } = useAuth()
+  const [month, setMonth] = useState(() => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit" }).format(new Date()).slice(0, 7))
+  const [data, setData] = useState<{ revenue: RevenueReport; debt: ReceivablesReport } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [version, setVersion] = useState(0)
+  useEffect(() => {
+    if (!accessToken || !/^\d{4}-\d{2}$/.test(month)) return
+    const controller = new AbortController()
+    setLoading(true); setError(null); setData(null)
+    Promise.all([getRevenueReport(accessToken, month, controller.signal), getReceivablesReport(accessToken, controller.signal)])
+      .then(([revenue, debt]) => { if (!controller.signal.aborted) setData({ revenue, debt }) })
+      .catch(() => { if (!controller.signal.aborted) setError("Không thể tải báo cáo từ máy chủ. Vui lòng thử lại.") })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
+  }, [accessToken, month, version])
+  return <ManagementPage title="Báo cáo" description="Doanh thu theo ngày nhận tiền và công nợ từ hóa đơn thực tế. Dữ liệu theo quyền quản lý hiện tại.">
+    <div className="mb-6 flex flex-wrap items-end gap-3">
+      <label className="text-sm font-semibold text-slate-700">Tháng doanh thu<input aria-label="Tháng doanh thu" type="month" value={month} onChange={event => { if (event.target.value) setMonth(event.target.value) }} className="ml-3 rounded-lg border border-slate-200 p-2" /></label>
+      <button onClick={() => setVersion(value => value + 1)} disabled={loading} className="rounded-lg bg-[#087775] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Tải lại báo cáo</button>
+    </div>
+    {loading && <p role="status">Đang tải báo cáo...</p>}
+    {error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-700">{error}</p>}
+    {data && <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <ManagementStatCard
-          label="Doanh thu tháng"
-          value={user.role === "ADMIN" ? "624,5 triệu" : "128 triệu"}
-          hint={user.role === "ADMIN" ? "Toàn hệ thống" : "Assigned properties"}
-        />
-        <ManagementStatCard
-          label="Tỷ lệ lấp đầy"
-          value={`${Math.round((occupied / totalRooms) * 100)}%`}
-          hint={`${occupied}/${totalRooms} phòng đang thuê`}
-          tone="green"
-        />
-        <ManagementStatCard
-          label="Hóa đơn còn nợ"
-          value={String(
-            scope.invoices.filter((invoice) => invoice.status !== "PAID")
-              .length,
-          )}
-          hint="Cần theo dõi"
-          tone="amber"
-        />
-        <ManagementStatCard
-          label="Bảo trì hoàn thành"
-          value={String(
-            scope.maintenance.filter(
-              (request) => request.status === "HOÀN THÀNH",
-            ).length,
-          )}
-          hint="Trong kỳ này"
-          tone="slate"
-        />
+        <ManagementStatCard label="Doanh thu tháng" value={formatVnd(data.revenue.totalCollected)} hint={`${data.revenue.paymentCount} giao dịch đã ghi nhận`} />
+        <ManagementStatCard label="Tổng công nợ" value={formatVnd(data.debt.outstandingAmount)} hint={`${data.debt.outstandingInvoiceCount} hóa đơn · đến ${data.debt.asOfDate}`} tone="amber" />
+        <ManagementStatCard label="Nợ quá hạn" value={formatVnd(data.debt.overdueAmount)} hint={`${data.debt.overdueInvoiceCount} hóa đơn quá hạn`} tone="rose" />
+        <ManagementStatCard label="Chưa xác định thời gian thu" value={formatVnd(data.revenue.unknownDateAmount)} hint={`${data.revenue.unknownDatePaymentCount} giao dịch cần kiểm tra, chưa phân bổ vào tháng`} tone="slate" />
       </div>
-      <div className="mt-6 grid gap-5 lg:grid-cols-2">
-        <section className="rounded-2xl bg-white p-6 shadow-[0_3px_18px_rgba(16,65,67,.06)]">
-          <h3 className="font-display text-[21px] font-bold text-slate-900">
-            Doanh thu theo tháng
-          </h3>
-          <div className="mt-7 flex h-48 items-end gap-3 border-b border-l border-slate-100 px-4 pb-0">
-            {[48, 62, 54, 72, 68, 84, 76].map((height, index) => (
-              <div
-                key={index}
-                className="flex flex-1 flex-col items-center gap-2"
-              >
-                <div
-                  className="w-full rounded-t-lg bg-[#087775]"
-                  style={{ height: `${height}%` }}
-                />
-                <span className="text-[10px] text-slate-400">T{index + 3}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-        <section className="rounded-2xl bg-white p-6 shadow-[0_3px_18px_rgba(16,65,67,.06)]">
-          <h3 className="font-display text-[21px] font-bold text-slate-900">
-            Hợp đồng sắp hết hạn
-          </h3>
-          <div className="mt-5 space-y-3">
-            {scope.contracts.slice(0, 3).map((contract) => (
-              <div
-                key={contract.id}
-                className="flex items-center justify-between rounded-xl bg-slate-50 p-4"
-              >
-                <div>
-                  <p className="text-[13px] font-semibold text-slate-700">
-                    {contract.propertyName} · {contract.roomCode}
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    {contract.tenantName} · hết hạn {contract.endDate}
-                  </p>
-                </div>
-                <span className="text-[12px] font-bold text-amber-600">
-                  30 ngày
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-    </ManagementPage>
-  )
+      <section className="mt-6 overflow-x-auto rounded-2xl bg-white p-5 shadow-sm">
+        <h3 className="mb-4 text-lg font-bold text-slate-900">Doanh thu theo khu trọ · {month}</h3>
+        <table className="w-full text-left text-sm"><thead><tr className="border-b border-slate-100 text-slate-500"><th className="p-3">Khu trọ</th><th className="p-3">Doanh thu</th><th className="p-3">Giao dịch</th><th className="p-3">Chưa xác định thời gian</th></tr></thead>
+          <tbody>{data.revenue.byProperty.map(property => <tr key={property.propertyId} className="border-b border-slate-100"><td className="p-3">{property.propertyName}</td><td className="p-3 font-bold text-[#087775]">{formatVnd(property.collectedAmount)}</td><td className="p-3">{property.paymentCount}</td><td className="p-3">{formatVnd(property.unknownDateAmount)} · {property.unknownDatePaymentCount} giao dịch</td></tr>)}</tbody></table>
+        {!data.revenue.byProperty.length && <p className="mt-4 text-sm text-slate-500">Chưa có doanh thu thuộc phạm vi được xem.</p>}
+      </section>
+    </>}
+  </ManagementPage>
 }

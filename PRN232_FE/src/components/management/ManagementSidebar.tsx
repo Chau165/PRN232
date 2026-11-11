@@ -65,7 +65,6 @@ const items: SidebarItem[] = [
     label: "Báo cáo",
     href: routes.managementReports,
     icon: "chart" as IconName,
-    adminOnly: true,
   },
   {
     label: "Phân công Manager",

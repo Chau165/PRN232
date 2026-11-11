@@ -9,6 +9,7 @@ import type { InvoiceDto } from "@/types/invoice"
 import type { InvoiceComplaintDto } from "@/types/invoiceComplaint"
 import type { UtilityReadingDto } from "@/types/utilityReading"
 import { defaultDueDate } from "@/utils/invoiceDisplay"
+import { ApiError } from "@/api/apiClient"
 import { localToday } from "@/utils/managementContracts"
 
 const mocks = vi.hoisted(() => ({
@@ -16,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   getInvoices: vi.fn(),
   previewInvoice: vi.fn(),
   createInvoice: vi.fn(),
-  payInvoice: vi.fn(),
+  createInvoicePaymentLink: vi.fn(),
   recordCashPayment: vi.fn(),
   getUtilityReadings: vi.fn(),
   createUtilityReading: vi.fn(),
@@ -42,8 +43,9 @@ vi.mock("@/utils/managementScope", () => ({ getManagementScope: () => ({ propert
 vi.mock("@/services/contractService", () => ({ getContracts: mocks.getContracts }))
 vi.mock("@/services/invoiceService", () => ({
   getInvoices: mocks.getInvoices, previewInvoice: mocks.previewInvoice, createInvoice: mocks.createInvoice,
-  payInvoice: mocks.payInvoice, recordCashPayment: mocks.recordCashPayment,
+  recordCashPayment: mocks.recordCashPayment,
 }))
+vi.mock("@/services/invoicePaymentService", () => ({ createInvoicePaymentLink: mocks.createInvoicePaymentLink }))
 vi.mock("@/services/invoiceComplaintService", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/invoiceComplaintService")>()),
   getInvoiceComplaints: mocks.getInvoiceComplaints,
@@ -165,6 +167,18 @@ describe("ManagementInvoicesPage", () => {
     expect(screen.getByRole("dialog", { name: "Tạo hóa đơn tháng" })).toBeTruthy()
   })
 
+  it("refreshes invoices after B10 rejects cash because online may have won", async () => {
+    mocks.getInvoices.mockResolvedValueOnce([invoice()]).mockResolvedValue([invoice({ status: "Paid" })])
+    mocks.recordCashPayment.mockRejectedValue(new ApiError("Checkout changed", { status: 409 }))
+    vi.spyOn(window, "confirm").mockReturnValue(true)
+    render(<MemoryRouter><ManagementInvoicesPage /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole("button", { name: "Đã thu tiền mặt" }))
+    await screen.findByText(/Chưa ghi nhận tiền mặt: online có thể đã trả/)
+    await screen.findByText("Đã thanh toán")
+    expect(mocks.getInvoices).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText(/^Đã ghi nhận thanh toán hóa đơn/)).toBeNull()
+  })
+
   it("records a cash payment only after the manager confirms", async () => {
     mocks.getInvoices.mockResolvedValue([invoice()])
     mocks.recordCashPayment.mockResolvedValue(invoice({ status: "Paid" }))
@@ -199,23 +213,17 @@ describe("MyBillsPage", () => {
     expect(screen.queryByRole("button", { name: "Thanh toán" })).toBeNull()
   })
 
-  it("pays an unpaid invoice through the mock gateway after choosing a method", async () => {
+  it("offers payOS instead of mock methods and does not mark an invoice paid on link creation", async () => {
     mocks.getInvoices.mockResolvedValue([invoice()])
-    mocks.payInvoice.mockResolvedValue(invoice({ status: "Paid" }))
+    mocks.createInvoicePaymentLink.mockResolvedValue({ invoiceId: 5, paymentRequestId: 12, status: "Creating", checkoutUrl: null })
     render(<MemoryRouter><MyBillsPage /></MemoryRouter>)
 
     fireEvent.click(await screen.findByRole("button", { name: "Thanh toán" }))
-    const payButton = screen.getByRole("button", { name: /^Thanh toán 3\.355\.000/ })
+    const payButton = screen.getByRole("button", { name: "Thanh toán qua payOS" })
     fireEvent.click(payButton)
-    expect(screen.getByRole("alert").textContent).toBe("Vui lòng chọn phương thức thanh toán.")
-    expect(mocks.payInvoice).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByLabelText("MoMo"))
-    fireEvent.click(payButton)
-
-    await screen.findByText(/^Đã thanh toán hóa đơn tháng/)
-    expect(mocks.payInvoice).toHaveBeenCalledWith("token", 5, "MoMo")
-    expect(screen.queryByText("HĐ #5")).toBeNull()
+    expect(screen.queryByLabelText("MoMo")).toBeNull()
+    expect(screen.queryByText(/^Đã thanh toán hóa đơn tháng/)).toBeNull()
+    expect(mocks.createInvoicePaymentLink).toHaveBeenCalledWith("token", 5)
   })
 })
 

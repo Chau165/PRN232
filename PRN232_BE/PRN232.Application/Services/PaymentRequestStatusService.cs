@@ -24,8 +24,8 @@ public class PaymentRequestStatusService(IPaymentRequestStatusRepository reposit
         var canOpen = request.Status == PaymentRequestStatuses.Pending && request.ExpiresAtUtc.HasValue && !expired &&
             (request.InvoiceStatus is InvoiceStatuses.Unpaid or InvoiceStatuses.Overdue) && !string.IsNullOrWhiteSpace(request.CheckoutUrl);
         return new PaymentRequestStatusDto(request.PaymentRequestId, request.InvoiceId, request.CustomerId, request.PropertyId,
-            request.Status, request.InvoiceStatus, request.Amount, request.Currency, request.CreatedAtUtc, request.UpdatedAtUtc,
-            request.ExpiresAtUtc, request.ConfirmedAtUtc, request.PaymentId, request.PaidAtUtc,
+            request.Status, request.InvoiceStatus, request.Amount, request.Currency, UtcTimestamp.ForResponse(request.CreatedAtUtc), UtcTimestamp.ForResponse(request.UpdatedAtUtc),
+            UtcTimestamp.ForResponse(request.ExpiresAtUtc), UtcTimestamp.ForResponse(request.ConfirmedAtUtc), request.PaymentId, UtcTimestamp.ForResponse(request.PaidAtUtc),
             expired, canOpen, canOpen ? request.CheckoutUrl : null);
     }
 }

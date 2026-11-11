@@ -31,6 +31,7 @@ import RegisterPage from "@/pages/RegisterPage/RegisterPage"
 import DepositPage from "@/pages/DepositPage/DepositPage"
 import ViewingRequestPage from "@/pages/ViewingRequestPage/ViewingRequestPage"
 import PaymentSuccessPage from "@/pages/PaymentSuccessPage/PaymentSuccessPage"
+import InvoicePaymentResultPage from "@/pages/InvoicePaymentResultPage/InvoicePaymentResultPage"
 import { routes } from "@/constants/routes"
 import { CustomerNotificationsProvider } from "@/auth/CustomerNotificationsContext"
 
@@ -72,7 +73,7 @@ export const router = createBrowserRouter([{ Component: AppLayout, children: [
   { path: routes.managementInvoices, element: protectedElement(<ManagementInvoicesPage />, managementRoles) },
   { path: routes.managementEquipment, element: protectedElement(<ManagementEquipmentPage />, managementRoles) },
   { path: routes.managementMaintenance, element: protectedElement(<ManagementMaintenancePage />, managementRoles) },
-  { path: routes.managementReports, element: protectedElement(<ManagementReportsPage />, adminOnly) },
+  { path: routes.managementReports, element: protectedElement(<ManagementReportsPage />, managementRoles) },
   { path: routes.managementManagers, element: protectedElement(<ManagementManagersPage />, adminOnly) },
   { path: routes.managementUsers, element: protectedElement(<ManagementUsersPage />, adminOnly) },
   { path: routes.login, element: guestElement(<LoginPage />) },
@@ -80,4 +81,5 @@ export const router = createBrowserRouter([{ Component: AppLayout, children: [
   { path: routes.deposit, element: protectedElement(<DepositPage />, customerOnly) },
   { path: routes.viewingRequest, element: protectedElement(<ViewingRequestPage />, customerOnly) },
   { path: routes.paymentSuccess, element: protectedElement(<PaymentSuccessPage />, customerOnly) },
+  { path: routes.paymentResult, element: protectedElement(<InvoicePaymentResultPage />, customerOnly) },
 ]}])

@@ -28,6 +28,7 @@ export const routes = {
   deposit: "/deposit",
   viewingRequest: "/viewing-request",
   paymentSuccess: "/payment-success",
+  paymentResult: "/payment-result",
 } as const
 
 function requirePositiveRouteId(id: number): number {

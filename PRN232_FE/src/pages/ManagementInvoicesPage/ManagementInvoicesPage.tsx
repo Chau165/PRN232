@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { ApiError } from "@/api/apiClient"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementDetailDrawer from "@/components/management/ManagementDetailDrawer"
 import ManagementPage from "@/components/management/ManagementPage"
@@ -63,14 +64,17 @@ export default function ManagementInvoicesPage() {
   // Khách trả tiền mặt tại khu trọ: quản lý xác nhận để hoá đơn chuyển sang đã thanh toán.
   async function recordCash(invoice: InvoiceDto) {
     if (!accessToken || recordingId !== null) return
-    if (!window.confirm(`Xác nhận đã thu ${formatVnd(invoice.total)} tiền mặt của ${invoice.customerName} cho hóa đơn tháng ${formatMonth(invoice.invoiceMonth)}?`)) return
+    if (!window.confirm(`Kiểm tra và ghi nhận ${formatVnd(invoice.total)} tiền mặt của ${invoice.customerName} cho hóa đơn tháng ${formatMonth(invoice.invoiceMonth)}? Hệ thống sẽ kiểm tra và hủy link online nếu có. Nếu online đã trả hoặc chưa rõ kết quả, tiền mặt sẽ không được ghi nhận.`)) return
     setRecordingId(invoice.invoiceId)
     try {
       const paid = await recordCashPayment(accessToken, invoice.invoiceId)
       setInvoices((items) => items.map((item) => (item.invoiceId === paid.invoiceId ? paid : item)))
       setToast(`Đã ghi nhận thanh toán hóa đơn #${paid.invoiceId} và báo cho khách.`)
     } catch (recordError) {
-      setToast(bookingErrorMessage(recordError, "Hóa đơn này đã được thanh toán, vui lòng tải lại trang."))
+      setToast(recordError instanceof ApiError && recordError.status === 409
+        ? "Chưa ghi nhận tiền mặt: online có thể đã trả hoặc link chưa được xác nhận hủy. Vui lòng kiểm tra hóa đơn trước khi thu thêm."
+        : bookingErrorMessage(recordError, "Chưa ghi nhận tiền mặt. Vui lòng kiểm tra lại hóa đơn."))
+      try { setInvoices(await getInvoices(accessToken)) } catch { /* keep existing list; never turn an uncertain payment into a success */ }
     } finally {
       setRecordingId(null)
     }
@@ -177,7 +181,7 @@ export default function ManagementInvoicesPage() {
                           onClick={() => recordCash(invoice)}
                           className="rounded-lg bg-teal-50 px-3 py-2 text-[12px] font-bold text-[#087775] disabled:opacity-50"
                         >
-                          {recordingId === invoice.invoiceId ? "Đang ghi..." : "Đã thu tiền mặt"}
+                          {recordingId === invoice.invoiceId ? "Đang kiểm tra link và ghi nhận..." : "Đã thu tiền mặt"}
                         </button>
                       )}
                     </div>
