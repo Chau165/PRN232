@@ -12,7 +12,9 @@ export function notificationPath(type: string, role: string | undefined, related
     }
     case "Booking": return customer ? routes.myBookings : routes.managementBookings
     case "Contract": return customer ? routes.myContracts : routes.managementContracts
-    case "Invoice": return customer ? routes.myBills : routes.managementInvoices
+    // Khiếu nại hiển thị cùng trang hoá đơn (MyBillsPage / ManagementInvoicesPage).
+    case "Invoice":
+    case "Complaint": return customer ? routes.myBills : routes.managementInvoices
     default: return routes.notifications
   }
 }
