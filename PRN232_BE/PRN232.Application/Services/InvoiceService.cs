@@ -100,11 +100,12 @@ public class InvoiceService : IInvoiceService
             throw new InvoiceBusinessRuleException("Payment method must be VNPay or MoMo.");
         }
 
-        var invoice = await GetUnpaidForPaymentAsync(id);
+        var invoice = await GetInvoiceForPaymentAsync(id);
         if (invoice.CustomerId != customerId)
         {
             throw new InvoiceAuthorizationException("You cannot pay another customer's invoice.");
         }
+        EnsureNotPaid(invoice);
         var notification = new Notifications
         {
             UserId = invoice.OwnerId,
@@ -137,11 +138,12 @@ public class InvoiceService : IInvoiceService
             throw new InvoiceAuthorizationException("Only an assigned property manager can record cash payments.");
         }
 
-        var invoice = await GetUnpaidForPaymentAsync(id);
+        var invoice = await GetInvoiceForPaymentAsync(id);
         if (!await _repository.HasActiveManagerAssignmentAsync(invoice.PropertyId, userId))
         {
             throw new InvoiceAuthorizationException("You cannot record payments for this invoice.");
         }
+        EnsureNotPaid(invoice);
 
         var title = invoice.Total <= 0m
             ? $"Hoá đơn tháng {Period(invoice.InvoiceMonth)} - Phòng {invoice.RoomCode} đã được bù trừ bằng tiền trả trước"
@@ -151,18 +153,23 @@ public class InvoiceService : IInvoiceService
             userId);
     }
 
-    private async Task<InvoicePaymentReadModel> GetUnpaidForPaymentAsync(int id)
+    private async Task<InvoicePaymentReadModel> GetInvoiceForPaymentAsync(int id)
     {
         var invoice = await _repository.GetForPaymentAsync(id);
         if (invoice is null)
         {
             throw new InvoiceNotFoundException("Invoice does not exist.");
         }
+        return invoice;
+    }
+
+    // Gọi sau khi đã kiểm tra quyền: người ngoài phạm vi phải nhận 403, không biết hoá đơn đã trả hay chưa.
+    private static void EnsureNotPaid(InvoicePaymentReadModel invoice)
+    {
         if (invoice.Status == InvoiceStatuses.Paid)
         {
             throw new InvoiceConflictException("This invoice has already been paid.");
         }
-        return invoice;
     }
 
     // Người trả luôn là khách thuê; số tiền là tổng các dòng do server tính, client không gửi số tiền.

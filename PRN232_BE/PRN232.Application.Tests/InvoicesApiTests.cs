@@ -223,6 +223,28 @@ public class InvoicesApiTests
         Assert.Equal(1, await context.Notifications.CountAsync(notification => notification.UserId == 9 && notification.Type == "Invoice"));
     }
 
+    [Fact]
+    public async Task Another_tenant_is_forbidden_even_when_the_invoice_is_already_paid()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        var invoiceId = await CreateInvoiceAsync(client);
+
+        await LoginAsync(client, "customer@example.test");
+        var paid = await client.PostAsJsonAsync($"/api/invoices/{invoiceId}/pay", new
+        {
+            paymentMethod = "MoMo"
+        });
+        await LoginAsync(client, "other@example.test");
+        var byOtherTenant = await client.PostAsJsonAsync($"/api/invoices/{invoiceId}/pay", new
+        {
+            paymentMethod = "MoMo"
+        });
+
+        Assert.Equal(HttpStatusCode.OK, paid.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, byOtherTenant.StatusCode);
+    }
+
     [Theory]
     [InlineData("manager-b@example.test", HttpStatusCode.Forbidden)]
     [InlineData("customer@example.test", HttpStatusCode.Forbidden)]
