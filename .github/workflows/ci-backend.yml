@@ -12,7 +12,17 @@ on:
       - "PRN232_BE/**"
       - ".github/workflows/ci-backend.yml"
 
+# Push mới lên cùng một PR thì huỷ lần chạy cũ, đỡ tốn phút CI.
+concurrency:
+  group: ci-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
 jobs:
+  # Build + toàn bộ test không cần PostgreSQL (SQLite / InMemory).
   build:
     runs-on: ubuntu-latest
     defaults:
@@ -38,3 +48,123 @@ jobs:
         run: >-
           dotnet test --no-build --no-restore --configuration Release
           --filter "FullyQualifiedName!~SupabaseReadOnlyInspectionTests&FullyQualifiedName!~Phase31BPostgreSqlMigrationTests&FullyQualifiedName!~Phase31CPropertyDetailPostgreSqlTests&FullyQualifiedName!~AssignmentNoteMigrationTests&FullyQualifiedName!~PublicPropertyListingPostgreSqlTests"
+
+  # Các test chạy trên PostgreSQL thật. Mỗi test tự tạo rồi xoá database tạm trên server này.
+  # SupabaseReadOnlyInspectionTests vẫn bị loại vì nó cần kết nối Supabase production.
+  postgres-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: PRN232_BE
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PRN232_TEST_POSTGRES_CONNECTION: Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres
+      PRN232_MIGRATION_TEST_POSTGRES_CONNECTION: Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Test PostgreSQL suite
+        run: >-
+          dotnet test --configuration Release
+          --filter "FullyQualifiedName~Phase31BPostgreSqlMigrationTests|FullyQualifiedName~Phase31CPropertyDetailPostgreSqlTests|FullyQualifiedName~AssignmentNoteMigrationTests|FullyQualifiedName~PublicPropertyListingPostgreSqlTests|FullyQualifiedName~ViewingAssignmentMigrationTests"
+
+  # Bắt lỗi quên tạo migration (entity đổi mà chưa có migration) và xuất script SQL
+  # idempotent để review trước khi chạy lên Supabase. Job này KHÔNG kết nối database nào.
+  migrations:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: PRN232_BE
+    env:
+      # Chạy host ở Development để không vướng kiểm tra Jwt:Key của Production (A2).
+      ASPNETCORE_ENVIRONMENT: Development
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Install dotnet-ef
+        run: dotnet tool install --global dotnet-ef --version 8.0.10
+
+      - name: Build
+        run: dotnet build PRN232.Api/PRN232.Api.csproj --configuration Release
+
+      - name: Check for model changes without a migration
+        run: >-
+          dotnet ef migrations has-pending-model-changes --no-build --configuration Release
+          --project PRN232.Infrastructure --startup-project PRN232.Api
+
+      - name: Generate idempotent migration script
+        run: >-
+          dotnet ef migrations script --idempotent --no-build --configuration Release
+          --project PRN232.Infrastructure --startup-project PRN232.Api
+          --output ${{ github.workspace }}/artifacts/migrations.sql
+
+      - name: Upload migration script
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrations-sql
+          path: artifacts/migrations.sql
+          retention-days: 14
+
+  # Build đúng Dockerfile mà Railway dùng, rồi chạy thử container: phải khởi động được,
+  # chạy bằng user không phải root (A13) và health check trả đúng mã (A12).
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t prn232-api:ci PRN232_BE
+
+      - name: Container runs as non-root
+        run: |
+          uid=$(docker run --rm --entrypoint id prn232-api:ci -u)
+          echo "uid=$uid"
+          test "$uid" != "0"
+
+      - name: Smoke test
+        run: |
+          docker run -d --name api -p 8080:8080 \
+            -e Jwt__Key="ci-only-signing-key-0123456789abcdef0123456789" \
+            prn232-api:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/api/health-checks > /dev/null; then break; fi
+            sleep 1
+          done
+          echo "--- /api/health-checks"
+          curl -sS -w '\nstatus=%{http_code}\n' http://localhost:8080/api/health-checks
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/health-checks)" = "200"
+          echo "--- /api/health-checks/database (không có DB trong CI nên phải là 503)"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/health-checks/database)" = "503"
+
+      - name: Container logs
+        if: always()
+        run: docker logs api 2>&1 | tail -50 || true
