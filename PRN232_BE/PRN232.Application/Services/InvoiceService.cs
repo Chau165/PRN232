@@ -17,12 +17,15 @@ public class InvoiceService : IInvoiceService
     private readonly IInvoiceRepository _repository;
     private readonly IPaymentGateway _paymentGateway;
     private readonly TimeProvider _timeProvider;
+    private readonly ICashCheckoutCoordinator _cashCheckout;
 
-    public InvoiceService(IInvoiceRepository repository, IPaymentGateway paymentGateway, TimeProvider timeProvider)
+    public InvoiceService(IInvoiceRepository repository, IPaymentGateway paymentGateway, TimeProvider timeProvider,
+        ICashCheckoutCoordinator cashCheckout)
     {
         _repository = repository;
         _paymentGateway = paymentGateway;
         _timeProvider = timeProvider;
+        _cashCheckout = cashCheckout;
     }
 
     // Xem trước và tạo thật dùng chung BuildAsync, nên số tiền xem trước luôn khớp hoá đơn được lưu.
@@ -119,8 +122,10 @@ public class InvoiceService : IInvoiceService
             throw new InvoiceAuthorizationException("You cannot record payments for this invoice.");
         }
 
+        var ownerId = role == RoleNames.Manager ? (int?)userId : null;
+        await _cashCheckout.PrepareAsync(id, ownerId, CancellationToken.None);
         return await MarkPaidAsync(invoice, PaymentMethods.Cash, invoice.CustomerId,
-            $"Đã ghi nhận thanh toán tiền mặt hoá đơn tháng {Period(invoice.InvoiceMonth)} - Phòng {invoice.RoomCode}");
+            $"Đã ghi nhận thanh toán tiền mặt hoá đơn tháng {Period(invoice.InvoiceMonth)} - Phòng {invoice.RoomCode}", ownerId);
     }
 
     private async Task<InvoicePaymentReadModel> GetUnpaidForPaymentAsync(int id)
@@ -139,7 +144,7 @@ public class InvoiceService : IInvoiceService
 
     // Người trả luôn là khách thuê; số tiền là tổng các dòng do server tính, client không gửi số tiền.
     private async Task<InvoiceDto> MarkPaidAsync(
-        InvoicePaymentReadModel invoice, string paymentMethod, int notifyUserId, string notificationTitle)
+        InvoicePaymentReadModel invoice, string paymentMethod, int notifyUserId, string notificationTitle, int? ownerId = null)
     {
         var payment = new Payments
         {
@@ -158,7 +163,7 @@ public class InvoiceService : IInvoiceService
             IsRead = false
         };
         // Repository chỉ chuyển sang Paid khi hoá đơn vẫn chưa thanh toán: hai lần trả cùng lúc thì chỉ một lần được ghi.
-        if (!await _repository.MarkPaidAsync(invoice.InvoiceId, payment, notification))
+        if (!await _repository.MarkPaidAsync(invoice.InvoiceId, payment, notification, ownerId))
         {
             throw new InvoiceConflictException("This invoice is already paid or has an active online checkout that must be resolved first.");
         }

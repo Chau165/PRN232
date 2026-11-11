@@ -263,7 +263,8 @@ public class PayOSWebhookApiTests
         using var scope = app.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Equal(2, await context.PaymentWebhookReceipts.CountAsync());
-        Assert.Equal("RequiresReview", (await context.PaymentWebhookReceipts.SingleAsync(receipt => receipt.Reference == "TEST-REF-2")).Outcome);
+        Assert.Equal("DuplicatePayment", (await context.PaymentWebhookReceipts.SingleAsync(receipt => receipt.Reference == "TEST-REF-2")).Outcome);
+        Assert.Equal(1, await context.PaymentReviewCases.CountAsync());
         Assert.Equal("TEST-REF-1", (await context.PaymentRequests.SingleAsync()).ProviderReference);
         Assert.Equal("Succeeded", (await context.PaymentRequests.SingleAsync()).Status);
         Assert.Equal(1, await context.Payments.CountAsync(payment => payment.InvoiceId != null));

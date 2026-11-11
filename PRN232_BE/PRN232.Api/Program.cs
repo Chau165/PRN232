@@ -214,6 +214,10 @@ builder.Services.AddScoped<IUtilityReadingRepository, UtilityReadingRepository>(
 builder.Services.AddScoped<IUtilityReadingService, UtilityReadingService>();
 builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
+builder.Services.AddScoped<ICashCheckoutRepository, CashCheckoutRepository>();
+builder.Services.AddScoped<ICashCheckoutCoordinator, CashCheckoutCoordinator>();
+builder.Services.AddScoped<IPaymentReviewRepository, PaymentReviewRepository>();
+builder.Services.AddScoped<IPaymentReviewService, PaymentReviewService>();
 builder.Services.AddScoped<IInvoicePaymentLinkRepository, InvoicePaymentLinkRepository>();
 builder.Services.AddScoped<IPaymentRequestStatusRepository, PaymentRequestStatusRepository>();
 builder.Services.AddScoped<IPaymentRequestStatusService, PaymentRequestStatusService>();

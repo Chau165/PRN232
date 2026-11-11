@@ -153,11 +153,15 @@ public class InvoiceRepository : IInvoiceRepository
                 invoice.InvoiceMonth, invoice.Status, invoice.Amounts.Sum());
     }
 
-    public async Task<bool> MarkPaidAsync(int invoiceId, Payments payment, Notifications notification)
+    public async Task<bool> MarkPaidAsync(int invoiceId, Payments payment, Notifications notification, int? ownerId = null)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
         if (_context.Database.IsNpgsql())
             await _context.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"Invoices\" WHERE \"InvoiceId\" = {invoiceId} FOR UPDATE");
+        var current = await GetForPaymentAsync(invoiceId);
+        if (current is null || (ownerId.HasValue && current.OwnerId != ownerId) ||
+            current.CustomerId != payment.UserId || current.Total != payment.Amount || current.Total <= 0 ||
+            current.Status is not (InvoiceStatuses.Unpaid or InvoiceStatuses.Overdue)) return false;
         if (await _context.PaymentRequests.AnyAsync(request => request.InvoiceId == invoiceId &&
             (request.Status == PaymentRequestStatuses.Creating || request.Status == PaymentRequestStatuses.Pending ||
              request.Status == PaymentRequestStatuses.RequiresReview))) return false;

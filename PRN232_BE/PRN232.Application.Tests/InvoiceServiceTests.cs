@@ -245,7 +245,12 @@ public class InvoiceServiceTests
     }
 
     private static InvoiceService CreateService(FakeInvoiceRepository repository, FakePaymentGateway? gateway = null) =>
-        new(repository, gateway ?? new FakePaymentGateway(), new FixedTimeProvider(Now));
+        new(repository, gateway ?? new FakePaymentGateway(), new FixedTimeProvider(Now), new NoCheckout());
+
+    private sealed class NoCheckout : ICashCheckoutCoordinator
+    {
+        public Task PrepareAsync(int invoiceId, int? ownerId, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
 
     private static InvoicePaymentReadModel SamplePaymentTarget() =>
         new(5, 10, 7, "A-101", October, InvoiceStatuses.Unpaid, 3_207_500m);
@@ -322,7 +327,7 @@ public class InvoiceServiceTests
         public Task<InvoicePaymentReadModel?> GetForPaymentAsync(int invoiceId) =>
             Task.FromResult(PaymentTarget?.InvoiceId == invoiceId ? PaymentTarget : null);
 
-        public Task<bool> MarkPaidAsync(int invoiceId, Payments payment, Notifications notification)
+        public Task<bool> MarkPaidAsync(int invoiceId, Payments payment, Notifications notification, int? ownerId = null)
         {
             if (!MarkPaidSucceeds)
             {

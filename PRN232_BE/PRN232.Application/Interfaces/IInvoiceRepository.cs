@@ -14,5 +14,5 @@ public interface IInvoiceRepository
     Task<InvoiceReadModel?> GetByIdAsync(int invoiceId, int? customerId, int? ownerId);
     Task<bool> ExistsAsync(int invoiceId);
     Task<InvoicePaymentReadModel?> GetForPaymentAsync(int invoiceId);
-    Task<bool> MarkPaidAsync(int invoiceId, Payments payment, Notifications notification);
+    Task<bool> MarkPaidAsync(int invoiceId, Payments payment, Notifications notification, int? ownerId = null);
 }

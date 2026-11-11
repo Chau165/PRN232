@@ -135,6 +135,7 @@ public class AppDbContext : DbContext
     }
     public DbSet<PaymentRequests> PaymentRequests => Set<PaymentRequests>();
     public DbSet<PaymentWebhookReceipts> PaymentWebhookReceipts => Set<PaymentWebhookReceipts>();
+    public DbSet<PaymentReviewCases> PaymentReviewCases => Set<PaymentReviewCases>();
     public DbSet<Payments> Payments
     {
         get
@@ -280,6 +281,25 @@ public class AppDbContext : DbContext
             entity.HasIndex(receipt => new { receipt.Provider, receipt.Reference }).IsUnique();
             entity.HasOne(receipt => receipt.PaymentRequest).WithMany()
                 .HasForeignKey(receipt => receipt.PaymentRequestId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<PaymentReviewCases>(entity =>
+        {
+            entity.HasKey(item => item.PaymentReviewCaseId);
+            entity.Property(item => item.Reason).HasMaxLength(64).IsRequired();
+            entity.Property(item => item.Status).HasMaxLength(16).IsRequired();
+            entity.Property(item => item.Resolution).HasMaxLength(32);
+            entity.Property(item => item.ResolutionNote).HasMaxLength(2000);
+            entity.Property(item => item.EvidenceReference).HasMaxLength(256);
+            entity.HasIndex(item => item.PaymentWebhookReceiptId).IsUnique();
+            entity.HasIndex(item => new { item.Status, item.CreatedAtUtc });
+            entity.HasOne(item => item.Receipt).WithMany().HasForeignKey(item => item.PaymentWebhookReceiptId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(item => item.Invoice).WithMany().HasForeignKey(item => item.InvoiceId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(item => item.ExistingPayment).WithMany().HasForeignKey(item => item.ExistingPaymentId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(item => item.ResolvedByAdmin).WithMany().HasForeignKey(item => item.ResolvedByAdminId).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("PaymentReviewCases", table => table.HasCheckConstraint("CK_PaymentReviewCases_State",
+                "(\"Status\" = 'Open' AND \"Resolution\" IS NULL AND \"ResolvedAtUtc\" IS NULL AND \"ResolvedByAdminId\" IS NULL) OR " +
+                "(\"Status\" = 'Resolved' AND \"Resolution\" IN ('RefundedExternally', 'NotDuplicate') AND \"ResolutionNote\" IS NOT NULL " +
+                "AND \"ResolvedAtUtc\" IS NOT NULL AND \"ResolvedByAdminId\" IS NOT NULL)"));
         });
         modelBuilder.Entity<MaintenanceRequests>().HasKey(x => x.RequestId);
         modelBuilder.Entity<MaintenanceRequests>()

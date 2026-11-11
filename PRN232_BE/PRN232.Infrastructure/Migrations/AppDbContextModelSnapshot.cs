@@ -572,6 +572,73 @@ namespace PRN232.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.PaymentReviewCases", b =>
+                {
+                    b.Property<int>("PaymentReviewCaseId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("PaymentReviewCaseId"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EvidenceReference")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int>("ExistingPaymentId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("InvoiceId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PaymentWebhookReceiptId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ResolutionNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ResolvedByAdminId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("PaymentReviewCaseId");
+
+                    b.HasIndex("ExistingPaymentId");
+
+                    b.HasIndex("InvoiceId");
+
+                    b.HasIndex("PaymentWebhookReceiptId")
+                        .IsUnique();
+
+                    b.HasIndex("ResolvedByAdminId");
+
+                    b.HasIndex("Status", "CreatedAtUtc");
+
+                    b.ToTable("PaymentReviewCases", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PaymentReviewCases_State", "(\"Status\" = 'Open' AND \"Resolution\" IS NULL AND \"ResolvedAtUtc\" IS NULL AND \"ResolvedByAdminId\" IS NULL) OR (\"Status\" = 'Resolved' AND \"Resolution\" IN ('RefundedExternally', 'NotDuplicate') AND \"ResolutionNote\" IS NOT NULL AND \"ResolvedAtUtc\" IS NOT NULL AND \"ResolvedByAdminId\" IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.PaymentWebhookReceipts", b =>
                 {
                     b.Property<int>("PaymentWebhookReceiptId")
@@ -1318,6 +1385,40 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("Invoice");
 
                     b.Navigation("Payment");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.PaymentReviewCases", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Payments", "ExistingPayment")
+                        .WithMany()
+                        .HasForeignKey("ExistingPaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Invoices", "Invoice")
+                        .WithMany()
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.PaymentWebhookReceipts", "Receipt")
+                        .WithMany()
+                        .HasForeignKey("PaymentWebhookReceiptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "ResolvedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("ResolvedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ExistingPayment");
+
+                    b.Navigation("Invoice");
+
+                    b.Navigation("Receipt");
+
+                    b.Navigation("ResolvedByAdmin");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.PaymentWebhookReceipts", b =>

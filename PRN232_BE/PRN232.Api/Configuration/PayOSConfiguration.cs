@@ -30,6 +30,7 @@ public static class PayOSConfiguration
             services.AddScoped<IInvoiceCheckoutGateway, PayOSInvoiceCheckoutGateway>();
             services.AddScoped<IPayOSWebhookVerifier, PayOSWebhookVerifier>();
             services.AddScoped<IPayOSReconciliationGateway, PayOSReconciliationGateway>();
+            services.AddScoped<IPayOSCancellationGateway, PayOSCancellationGateway>();
             services.AddSingleton(provider =>
             {
                 var settings = provider.GetRequiredService<IOptions<PayOSSettings>>().Value;
@@ -43,6 +44,7 @@ public static class PayOSConfiguration
             services.AddScoped<IInvoiceCheckoutGateway, DisabledInvoiceCheckoutGateway>();
             services.AddScoped<IPayOSWebhookVerifier, DisabledPayOSWebhookVerifier>();
             services.AddScoped<IPayOSReconciliationGateway, DisabledPayOSReconciliationGateway>();
+            services.AddScoped<IPayOSCancellationGateway, DisabledPayOSCancellationGateway>();
         }
         return services;
     }

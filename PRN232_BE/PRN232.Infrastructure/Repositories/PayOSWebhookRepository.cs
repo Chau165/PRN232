@@ -86,6 +86,34 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
             (request.ProviderReference is null || request.ProviderReference == receipt.Reference) && validTime;
         if (isWebhook) request.WebhookReceivedAtUtc ??= receipt.ReceivedAtUtc;
         request.UpdatedAtUtc = confirmedAtUtc;
+        // A new reference is additional money, not a replay of the original payment.
+        // Preserve it for Admin review without crediting the invoice/revenue twice.
+        var authenticTransfer = request.Provider == "PayOS" && request.Currency == "VND" && receipt.Currency == "VND" &&
+            receipt.DataCode == "00" && receipt.Amount > 0 && request.PaymentLinkId == receipt.PaymentLinkId &&
+            PayOSTransactionTime.TryGetUtc(receipt.TransactionDateTime, out var transferAtUtc) &&
+            transferAtUtc >= request.CreatedAtUtc && transferAtUtc <= receipt.ReceivedAtUtc;
+        if (invoice.Status == InvoiceStatuses.Paid && authenticTransfer)
+        {
+            var originalPaymentId = await context.Payments.AsNoTracking()
+                .Where(item => item.InvoiceId == request.InvoiceId && item.Status == PaymentStatuses.Success)
+                .OrderBy(item => item.PaymentId).Select(item => (int?)item.PaymentId).FirstOrDefaultAsync(cancellationToken);
+            if (originalPaymentId.HasValue)
+            {
+                receipt.Outcome = "DuplicatePayment";
+                MarkReview(request, "POSSIBLE_DUPLICATE_PAYMENT", confirmedAtUtc);
+                context.PaymentReviewCases.Add(new PaymentReviewCases
+                {
+                    Receipt = receipt, InvoiceId = request.InvoiceId, ExistingPaymentId = originalPaymentId.Value,
+                    CreatedAtUtc = confirmedAtUtc
+                });
+                var admins = await context.Users.AsNoTracking().Where(item => item.IsActive && item.Role!.RoleName == RoleNames.Admin)
+                    .Select(item => item.UserId).ToListAsync(cancellationToken);
+                foreach (var admin in admins)
+                    context.Notifications.Add(new Notifications { UserId = admin, Type = NotificationTypes.Invoice,
+                        Title = $"Cần kiểm tra khoản trả trùng hóa đơn #{request.InvoiceId}, mã đơn {request.OrderCode}", IsRead = false });
+                return;
+            }
+        }
         if (!eligible)
         {
             receipt.Outcome = "RequiresReview";
