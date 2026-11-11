@@ -49,8 +49,11 @@ jobs:
           dotnet test --no-build --no-restore --configuration Release
           --filter "FullyQualifiedName!~SupabaseReadOnlyInspectionTests&FullyQualifiedName!~Phase31BPostgreSqlMigrationTests&FullyQualifiedName!~Phase31CPropertyDetailPostgreSqlTests&FullyQualifiedName!~AssignmentNoteMigrationTests&FullyQualifiedName!~PublicPropertyListingPostgreSqlTests"
 
-  # Các test chạy trên PostgreSQL thật. Mỗi test tự tạo rồi xoá database tạm trên server này.
-  # SupabaseReadOnlyInspectionTests vẫn bị loại vì nó cần kết nối Supabase production.
+  # Các test migration chạy trên PostgreSQL thật: mỗi test tự tạo rồi xoá database tạm.
+  # Test có chốt an toàn chỉ chịu chạy trên loopback, cổng 55432, PostgreSQL 17 và đúng
+  # Application Name, để không bao giờ chạy nhầm lên Supabase.
+  # Chưa chạy ở đây: PublicPropertyListingPostgreSqlTests (cần database đã seed sẵn dữ liệu mẫu)
+  # và SupabaseReadOnlyInspectionTests (cần kết nối Supabase production).
   postgres-tests:
     runs-on: ubuntu-latest
     defaults:
@@ -58,21 +61,20 @@ jobs:
         working-directory: PRN232_BE
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres
         ports:
-          - 5432:5432
+          - 55432:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
-      PRN232_TEST_POSTGRES_CONNECTION: Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres
-      PRN232_MIGRATION_TEST_POSTGRES_CONNECTION: Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres
+      PRN232_MIGRATION_TEST_POSTGRES_CONNECTION: Host=localhost;Port=55432;Database=postgres;Username=postgres;Password=postgres;Application Name=PRN232-Phase31B-Isolated-Test
 
     steps:
       - name: Checkout code
@@ -83,10 +85,10 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - name: Test PostgreSQL suite
+      - name: Test PostgreSQL migration suite
         run: >-
           dotnet test --configuration Release
-          --filter "FullyQualifiedName~Phase31BPostgreSqlMigrationTests|FullyQualifiedName~Phase31CPropertyDetailPostgreSqlTests|FullyQualifiedName~AssignmentNoteMigrationTests|FullyQualifiedName~PublicPropertyListingPostgreSqlTests|FullyQualifiedName~ViewingAssignmentMigrationTests"
+          --filter "FullyQualifiedName~Phase31BPostgreSqlMigrationTests|FullyQualifiedName~Phase31CPropertyDetailPostgreSqlTests|FullyQualifiedName~AssignmentNoteMigrationTests|FullyQualifiedName~ViewingAssignmentMigrationTests"
 
   # Bắt lỗi quên tạo migration (entity đổi mà chưa có migration) và xuất script SQL
   # idempotent để review trước khi chạy lên Supabase. Job này KHÔNG kết nối database nào.
