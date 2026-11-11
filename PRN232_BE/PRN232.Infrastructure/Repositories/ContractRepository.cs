@@ -38,19 +38,13 @@ public class ContractRepository : IContractRepository
 
     public async Task<bool> AddFromBookingAsync(Contracts contract, Notifications customerNotification)
     {
+        if (!contract.BookingId.HasValue) return false;
         await using var transaction = await _context.Database.BeginTransactionAsync();
-        if (_context.Database.IsNpgsql())
-        {
-            // Khoá booking để không ai huỷ nó giữa chừng (huỷ booking cũng khoá dòng này),
-            // và khoá phòng để hai hợp đồng không thể cùng được lập cho một phòng.
-            await _context.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT 1 FROM \"Bookings\" WHERE \"BookingId\" = {contract.BookingId} FOR UPDATE");
-            await _context.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT 1 FROM \"Rooms\" WHERE \"RoomId\" = {contract.RoomId} FOR UPDATE");
-        }
+        await BookingPaymentLock.LockAsync(_context, contract.BookingId.Value);
 
         var bookingStillDeposited = await _context.Bookings.AnyAsync(booking =>
             booking.BookingId == contract.BookingId &&
+            booking.RoomId == contract.RoomId &&
             booking.Status == BookingStatuses.Deposited &&
             booking.Contract == null);
         var roomHasActiveContract = await _context.Contracts.AnyAsync(existing =>

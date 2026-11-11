@@ -28,6 +28,7 @@ public static class PayOSConfiguration
         if (section.GetValue<bool>(nameof(PayOSSettings.Enabled)))
         {
             services.AddScoped<IInvoiceCheckoutGateway, PayOSInvoiceCheckoutGateway>();
+            services.AddScoped<IBookingCheckoutGateway, PayOSBookingCheckoutGateway>();
             services.AddScoped<IPayOSWebhookVerifier, PayOSWebhookVerifier>();
             services.AddScoped<IPayOSReconciliationGateway, PayOSReconciliationGateway>();
             services.AddScoped<IPayOSCancellationGateway, PayOSCancellationGateway>();
@@ -42,6 +43,7 @@ public static class PayOSConfiguration
         else
         {
             services.AddScoped<IInvoiceCheckoutGateway, DisabledInvoiceCheckoutGateway>();
+            services.AddScoped<IBookingCheckoutGateway, DisabledBookingCheckoutGateway>();
             services.AddScoped<IPayOSWebhookVerifier, DisabledPayOSWebhookVerifier>();
             services.AddScoped<IPayOSReconciliationGateway, DisabledPayOSReconciliationGateway>();
             services.AddScoped<IPayOSCancellationGateway, DisabledPayOSCancellationGateway>();

@@ -72,10 +72,7 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
     {
         if (!request.InvoiceId.HasValue)
         {
-            // P2 stores the new target safely. Booking settlement is implemented in P3.
-            receipt.Outcome = "RequiresReview";
-            if (isWebhook) request.WebhookReceivedAtUtc ??= receipt.ReceivedAtUtc;
-            MarkReview(request, "BOOKING_CHECKOUT_NOT_SUPPORTED", confirmedAtUtc);
+            await SettleBookingAsync(receipt, request, confirmedAtUtc, isWebhook, cancellationToken);
             return;
         }
         var invoice = await context.Invoices.AsNoTracking().Where(item => item.InvoiceId == request.InvoiceId)
@@ -172,11 +169,9 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
                 await context.Database.ExecuteSqlInterpolatedAsync(
                     $"SELECT 1 FROM \"Invoices\" WHERE \"InvoiceId\" = {target.InvoiceId.Value} FOR UPDATE", cancellationToken);
             else if (target.BookingId.HasValue)
-                await context.Database.ExecuteSqlInterpolatedAsync(
-                    $"SELECT 1 FROM \"Bookings\" WHERE \"BookingId\" = {target.BookingId.Value} FOR UPDATE", cancellationToken);
+                await BookingPaymentLock.LockAsync(context, target.BookingId.Value, cancellationToken);
         }
-        // Invoice requests retain their invoice-first lock order. The booking
-        // branch only retains receipts in P2; its settlement lock policy belongs to P3.
+        // Invoice-first for invoices; room then booking for deposits. Both follow the reference advisory lock.
         var result = await context.PaymentRequests.SingleAsync(request => request.OrderCode == orderCode, cancellationToken);
         await context.Entry(result).ReloadAsync(cancellationToken);
         return result;
@@ -189,6 +184,60 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
             request.Status = PaymentRequestStatuses.RequiresReview;
         request.LastErrorCode = code;
         request.UpdatedAtUtc = nowUtc;
+    }
+
+    private async Task SettleBookingAsync(PaymentWebhookReceipts receipt, PaymentRequests request, DateTime nowUtc,
+        bool isWebhook, CancellationToken cancellationToken)
+    {
+        var booking = await context.Bookings.AsNoTracking().Where(item => item.BookingId == request.BookingId)
+            .Select(item => new { item.BookingId, item.RoomId, item.CustomerId, item.DepositAmount, item.Status, item.ExpiryDate,
+                HasContract = item.Contract != null, item.Room!.RoomCode, item.Room.Property!.OwnerId }).SingleAsync(cancellationToken);
+        var validTime = PayOSTransactionTime.TryGetUtc(receipt.TransactionDateTime, out var paidAtUtc) &&
+            paidAtUtc >= request.CreatedAtUtc && request.ExpiresAtUtc.HasValue && paidAtUtc < request.ExpiresAtUtc &&
+            paidAtUtc < booking.ExpiryDate && paidAtUtc <= receipt.ReceivedAtUtc;
+        var linkMatches = request.PaymentLinkId == receipt.PaymentLinkId ||
+            (request.PaymentLinkId is null && request.Status == PaymentRequestStatuses.Creating);
+        var eligible = request.Provider == "PayOS" && request.Currency == "VND" && receipt.Currency == "VND" && receipt.DataCode == "00" &&
+            !string.IsNullOrWhiteSpace(receipt.PaymentLinkId) && receipt.Amount > 0 && receipt.Amount == request.Amount &&
+            request.Amount == booking.DepositAmount && request.CustomerId == booking.CustomerId && linkMatches &&
+            request.PaymentId is null && (request.Status is PaymentRequestStatuses.Creating or PaymentRequestStatuses.Pending) &&
+            booking.Status == BookingStatuses.Pending && !booking.HasContract && validTime &&
+            (request.ProviderReference is null || request.ProviderReference == receipt.Reference) &&
+            !await context.Payments.AnyAsync(item => item.BookingId == booking.BookingId && item.Status == PaymentStatuses.Success, cancellationToken) &&
+            await BookingPaymentLock.RoomCanAcceptDepositAsync(context, booking.RoomId, booking.BookingId, nowUtc, cancellationToken);
+        if (isWebhook) request.WebhookReceivedAtUtc ??= receipt.ReceivedAtUtc;
+        request.UpdatedAtUtc = nowUtc;
+        if (!eligible)
+        {
+            receipt.Outcome = "RequiresReview";
+            MarkReview(request, "BOOKING_PAYMENT_REQUIRES_REVIEW", nowUtc);
+            var admins = await context.Users.AsNoTracking().Where(item => item.IsActive && item.Role!.RoleName == RoleNames.Admin)
+                .Select(item => item.UserId).ToListAsync(cancellationToken);
+            foreach (var admin in admins)
+                context.Notifications.Add(new Notifications { UserId = admin, Type = NotificationTypes.Booking,
+                    Title = $"Cần kiểm tra tiền cọc booking #{booking.BookingId}, mã đơn {request.OrderCode}", IsRead = false });
+            return;
+        }
+        var changed = await context.Bookings.Where(item => item.BookingId == booking.BookingId && item.Status == BookingStatuses.Pending && item.Contract == null)
+            .ExecuteUpdateAsync(update => update.SetProperty(item => item.Status, BookingStatuses.Deposited), cancellationToken);
+        if (changed != 1)
+        {
+            receipt.Outcome = "RequiresReview";
+            MarkReview(request, "BOOKING_SETTLEMENT_CONFLICT", nowUtc);
+            return;
+        }
+        request.PaymentLinkId = receipt.PaymentLinkId;
+        request.Payment = new Payments { BookingId = booking.BookingId, UserId = request.CustomerId, Amount = receipt.Amount,
+            PaymentMethod = PaymentMethods.PayOS, Status = PaymentStatuses.Success, PaidAtUtc = paidAtUtc };
+        request.Status = PaymentRequestStatuses.Succeeded;
+        request.ProviderReference = receipt.Reference;
+        request.ConfirmedAtUtc = nowUtc;
+        request.LastErrorCode = null;
+        request.LastErrorMessage = null;
+        receipt.Outcome = "Settled";
+        foreach (var userId in new[] { request.CustomerId, booking.OwnerId }.Distinct())
+            context.Notifications.Add(new Notifications { UserId = userId, Type = NotificationTypes.Booking, IsRead = false,
+                Title = $"Đã nhận cọc booking #{booking.BookingId} - Phòng {booking.RoomCode} qua payOS" });
     }
 
     private static bool Equivalent(PaymentWebhookReceipts first, PaymentWebhookReceipts second) =>

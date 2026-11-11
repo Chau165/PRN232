@@ -205,6 +205,8 @@ builder.Services.AddScoped<IEquipmentRepository, EquipmentRepository>();
 builder.Services.AddScoped<IEquipmentService, EquipmentService>();
 builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 builder.Services.AddScoped<IBookingService, BookingService>();
+builder.Services.AddScoped<IBookingPaymentLinkRepository, BookingPaymentLinkRepository>();
+builder.Services.AddScoped<IBookingPaymentLinkService, BookingPaymentLinkService>();
 builder.Services.AddScoped<IPaymentGateway, MockPaymentGateway>();
 builder.Services.AddScoped<IViewingScheduleRepository, ViewingScheduleRepository>();
 builder.Services.AddScoped<IViewingScheduleService, ViewingScheduleService>();

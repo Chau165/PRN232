@@ -155,7 +155,7 @@ public class BookingPaymentRequestTargetTests
     }
 
     [Fact]
-    public async Task Invoice_only_read_update_and_reconciliation_paths_do_not_process_booking_requests_in_P2()
+    public async Task Booking_status_and_reconciliation_are_supported_but_invoice_link_updates_stay_scoped()
     {
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
@@ -166,19 +166,19 @@ public class BookingPaymentRequestTargetTests
         db.PaymentRequests.Add(request);
         await db.SaveChangesAsync();
         var statuses = scope.ServiceProvider.GetRequiredService<IPaymentRequestStatusRepository>();
-        Assert.Null(await statuses.GetByIdAsync(request.PaymentRequestId, 10, null, default));
-        Assert.False(await statuses.ExistsAsync(request.PaymentRequestId, default));
+        Assert.Equal(bookingId, (await statuses.GetByIdAsync(request.PaymentRequestId, 10, null, default))!.BookingId);
+        Assert.True(await statuses.ExistsAsync(request.PaymentRequestId, default));
         var reconciliation = scope.ServiceProvider.GetRequiredService<IPaymentReconciliationRepository>();
-        Assert.Null(await reconciliation.GetAsync(request.PaymentRequestId, default));
-        Assert.Empty(await reconciliation.FindDueAsync(DateTime.UtcNow, 10, default));
-        await Assert.ThrowsAsync<InvoiceStatusLinkConflictException>(() => reconciliation.ApplyAsync(request.PaymentRequestId, null, null, null, DateTime.UtcNow, default));
+        Assert.NotNull(await reconciliation.GetAsync(request.PaymentRequestId, default));
+        Assert.Equal(request.PaymentRequestId, Assert.Single(await reconciliation.FindDueAsync(DateTime.UtcNow, 10, default)));
+        Assert.Equal("NotFoundAtProvider", await reconciliation.ApplyAsync(request.PaymentRequestId, null, null, null, DateTime.UtcNow, default));
         await Assert.ThrowsAsync<InvoiceStatusLinkConflictException>(() => scope.ServiceProvider.GetRequiredService<IInvoicePaymentLinkRepository>()
             .UpdateAsync(request.PaymentRequestId, "Creating", "Pending", "book-link", "https://pay.payos.vn/web/book-link", null, DateTime.UtcNow, default));
         Assert.Equal(0, await db.Payments.CountAsync());
     }
 
     [Fact]
-    public async Task Known_booking_webhook_is_retained_for_review_without_using_invoice_settlement()
+    public async Task Known_booking_webhook_uses_booking_settlement_without_creating_an_invoice_payment()
     {
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
@@ -196,11 +196,12 @@ public class BookingPaymentRequestTargetTests
         }, true, default);
         var receipt = await db.PaymentWebhookReceipts.SingleAsync();
         Assert.Equal(request.PaymentRequestId, receipt.PaymentRequestId);
-        Assert.Equal("RequiresReview", receipt.Outcome);
-        Assert.Equal("BOOKING_CHECKOUT_NOT_SUPPORTED", request.LastErrorCode);
-        Assert.Equal("RequiresReview", request.Status);
-        Assert.Equal("Pending", (await db.Bookings.SingleAsync()).Status);
-        Assert.Equal(0, await db.Payments.CountAsync());
+        Assert.Equal("Settled", receipt.Outcome);
+        Assert.Null(request.LastErrorCode);
+        Assert.Equal("Succeeded", request.Status);
+        Assert.Equal("Deposited", (await db.Bookings.AsNoTracking().SingleAsync()).Status);
+        Assert.Equal(bookingId, (await db.Payments.SingleAsync()).BookingId);
+        Assert.Null((await db.Payments.SingleAsync()).InvoiceId);
         Assert.Equal(0, await db.PaymentReviewCases.CountAsync());
     }
 

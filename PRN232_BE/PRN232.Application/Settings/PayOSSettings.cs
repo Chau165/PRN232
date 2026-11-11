@@ -5,6 +5,8 @@ public class PayOSSettings
 {
     public const string SectionName = "PayOS";
     public bool Enabled { get; set; }
+    // Enable booking checkout only after P2 migration and the booking UI are ready.
+    public bool BookingPaymentsEnabled { get; set; }
     public bool ReconciliationEnabled { get; set; }
     public int ReconciliationIntervalSeconds { get; set; } = 60;
     public int ReconciliationMinAgeSeconds { get; set; } = 60;

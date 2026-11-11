@@ -11,13 +11,14 @@ namespace PRN232.Infrastructure.Repositories;
 public class PaymentReconciliationRepository(AppDbContext context) : IPaymentReconciliationRepository
 {
     public Task<PaymentReconciliationReadModel?> GetAsync(int id, CancellationToken cancellationToken) =>
-        context.PaymentRequests.AsNoTracking().Where(item => item.PaymentRequestId == id && item.Provider == "PayOS" && item.InvoiceId.HasValue)
+        context.PaymentRequests.AsNoTracking().Where(item => item.PaymentRequestId == id && item.Provider == "PayOS")
             .Select(item => new PaymentReconciliationReadModel(item.PaymentRequestId, item.OrderCode,
-                item.Invoice!.Contract!.Room!.Property!.OwnerId, item.Status, item.LastErrorCode, item.UpdatedAtUtc))
+                item.InvoiceId.HasValue ? item.Invoice!.Contract!.Room!.Property!.OwnerId : item.Booking!.Room!.Property!.OwnerId,
+                item.Status, item.LastErrorCode, item.UpdatedAtUtc))
             .SingleOrDefaultAsync(cancellationToken);
 
     public Task<List<int>> FindDueAsync(DateTime cutoffUtc, int limit, CancellationToken cancellationToken) =>
-        context.PaymentRequests.AsNoTracking().Where(item => item.Provider == "PayOS" && item.InvoiceId.HasValue && item.UpdatedAtUtc <= cutoffUtc &&
+        context.PaymentRequests.AsNoTracking().Where(item => item.Provider == "PayOS" && item.UpdatedAtUtc <= cutoffUtc &&
             (item.Status == PaymentRequestStatuses.Creating || item.Status == PaymentRequestStatuses.Pending ||
              (item.Status == PaymentRequestStatuses.RequiresReview && item.LastErrorCode == "EXPIRED_CHECKOUT_UNRESOLVED")))
             .OrderBy(item => item.UpdatedAtUtc).ThenBy(item => item.PaymentRequestId)
@@ -31,18 +32,34 @@ public class PaymentReconciliationRepository(AppDbContext context) : IPaymentRec
         DateTime nowUtc, CancellationToken cancellationToken)
     {
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-        var invoiceId = await context.PaymentRequests.Where(item => item.PaymentRequestId == id)
-            .Select(item => item.InvoiceId).SingleAsync(cancellationToken);
-        if (!invoiceId.HasValue) throw new InvoiceStatusLinkConflictException("This request is not an invoice checkout.");
-        if (context.Database.IsNpgsql())
+        var target = await context.PaymentRequests.AsNoTracking().Where(item => item.PaymentRequestId == id)
+            .Select(item => new { item.InvoiceId, item.BookingId }).SingleAsync(cancellationToken);
+        if (target.BookingId.HasValue) await BookingPaymentLock.LockAsync(context, target.BookingId.Value, cancellationToken);
+        else if (context.Database.IsNpgsql())
             await context.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT 1 FROM \"Invoices\" WHERE \"InvoiceId\" = {invoiceId} FOR UPDATE", cancellationToken);
+                $"SELECT 1 FROM \"Invoices\" WHERE \"InvoiceId\" = {target.InvoiceId} FOR UPDATE", cancellationToken);
         var request = await context.PaymentRequests.SingleAsync(item => item.PaymentRequestId == id, cancellationToken);
         await context.Entry(request).ReloadAsync(cancellationToken);
-        var invoice = await context.Invoices.AsNoTracking().Where(item => item.InvoiceId == invoiceId)
-            .Select(item => new { item.Status, item.Contract!.CustomerId, item.Contract.Room!.Property!.OwnerId,
-                Amounts = item.InvoiceDetails.Select(line => line.Amount).ToList() }).SingleAsync(cancellationToken);
-        if (ownerId.HasValue && invoice.OwnerId != ownerId.Value) throw new PaymentRequestStatusForbiddenException();
+        int customerId, currentOwnerId;
+        decimal amount;
+        bool payable;
+        if (target.InvoiceId.HasValue)
+        {
+            var invoice = await context.Invoices.AsNoTracking().Where(item => item.InvoiceId == target.InvoiceId)
+                .Select(item => new { item.Status, item.Contract!.CustomerId, item.Contract.Room!.Property!.OwnerId,
+                    Amounts = item.InvoiceDetails.Select(line => line.Amount).ToList() }).SingleAsync(cancellationToken);
+            customerId = invoice.CustomerId; currentOwnerId = invoice.OwnerId; amount = invoice.Amounts.Sum();
+            payable = invoice.Status is InvoiceStatuses.Unpaid or InvoiceStatuses.Overdue;
+        }
+        else
+        {
+            var booking = await context.Bookings.AsNoTracking().Where(item => item.BookingId == target.BookingId)
+                .Select(item => new { item.Status, item.CustomerId, item.Room!.Property!.OwnerId, item.DepositAmount, HasContract = item.Contract != null })
+                .SingleAsync(cancellationToken);
+            customerId = booking.CustomerId; currentOwnerId = booking.OwnerId; amount = booking.DepositAmount;
+            payable = booking.Status == BookingStatuses.Pending && !booking.HasContract;
+        }
+        if (ownerId.HasValue && currentOwnerId != ownerId.Value) throw new PaymentRequestStatusForbiddenException();
         if (request.Status == PaymentRequestStatuses.Succeeded) return "AlreadyCompleted";
         if (!Recoverable(request.Status, request.LastErrorCode)) return "ManualReviewOrClosed";
 
@@ -71,8 +88,7 @@ public class PaymentReconciliationRepository(AppDbContext context) : IPaymentRec
                 (request.PaymentLinkId is null || request.PaymentLinkId == remote.LinkId) &&
                 remote.AmountPaid >= 0 && remote.AmountRemaining >= 0 && remote.AmountPaid <= remote.Amount &&
                 remote.AmountPaid + remote.AmountRemaining == remote.Amount &&
-                request.CustomerId == invoice.CustomerId && invoice.Amounts.Sum() == request.Amount &&
-                (invoice.Status is InvoiceStatuses.Unpaid or InvoiceStatuses.Overdue) && request.PaymentId is null;
+                request.CustomerId == customerId && amount == request.Amount && payable && request.PaymentId is null;
             if (!consistent) result = Review(request, "RECONCILIATION_MISMATCH");
             else
             {

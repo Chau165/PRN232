@@ -1,5 +1,8 @@
 # P2 — PaymentRequests thuộc Invoice hoặc Booking
 
+Ghi chú: phần giới hạn API theo giai đoạn dưới đây mô tả P2. Từ P3, booking đã có tạo link, settlement,
+GET trạng thái và đối soát; xem [P3 — Đặt cọc payOS](booking-payos-checkout.md).
+
 ## Entity và ràng buộc
 
 PaymentRequests có InvoiceId nullable và BookingId nullable, nhưng DB bắt buộc **đúng một** trường có giá trị:

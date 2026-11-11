@@ -18,6 +18,7 @@ internal sealed class PayOSTestMerchant : HttpMessageHandler
     internal const string LinkId = "b12-test-link";
     internal long OrderCode;
     internal long Amount;
+    internal long ExpiresAt;
     internal string Status = "PENDING";
     internal int Creates;
     internal int Cancels;
@@ -40,6 +41,7 @@ internal sealed class PayOSTestMerchant : HttpMessageHandler
             Assert.Equal(0, Interlocked.Exchange(ref Creates, 1));
             OrderCode = input.GetProperty("orderCode").GetInt64();
             Amount = input.GetProperty("amount").GetInt64();
+            ExpiresAt = input.GetProperty("expiredAt").GetInt64();
             if (LoseCreateResponse) throw new TaskCanceledException("Test: provider saved the order but its creation reply was lost.");
             return Response(new CreatePaymentLinkResponse { Bin = "970422", AccountNumber = "0000000000", AccountName = "B12 TEST",
                 Amount = Amount, Description = "HOADON", OrderCode = OrderCode, Currency = "VND",

@@ -22,11 +22,12 @@ public class PaymentRequestStatusService(IPaymentRequestStatusRepository reposit
             ((request.Status == PaymentRequestStatuses.Creating || request.Status == PaymentRequestStatuses.Pending) &&
                 request.ExpiresAtUtc.HasValue && request.ExpiresAtUtc <= timeProvider.GetUtcNow().UtcDateTime);
         var canOpen = request.Status == PaymentRequestStatuses.Pending && request.ExpiresAtUtc.HasValue && !expired &&
-            (request.InvoiceStatus is InvoiceStatuses.Unpaid or InvoiceStatuses.Overdue) && !string.IsNullOrWhiteSpace(request.CheckoutUrl);
+            ((request.InvoiceId.HasValue && request.InvoiceStatus is InvoiceStatuses.Unpaid or InvoiceStatuses.Overdue) ||
+             (request.BookingId.HasValue && request.BookingStatus == BookingStatuses.Pending && !request.BookingHasContract)) && !string.IsNullOrWhiteSpace(request.CheckoutUrl);
         return new PaymentRequestStatusDto(request.PaymentRequestId, request.InvoiceId, request.CustomerId, request.PropertyId,
             request.Status, request.InvoiceStatus, request.Amount, request.Currency, UtcTimestamp.ForResponse(request.CreatedAtUtc), UtcTimestamp.ForResponse(request.UpdatedAtUtc),
             UtcTimestamp.ForResponse(request.ExpiresAtUtc), UtcTimestamp.ForResponse(request.ConfirmedAtUtc), request.PaymentId, UtcTimestamp.ForResponse(request.PaidAtUtc),
-            expired, canOpen, canOpen ? request.CheckoutUrl : null);
+            expired, canOpen, canOpen ? request.CheckoutUrl : null, request.BookingId, request.BookingStatus);
     }
 }
 

@@ -9,17 +9,20 @@ public class PaymentRequestStatusRepository(AppDbContext context) : IPaymentRequ
 {
     public Task<PaymentRequestStatusReadModel?> GetByIdAsync(int id, int? customerId, int? ownerId, CancellationToken cancellationToken) =>
         context.PaymentRequests.AsNoTracking()
-            // Booking DTO/authorization and checkout are introduced together in P3.
-            .Where(request => request.PaymentRequestId == id && request.InvoiceId.HasValue)
+            .Where(request => request.PaymentRequestId == id)
             .Where(request => customerId == null || request.CustomerId == customerId)
-            .Where(request => ownerId == null || request.Invoice!.Contract!.Room!.Property!.OwnerId == ownerId)
+            .Where(request => ownerId == null || (request.InvoiceId.HasValue
+                ? request.Invoice!.Contract!.Room!.Property!.OwnerId : request.Booking!.Room!.Property!.OwnerId) == ownerId)
             .Select(request => new PaymentRequestStatusReadModel(
-                request.PaymentRequestId, request.InvoiceId!.Value, request.CustomerId, request.Invoice!.Contract!.Room!.PropertyId,
-                request.Status, request.Invoice.Status, request.Amount, request.Currency,
+                request.PaymentRequestId, request.InvoiceId, request.CustomerId,
+                request.InvoiceId.HasValue ? request.Invoice!.Contract!.Room!.PropertyId : request.Booking!.Room!.PropertyId,
+                request.Status, request.InvoiceId.HasValue ? request.Invoice!.Status : null, request.Amount, request.Currency,
                 request.CreatedAtUtc, request.UpdatedAtUtc, request.ExpiresAtUtc, request.ConfirmedAtUtc,
-                request.PaymentId, request.Payment == null ? null : request.Payment.PaidAtUtc, request.CheckoutUrl))
+                request.PaymentId, request.Payment == null ? null : request.Payment.PaidAtUtc, request.CheckoutUrl,
+                request.BookingId, request.BookingId.HasValue ? request.Booking!.Status : null,
+                request.BookingId.HasValue && request.Booking!.Contract != null))
             .FirstOrDefaultAsync(cancellationToken);
 
     public Task<bool> ExistsAsync(int id, CancellationToken cancellationToken) =>
-        context.PaymentRequests.AsNoTracking().AnyAsync(request => request.PaymentRequestId == id && request.InvoiceId.HasValue, cancellationToken);
+        context.PaymentRequests.AsNoTracking().AnyAsync(request => request.PaymentRequestId == id, cancellationToken);
 }

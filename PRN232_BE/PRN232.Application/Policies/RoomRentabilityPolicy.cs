@@ -11,15 +11,21 @@ public static class RoomRentabilityPolicy
     private static readonly string[] RecognizedContractStatuses = { ContractStatuses.Active };
 
     public static Expression<Func<Rooms, bool>> IsRentableAt(DateTimeOffset asOfUtc)
+        => Build(asOfUtc, null);
+
+    public static Expression<Func<Rooms, bool>> IsRentableForBookingAt(int bookingId, DateTimeOffset asOfUtc)
+        => Build(asOfUtc, bookingId);
+
+    private static Expression<Func<Rooms, bool>> Build(DateTimeOffset asOfUtc, int? ignoredBookingId)
     {
         var instantUtc = asOfUtc.UtcDateTime;
 
         return room =>
             room.Status == RoomStatuses.Available &&
             !room.Bookings.Any(booking =>
-                booking.Status == BookingStatuses.Deposited ||
+                (ignoredBookingId == null || booking.BookingId != ignoredBookingId) && (booking.Status == BookingStatuses.Deposited ||
                 (booking.Status == BookingStatuses.Pending && booking.ExpiryDate > instantUtc) ||
-                !RecognizedBookingStatuses.Contains(booking.Status)) &&
+                !RecognizedBookingStatuses.Contains(booking.Status))) &&
             !room.Contracts.Any(contract =>
                 contract.Status == ContractStatuses.Active ||
                 !RecognizedContractStatuses.Contains(contract.Status));
