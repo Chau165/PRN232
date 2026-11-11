@@ -209,8 +209,7 @@ public class BookingPaymentRequestTargetTests
     public void PostgreSql_upgrade_script_adds_the_booking_target_without_deleting_legacy_invoice_requests()
     {
         using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=localhost;Database=unused").Options);
-        var migration = db.Database.GetMigrations().Last();
-        Assert.EndsWith("_AddBookingPaymentRequestTarget", migration);
+        var migration = db.Database.GetMigrations().Single(item => item.EndsWith("_AddBookingPaymentRequestTarget", StringComparison.Ordinal));
         var sql = db.GetService<IMigrator>().GenerateScript("20261111014953_AddPaymentReviewCases", migration);
         Assert.Contains("CK_PaymentRequests_ExactlyOneTarget", sql);
         Assert.Contains("UX_PaymentRequests_BookingId_Active", sql);

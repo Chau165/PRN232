@@ -29,6 +29,9 @@ public class Users
     public ICollection<Contracts> ContractsProcessed { get; set; } = new List<Contracts>();
     public ICollection<Payments> Payments { get; set; } = new List<Payments>();
     public ICollection<PaymentRequests> PaymentRequests { get; set; } = new List<PaymentRequests>();
+    public ICollection<BookingRefundRequests> BookingRefundRequests { get; set; } = new List<BookingRefundRequests>();
+    public ICollection<BookingRefundRequests> BookingRefundRequestsReviewed { get; set; } = new List<BookingRefundRequests>();
+    public ICollection<PayoutAttempts> PayoutAttemptsInitiated { get; set; } = new List<PayoutAttempts>();
     public ICollection<MaintenanceRequests> MaintenanceRequestsAssigned { get; set; } = new List<MaintenanceRequests>();
     public ICollection<MaintenanceLogs> MaintenanceLogsChanged { get; set; } = new List<MaintenanceLogs>();
     public ICollection<MaintenanceReports> MaintenanceReportsReported { get; set; } = new List<MaintenanceReports>();
