@@ -148,6 +148,20 @@ jobs:
   # chạy bằng user không phải root (A13) và health check trả đúng mã (A12).
   docker:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: prn232_bundle_check
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout code
@@ -161,6 +175,28 @@ jobs:
           uid=$(docker run --rm --entrypoint id prn232-api:ci -u)
           echo "uid=$uid"
           test "$uid" != "0"
+
+      # Railway chạy ./efbundle làm pre-deploy command. Ở đây chạy thử nó trên một database
+      # PostgreSQL trống: phải áp dụng đủ mọi migration trong code, và chạy lần 2 không đổi gì.
+      - name: Migration bundle applies all migrations to an empty database
+        env:
+          DB: Host=localhost;Port=5432;Database=prn232_bundle_check;Username=postgres;Password=postgres
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d prn232_bundle_check -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN;"
+          docker run --rm --network host -e ConnectionStrings__DefaultConnection="$DB" \
+            -e Jwt__Key="ci-only-signing-key-0123456789abcdef0123456789" \
+            prn232-api:ci ./efbundle --connection "$DB"
+          expected=$(ls PRN232_BE/PRN232.Infrastructure/Migrations/*.cs | grep -vE '\.Designer\.cs$|ModelSnapshot\.cs$' | wc -l)
+          applied=$(psql -h localhost -U postgres -d prn232_bundle_check -tAc 'SELECT count(*) FROM "__EFMigrationsHistory"')
+          echo "migrations in code: $expected, applied: $applied"
+          test "$applied" = "$expected"
+          echo "--- chạy lại lần 2 (phải không còn migration nào)"
+          docker run --rm --network host -e ConnectionStrings__DefaultConnection="$DB" \
+            -e Jwt__Key="ci-only-signing-key-0123456789abcdef0123456789" \
+            prn232-api:ci ./efbundle --connection "$DB"
+          test "$(psql -h localhost -U postgres -d prn232_bundle_check -tAc 'SELECT count(*) FROM "__EFMigrationsHistory"')" = "$expected"
 
       - name: Smoke test
         run: |
