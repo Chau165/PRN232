@@ -2,6 +2,8 @@ using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.ReadModels;
 using DomainUser = PRN232.Domain.Entities.Users;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace PRN232.Application.Services;
 
@@ -9,11 +11,13 @@ public class UserService : IUserService
 {
     private readonly IUserRepository _repository;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly ILogger<UserService> _logger;
 
-    public UserService(IUserRepository repository, IPasswordHasher passwordHasher)
+    public UserService(IUserRepository repository, IPasswordHasher passwordHasher, ILogger<UserService>? logger = null)
     {
         _repository = repository;
         _passwordHasher = passwordHasher;
+        _logger = logger ?? NullLogger<UserService>.Instance;
     }
 
     public async Task<List<UserDto>> GetAllAsync(int? roleId)
@@ -65,6 +69,7 @@ public class UserService : IUserService
 
         var created = await _repository.AddAsync(user);
         await _repository.SaveChangesAsync();
+        _logger.LogInformation("Admin created user {UserId} with role {RoleId}.", created.UserId, created.RoleId);
 
         return ConvertToDto(await GetUserResponseAsync(created.UserId));
     }
@@ -85,8 +90,11 @@ public class UserService : IUserService
             throw new UserCannotModifySelfException("đổi role");
         }
 
+        var previousRoleId = entity.RoleId;
         entity.RoleId = dto.RoleId;
         await _repository.SaveChangesAsync();
+        _logger.LogInformation("User {UserId} role changed from {PreviousRoleId} to {RoleId} by admin {AdminId}.",
+            id, previousRoleId, dto.RoleId, requestingUserId);
         var updated = await _repository.GetByIdAsync(id);
         if (updated is null)
         {
@@ -109,6 +117,8 @@ public class UserService : IUserService
 
         entity.IsActive = dto.IsActive;
         await _repository.SaveChangesAsync();
+        _logger.LogInformation("User {UserId} {Action} by admin {AdminId}.",
+            id, dto.IsActive ? "activated" : "deactivated", requestingUserId);
         var updated = await _repository.GetByIdAsync(id);
         if (updated is null)
         {

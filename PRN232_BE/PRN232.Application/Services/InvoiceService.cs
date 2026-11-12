@@ -5,6 +5,8 @@ using PRN232.Application.Policies;
 using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace PRN232.Application.Services;
 
@@ -18,21 +20,27 @@ public class InvoiceService : IInvoiceService
     private readonly IPaymentGateway _paymentGateway;
     private readonly TimeProvider _timeProvider;
     private readonly INotificationRealtimePublisher? _realtimePublisher;
+
     private readonly ICashCheckoutCoordinator _cashCheckout;
 
+
+    private readonly ILogger<InvoiceService> _logger;
 
     public InvoiceService(
         IInvoiceRepository repository,
         IPaymentGateway paymentGateway,
         TimeProvider timeProvider,
         ICashCheckoutCoordinator cashCheckout,
-        INotificationRealtimePublisher? realtimePublisher = null)
+        INotificationRealtimePublisher? realtimePublisher = null,
+        ILogger<InvoiceService>? logger = null)
+
     {
         _repository = repository;
         _paymentGateway = paymentGateway;
         _timeProvider = timeProvider;
         _cashCheckout = cashCheckout;
         _realtimePublisher = realtimePublisher;
+        _logger = logger ?? NullLogger<InvoiceService>.Instance;
     }
 
     // Xem trước và tạo thật dùng chung BuildAsync, nên số tiền xem trước luôn khớp hoá đơn được lưu.
@@ -122,6 +130,9 @@ public class InvoiceService : IInvoiceService
             dto.PaymentMethod,
             amount => _paymentGateway.ChargeAsync(dto.PaymentMethod, amount),
             notification);
+        var logLevel = result == InvoicePaymentAttemptStatus.Completed ? LogLevel.Information : LogLevel.Warning;
+        _logger.Log(logLevel, "Online payment for invoice {InvoiceId} by customer {CustomerId} via {PaymentMethod}: {Result}.",
+            id, customerId, dto.PaymentMethod, result);
         return result switch
         {
             InvoicePaymentAttemptStatus.Completed => await PublishPaymentAndLoadAsync(id, notification),
@@ -153,9 +164,12 @@ public class InvoiceService : IInvoiceService
         var title = invoice.Total <= 0m
             ? $"Hoá đơn tháng {Period(invoice.InvoiceMonth)} - Phòng {invoice.RoomCode} đã được bù trừ bằng tiền trả trước"
             : $"Đã ghi nhận thanh toán tiền mặt hoá đơn tháng {Period(invoice.InvoiceMonth)} - Phòng {invoice.RoomCode}";
-        return await MarkPaidAsync(invoice, PaymentMethods.Cash, invoice.CustomerId,
+        var paid = await MarkPaidAsync(invoice, PaymentMethods.Cash, invoice.CustomerId,
             title,
             userId);
+        _logger.LogInformation("Cash payment of {Amount} recorded for invoice {InvoiceId} by manager {ManagerId}.",
+            invoice.Total, id, userId);
+        return paid;
     }
 
     private async Task<InvoicePaymentReadModel> GetUnpaidForPaymentAsync(int id)

@@ -1,7 +1,9 @@
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.HttpLogging;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
@@ -27,6 +29,29 @@ using PRN232.Api.Services;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddPayOSConfiguration(builder.Configuration, builder.Environment);
 builder.Services.AddPayOSPayoutConfiguration(builder.Configuration);
+
+// ---- Logging (A11) ----
+// Production (Railway) in mỗi log thành một dòng JSON để lọc theo level, category, UserId...
+// Development giữ console dạng chữ cho dễ đọc; môi trường Testing không đổi gì.
+if (builder.Environment.IsProduction())
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.AddJsonConsole(options =>
+    {
+        options.UseUtcTimestamp = true;
+        options.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
+        options.JsonWriterOptions = new JsonWriterOptions { Indented = false };
+    });
+}
+
+// Một dòng log cho mỗi request: method, path, status, thời gian xử lý. Cố ý KHÔNG ghi header
+// (Authorization), query string (access_token của SignalR) hay body (mật khẩu, CCCD).
+builder.Services.AddHttpLogging(options =>
+{
+    options.LoggingFields = HttpLoggingFields.RequestMethod | HttpLoggingFields.RequestPath |
+                            HttpLoggingFields.ResponseStatusCode | HttpLoggingFields.Duration;
+    options.CombineLogs = true;
+});
 
 // ---- Database: Supabase Postgres via Npgsql ----
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -133,6 +158,9 @@ builder.Services.AddAuthentication(options =>
             var user = await users.GetByIdAsync(userId);
             if (user is null || !user.IsActive)
             {
+                context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("PRN232.Api.Authentication")
+                    .LogWarning("Rejected token for user {UserId}: account does not exist or is inactive.", userId);
                 context.Fail("Tài khoản không tồn tại hoặc đã bị khoá.");
             }
         }
@@ -313,6 +341,7 @@ builder.Services.AddSwaggerGen(options =>
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+app.UseHttpLogging();
 
 app.UseSwagger();
 app.UseSwaggerUI();

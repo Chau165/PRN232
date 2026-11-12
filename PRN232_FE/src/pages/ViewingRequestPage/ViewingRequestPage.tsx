@@ -17,8 +17,8 @@ export default function ViewingRequestPage() {
   const roomId = parsePositiveRouteId(params.get("roomId") ?? undefined)
 
   return (
-    <CustomerPageShell title="Đặt lịch xem phòng" description="Chọn giờ bạn muốn đến xem, hoặc để Admin phân công Manager và xác nhận lịch.">
-      <div className="max-w-2xl rounded-2xl bg-white p-7 shadow-[0_5px_24px_rgba(16,65,67,.08)]">
+    <CustomerPageShell centerHeader title="Đặt lịch xem phòng" description="Chọn giờ bạn muốn đến xem, hoặc để Admin phân công Manager và xác nhận lịch.">
+      <div className="w-full rounded-2xl bg-white p-5 shadow-[0_5px_24px_rgba(16,65,67,.08)] sm:p-8">
         {roomId ? <ViewingRequestForm roomId={roomId} /> : <Notice message="Không tìm thấy phòng cần xem." />}
       </div>
     </CustomerPageShell>
