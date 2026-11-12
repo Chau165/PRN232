@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/services/booking_service.dart';
@@ -32,7 +33,7 @@ class _ManagerTasksScreenState extends State<ManagerTasksScreen> {
   @override
   void initState() {
     super.initState();
-    _tasks = List.from(ManagerMockData.tasks);
+    _tasks = AuthState.isCurrentDemo ? List.from(ManagerMockData.tasks) : [];
     _loadTasks();
   }
 

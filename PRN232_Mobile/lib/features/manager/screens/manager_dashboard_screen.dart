@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/booking_service.dart';
 import '../../../core/services/maintenance_service.dart';
 import '../../../core/services/manager_service.dart';
+import '../../../core/services/report_service.dart';
 import '../../../core/services/viewing_service.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../routes/app_routes.dart';
+import '../../customer/models/customer_models.dart';
 import '../data/manager_mock_data.dart';
 import '../models/manager_models.dart';
 
@@ -22,8 +27,13 @@ class ManagerDashboardScreen extends StatefulWidget {
 class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
   final ManagerService _managerService = ManagerService();
   final ViewingService _viewingService = ViewingService();
+  final BookingService _bookingService = BookingService();
   final MaintenanceService _maintenanceService = MaintenanceService();
+  final ReportService _reportService = ReportService();
 
+  PropertyItem? _managedProperty;
+  RevenueReportModel? _revenueReport;
+  ReceivablesReportModel? _receivablesReport;
   List<ManagerTaskModel> _urgentTasks = [];
   List<ManagerRoomModel> _rooms = [];
   bool _isLoading = false;
@@ -31,21 +41,61 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _urgentTasks = List.from(ManagerMockData.tasks);
-    _rooms = List.from(ManagerMockData.rooms);
+    if (AuthState.isCurrentDemo) {
+      _urgentTasks = List.from(ManagerMockData.tasks);
+      _rooms = List.from(ManagerMockData.rooms);
+    }
     _loadDashboardData();
   }
 
   Future<void> _loadDashboardData() async {
     setState(() => _isLoading = true);
     try {
-      final rooms = await _managerService.getRooms();
-      final viewings = await _viewingService.getManagerViewings();
-      final maintenance = await _maintenanceService.getManagerRequests();
+      final properties = await _managerService.getMyManagedProperties();
+      final property = properties.isNotEmpty ? properties.first : null;
+      final propId = property?.propertyId;
+
+      final roomsFuture = _managerService.getRooms(propertyId: propId);
+      final viewingsFuture = _viewingService.getManagerViewings();
+      final bookingsFuture = _bookingService.getBookings(status: 'Pending');
+      final maintenanceFuture = _maintenanceService.getManagerRequests();
+      final revenueFuture = _reportService.getRevenueReport(propertyId: propId);
+      final receivablesFuture = _reportService.getReceivablesReport(propertyId: propId);
+
+      final results = await Future.wait([
+        roomsFuture,
+        viewingsFuture,
+        bookingsFuture,
+        maintenanceFuture,
+        revenueFuture,
+        receivablesFuture,
+      ]);
+
+      final rooms = results[0] as List<ManagerRoomModel>;
+      final viewings = results[1] as List<ManagerTaskModel>;
+      final bookings = results[2] as List<CustomerBookingModel>;
+      final maintenance = results[3] as List<ManagerTaskModel>;
+      final revenue = results[4] as RevenueReportModel?;
+      final receivables = results[5] as ReceivablesReportModel?;
+
+      final bookingTasks = bookings.map((b) => ManagerTaskModel.fromBookingJson({
+        'bookingId': b.id,
+        'roomCode': b.roomCode,
+        'propertyName': b.propertyName,
+        'customerName': 'Khách thuê',
+        'customerPhone': '',
+        'depositAmount': b.depositAmount,
+        'depositTime': b.bookingDate,
+        'status': b.status,
+      })).toList();
+
       if (mounted) {
         setState(() {
+          _managedProperty = property;
           _rooms = rooms;
-          _urgentTasks = [...viewings, ...maintenance];
+          _urgentTasks = [...viewings, ...bookingTasks, ...maintenance];
+          _revenueReport = revenue;
+          _receivablesReport = receivables;
           _isLoading = false;
         });
       }
@@ -107,7 +157,8 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              ManagerMockData.currentPropertyName,
+              _managedProperty?.propertyName ??
+                  (AuthState.isCurrentDemo ? ManagerMockData.currentPropertyName : 'Chưa phân công khu trọ'),
               style: AppTypography.headingMedium,
             ),
             Text(
@@ -145,8 +196,12 @@ class _ManagerDashboardScreenState extends State<ManagerDashboardScreen> {
               children: [
                 _buildKpiCard(
                   label: 'Doanh thu tháng',
-                  value: '40.2 tr',
-                  subtext: 'Đã thu: 28.4 tr (70%)',
+                  value: _revenueReport != null && _revenueReport!.totalCollected > 0
+                      ? Formatters.formatShortPrice(_revenueReport!.totalCollected)
+                      : (AuthState.isCurrentDemo ? '40.2 tr' : '0 ₫'),
+                  subtext: _revenueReport != null
+                      ? 'Thu: ${_revenueReport!.paymentCount} HĐ • Nợ: ${_receivablesReport != null && _receivablesReport!.outstandingAmount > 0 ? Formatters.formatShortPrice(_receivablesReport!.outstandingAmount) : '0 ₫'}'
+                      : (AuthState.isCurrentDemo ? 'Đã thu: 28.4 tr (70%)' : 'Chưa có khoản thu'),
                   icon: Icons.monetization_on_outlined,
                   color: AppColors.primary,
                   bg: AppColors.primaryLight,

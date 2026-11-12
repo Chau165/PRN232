@@ -3,6 +3,7 @@ import '../../features/customer/data/customer_mock_data.dart';
 import '../../features/customer/models/customer_models.dart';
 import '../../features/manager/data/manager_mock_data.dart';
 import '../../features/manager/models/manager_models.dart';
+import '../auth/auth_state.dart';
 import '../network/api_endpoints.dart';
 import '../network/dio_client.dart';
 
@@ -22,13 +23,11 @@ class MaintenanceService {
 
       if (response.data is List) {
         final list = response.data as List;
-        if (list.isNotEmpty) {
-          return list.map((m) => CustomerMaintenanceModel.fromJson(m as Map<String, dynamic>)).toList();
-        }
+        return list.map((m) => CustomerMaintenanceModel.fromJson(m as Map<String, dynamic>)).toList();
       }
-      return CustomerMockData.maintenanceRequests;
+      return AuthState.isCurrentDemo ? CustomerMockData.maintenanceRequests : [];
     } catch (_) {
-      return CustomerMockData.maintenanceRequests;
+      return AuthState.isCurrentDemo ? CustomerMockData.maintenanceRequests : [];
     }
   }
 
@@ -45,13 +44,11 @@ class MaintenanceService {
 
       if (response.data is List) {
         final list = response.data as List;
-        if (list.isNotEmpty) {
-          return list.map((m) => ManagerTaskModel.fromMaintenanceJson(m as Map<String, dynamic>)).toList();
-        }
+        return list.map((m) => ManagerTaskModel.fromMaintenanceJson(m as Map<String, dynamic>)).toList();
       }
-      return ManagerMockData.tasks.where((t) => t.type == TaskType.maintenance).toList();
+      return AuthState.isCurrentDemo ? ManagerMockData.tasks.where((t) => t.type == TaskType.maintenance).toList() : [];
     } catch (_) {
-      return ManagerMockData.tasks.where((t) => t.type == TaskType.maintenance).toList();
+      return AuthState.isCurrentDemo ? ManagerMockData.tasks.where((t) => t.type == TaskType.maintenance).toList() : [];
     }
   }
 

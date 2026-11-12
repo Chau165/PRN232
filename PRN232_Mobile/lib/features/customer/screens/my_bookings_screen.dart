@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/services/booking_service.dart';
@@ -28,8 +29,8 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
   @override
   void initState() {
     super.initState();
-    _viewings = List.from(CustomerMockData.myViewings);
-    _bookings = List.from(CustomerMockData.myBookings);
+    _viewings = AuthState.isCurrentDemo ? List.from(CustomerMockData.myViewings) : [];
+    _bookings = AuthState.isCurrentDemo ? List.from(CustomerMockData.myBookings) : [];
     _loadData();
   }
 

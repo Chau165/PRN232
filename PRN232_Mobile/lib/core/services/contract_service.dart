@@ -4,6 +4,7 @@ import '../../features/customer/data/customer_mock_data.dart';
 import '../../features/customer/models/customer_models.dart';
 import '../../features/manager/data/manager_mock_data.dart';
 import '../../features/manager/models/manager_models.dart';
+import '../auth/auth_state.dart';
 import '../network/api_endpoints.dart';
 import '../network/dio_client.dart';
 
@@ -17,44 +18,42 @@ class ContractService {
       final response = await _dio.get(ApiEndpoints.contracts);
       if (response.data is List) {
         final list = response.data as List;
-        if (list.isNotEmpty) {
-          final contracts = <CustomerContractModel>[];
-          for (final item in list) {
-            final c = CustomerContractModel.fromJson(item as Map<String, dynamic>);
-            // Lấy thêm timeline công nợ cho hợp đồng này
-            try {
-              final timeline = await getBillingTimeline(c.id);
-              contracts.add(CustomerContractModel(
-                id: c.id,
-                contractCode: c.contractCode,
-                propertyId: c.propertyId,
-                propertyName: c.propertyName,
-                propertyAddress: c.propertyAddress,
-                roomId: c.roomId,
-                roomCode: c.roomCode,
-                roomTypeName: c.roomTypeName,
-                primaryTenantName: c.primaryTenantName,
-                tenantCccd: c.tenantCccd,
-                tenantPhone: c.tenantPhone,
-                startDate: c.startDate,
-                endDate: c.endDate,
-                monthlyRent: c.monthlyRent,
-                depositAmount: c.depositAmount,
-                paymentCycleMonths: c.paymentCycleMonths,
-                terms: c.terms,
-                status: c.status,
-                billingTimeline: timeline.isNotEmpty ? timeline : c.billingTimeline,
-              ));
-            } catch (_) {
-              contracts.add(c);
-            }
+        final contracts = <CustomerContractModel>[];
+        for (final item in list) {
+          final c = CustomerContractModel.fromJson(item as Map<String, dynamic>);
+          // Lấy thêm timeline công nợ cho hợp đồng này
+          try {
+            final timeline = await getBillingTimeline(c.id);
+            contracts.add(CustomerContractModel(
+              id: c.id,
+              contractCode: c.contractCode,
+              propertyId: c.propertyId,
+              propertyName: c.propertyName,
+              propertyAddress: c.propertyAddress,
+              roomId: c.roomId,
+              roomCode: c.roomCode,
+              roomTypeName: c.roomTypeName,
+              primaryTenantName: c.primaryTenantName,
+              tenantCccd: c.tenantCccd,
+              tenantPhone: c.tenantPhone,
+              startDate: c.startDate,
+              endDate: c.endDate,
+              monthlyRent: c.monthlyRent,
+              depositAmount: c.depositAmount,
+              paymentCycleMonths: c.paymentCycleMonths,
+              terms: c.terms,
+              status: c.status,
+              billingTimeline: timeline.isNotEmpty ? timeline : c.billingTimeline,
+            ));
+          } catch (_) {
+            contracts.add(c);
           }
-          return contracts;
         }
+        return contracts;
       }
-      return CustomerMockData.contracts;
+      return AuthState.isCurrentDemo ? CustomerMockData.contracts : [];
     } catch (_) {
-      return CustomerMockData.contracts;
+      return AuthState.isCurrentDemo ? CustomerMockData.contracts : [];
     }
   }
 
@@ -64,13 +63,11 @@ class ContractService {
       final response = await _dio.get(ApiEndpoints.contracts);
       if (response.data is List) {
         final list = response.data as List;
-        if (list.isNotEmpty) {
-          return list.map((c) => ManagerContractModel.fromJson(c as Map<String, dynamic>)).toList();
-        }
+        return list.map((c) => ManagerContractModel.fromJson(c as Map<String, dynamic>)).toList();
       }
-      return ManagerMockData.contracts;
+      return AuthState.isCurrentDemo ? ManagerMockData.contracts : [];
     } catch (_) {
-      return ManagerMockData.contracts;
+      return AuthState.isCurrentDemo ? ManagerMockData.contracts : [];
     }
   }
 

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import '../../features/customer/data/customer_mock_data.dart';
 import '../../features/customer/models/customer_models.dart';
+import '../auth/auth_state.dart';
 import '../network/api_endpoints.dart';
 import '../network/dio_client.dart';
 
@@ -88,9 +89,9 @@ class RentalService {
           );
         }
       }
-      return _fallbackMock();
+      return AuthState.isCurrentDemo ? _fallbackMock() : null;
     } catch (_) {
-      return _fallbackMock();
+      return AuthState.isCurrentDemo ? _fallbackMock() : null;
     }
   }
 

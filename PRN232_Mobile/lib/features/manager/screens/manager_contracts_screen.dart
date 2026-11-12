@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/services/contract_service.dart';
@@ -36,7 +37,7 @@ class _ManagerContractsScreenState extends State<ManagerContractsScreen> {
   @override
   void initState() {
     super.initState();
-    _contracts = List.from(ManagerMockData.contracts);
+    _contracts = AuthState.isCurrentDemo ? List.from(ManagerMockData.contracts) : [];
     _loadContracts();
   }
 

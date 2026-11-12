@@ -19,6 +19,8 @@ class AuthState extends ChangeNotifier {
   bool get isAuthenticated => _currentUser != null;
   bool get isCustomer => _currentUser?.isCustomer ?? false;
   bool get isManager => _currentUser?.isManager ?? false;
+  bool get isDemoMode => _currentUser?.email.endsWith('@demo.com') ?? false;
+  static bool get isCurrentDemo => instance.isDemoMode;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   int get unreadNotifications => _unreadNotifications;

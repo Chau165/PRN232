@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import '../../features/customer/data/customer_mock_data.dart';
 import '../../features/customer/models/customer_models.dart';
+import '../auth/auth_state.dart';
 import '../network/api_endpoints.dart';
 import '../network/dio_client.dart';
 
@@ -20,13 +21,11 @@ class BookingService {
 
       if (response.data is List) {
         final list = response.data as List;
-        if (list.isNotEmpty) {
-          return list.map((b) => CustomerBookingModel.fromJson(b as Map<String, dynamic>)).toList();
-        }
+        return list.map((b) => CustomerBookingModel.fromJson(b as Map<String, dynamic>)).toList();
       }
-      return CustomerMockData.bookings;
+      return AuthState.isCurrentDemo ? CustomerMockData.bookings : [];
     } catch (_) {
-      return CustomerMockData.bookings;
+      return AuthState.isCurrentDemo ? CustomerMockData.bookings : [];
     }
   }
 

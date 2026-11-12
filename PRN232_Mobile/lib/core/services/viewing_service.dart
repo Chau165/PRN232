@@ -3,6 +3,7 @@ import '../../features/customer/data/customer_mock_data.dart';
 import '../../features/customer/models/customer_models.dart';
 import '../../features/manager/data/manager_mock_data.dart';
 import '../../features/manager/models/manager_models.dart';
+import '../auth/auth_state.dart';
 import '../network/api_endpoints.dart';
 import '../network/dio_client.dart';
 
@@ -22,13 +23,11 @@ class ViewingService {
 
       if (response.data is List) {
         final list = response.data as List;
-        if (list.isNotEmpty) {
-          return list.map((v) => CustomerViewingModel.fromJson(v as Map<String, dynamic>)).toList();
-        }
+        return list.map((v) => CustomerViewingModel.fromJson(v as Map<String, dynamic>)).toList();
       }
-      return CustomerMockData.viewings;
+      return AuthState.isCurrentDemo ? CustomerMockData.viewings : [];
     } catch (_) {
-      return CustomerMockData.viewings;
+      return AuthState.isCurrentDemo ? CustomerMockData.viewings : [];
     }
   }
 
@@ -45,13 +44,11 @@ class ViewingService {
 
       if (response.data is List) {
         final list = response.data as List;
-        if (list.isNotEmpty) {
-          return list.map((v) => ManagerTaskModel.fromViewingJson(v as Map<String, dynamic>)).toList();
-        }
+        return list.map((v) => ManagerTaskModel.fromViewingJson(v as Map<String, dynamic>)).toList();
       }
-      return ManagerMockData.tasks.where((t) => t.type == TaskType.viewing).toList();
+      return AuthState.isCurrentDemo ? ManagerMockData.tasks.where((t) => t.type == TaskType.viewing).toList() : [];
     } catch (_) {
-      return ManagerMockData.tasks.where((t) => t.type == TaskType.viewing).toList();
+      return AuthState.isCurrentDemo ? ManagerMockData.tasks.where((t) => t.type == TaskType.viewing).toList() : [];
     }
   }
 
