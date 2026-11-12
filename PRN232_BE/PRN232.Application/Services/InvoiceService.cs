@@ -20,18 +20,25 @@ public class InvoiceService : IInvoiceService
     private readonly IPaymentGateway _paymentGateway;
     private readonly TimeProvider _timeProvider;
     private readonly INotificationRealtimePublisher? _realtimePublisher;
+
+    private readonly ICashCheckoutCoordinator _cashCheckout;
+
+
     private readonly ILogger<InvoiceService> _logger;
 
     public InvoiceService(
         IInvoiceRepository repository,
         IPaymentGateway paymentGateway,
         TimeProvider timeProvider,
+        ICashCheckoutCoordinator cashCheckout,
         INotificationRealtimePublisher? realtimePublisher = null,
         ILogger<InvoiceService>? logger = null)
+
     {
         _repository = repository;
         _paymentGateway = paymentGateway;
         _timeProvider = timeProvider;
+        _cashCheckout = cashCheckout;
         _realtimePublisher = realtimePublisher;
         _logger = logger ?? NullLogger<InvoiceService>.Instance;
     }
@@ -151,6 +158,9 @@ public class InvoiceService : IInvoiceService
             throw new InvoiceAuthorizationException("You cannot record payments for this invoice.");
         }
 
+
+        await _cashCheckout.PrepareAsync(id, userId, CancellationToken.None);
+
         var title = invoice.Total <= 0m
             ? $"Hoá đơn tháng {Period(invoice.InvoiceMonth)} - Phòng {invoice.RoomCode} đã được bù trừ bằng tiền trả trước"
             : $"Đã ghi nhận thanh toán tiền mặt hoá đơn tháng {Period(invoice.InvoiceMonth)} - Phòng {invoice.RoomCode}";
@@ -178,6 +188,7 @@ public class InvoiceService : IInvoiceService
 
     // Người trả luôn là khách thuê; số tiền là tổng các dòng do server tính, client không gửi số tiền.
     private async Task<InvoiceDto> MarkPaidAsync(
+
         InvoicePaymentReadModel invoice,
         string paymentMethod,
         int notifyUserId,
@@ -189,6 +200,7 @@ public class InvoiceService : IInvoiceService
             UserId = invoice.CustomerId,
             InvoiceId = invoice.InvoiceId,
             Amount = invoice.Total,
+            PaidAtUtc = _timeProvider.GetUtcNow().UtcDateTime,
             PaymentMethod = paymentMethod,
             Status = PaymentStatuses.Success
         };
@@ -200,6 +212,7 @@ public class InvoiceService : IInvoiceService
             IsRead = false
         };
         // Repository chỉ chuyển sang Paid khi hoá đơn vẫn chưa thanh toán: hai lần trả cùng lúc thì chỉ một lần được ghi.
+
         if (!await _repository.MarkPaidAsync(invoice.InvoiceId, payment, notification, managerId))
         {
             if (managerId.HasValue &&
@@ -208,6 +221,7 @@ public class InvoiceService : IInvoiceService
                 throw new InvoiceAuthorizationException("You are no longer assigned to manage this property's invoices.");
             }
             throw new InvoiceConflictException("This invoice has already been paid.");
+
         }
         return await PublishPaymentAndLoadAsync(invoice.InvoiceId, notification);
     }

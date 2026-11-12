@@ -73,6 +73,66 @@ public class PropertyRepository : IPropertyRepository
             .FirstOrDefaultAsync();
     }
 
+    public Task<List<PropertyServiceRateReadModel>> GetServiceRatesAsync(
+        int propertyId, DateOnly? month, CancellationToken cancellationToken)
+    {
+        var rates = _context.PropertyServiceRates
+            .AsNoTracking()
+            .Where(rate => rate.PropertyId == propertyId);
+        if (month.HasValue)
+        {
+            // EffectiveTo is exclusive, matching the invoice billing query.
+            var monthStart = month.Value;
+            rates = rates.Where(rate => rate.EffectiveFrom <= monthStart &&
+                (rate.EffectiveTo == null || rate.EffectiveTo > monthStart));
+        }
+
+        return rates.OrderBy(rate => rate.ServiceId)
+            .ThenByDescending(rate => rate.EffectiveFrom)
+            .ThenBy(rate => rate.RateId)
+            .Select(rate => new PropertyServiceRateReadModel(
+                rate.RateId, rate.PropertyId, rate.ServiceId, rate.Service!.Name, rate.Price,
+                rate.UnitCode, rate.BillingBasis, rate.EffectiveFrom, rate.EffectiveTo))
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<bool> ServiceExistsAsync(int serviceId, CancellationToken cancellationToken)
+    {
+        return _context.Services.AnyAsync(service => service.ServiceId == serviceId, cancellationToken);
+    }
+
+    public async Task<bool> AddServiceRateIfNoOverlapAsync(PropertyServiceRates rate, CancellationToken cancellationToken)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        if (_context.Database.IsNpgsql())
+        {
+            // Serialize writers even when no rate exists yet for this property/service.
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"Properties\" WHERE \"PropertyId\" = {rate.PropertyId} FOR UPDATE", cancellationToken);
+        }
+        var overlaps = await _context.PropertyServiceRates.AnyAsync(existing =>
+            existing.PropertyId == rate.PropertyId && existing.ServiceId == rate.ServiceId &&
+            (rate.EffectiveTo == null || existing.EffectiveFrom < rate.EffectiveTo) &&
+            (existing.EffectiveTo == null || existing.EffectiveTo > rate.EffectiveFrom), cancellationToken);
+        if (overlaps)
+        {
+            return false;
+        }
+
+        await _context.PropertyServiceRates.AddAsync(rate, cancellationToken);
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return true;
+        }
+        catch (DbUpdateException exception) when (exception.InnerException is Npgsql.PostgresException { SqlState: "23P01" })
+        {
+            // Also honor the PostgreSQL exclusion constraint if another writer bypasses this API.
+            return false;
+        }
+    }
+
     public Task<Property?> GetTrackedByIdAsync(int id)
     {
         return _context.Properties.FirstOrDefaultAsync(p => p.PropertyId == id);

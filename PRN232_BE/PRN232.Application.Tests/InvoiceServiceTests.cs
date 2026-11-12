@@ -185,6 +185,8 @@ public class InvoiceServiceTests
 
         Assert.Equal((PaymentMethods.MoMo, 3_207_500m), Assert.Single(gateway.Charges));
         var (invoiceId, payment, notification) = Assert.Single(repository.Paid);
+        Assert.Equal(Now.UtcDateTime, payment.PaidAtUtc);
+        Assert.Equal(DateTimeKind.Utc, payment.PaidAtUtc!.Value.Kind);
         Assert.Equal(5, invoiceId);
         Assert.Equal((10, (int?)5, 3_207_500m, PaymentMethods.MoMo, PaymentStatuses.Success),
             (payment.UserId, payment.InvoiceId, payment.Amount, payment.PaymentMethod, payment.Status));
@@ -275,6 +277,8 @@ public class InvoiceServiceTests
         await CreateService(repository, gateway).RecordCashPaymentAsync(5, 7, RoleNames.Manager);
 
         var (_, payment, notification) = Assert.Single(repository.Paid);
+        Assert.Equal(Now.UtcDateTime, payment.PaidAtUtc);
+        Assert.Equal(DateTimeKind.Utc, payment.PaidAtUtc!.Value.Kind);
         Assert.Equal((10, PaymentMethods.Cash, 3_207_500m), (payment.UserId, payment.PaymentMethod, payment.Amount));
         Assert.Equal(10, notification.UserId);
         Assert.Empty(gateway.Charges);
@@ -332,7 +336,12 @@ public class InvoiceServiceTests
     }
 
     private static InvoiceService CreateService(FakeInvoiceRepository repository, FakePaymentGateway? gateway = null) =>
-        new(repository, gateway ?? new FakePaymentGateway(), new FixedTimeProvider(Now));
+        new(repository, gateway ?? new FakePaymentGateway(), new FixedTimeProvider(Now), new NoCheckout());
+
+    private sealed class NoCheckout : ICashCheckoutCoordinator
+    {
+        public Task PrepareAsync(int invoiceId, int? ownerId, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
 
     private static InvoicePaymentReadModel SamplePaymentTarget() =>
         new(5, 10, 7, "A-101", October, InvoiceStatuses.Unpaid, 3_207_500m, 1);
@@ -425,6 +434,7 @@ public class InvoiceServiceTests
             string paymentMethod,
             Func<decimal, Task<bool>> charge,
             Notifications notification)
+
         {
             if (PaymentTarget?.InvoiceId != invoiceId)
             {

@@ -102,6 +102,8 @@ public class BookingServiceTests
 
         Assert.Equal((PaymentMethods.VNPay, 3_000_000m), Assert.Single(gateway.Charges));
         var deposit = Assert.Single(repository.Deposits);
+        Assert.Equal(Now.UtcDateTime, deposit.Payment.PaidAtUtc);
+        Assert.Equal(DateTimeKind.Utc, deposit.Payment.PaidAtUtc!.Value.Kind);
         Assert.Equal((1, Now, Now.AddDays(7).UtcDateTime), (deposit.BookingId, deposit.AsOfUtc, deposit.HoldUntilUtc));
         Assert.Equal(DateTimeKind.Utc, deposit.HoldUntilUtc.Kind);
         Assert.Equal((42, (int?)1, 3_000_000m, PaymentMethods.VNPay, PaymentStatuses.Success),

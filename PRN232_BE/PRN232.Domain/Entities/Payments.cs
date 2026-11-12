@@ -32,6 +32,10 @@ public class Payments
     }
     public string PaymentMethod { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+    // UTC settlement time. Null for legacy payments whose original time is unknown.
+    public DateTime? PaidAtUtc { get; set; }
+    public PaymentRequests? PaymentRequest { get; set; }
+    public ICollection<BookingRefundRequests> BookingRefundRequests { get; set; } = new List<BookingRefundRequests>();
 
     public Users? User
     {

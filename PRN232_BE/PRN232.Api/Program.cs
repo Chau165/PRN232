@@ -22,10 +22,13 @@ using PRN232.Api.Swagger;
 using PRN232.Infrastructure.Storage;
 using PRN232.Infrastructure.Geocoding;
 using PRN232.Infrastructure.PaymentGateways;
+using PRN232.Api.Configuration;
 using PRN232.Api.Hubs;
 using PRN232.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddPayOSConfiguration(builder.Configuration, builder.Environment);
+builder.Services.AddPayOSPayoutConfiguration(builder.Configuration);
 
 // ---- Logging (A11) ----
 // Production (Railway) in mỗi log thành một dòng JSON để lọc theo level, category, UserId...
@@ -276,6 +279,8 @@ builder.Services.AddScoped<IEquipmentRepository, EquipmentRepository>();
 builder.Services.AddScoped<IEquipmentService, EquipmentService>();
 builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 builder.Services.AddScoped<IBookingService, BookingService>();
+builder.Services.AddScoped<IBookingPaymentLinkRepository, BookingPaymentLinkRepository>();
+builder.Services.AddScoped<IBookingPaymentLinkService, BookingPaymentLinkService>();
 builder.Services.AddScoped<IPaymentGateway, MockPaymentGateway>();
 builder.Services.AddScoped<IViewingScheduleRepository, ViewingScheduleRepository>();
 builder.Services.AddScoped<IViewingScheduleService, ViewingScheduleService>();
@@ -285,6 +290,27 @@ builder.Services.AddScoped<IUtilityReadingRepository, UtilityReadingRepository>(
 builder.Services.AddScoped<IUtilityReadingService, UtilityReadingService>();
 builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
+builder.Services.AddScoped<ICashCheckoutRepository, CashCheckoutRepository>();
+builder.Services.AddScoped<ICashCheckoutCoordinator, CashCheckoutCoordinator>();
+builder.Services.AddScoped<IPaymentReviewRepository, PaymentReviewRepository>();
+builder.Services.AddScoped<IPaymentReviewService, PaymentReviewService>();
+builder.Services.AddScoped<IInvoicePaymentLinkRepository, InvoicePaymentLinkRepository>();
+builder.Services.AddScoped<IPaymentRequestStatusRepository, PaymentRequestStatusRepository>();
+builder.Services.AddScoped<IPaymentRequestStatusService, PaymentRequestStatusService>();
+builder.Services.AddScoped<IPayOSWebhookRepository, PayOSWebhookRepository>();
+builder.Services.AddScoped<IPayOSWebhookService, PayOSWebhookService>();
+builder.Services.AddScoped<IPaymentReconciliationRepository, PaymentReconciliationRepository>();
+builder.Services.AddScoped<IPaymentReconciliationService, PaymentReconciliationService>();
+builder.Services.AddSingleton(provider => provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PayOSSettings>>().Value);
+builder.Services.AddHostedService<PRN232.Api.Workers.PaymentReconciliationWorker>();
+builder.Services.AddScoped<IInvoicePaymentLinkService>(provider => new InvoicePaymentLinkService(
+    provider.GetRequiredService<IInvoicePaymentLinkRepository>(), provider.GetRequiredService<IInvoiceCheckoutGateway>(),
+    provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PayOSSettings>>().Value,
+    provider.GetRequiredService<TimeProvider>()));
+builder.Services.AddScoped<IReceivablesRepository, ReceivablesRepository>();
+builder.Services.AddScoped<IReceivablesService, ReceivablesService>();
+builder.Services.AddScoped<IRevenueRepository, RevenueRepository>();
+builder.Services.AddScoped<IRevenueService, RevenueService>();
 builder.Services.AddScoped<IInvoiceComplaintRepository, InvoiceComplaintRepository>();
 builder.Services.AddScoped<IInvoiceComplaintService, InvoiceComplaintService>();
 
@@ -320,7 +346,12 @@ app.UseHttpLogging();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.UseHttpsRedirection();
+// Local Vite proxies /api to HTTP port 5102. Redirecting that request to
+// HTTPS would bypass the proxy and require browser certificate/CORS setup.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 app.UseCors("FrontendPolicy");
 // Rate limiter đứng sau UseAuthentication để BookingPolicy đọc được user từ token.
 app.UseAuthentication();

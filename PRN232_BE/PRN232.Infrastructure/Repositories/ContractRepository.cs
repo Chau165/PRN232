@@ -55,7 +55,16 @@ public class ContractRepository : IContractRepository
 
     public async Task<bool> AddFromBookingAsync(Contracts contract, Notifications customerNotification)
     {
+        if (!contract.BookingId.HasValue)
+        {
+            return false;
+        }
         await using var transaction = await _context.Database.BeginTransactionAsync();
+        //Nghia
+        await BookingPaymentLock.LockAsync(_context, contract.BookingId.Value);
+        //Nghia
+
+
         if (_context.Database.IsNpgsql())
         {
             // Khoá booking để không ai huỷ nó giữa chừng (huỷ booking cũng khoá dòng này),

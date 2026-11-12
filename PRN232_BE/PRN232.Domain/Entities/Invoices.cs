@@ -26,4 +26,5 @@ public class Invoices
     }
     public ICollection<InvoiceDetails> InvoiceDetails { get; set; } = new List<InvoiceDetails>();
     public ICollection<Payments> Payments { get; set; } = new List<Payments>();
+    public ICollection<PaymentRequests> PaymentRequests { get; set; } = new List<PaymentRequests>();
 }

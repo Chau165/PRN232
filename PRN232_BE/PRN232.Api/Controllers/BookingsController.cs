@@ -95,10 +95,43 @@ public class BookingsController : ControllerBase
         }
     }
 
+    [HttpPost("{id:int}/payment-link")]
+    [Authorize(Roles = RoleNames.Customer)]
+    [EnableRateLimiting("BookingPolicy")]
+    [ProducesResponseType(typeof(BookingPaymentLinkDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(BookingPaymentLinkDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(BookingPaymentLinkDto), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<BookingPaymentLinkDto>> CreatePaymentLink(int id,
+        [FromServices] IBookingPaymentLinkService service, CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUser(out var userId, out _)) return Unauthorized();
+        try
+        {
+            var result = await service.CreateAsync(id, userId, cancellationToken);
+            if (result.Status == PaymentRequestStatuses.Succeeded) return Ok(result);
+            return result.CheckoutUrl is null ? Accepted(result) : StatusCode(result.Reused ? 200 : 201, result);
+        }
+        catch (BookingNotFoundException exception) { return NotFound(new ProblemDetails { Detail = exception.Message }); }
+        catch (BookingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (BookingBusinessRuleException exception) { return BadRequest(new ProblemDetails { Detail = exception.Message }); }
+        catch (BookingStatusConflictException exception) { return Conflict(new ProblemDetails { Detail = exception.Message }); }
+        catch (BookingLinkProviderException exception) { return StatusCode(502, new ProblemDetails { Detail = exception.Message }); }
+        catch (CheckoutUnavailableException exception) { return StatusCode(503, new ProblemDetails { Detail = exception.Message }); }
+    }
+
     [HttpPost("{id:int}/pay")]
     [Authorize(Roles = RoleNames.Customer)]
-    public async Task<ActionResult<BookingDto>> Pay(int id, PayBookingDto dto)
+    public async Task<ActionResult<BookingDto>> Pay(int id, PayBookingDto dto,
+        [FromServices] Microsoft.Extensions.Options.IOptions<PRN232.Application.Settings.PayOSSettings> payOS)
     {
+        if (payOS.Value.BookingPaymentsEnabled) return Conflict(new ProblemDetails { Title = "Use payOS checkout", Detail = "Create a booking payment link; simulated deposit payment is disabled." });
         if (!TryGetCurrentUser(out var userId, out _))
         {
             return Unauthorized();

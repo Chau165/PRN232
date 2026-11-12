@@ -28,4 +28,5 @@ public interface IInvoiceRepository
         Payments payment,
         Notifications notification,
         int? managerId = null);
+
 }

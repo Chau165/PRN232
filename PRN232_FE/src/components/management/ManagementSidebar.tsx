@@ -85,6 +85,7 @@ const items: SidebarItem[] = [
     icon: "chart" as IconName,
 
     adminOnly: true,
+
   },
 
   {

@@ -14,7 +14,8 @@ public class BookingService : IBookingService
     // Thời gian giữ chỗ để khách hoàn tất thanh toán cọc; quá hạn thì phòng tự được nhả (D3).
     public static readonly TimeSpan PaymentWindow = TimeSpan.FromMinutes(15);
 
-    // Sau khi cọc, phòng được giữ tiếp để quản lý lập hợp đồng; quá hạn mà chưa có hợp đồng thì nhả phòng (D2).
+    // Legacy mock display timestamp only; Deposited holds the room indefinitely in RoomRentabilityPolicy.
+    // payOS settlement keeps the original checkout deadline and never uses this legacy duration.
     public static readonly TimeSpan DepositHoldPeriod = TimeSpan.FromDays(7);
 
     private readonly IBookingRepository _repository;
@@ -138,6 +139,7 @@ public class BookingService : IBookingService
             UserId = customerId,
             BookingId = id,
             Amount = booking.DepositAmount,
+            PaidAtUtc = _timeProvider.GetUtcNow().UtcDateTime,
             PaymentMethod = dto.PaymentMethod,
             Status = PaymentStatuses.Success
         };
@@ -187,6 +189,7 @@ public class BookingService : IBookingService
         {
             throw new BookingStatusConflictException("This booking already has a contract and cannot be cancelled.");
         }
+
         if (role == RoleNames.Admin &&
             !await _repository.IsPropertyOwnerAsync(booking.PropertyId, userId))
         {
@@ -194,9 +197,10 @@ public class BookingService : IBookingService
         }
         // Khách chỉ tự huỷ được khi chưa trả cọc; booking đã cọc phải do quản lý/admin huỷ
         // (hoàn cọc xử lý ngoài hệ thống vì thanh toán là giả lập).
+
         if (role == RoleNames.Customer && booking.Status != BookingStatuses.Pending)
         {
-            throw new BookingStatusConflictException("Paid bookings can only be cancelled by the property manager.");
+            throw new BookingStatusConflictException("Deposited bookings require a cancellation/refund request.");
         }
 
         Notifications? notification = null;
@@ -261,7 +265,7 @@ public class BookingService : IBookingService
             booking.CustomerName,
             booking.DepositAmount,
             booking.Status,
-            booking.ExpiryDate,
+            UtcTimestamp.ForResponse(booking.ExpiryDate),
             booking.CustomerPhone,
             booking.ContractId);
     }

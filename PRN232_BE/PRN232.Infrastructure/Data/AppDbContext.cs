@@ -133,6 +133,11 @@ public class AppDbContext : DbContext
             return Set<InvoiceDetails>();
         }
     }
+    public DbSet<PaymentRequests> PaymentRequests => Set<PaymentRequests>();
+    public DbSet<PaymentWebhookReceipts> PaymentWebhookReceipts => Set<PaymentWebhookReceipts>();
+    public DbSet<PaymentReviewCases> PaymentReviewCases => Set<PaymentReviewCases>();
+    public DbSet<BookingRefundRequests> BookingRefundRequests => Set<BookingRefundRequests>();
+    public DbSet<PayoutAttempts> PayoutAttempts => Set<PayoutAttempts>();
     public DbSet<Payments> Payments
     {
         get
@@ -205,6 +210,8 @@ public class AppDbContext : DbContext
     }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.ApplyConfiguration(new Configurations.BookingRefundRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.PayoutAttemptConfiguration());
         // ---- composite keys (junction tables) ----
         modelBuilder.Entity<RoomTypeServices>().HasKey(x => new { x.RoomTypeId, x.ServiceId });
         modelBuilder.Entity<RoomAmenities>().HasKey(x => new { x.RoomId, x.AmenityId });
@@ -232,6 +239,86 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Invoices>().HasKey(x => x.InvoiceId);
         modelBuilder.Entity<InvoiceDetails>().HasKey(x => x.InvoiceDetailId);
         modelBuilder.Entity<Payments>().HasKey(x => x.PaymentId);
+        modelBuilder.Entity<PaymentRequests>(entity =>
+        {
+            entity.HasKey(request => request.PaymentRequestId);
+            entity.HasIndex(request => request.OrderCode).IsUnique();
+            entity.HasIndex(request => request.PaymentLinkId).IsUnique()
+                .HasFilter("\"PaymentLinkId\" IS NOT NULL");
+            // An uncertain receipt must be resolved before issuing another checkout.
+            entity.HasIndex(request => request.InvoiceId).IsUnique()
+                .HasDatabaseName("UX_PaymentRequests_InvoiceId_Active")
+                .HasFilter("\"InvoiceId\" IS NOT NULL AND \"Status\" IN ('Creating', 'Pending', 'RequiresReview')");
+            entity.HasIndex(request => request.BookingId).IsUnique()
+                .HasDatabaseName("UX_PaymentRequests_BookingId_Active")
+                .HasFilter("\"BookingId\" IS NOT NULL AND \"Status\" IN ('Creating', 'Pending', 'RequiresReview')");
+            entity.ToTable("PaymentRequests", table =>
+            {
+                table.HasCheckConstraint("CK_PaymentRequests_ExactlyOneTarget",
+                    "(\"InvoiceId\" IS NOT NULL AND \"BookingId\" IS NULL) OR (\"InvoiceId\" IS NULL AND \"BookingId\" IS NOT NULL)");
+                table.HasCheckConstraint("CK_PaymentRequests_Amount_Positive", "\"Amount\" > 0");
+                table.HasCheckConstraint("CK_PaymentRequests_OrderCode_Positive", "\"OrderCode\" > 0");
+                table.HasCheckConstraint("CK_PaymentRequests_Currency", "\"Currency\" = 'VND'");
+                table.HasCheckConstraint("CK_PaymentRequests_Status",
+                    "\"Status\" IN ('Creating', 'Pending', 'Succeeded', 'Cancelled', 'Expired', 'Create-failed', 'RequiresReview')");
+                table.HasCheckConstraint("CK_PaymentRequests_UpdatedAt", "\"UpdatedAtUtc\" >= \"CreatedAtUtc\"");
+                table.HasCheckConstraint("CK_PaymentRequests_ExpiresAt", "\"ExpiresAtUtc\" IS NULL OR \"ExpiresAtUtc\" > \"CreatedAtUtc\"");
+            });
+            entity.Property(request => request.Amount).HasPrecision(18, 2);
+            entity.Property(request => request.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(request => request.Provider).HasMaxLength(32).IsRequired();
+            entity.Property(request => request.Status).HasMaxLength(32).IsRequired();
+            entity.Property(request => request.PaymentLinkId).HasMaxLength(128);
+            entity.Property(request => request.CheckoutUrl).HasMaxLength(2048);
+            entity.Property(request => request.ProviderReference).HasMaxLength(256);
+            entity.Property(request => request.LastErrorCode).HasMaxLength(128);
+            entity.Property(request => request.LastErrorMessage).HasMaxLength(1000);
+            entity.HasOne(request => request.Invoice).WithMany(invoice => invoice.PaymentRequests)
+                .HasForeignKey(request => request.InvoiceId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(request => request.Booking).WithMany(booking => booking.PaymentRequests)
+                .HasForeignKey(request => request.BookingId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(request => request.Customer).WithMany(user => user.PaymentRequests)
+                .HasForeignKey(request => request.CustomerId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(request => request.Payment).WithOne(payment => payment.PaymentRequest)
+                .HasForeignKey<PaymentRequests>(request => request.PaymentId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<PaymentWebhookReceipts>(entity =>
+        {
+            entity.HasKey(receipt => receipt.PaymentWebhookReceiptId);
+            entity.Property(receipt => receipt.Source).HasMaxLength(32).HasDefaultValue("Webhook").IsRequired();
+            entity.Property(receipt => receipt.Provider).HasMaxLength(32).IsRequired();
+            entity.Property(receipt => receipt.Reference).HasMaxLength(256).IsRequired();
+            entity.Property(receipt => receipt.PaymentLinkId).HasMaxLength(128).IsRequired();
+            entity.Property(receipt => receipt.Amount).HasPrecision(18, 2);
+            entity.Property(receipt => receipt.Currency).HasMaxLength(16).IsRequired();
+            entity.Property(receipt => receipt.DataCode).HasMaxLength(32).IsRequired();
+            entity.Property(receipt => receipt.TransactionDateTime).HasMaxLength(64);
+            entity.Property(receipt => receipt.Fingerprint).HasMaxLength(64).IsRequired();
+            entity.Property(receipt => receipt.ConflictingFingerprint).HasMaxLength(64);
+            entity.Property(receipt => receipt.Outcome).HasMaxLength(32).IsRequired();
+            entity.HasIndex(receipt => new { receipt.Provider, receipt.Reference }).IsUnique();
+            entity.HasOne(receipt => receipt.PaymentRequest).WithMany()
+                .HasForeignKey(receipt => receipt.PaymentRequestId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<PaymentReviewCases>(entity =>
+        {
+            entity.HasKey(item => item.PaymentReviewCaseId);
+            entity.Property(item => item.Reason).HasMaxLength(64).IsRequired();
+            entity.Property(item => item.Status).HasMaxLength(16).IsRequired();
+            entity.Property(item => item.Resolution).HasMaxLength(32);
+            entity.Property(item => item.ResolutionNote).HasMaxLength(2000);
+            entity.Property(item => item.EvidenceReference).HasMaxLength(256);
+            entity.HasIndex(item => item.PaymentWebhookReceiptId).IsUnique();
+            entity.HasIndex(item => new { item.Status, item.CreatedAtUtc });
+            entity.HasOne(item => item.Receipt).WithMany().HasForeignKey(item => item.PaymentWebhookReceiptId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(item => item.Invoice).WithMany().HasForeignKey(item => item.InvoiceId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(item => item.ExistingPayment).WithMany().HasForeignKey(item => item.ExistingPaymentId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(item => item.ResolvedByAdmin).WithMany().HasForeignKey(item => item.ResolvedByAdminId).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("PaymentReviewCases", table => table.HasCheckConstraint("CK_PaymentReviewCases_State",
+                "(\"Status\" = 'Open' AND \"Resolution\" IS NULL AND \"ResolvedAtUtc\" IS NULL AND \"ResolvedByAdminId\" IS NULL) OR " +
+                "(\"Status\" = 'Resolved' AND \"Resolution\" IN ('RefundedExternally', 'NotDuplicate') AND \"ResolutionNote\" IS NOT NULL " +
+                "AND \"ResolvedAtUtc\" IS NOT NULL AND \"ResolvedByAdminId\" IS NOT NULL)"));
+        });
         modelBuilder.Entity<MaintenanceRequests>().HasKey(x => x.RequestId);
         modelBuilder.Entity<MaintenanceRequests>()
             .Property(request => request.AssignmentNote)

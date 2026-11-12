@@ -1,0 +1,22 @@
+Test run for D:\FALL26\PRN232\PRoject_ChuanBiDiThi\PRN232_BE\PRN232.Application.Tests\bin\PayosE2E\net8.0\PRN232.Application.Tests.dll (.NETCoreApp,Version=v8.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.76]     PRN232.Application.Tests.AssignmentNoteMigrationTests.Assignment_note_migration_adds_nullable_text_and_rolls_back_only_its_column [SKIP]
+[xUnit.net 00:00:00.77]     PRN232.Application.Tests.PublicPropertyListingPostgreSqlTests.Room_detail_executes_on_postgresql_read_only_with_bounded_selects [SKIP]
+[xUnit.net 00:00:00.78]     PRN232.Application.Tests.PublicPropertyListingPostgreSqlTests.Property_detail_and_room_queries_execute_on_postgresql_read_only_with_bounded_selects [SKIP]
+[xUnit.net 00:00:00.78]     PRN232.Application.Tests.PublicPropertyListingPostgreSqlTests.Four_public_browsing_routes_work_over_read_only_postgresql_without_authentication [SKIP]
+[xUnit.net 00:00:00.78]     PRN232.Application.Tests.PublicPropertyListingPostgreSqlTests.Listing_query_executes_on_postgresql_with_a_read_only_session [SKIP]
+[xUnit.net 00:00:00.78]     PRN232.Application.Tests.Phase31BPostgreSqlMigrationTests.Migrations_preserve_legacy_invoice_lines_and_enforce_property_rate_invariants [SKIP]
+  Skipped PRN232.Application.Tests.AssignmentNoteMigrationTests.Assignment_note_migration_adds_nullable_text_and_rolls_back_only_its_column [1 ms]
+  Skipped PRN232.Application.Tests.PublicPropertyListingPostgreSqlTests.Room_detail_executes_on_postgresql_read_only_with_bounded_selects [1 ms]
+  Skipped PRN232.Application.Tests.PublicPropertyListingPostgreSqlTests.Property_detail_and_room_queries_execute_on_postgresql_read_only_with_bounded_selects [1 ms]
+  Skipped PRN232.Application.Tests.PublicPropertyListingPostgreSqlTests.Four_public_browsing_routes_work_over_read_only_postgresql_without_authentication [1 ms]
+  Skipped PRN232.Application.Tests.PublicPropertyListingPostgreSqlTests.Listing_query_executes_on_postgresql_with_a_read_only_session [1 ms]
+  Skipped PRN232.Application.Tests.Phase31BPostgreSqlMigrationTests.Migrations_preserve_legacy_invoice_lines_and_enforce_property_rate_invariants [1 ms]
+[xUnit.net 00:00:00.83]     PRN232.Application.Tests.PayOSFrontendEndToEndTests.Frontend_sdk_webhook_database_and_reports_agree [SKIP]
+  Skipped PRN232.Application.Tests.PayOSFrontendEndToEndTests.Frontend_sdk_webhook_database_and_reports_agree [1 ms]
+[xUnit.net 00:00:26.11]     PRN232.Application.Tests.Phase31CPropertyDetailPostgreSqlTests.Feature_off_preserves_public_and_management_gets_on_pre_enrichment_schema [SKIP]
+[xUnit.net 00:00:26.11]     PRN232.Application.Tests.Phase31CPropertyDetailPostgreSqlTests.Enriched_detail_uses_migrated_postgresql_and_property_scoped_rates [SKIP]
+  Skipped PRN232.Application.Tests.Phase31CPropertyDetailPostgreSqlTests.Feature_off_preserves_public_and_management_gets_on_pre_enrichment_schema [1 ms]
+  Skipped PRN232.Application.Tests.Phase31CPropertyDetailPostgreSqlTests.Enriched_detail_uses_migrated_postgresql_and_property_scoped_rates [1 ms]
+
+Passed!  - Failed:     0, Passed:   699, Skipped:     9, Total:   708, Duration: 1 m 13 s - PRN232.Application.Tests.dll (net8.0)
