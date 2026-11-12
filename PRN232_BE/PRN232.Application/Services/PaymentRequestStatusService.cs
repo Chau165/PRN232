@@ -12,7 +12,7 @@ public class PaymentRequestStatusService(IPaymentRequestStatusRepository reposit
         if (id <= 0) throw new PaymentRequestStatusValidationException();
         var scope = AccessScope.For(userId, role);
         if (userId <= 0 || scope is null) throw new PaymentRequestStatusForbiddenException();
-        var request = await repository.GetByIdAsync(id, scope.Value.CustomerId, scope.Value.OwnerId, cancellationToken);
+        var request = await repository.GetByIdAsync(id, scope.Value.CustomerId, scope.Value.ManagerId, cancellationToken);
         if (request is null)
         {
             if (await repository.ExistsAsync(id, cancellationToken)) throw new PaymentRequestStatusForbiddenException();

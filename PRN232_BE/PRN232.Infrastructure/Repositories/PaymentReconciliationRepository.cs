@@ -14,7 +14,8 @@ public class PaymentReconciliationRepository(AppDbContext context) : IPaymentRec
         context.PaymentRequests.AsNoTracking().Where(item => item.PaymentRequestId == id && item.Provider == "PayOS")
             .Select(item => new PaymentReconciliationReadModel(item.PaymentRequestId, item.OrderCode,
                 item.InvoiceId.HasValue ? item.Invoice!.Contract!.Room!.Property!.OwnerId : item.Booking!.Room!.Property!.OwnerId,
-                item.Status, item.LastErrorCode, item.UpdatedAtUtc))
+                item.Status, item.LastErrorCode, item.UpdatedAtUtc,
+                item.InvoiceId.HasValue ? item.Invoice!.Contract!.Room!.PropertyId : item.Booking!.Room!.PropertyId))
             .SingleOrDefaultAsync(cancellationToken);
 
     public Task<List<int>> FindDueAsync(DateTime cutoffUtc, int limit, CancellationToken cancellationToken) =>
@@ -40,26 +41,36 @@ public class PaymentReconciliationRepository(AppDbContext context) : IPaymentRec
                 $"SELECT 1 FROM \"Invoices\" WHERE \"InvoiceId\" = {target.InvoiceId} FOR UPDATE", cancellationToken);
         var request = await context.PaymentRequests.SingleAsync(item => item.PaymentRequestId == id, cancellationToken);
         await context.Entry(request).ReloadAsync(cancellationToken);
-        int customerId, currentOwnerId;
+        int customerId, propertyId;
         decimal amount;
         bool payable;
         if (target.InvoiceId.HasValue)
         {
             var invoice = await context.Invoices.AsNoTracking().Where(item => item.InvoiceId == target.InvoiceId)
-                .Select(item => new { item.Status, item.Contract!.CustomerId, item.Contract.Room!.Property!.OwnerId,
+                .Select(item => new { item.Status, item.Contract!.CustomerId, item.Contract.Room!.PropertyId,
                     Amounts = item.InvoiceDetails.Select(line => line.Amount).ToList() }).SingleAsync(cancellationToken);
-            customerId = invoice.CustomerId; currentOwnerId = invoice.OwnerId; amount = invoice.Amounts.Sum();
+            customerId = invoice.CustomerId; propertyId = invoice.PropertyId; amount = invoice.Amounts.Sum();
             payable = invoice.Status is InvoiceStatuses.Unpaid or InvoiceStatuses.Overdue;
         }
         else
         {
             var booking = await context.Bookings.AsNoTracking().Where(item => item.BookingId == target.BookingId)
-                .Select(item => new { item.Status, item.CustomerId, item.Room!.Property!.OwnerId, item.DepositAmount, HasContract = item.Contract != null })
+                .Select(item => new { item.Status, item.CustomerId, item.Room!.PropertyId, item.DepositAmount, HasContract = item.Contract != null })
                 .SingleAsync(cancellationToken);
-            customerId = booking.CustomerId; currentOwnerId = booking.OwnerId; amount = booking.DepositAmount;
+            customerId = booking.CustomerId; propertyId = booking.PropertyId; amount = booking.DepositAmount;
             payable = booking.Status == BookingStatuses.Pending && !booking.HasContract;
         }
-        if (ownerId.HasValue && currentOwnerId != ownerId.Value) throw new PaymentRequestStatusForbiddenException();
+        // The legacy argument name is retained for callers; its value is the assigned Manager ID.
+        if (ownerId.HasValue)
+        {
+            if (context.Database.IsNpgsql())
+                await context.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT 1 FROM \"PropertyManagerAssignments\" WHERE \"PropertyId\" = {propertyId} AND \"ManagerId\" = {ownerId.Value} FOR SHARE", cancellationToken);
+            if (!await context.PropertyManagerAssignments.AnyAsync(assignment => assignment.PropertyId == propertyId &&
+                assignment.ManagerId == ownerId.Value && assignment.Manager!.IsActive &&
+                assignment.Manager.Role!.RoleName == RoleNames.Manager, cancellationToken))
+                throw new PaymentRequestStatusForbiddenException();
+        }
         if (request.Status == PaymentRequestStatuses.Succeeded) return "AlreadyCompleted";
         if (!Recoverable(request.Status, request.LastErrorCode)) return "ManualReviewOrClosed";
 

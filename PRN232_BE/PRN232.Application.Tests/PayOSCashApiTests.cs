@@ -18,7 +18,7 @@ namespace PRN232.Application.Tests;
 
 public class PayOSCashApiTests
 {
-    private const decimal Amount = 3355000;
+    private const decimal Amount = 355000;
     private sealed class Gateway : IPayOSReconciliationGateway, IPayOSCancellationGateway
     {
         public PayOSRemoteSnapshot? Before = new(123, "cash-link", Amount, 0, Amount, "PENDING", []);

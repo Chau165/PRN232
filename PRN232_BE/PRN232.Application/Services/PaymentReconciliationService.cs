@@ -9,7 +9,7 @@ namespace PRN232.Application.Services;
 
 public class PaymentReconciliationService(IPaymentReconciliationRepository repository,
     IPayOSReconciliationGateway gateway, IPayOSWebhookRepository settlement, PayOSSettings settings,
-    TimeProvider timeProvider) : IPaymentReconciliationService
+    TimeProvider timeProvider, IPropertyRepository properties) : IPaymentReconciliationService
 {
     public async Task<PaymentReconciliationDto?> ReconcileAsync(int id, int userId, string role, CancellationToken cancellationToken)
     {
@@ -17,7 +17,8 @@ public class PaymentReconciliationService(IPaymentReconciliationRepository repos
         if (userId <= 0 || role is not ("Admin" or "Manager")) throw new PaymentRequestStatusForbiddenException();
         var request = await repository.GetAsync(id, cancellationToken);
         if (request is null) return null;
-        if (role == "Manager" && request.OwnerId != userId) throw new PaymentRequestStatusForbiddenException();
+        if (role == "Manager" && !await properties.IsManagerAssignedAsync(request.PropertyId, userId))
+            throw new PaymentRequestStatusForbiddenException();
         if (!settings.Enabled) throw new CheckoutUnavailableException();
         var now = timeProvider.GetUtcNow().UtcDateTime;
         if (request.Status == PaymentRequestStatuses.Succeeded) return new(id, "AlreadyCompleted", request.Status, now);

@@ -18,7 +18,7 @@ namespace PRN232.Application.Tests;
 
 public class PaymentReconciliationApiTests
 {
-    private const decimal Amount = 3355000m;
+    private const decimal Amount = 355000m;
     private static string Url(int id) => $"/api/payment-requests/{id}/reconcile";
     private sealed class Gateway : IPayOSReconciliationGateway
     {
@@ -221,7 +221,8 @@ public class PaymentReconciliationApiTests
         using (var scope = app.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            (await db.Properties.SingleAsync()).OwnerId = 8;
+            db.PropertyManagerAssignments.RemoveRange(await db.PropertyManagerAssignments.Where(item => item.PropertyId == 1).ToListAsync());
+            db.PropertyManagerAssignments.Add(new PropertyManagerAssignment { PropertyId = 1, ManagerId = 8 });
             await db.SaveChangesAsync();
         }
         client.DefaultRequestHeaders.Authorization = managerToken;

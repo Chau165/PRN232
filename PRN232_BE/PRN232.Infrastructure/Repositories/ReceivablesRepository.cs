@@ -8,6 +8,10 @@ namespace PRN232.Infrastructure.Repositories;
 
 public class ReceivablesRepository(AppDbContext context) : IReceivablesRepository
 {
+    public Task<bool> IsManagerAssignedAsync(int propertyId, int managerId, CancellationToken cancellationToken) =>
+        context.PropertyManagerAssignments.AnyAsync(assignment => assignment.PropertyId == propertyId &&
+            assignment.ManagerId == managerId && assignment.Manager!.IsActive &&
+            assignment.Manager.Role!.RoleName == RoleNames.Manager, cancellationToken);
     public Task<int?> GetPropertyOwnerAsync(int propertyId, CancellationToken cancellationToken) =>
         context.Properties.AsNoTracking().Where(property => property.PropertyId == propertyId)
             .Select(property => (int?)property.OwnerId).FirstOrDefaultAsync(cancellationToken);
@@ -20,7 +24,8 @@ public class ReceivablesRepository(AppDbContext context) : IReceivablesRepositor
         var invoices = await context.Invoices.AsNoTracking().AsSingleQuery()
             .Where(invoice => invoice.Status == InvoiceStatuses.Unpaid || invoice.Status == InvoiceStatuses.Overdue)
             .Where(invoice => propertyId == null || invoice.Contract!.Room!.PropertyId == propertyId)
-            .Where(invoice => ownerId == null || invoice.Contract!.Room!.Property!.OwnerId == ownerId)
+            .Where(invoice => ownerId == null || invoice.Contract!.Room!.Property!.ManagerAssignments.Any(assignment =>
+                assignment.ManagerId == ownerId && assignment.Manager!.IsActive && assignment.Manager.Role!.RoleName == RoleNames.Manager))
             .Select(invoice => new
             {
                 invoice.DueDate,

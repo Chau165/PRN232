@@ -42,7 +42,7 @@ public class InvoicePaymentLinkApiTests
         var first = await client.PostAsJsonAsync($"/api/invoices/{invoiceId}/payment-link", new { amount = 1, customerId = 20 });
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
         var link = (await first.Content.ReadFromJsonAsync<InvoicePaymentLinkDto>())!;
-        Assert.Equal(3355000m, link.Amount);
+        Assert.Equal(355000m, link.Amount);
         Assert.Equal("Pending", link.Status);
         Assert.False(link.Reused);
         var again = await client.PostAsync($"/api/invoices/{invoiceId}/payment-link", null);
@@ -52,7 +52,7 @@ public class InvoicePaymentLinkApiTests
         Assert.Equal(link.PaymentRequestId, reused.PaymentRequestId);
         Assert.Equal(link.CheckoutUrl, reused.CheckoutUrl);
         Assert.Equal(1, gateway.Calls);
-        Assert.Equal(3355000m, gateway.LastAmount);
+        Assert.Equal(355000m, gateway.LastAmount);
         Assert.InRange(gateway.LastExpiry, DateTime.UtcNow.AddMinutes(28), DateTime.UtcNow.AddMinutes(31));
         Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync($"/api/invoices/{invoiceId}/pay", new { paymentMethod = "MoMo" })).StatusCode);
         await LoginAsync(client, "manager@example.test");
@@ -231,6 +231,6 @@ public class InvoicePaymentLinkApiTests
                 "https://pay.payos.vn/web/" + orderCode);
         }
         public Task<CheckoutStatus> GetStatusAsync(long orderCode, CancellationToken cancellationToken) =>
-            Task.FromResult(new CheckoutStatus(RemoteState, RemoteState == "PAID" ? 3355000 : 0));
+            Task.FromResult(new CheckoutStatus(RemoteState, RemoteState == "PAID" ? 355000 : 0));
     }
 }

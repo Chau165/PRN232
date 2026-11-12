@@ -67,6 +67,7 @@ public class ReceivablesApiTests
         {
             var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             context.Properties.Add(new Property { PropertyId = 3, OwnerId = 7, PropertyName = "Empty" });
+            context.PropertyManagerAssignments.Add(new PropertyManagerAssignment { PropertyId = 3, ManagerId = 7 });
             await context.SaveChangesAsync();
         }
         var empty = (await client.GetFromJsonAsync<ReceivablesReportDto>("/api/reports/receivables?propertyId=3"))!;
@@ -101,6 +102,7 @@ public class ReceivablesApiTests
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var today = Today();
         context.Properties.Add(new Property { PropertyId = 2, OwnerId = 8, PropertyName = "Other" });
+        context.PropertyManagerAssignments.Add(new PropertyManagerAssignment { PropertyId = 2, ManagerId = 8 });
         context.Rooms.Add(new Rooms { RoomId = 3, PropertyId = 2, RoomTypeId = 1, RoomCode = "B101", Status = "Occupied" });
         context.Contracts.AddRange(
             new Contracts { ContractId = 1, RoomId = 1, CustomerId = 10, ProcessedByStaffId = 7,

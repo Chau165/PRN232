@@ -2,12 +2,17 @@ using System.Data;
 using Microsoft.EntityFrameworkCore;
 using PRN232.Application.Interfaces;
 using PRN232.Application.ReadModels;
+using PRN232.Application.States;
 using PRN232.Infrastructure.Data;
 
 namespace PRN232.Infrastructure.Repositories;
 
 public class RevenueRepository(AppDbContext context) : IRevenueRepository
 {
+    public Task<bool> IsManagerAssignedAsync(int propertyId, int managerId, CancellationToken cancellationToken) =>
+        context.PropertyManagerAssignments.AnyAsync(assignment => assignment.PropertyId == propertyId &&
+            assignment.ManagerId == managerId && assignment.Manager!.IsActive &&
+            assignment.Manager.Role!.RoleName == RoleNames.Manager, cancellationToken);
     public Task<int?> GetPropertyOwnerAsync(int propertyId, CancellationToken cancellationToken) =>
         context.Properties.AsNoTracking().Where(property => property.PropertyId == propertyId)
             .Select(property => (int?)property.OwnerId).FirstOrDefaultAsync(cancellationToken);
@@ -36,7 +41,12 @@ public class RevenueRepository(AppDbContext context) : IRevenueRepository
                 LEFT JOIN "Payments" p ON p."InvoiceId" = i."InvoiceId" AND p."Status" = 'Success'
                     AND (p."PaidAtUtc" IS NULL OR (p."PaidAtUtc" >= @fromUtc AND p."PaidAtUtc" < @untilUtc))
                 WHERE (@propertyId IS NULL OR pr."PropertyId" = @propertyId)
-                  AND (@ownerId IS NULL OR pr."OwnerId" = @ownerId)
+                  AND (@ownerId IS NULL OR EXISTS (
+                    SELECT 1 FROM "PropertyManagerAssignments" a
+                    JOIN "Users" u ON u."UserId" = a."ManagerId"
+                    JOIN "Roles" role ON role."RoleId" = u."RoleId"
+                    WHERE a."PropertyId" = pr."PropertyId" AND a."ManagerId" = @ownerId
+                      AND u."IsActive" AND role."RoleName" = 'Manager'))
                 GROUP BY pr."PropertyId", pr."PropertyName", month
                 ORDER BY pr."PropertyId", month
                 """;
@@ -69,12 +79,14 @@ public class RevenueRepository(AppDbContext context) : IRevenueRepository
         // SQLite test provider cannot aggregate decimal sums or use PostgreSQL time zones.
         var properties = await context.Properties.AsNoTracking()
             .Where(property => propertyId == null || property.PropertyId == propertyId)
-            .Where(property => ownerId == null || property.OwnerId == ownerId)
+            .Where(property => ownerId == null || property.ManagerAssignments.Any(assignment =>
+                assignment.ManagerId == ownerId && assignment.Manager!.IsActive && assignment.Manager.Role!.RoleName == RoleNames.Manager))
             .Select(property => new { property.PropertyId, property.PropertyName }).ToListAsync(cancellationToken);
         var payments = await context.Payments.AsNoTracking()
             .Where(payment => payment.InvoiceId != null && payment.Status == "Success")
             .Where(payment => propertyId == null || payment.Invoice!.Contract!.Room!.PropertyId == propertyId)
-            .Where(payment => ownerId == null || payment.Invoice!.Contract!.Room!.Property!.OwnerId == ownerId)
+            .Where(payment => ownerId == null || payment.Invoice!.Contract!.Room!.Property!.ManagerAssignments.Any(assignment =>
+                assignment.ManagerId == ownerId && assignment.Manager!.IsActive && assignment.Manager.Role!.RoleName == RoleNames.Manager))
             .Where(payment => payment.PaidAtUtc == null || (payment.PaidAtUtc >= fromUtc && payment.PaidAtUtc < untilUtc))
             .Select(payment => new { payment.Invoice!.Contract!.Room!.PropertyId, payment.PaidAtUtc, payment.Amount })
             .ToListAsync(cancellationToken);

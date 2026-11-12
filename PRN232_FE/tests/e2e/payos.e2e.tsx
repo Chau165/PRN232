@@ -75,7 +75,7 @@ it(`verifies the full invoice payment chain: ${scenario}`, async () => {
   expect(state.paymentMethod).toBe(scenario === "cash" ? "Cash" : "PayOS")
   expect(state.paidAtUtc).toBeTruthy()
   expect(state.creates).toBe(1)
-  expect(state.amount).toBe(3355000) // includes rent, electricity, water, internet
+  expect(state.amount).toBe(355000) // first-month rent is covered by prepaid booking credit; collect utilities and internet
   expect((await getInvoices(token)).find(item => item.invoiceId === invoice.invoiceId)!.status).toBe("Paid")
   expect((await getPaymentRequest(token, requestId)).invoiceStatus).toBe("Paid")
 
@@ -88,7 +88,7 @@ it(`verifies the full invoice payment chain: ${scenario}`, async () => {
   sessionStorage.setItem("troviet-auth-session-v1", JSON.stringify({ accessToken: manager, expiresAtUtc: new Date(Date.now() + 3600000).toISOString() }))
   render(<AuthProvider><MemoryRouter><ProtectedRoute roles={["MANAGER"]}><ManagementReportsPage /></ProtectedRoute></MemoryRouter></AuthProvider>)
   await screen.findByText("1 giao dịch đã ghi nhận")
-  expect(screen.getAllByText(/3\.355\.000/).length).toBeGreaterThanOrEqual(1)
+  expect(screen.getAllByText(/355\.000/).length).toBeGreaterThanOrEqual(1)
   expect(screen.getByText(/0 hóa đơn · đến/)).toBeTruthy()
   expect(screen.queryByText("624,5 triệu")).toBeNull()
   expect(screen.getByText("Sunrise")).toBeTruthy()

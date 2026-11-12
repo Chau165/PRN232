@@ -20,7 +20,8 @@ public class ReceivablesService(IReceivablesRepository repository, TimeProvider 
         {
             var ownerId = await repository.GetPropertyOwnerAsync(propertyId.Value, cancellationToken);
             if (ownerId is null) throw new ReceivablesNotFoundException();
-            if (role == RoleNames.Manager && ownerId != userId) throw new ReceivablesForbiddenException();
+            if (role == RoleNames.Manager && !await repository.IsManagerAssignedAsync(propertyId.Value, userId, cancellationToken))
+                throw new ReceivablesForbiddenException();
         }
 
         var invoices = (await repository.GetOutstandingAsync(propertyId,

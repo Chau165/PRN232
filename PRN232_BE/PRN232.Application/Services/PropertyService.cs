@@ -55,7 +55,7 @@ public class PropertyService : IPropertyService
         {
             return null;
         }
-        if (!isAdmin && property.OwnerId != requestingUserId)
+        if (!isAdmin && !await _repository.IsManagerAssignedAsync(id, requestingUserId))
         {
             throw new PropertyForbiddenException();
         }

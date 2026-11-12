@@ -433,7 +433,8 @@ public class InvoiceServiceTests
             int customerId,
             string paymentMethod,
             Func<decimal, Task<bool>> charge,
-            Notifications notification)
+            Notifications notification,
+            DateTime? paidAtUtc = null)
 
         {
             if (PaymentTarget?.InvoiceId != invoiceId)
@@ -467,6 +468,7 @@ public class InvoiceServiceTests
                 UserId = customerId,
                 InvoiceId = invoiceId,
                 Amount = PaymentTarget.Total,
+                PaidAtUtc = paidAtUtc,
                 PaymentMethod = paymentMethod,
                 Status = PaymentStatuses.Success
             }, notification));
