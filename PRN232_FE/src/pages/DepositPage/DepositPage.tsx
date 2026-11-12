@@ -21,8 +21,8 @@ export default function DepositPage() {
   const roomId = parsePositiveRouteId(params.get("roomId") ?? undefined)
 
   return (
-    <CustomerPageShell title="Đặt cọc giữ phòng" description="Tiền cọc tương đương 1 tháng tiền thuê.">
-      <div className="max-w-2xl rounded-2xl bg-white p-7 shadow-[0_5px_24px_rgba(16,65,67,.08)]">
+    <CustomerPageShell centerHeader title="Đặt cọc giữ phòng" description="Tiền cọc tương đương 1 tháng tiền thuê.">
+      <div className="w-full rounded-2xl bg-white p-5 shadow-[0_5px_24px_rgba(16,65,67,.08)] sm:p-8">
         {bookingId ? (
           <PayDepositStep bookingId={bookingId} />
         ) : roomId ? (

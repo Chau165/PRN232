@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   getRoom: vi.fn(),
   getRoles: vi.fn(),
   getUsers: vi.fn(),
+  getPropertyManagerAssignments: vi.fn(),
   user: { id: "10", name: "Customer A", phone: "0900", role: "CUSTOMER" as string },
 }))
 
@@ -37,6 +38,7 @@ vi.mock("@/services/viewingScheduleService", () => ({
   rejectViewingSchedule: mocks.rejectViewingSchedule,
 }))
 vi.mock("@/services/userService", () => ({ getRoles: mocks.getRoles, getUsers: mocks.getUsers }))
+vi.mock("@/services/propertyManagerAssignmentService", () => ({ getPropertyManagerAssignments: mocks.getPropertyManagerAssignments }))
 vi.mock("@/services/publicBrowsingService", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/publicBrowsingService")>()),
   publicApi: { getRoom: mocks.getRoom },
@@ -74,6 +76,8 @@ beforeEach(() => {
   mocks.rejectViewingSchedule.mockReset()
   mocks.getRoles.mockReset()
   mocks.getUsers.mockReset()
+  mocks.getPropertyManagerAssignments.mockReset()
+  mocks.getPropertyManagerAssignments.mockResolvedValue([{ propertyId: 1, managerId: 7, managerIsActive: true }])
   mocks.user = { id: "10", name: "Customer A", phone: "0900", role: "CUSTOMER" }
   mocks.getRoom.mockResolvedValue(room)
   mocks.getViewingSchedules.mockResolvedValue([])
@@ -111,6 +115,72 @@ describe("ViewingRequestPage", () => {
 })
 
 describe("ManagementViewingsPage", () => {
+  it("only lists active Managers assigned to the viewing property", async () => {
+    mocks.user.role = "ADMIN"
+    mocks.getViewingSchedules.mockResolvedValue([viewing()])
+    mocks.getUsers.mockResolvedValue([
+      { userId: 7, fullName: "Manager A", roleName: "Manager", isActive: true },
+      { userId: 8, fullName: "Other property Manager", roleName: "Manager", isActive: true },
+      { userId: 9, fullName: "Inactive Manager", roleName: "Manager", isActive: false },
+    ])
+    mocks.getPropertyManagerAssignments.mockResolvedValue([
+      { propertyId: 1, managerId: 7, managerIsActive: true },
+      { propertyId: 1, managerId: 9, managerIsActive: false },
+    ])
+    render(<MemoryRouter><ManagementViewingsPage /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Phân công & duyệt" }))
+    await screen.findByRole("option", { name: "Manager A" })
+    expect(mocks.getPropertyManagerAssignments).toHaveBeenCalledWith("token", 1)
+    expect(screen.queryByRole("option", { name: "Other property Manager" })).toBeNull()
+    expect(screen.queryByRole("option", { name: "Inactive Manager" })).toBeNull()
+  })
+
+  it("prevents approval when the property has no eligible Manager", async () => {
+    mocks.user.role = "ADMIN"
+    mocks.getViewingSchedules.mockResolvedValue([viewing()])
+    mocks.getPropertyManagerAssignments.mockResolvedValue([])
+    render(<MemoryRouter><ManagementViewingsPage /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Phân công & duyệt" }))
+    await screen.findByText("Khu trọ này chưa có Manager đang hoạt động được phân quyền.")
+    expect(screen.queryByRole("option", { name: /Manager A/ })).toBeNull()
+    expect((screen.getByRole("button", { name: "Xác nhận & thông báo" }) as HTMLButtonElement).disabled).toBe(true)
+    expect(mocks.approveViewingSchedule).not.toHaveBeenCalled()
+  })
+
+  it("reloads eligible Managers when opening a viewing for another property", async () => {
+    mocks.user.role = "ADMIN"
+    mocks.getViewingSchedules.mockResolvedValue([
+      viewing(), viewing({ viewingId: 4, propertyId: 2, propertyName: "Other property" }),
+    ])
+    mocks.getPropertyManagerAssignments
+      .mockResolvedValueOnce([{ propertyId: 1, managerId: 7, managerIsActive: true }])
+      .mockResolvedValueOnce([])
+    render(<MemoryRouter><ManagementViewingsPage /></MemoryRouter>)
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "Phân công & duyệt" }))[0])
+    await screen.findByRole("option", { name: "Manager A · 0911" })
+    fireEvent.click(screen.getByRole("button", { name: "Huỷ" }))
+    fireEvent.click(screen.getAllByRole("button", { name: "Phân công & duyệt" })[1])
+
+    await screen.findByText("Khu trọ này chưa có Manager đang hoạt động được phân quyền.")
+    expect(mocks.getPropertyManagerAssignments).toHaveBeenLastCalledWith("token", 2)
+    expect(screen.queryByRole("option", { name: /Manager A/ })).toBeNull()
+  })
+
+  it("blocks assignment if property permissions cannot be loaded", async () => {
+    mocks.user.role = "ADMIN"
+    mocks.getViewingSchedules.mockResolvedValue([viewing()])
+    mocks.getPropertyManagerAssignments.mockRejectedValue(new Error("Không thể tải phân quyền khu trọ."))
+    render(<MemoryRouter><ManagementViewingsPage /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Phân công & duyệt" }))
+    expect((await screen.findByRole("alert")).textContent).toBe("Không thể tải phân quyền khu trọ.")
+    expect(screen.queryByRole("option", { name: /Manager A/ })).toBeNull()
+    expect((screen.getByRole("button", { name: "Xác nhận & thông báo" }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it("lets only Admin assign an active Manager while confirming a future time and note", async () => {
     mocks.user = { id: "9", name: "Admin", phone: "0900", role: "ADMIN" }
     mocks.getViewingSchedules.mockResolvedValue([

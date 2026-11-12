@@ -7,6 +7,7 @@ import Toast from "@/components/customer/Toast"
 import { useAuth } from "@/auth/AuthContext"
 import { approveViewingSchedule, rejectViewingSchedule } from "@/services/viewingScheduleService"
 import { getRoles, getUsers } from "@/services/userService"
+import { getPropertyManagerAssignments } from "@/services/propertyManagerAssignmentService"
 import type { BackendUserDto } from "@/types/auth"
 import type { ViewingScheduleDto } from "@/types/viewingSchedule"
 import { useViewingSchedules } from "@/hooks/useViewingSchedules"
@@ -33,6 +34,7 @@ export default function ManagementViewingsPage() {
   const { viewings, loading, error, retry, replace } = useViewingSchedules()
   const [managers, setManagers] = useState<BackendUserDto[]>([])
   const [managerError, setManagerError] = useState<string | null>(null)
+  const [managersLoading, setManagersLoading] = useState(false)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [picker, setPicker] = useState<ViewingScheduleDto | null>(null)
   const [pickerTime, setPickerTime] = useState("")
@@ -43,24 +45,34 @@ export default function ManagementViewingsPage() {
   const [rejectReason, setRejectReason] = useState("")
   const [rejectError, setRejectError] = useState<string | null>(null)
   const [toast, setToast] = useState("")
+  const pickerPropertyId = picker?.propertyId
 
   useEffect(() => {
-    if (!isAdmin || !accessToken) return
+    if (!isAdmin || !accessToken || pickerPropertyId === undefined) return
     let active = true
-    void getRoles()
-      .then(async (roles) => {
+    setManagers([])
+    setManagerError(null)
+    setManagersLoading(true)
+    void Promise.all([getRoles(), getPropertyManagerAssignments(accessToken, pickerPropertyId)])
+      .then(async ([roles, assignments]) => {
         const managerRole = roles.find((role) => role.roleName.trim().toLowerCase() === "manager")
         if (!managerRole) throw new Error("Backend chưa khai báo role Manager.")
-        return getUsers(accessToken, managerRole.roleId)
+        const rows = await getUsers(accessToken, managerRole.roleId)
+        const assignedIds = new Set(assignments
+          .filter((assignment) => assignment.propertyId === pickerPropertyId && assignment.managerIsActive)
+          .map((assignment) => assignment.managerId))
+        return rows.filter((manager) => assignedIds.has(Number(manager.userId))
+          && manager.roleName.trim().toUpperCase() === "MANAGER" && manager.isActive === true)
       })
       .then((rows) => {
-        if (active) setManagers(rows.filter((manager) => manager.roleName.trim().toUpperCase() === "MANAGER" && manager.isActive === true))
+        if (active) setManagers(rows)
       })
       .catch((cause: unknown) => {
         if (active) setManagerError(cause instanceof Error ? cause.message : "Không thể tải danh sách Manager.")
       })
+      .finally(() => { if (active) setManagersLoading(false) })
     return () => { active = false }
-  }, [accessToken, isAdmin])
+  }, [accessToken, isAdmin, pickerPropertyId])
 
   useEffect(() => {
     if (selectedViewingId === null || loading) return
@@ -88,6 +100,9 @@ export default function ManagementViewingsPage() {
   }
 
   const openPicker = (viewing: ViewingScheduleDto) => {
+    setManagers([])
+    setManagerError(null)
+    setManagersLoading(true)
     setPicker(viewing)
     setPickerTime(hasUpcomingTime(viewing) ? toLocalInput(new Date(viewing.scheduledAt!)) : "")
     setAssignedTo("")
@@ -96,10 +111,10 @@ export default function ManagementViewingsPage() {
   }
 
   const approve = () => {
-    if (!picker) return
+    if (!picker || managersLoading || managerError) return
     const managerId = Number(assignedTo)
     if (!Number.isSafeInteger(managerId) || managerId < 1 || !managers.some((manager) => Number(manager.userId) === managerId)) {
-      setPickerError("Vui lòng chọn một Manager đang hoạt động.")
+      setPickerError("Vui lòng chọn Manager đang hoạt động được phân quyền cho khu trọ này.")
       return
     }
     if (!pickerTime || Date.parse(pickerTime) <= Date.now()) {
@@ -202,12 +217,12 @@ export default function ManagementViewingsPage() {
             <h2 id="viewing-picker-title" className="font-display text-xl font-bold text-slate-900">Phân công và xác nhận lịch</h2>
             <p className="mt-2 text-sm text-slate-500">{picker.customerName} · {picker.propertyName} · Phòng {picker.roomCode}</p>
             <label className="mt-5 block text-sm font-semibold text-slate-700" htmlFor="viewing-manager">Manager phụ trách</label>
-            <select id="viewing-manager" required value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
-              <option value="">Chọn Manager đang hoạt động</option>
+            <select id="viewing-manager" required disabled={managersLoading || !!managerError || managers.length === 0} value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
+              <option value="">{managersLoading ? "Đang tải Manager của khu trọ..." : "Chọn Manager được phân quyền cho khu trọ"}</option>
               {managers.map((manager) => <option key={manager.userId} value={manager.userId}>{manager.fullName}{manager.phoneNumber ? ` · ${manager.phoneNumber}` : ""}</option>)}
             </select>
             {managerError && <p role="alert" className="mt-2 text-xs text-rose-600">{managerError}</p>}
-            {managers.length === 0 && !managerError && <p className="mt-2 text-xs text-amber-700">Không có Manager đang hoạt động để phân công.</p>}
+            {!managersLoading && managers.length === 0 && !managerError && <p className="mt-2 text-xs text-amber-700">Khu trọ này chưa có Manager đang hoạt động được phân quyền.</p>}
             <label className="mt-4 block text-sm font-semibold text-slate-700" htmlFor="viewing-time">Thời gian xác nhận</label>
             <input id="viewing-time" type="datetime-local" required min={toLocalInput()} value={pickerTime} onChange={(event) => setPickerTime(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm" />
             <label className="mt-4 block text-sm font-semibold text-slate-700" htmlFor="viewing-note">Ghi chú cho Manager / khách (không bắt buộc)</label>
@@ -216,7 +231,7 @@ export default function ManagementViewingsPage() {
             {pickerError && <p role="alert" className="mt-3 text-sm text-rose-600">{pickerError}</p>}
             <div className="mt-5 flex gap-2">
               <button type="button" onClick={() => setPicker(null)} className="flex-1 rounded-lg bg-slate-100 py-3 text-sm font-bold text-slate-600">Huỷ</button>
-              <button type="button" disabled={busyId !== null || managers.length === 0} onClick={approve} className="flex-1 rounded-lg bg-[#087775] py-3 text-sm font-bold text-white disabled:opacity-40">Xác nhận & thông báo</button>
+              <button type="button" disabled={busyId !== null || managersLoading || !!managerError || managers.length === 0} onClick={approve} className="flex-1 rounded-lg bg-[#087775] py-3 text-sm font-bold text-white disabled:opacity-40">Xác nhận & thông báo</button>
             </div>
           </div>
         </div>
