@@ -239,12 +239,12 @@ describe("Phase 4A auth, routing, and profile integration", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({ fullName: "Tên Mới", phoneNumber: "0900123456" })
 
     fireEvent.change(screen.getByLabelText("Mật khẩu hiện tại"), { target: { value: "old-password" } })
-    fireEvent.change(screen.getByLabelText("Mật khẩu mới"), { target: { value: "new-password" } })
-    fireEvent.change(screen.getByLabelText("Xác nhận mật khẩu mới"), { target: { value: "new-password" } })
+    fireEvent.change(screen.getByLabelText("Mật khẩu mới"), { target: { value: "new-password-2" } })
+    fireEvent.change(screen.getByLabelText("Xác nhận mật khẩu mới"), { target: { value: "new-password-2" } })
     fireEvent.click(screen.getByRole("button", { name: "Cập nhật mật khẩu" }))
     await waitFor(() => expect(screen.getByText("Mật khẩu đã được thay đổi.")).toBeTruthy())
     expect(String(fetchMock.mock.calls[2]?.[0])).toContain("/api/users/me/password")
-    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({ currentPassword: "old-password", newPassword: "new-password" })
+    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({ currentPassword: "old-password", newPassword: "new-password-2" })
     expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).not.toHaveProperty("confirmPassword")
 
     fireEvent.click(screen.getByRole("button", { name: /Tên Mới/ }))

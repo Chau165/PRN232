@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react"
 import { createUser } from "@/services/userService"
 import type { BackendUserDto } from "@/types/auth"
+import { registrationError } from "@/utils/accountValidation"
 
 export default function CreateManagerModal({
   accessToken,
@@ -23,6 +24,11 @@ export default function CreateManagerModal({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError("")
+    const validationError = registrationError({ fullName, email, password, phoneNumber })
+    if (validationError) {
+      setError(validationError)
+      return
+    }
     setSaving(true)
     try {
       const created = await createUser(accessToken, {
@@ -54,7 +60,7 @@ export default function CreateManagerModal({
           <input required value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Họ và tên" aria-label="Họ và tên Manager" className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" />
           <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" aria-label="Email Manager" className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" />
           <input required type="tel" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} placeholder="Số điện thoại" aria-label="Số điện thoại Manager" className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" />
-          <input required type="password" minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Mật khẩu khởi tạo" aria-label="Mật khẩu Manager" className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" />
+          <input required type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Mật khẩu khởi tạo" aria-label="Mật khẩu Manager" className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm" />
           {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
           <div className="grid grid-cols-2 gap-3 pt-2">
             <button type="button" onClick={onClose} className="rounded-lg bg-slate-100 py-3 text-sm font-bold text-slate-600">Hủy</button>
