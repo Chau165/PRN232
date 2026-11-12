@@ -3,6 +3,7 @@ import '../../features/customer/data/customer_mock_data.dart';
 import '../../features/customer/models/customer_models.dart';
 import '../../features/manager/data/manager_mock_data.dart';
 import '../../features/manager/models/manager_models.dart';
+import '../auth/auth_state.dart';
 import '../network/api_endpoints.dart';
 import '../network/dio_client.dart';
 
@@ -15,13 +16,11 @@ class IdentityService {
       final response = await _dio.get(ApiEndpoints.identityDocumentsMine);
       if (response.data is List) {
         final list = response.data as List;
-        if (list.isNotEmpty) {
-          return list.map((d) => IdentityDocumentModel.fromJson(d as Map<String, dynamic>)).toList();
-        }
+        return list.map((d) => IdentityDocumentModel.fromJson(d as Map<String, dynamic>)).toList();
       }
-      return CustomerMockData.identityDocuments;
+      return AuthState.isCurrentDemo ? CustomerMockData.identityDocuments : [];
     } catch (_) {
-      return CustomerMockData.identityDocuments;
+      return AuthState.isCurrentDemo ? CustomerMockData.identityDocuments : [];
     }
   }
 
@@ -38,13 +37,11 @@ class IdentityService {
 
       if (response.data is List) {
         final list = response.data as List;
-        if (list.isNotEmpty) {
-          return list.map((d) => ManagerIdentityReviewModel.fromJson(d as Map<String, dynamic>)).toList();
-        }
+        return list.map((d) => ManagerIdentityReviewModel.fromJson(d as Map<String, dynamic>)).toList();
       }
-      return ManagerMockData.identityReviews;
+      return AuthState.isCurrentDemo ? ManagerMockData.identityReviews : [];
     } catch (_) {
-      return ManagerMockData.identityReviews;
+      return AuthState.isCurrentDemo ? ManagerMockData.identityReviews : [];
     }
   }
 

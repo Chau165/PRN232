@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/services/equipment_service.dart';
@@ -28,7 +29,7 @@ class _ManagerEquipmentScreenState extends State<ManagerEquipmentScreen> {
   @override
   void initState() {
     super.initState();
-    _equipments = List.from(ManagerMockData.equipments);
+    _equipments = AuthState.isCurrentDemo ? List.from(ManagerMockData.equipments) : [];
     _loadEquipments();
   }
 

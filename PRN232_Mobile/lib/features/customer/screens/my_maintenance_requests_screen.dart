@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/services/maintenance_service.dart';
@@ -26,7 +27,7 @@ class _MyMaintenanceRequestsScreenState
   @override
   void initState() {
     super.initState();
-    _requests = List.from(CustomerMockData.myMaintenanceRequests);
+    _requests = AuthState.isCurrentDemo ? List.from(CustomerMockData.myMaintenanceRequests) : [];
     _loadData();
   }
 

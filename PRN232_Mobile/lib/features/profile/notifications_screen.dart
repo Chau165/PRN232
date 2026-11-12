@@ -34,7 +34,9 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final NotificationService _notificationService = NotificationService();
-  final List<NotificationItem> _items = [
+  List<NotificationItem> _items = [];
+
+  static final List<NotificationItem> _demoNotifications = [
     NotificationItem(
       id: 1,
       title: 'Hóa đơn tháng 11 đã được phát hành',
@@ -86,12 +88,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _loadNotifications() async {
     try {
       final list = await _notificationService.getNotifications();
-      if (list.isNotEmpty && mounted) {
+      if (mounted) {
         setState(() {
-          _items.insertAll(0, list);
+          if (AuthState.isCurrentDemo && list.isEmpty) {
+            _items = List.from(_demoNotifications);
+          } else {
+            _items = list;
+          }
         });
       }
-    } catch (_) {}
+    } catch (_) {
+      if (mounted && AuthState.isCurrentDemo) {
+        setState(() => _items = List.from(_demoNotifications));
+      }
+    }
   }
 
   void _markAllRead() {

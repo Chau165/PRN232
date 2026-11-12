@@ -8,7 +8,6 @@ import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../routes/app_routes.dart';
-import '../data/customer_mock_data.dart';
 import '../widgets/report_damage_bottom_sheet.dart';
 
 class CustomerMyRoomScreen extends StatefulWidget {
@@ -75,11 +74,67 @@ class _CustomerMyRoomScreenState extends State<CustomerMyRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final room = _rentalData?.room ?? CustomerMockData.myCurrentRoom;
-    final contract = _rentalData?.contract ?? CustomerMockData.contracts.first;
-    final equipments = _rentalData?.equipments.isNotEmpty == true
-        ? _rentalData!.equipments
-        : CustomerMockData.myRoomEquipments;
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text('Phòng Của Tôi'),
+          backgroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
+
+    if (_rentalData == null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text('Phòng Của Tôi'),
+          backgroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: const BoxDecoration(
+                    color: AppColors.primaryLight,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.home_work_outlined, size: 40, color: AppColors.primary),
+                ),
+                const SizedBox(height: 16),
+                Text('Bạn chưa có phòng thuê đang hoạt động',
+                    style: AppTypography.headingMedium, textAlign: TextAlign.center),
+                const SizedBox(height: 8),
+                Text(
+                  'Hãy tìm kiếm và đặt lịch xem hoặc cọc phòng trọ ưng ý để theo dõi phòng, thiết bị và biểu phí dịch vụ tại đây.',
+                  style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                AppButton(
+                  text: 'Khám phá phòng trọ ngay',
+                  width: 220,
+                  icon: const Icon(Icons.search, size: 18, color: Colors.white),
+                  onPressed: () => context.go(AppRoutes.customerExplore),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final room = _rentalData!.room;
+    final contract = _rentalData!.contract;
+    final equipments = _rentalData!.equipments;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -95,14 +150,12 @@ class _CustomerMyRoomScreenState extends State<CustomerMyRoomScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-          : RefreshIndicator(
-              onRefresh: _loadRental,
-              color: AppColors.primary,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
+      body: RefreshIndicator(
+        onRefresh: _loadRental,
+        color: AppColors.primary,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Current Room Card

@@ -72,4 +72,8 @@ class ApiEndpoints {
   // User Profile
   static const String userMe = '/users/me';
   static const String passwordMe = '/users/me/password';
+
+  // Reports
+  static const String reportsRevenue = '/reports/revenue';
+  static const String reportsReceivables = '/reports/receivables';
 }

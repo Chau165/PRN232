@@ -4,6 +4,7 @@ import '../../features/customer/data/customer_mock_data.dart';
 import '../../features/customer/models/customer_models.dart';
 import '../../features/manager/data/manager_mock_data.dart';
 import '../../features/manager/models/manager_models.dart';
+import '../auth/auth_state.dart';
 import '../network/api_endpoints.dart';
 import '../network/dio_client.dart';
 
@@ -26,13 +27,11 @@ class InvoiceService {
 
       if (response.data is List) {
         final list = response.data as List;
-        if (list.isNotEmpty) {
-          return list.map((i) => InvoiceModel.fromJson(i as Map<String, dynamic>)).toList();
-        }
+        return list.map((i) => InvoiceModel.fromJson(i as Map<String, dynamic>)).toList();
       }
-      return CustomerMockData.invoices;
+      return AuthState.isCurrentDemo ? CustomerMockData.invoices : [];
     } catch (_) {
-      return CustomerMockData.invoices;
+      return AuthState.isCurrentDemo ? CustomerMockData.invoices : [];
     }
   }
 
@@ -50,13 +49,11 @@ class InvoiceService {
 
       if (response.data is List) {
         final list = response.data as List;
-        if (list.isNotEmpty) {
-          return list.map((i) => ManagerInvoiceModel.fromJson(i as Map<String, dynamic>)).toList();
-        }
+        return list.map((i) => ManagerInvoiceModel.fromJson(i as Map<String, dynamic>)).toList();
       }
-      return ManagerMockData.invoices;
+      return AuthState.isCurrentDemo ? ManagerMockData.invoices : [];
     } catch (_) {
-      return ManagerMockData.invoices;
+      return AuthState.isCurrentDemo ? ManagerMockData.invoices : [];
     }
   }
 

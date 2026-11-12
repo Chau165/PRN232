@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/property_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
@@ -22,12 +23,41 @@ class PropertyDetailScreen extends StatefulWidget {
 }
 
 class _PropertyDetailScreenState extends State<PropertyDetailScreen> {
+  final PropertyService _propertyService = PropertyService();
+  late PropertyItem _property;
+  List<RoomItem> _rooms = [];
+  bool _isLoadingRooms = false;
   int _currentImageIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _property = widget.property;
+    _rooms = widget.property.rooms;
+    _loadDetail();
+  }
+
+  Future<void> _loadDetail() async {
+    setState(() => _isLoadingRooms = true);
+    try {
+      final detail = await _propertyService.getPropertyDetail(widget.property.propertyId);
+      final rooms = await _propertyService.getPropertyRooms(widget.property.propertyId);
+      if (mounted) {
+        setState(() {
+          _property = detail;
+          _rooms = rooms.isNotEmpty ? rooms : detail.rooms;
+          _isLoadingRooms = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingRooms = false);
+    }
+  }
 
   void _openViewingRequest() async {
     final success = await ViewingRequestBottomSheet.show(
       context,
-      property: widget.property,
+      property: _property,
     );
     if (success == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -41,7 +71,7 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final prop = widget.property;
+    final prop = _property;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -240,16 +270,33 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: prop.rooms.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final room = prop.rooms[index];
-                      return _buildRoomTile(context, room, prop);
-                    },
-                  ),
+                  if (_isLoadingRooms)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                    )
+                  else if (_rooms.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text(
+                          'Tất cả phòng trong tòa nhà hiện đang được thuê hoặc đang bảo trì.',
+                          style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    )
+                  else
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _rooms.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final room = _rooms[index];
+                        return _buildRoomTile(context, room, prop);
+                      },
+                    ),
                   const SizedBox(height: 80),
                 ],
               ),

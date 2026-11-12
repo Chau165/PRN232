@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import '../../features/manager/data/manager_mock_data.dart';
 import '../../features/manager/models/manager_models.dart';
+import '../auth/auth_state.dart';
 import '../network/api_endpoints.dart';
 import '../network/dio_client.dart';
 
@@ -22,13 +23,11 @@ class EquipmentService {
 
       if (response.data is List) {
         final list = response.data as List;
-        if (list.isNotEmpty) {
-          return list.map((e) => ManagerEquipmentModel.fromJson(e as Map<String, dynamic>)).toList();
-        }
+        return list.map((e) => ManagerEquipmentModel.fromJson(e as Map<String, dynamic>)).toList();
       }
-      return ManagerMockData.equipments;
+      return AuthState.isCurrentDemo ? ManagerMockData.equipments : [];
     } catch (_) {
-      return ManagerMockData.equipments;
+      return AuthState.isCurrentDemo ? ManagerMockData.equipments : [];
     }
   }
 

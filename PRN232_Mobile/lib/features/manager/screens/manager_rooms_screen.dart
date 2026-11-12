@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/services/manager_service.dart';
@@ -33,7 +34,7 @@ class _ManagerRoomsScreenState extends State<ManagerRoomsScreen> {
   @override
   void initState() {
     super.initState();
-    _rooms = List.from(ManagerMockData.rooms);
+    _rooms = AuthState.isCurrentDemo ? List.from(ManagerMockData.rooms) : [];
     _loadRooms();
   }
 

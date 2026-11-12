@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/services/contract_service.dart';
@@ -25,7 +26,7 @@ class _MyContractsScreenState extends State<MyContractsScreen> {
   @override
   void initState() {
     super.initState();
-    _contracts = List.from(CustomerMockData.myContracts);
+    _contracts = AuthState.isCurrentDemo ? List.from(CustomerMockData.myContracts) : [];
     _loadContracts();
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/services/identity_service.dart';
@@ -26,7 +27,7 @@ class _ManagerIdentityReviewScreenState
   @override
   void initState() {
     super.initState();
-    _reviews = List.from(ManagerMockData.identityReviews);
+    _reviews = AuthState.isCurrentDemo ? List.from(ManagerMockData.identityReviews) : [];
     _loadReviews();
   }
 

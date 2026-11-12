@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/services/invoice_service.dart';
@@ -38,8 +39,8 @@ class _ManagerBillingScreenState extends State<ManagerBillingScreen> {
   @override
   void initState() {
     super.initState();
-    _meterReadings = List.from(ManagerMockData.meterReadings);
-    _invoices = List.from(ManagerMockData.invoices);
+    _meterReadings = AuthState.isCurrentDemo ? List.from(ManagerMockData.meterReadings) : [];
+    _invoices = AuthState.isCurrentDemo ? List.from(ManagerMockData.invoices) : [];
     _loadBillingData();
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/services/invoice_service.dart';
@@ -29,7 +30,7 @@ class _CustomerBillsScreenState extends State<CustomerBillsScreen> {
   @override
   void initState() {
     super.initState();
-    _invoices = List.from(CustomerMockData.myInvoices);
+    _invoices = AuthState.isCurrentDemo ? List.from(CustomerMockData.myInvoices) : [];
     _loadInvoices();
   }
 
@@ -86,7 +87,41 @@ class _CustomerBillsScreenState extends State<CustomerBillsScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-          : RefreshIndicator(
+          : _invoices.isEmpty
+              ? RefreshIndicator(
+                  onRefresh: _loadInvoices,
+                  color: AppColors.primary,
+                  child: Center(
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 80,
+                            height: 80,
+                            decoration: const BoxDecoration(
+                              color: AppColors.primaryLight,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.receipt_long_outlined, size: 40, color: AppColors.primary),
+                          ),
+                          const SizedBox(height: 16),
+                          Text('Bạn chưa có hóa đơn nào',
+                              style: AppTypography.headingMedium, textAlign: TextAlign.center),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Khi bạn thuê phòng và phát sinh kỳ thanh toán tiền phòng hoặc tiền điện nước, các hóa đơn sẽ xuất hiện tại đây.',
+                            style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              : RefreshIndicator(
               onRefresh: _loadInvoices,
               color: AppColors.primary,
               child: SingleChildScrollView(
