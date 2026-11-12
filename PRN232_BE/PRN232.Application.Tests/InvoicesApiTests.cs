@@ -220,8 +220,9 @@ public class InvoicesApiTests
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var payment = await context.Payments.SingleAsync(item => item.InvoiceId == invoiceId);
         Assert.NotNull(payment.PaidAtUtc);
-        Assert.Equal((10, 3_355_000m, "MoMo", "Success"), (payment.UserId, payment.Amount, payment.PaymentMethod, payment.Status));
-        Assert.Equal(1, await context.Notifications.CountAsync(notification => notification.UserId == 7 && notification.Type == "Invoice"));
+        Assert.Equal((10, 355_000m, "MoMo", "Success"), (payment.UserId, payment.Amount, payment.PaymentMethod, payment.Status));
+        var ownerId = await context.Properties.Where(property => property.PropertyId == 1).Select(property => property.OwnerId).SingleAsync();
+        Assert.Equal(1, await context.Notifications.CountAsync(notification => notification.UserId == ownerId && notification.Type == "Invoice"));
 
     }
 

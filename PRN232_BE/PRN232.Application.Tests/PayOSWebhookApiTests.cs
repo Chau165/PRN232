@@ -43,7 +43,7 @@ public class PayOSWebhookApiTests
 
     private static Dictionary<string, object> Data() => new()
     {
-        ["orderCode"] = 123L, ["amount"] = 3355000L, ["description"] = "HOADON", ["accountNumber"] = "0000000000",
+        ["orderCode"] = 123L, ["amount"] = 355000L, ["description"] = "HOADON", ["accountNumber"] = "0000000000",
         ["reference"] = "TEST-REF-1", ["transactionDateTime"] = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow,
             TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh")).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), ["currency"] = "VND",
         ["paymentLinkId"] = "test-link", ["code"] = "00", ["desc"] = "success",
@@ -77,7 +77,7 @@ public class PayOSWebhookApiTests
             var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var receipt = await context.PaymentWebhookReceipts.SingleAsync();
             Assert.Equal("Settled", receipt.Outcome);
-            Assert.Equal(3355000m, receipt.Amount);
+            Assert.Equal(355000m, receipt.Amount);
             Assert.NotNull(receipt.PaymentRequestId);
             receivedAt = receipt.ReceivedAtUtc;
             var request = await context.PaymentRequests.SingleAsync();
@@ -114,7 +114,7 @@ public class PayOSWebhookApiTests
         var today = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh"));
         var month = today.ToString("yyyy-MM-01", CultureInfo.InvariantCulture);
         var revenue = (await client.GetFromJsonAsync<RevenueReportDto>($"/api/reports/revenue?fromMonth={month}&toMonth={month}"))!;
-        Assert.Equal(3355000m, revenue.TotalCollected);
+        Assert.Equal(355000m, revenue.TotalCollected);
         Assert.Equal(1, revenue.PaymentCount);
         var debt = (await client.GetFromJsonAsync<ReceivablesReportDto>("/api/reports/receivables"))!;
         Assert.Equal(0m, debt.OutstandingAmount);
@@ -203,7 +203,7 @@ public class PayOSWebhookApiTests
         var receipt = await context.PaymentWebhookReceipts.SingleAsync();
         Assert.Equal("RequiresReview", receipt.Outcome);
         Assert.NotNull(receipt.ConflictingFingerprint);
-        Assert.Equal(3355000m, receipt.Amount);
+        Assert.Equal(355000m, receipt.Amount);
         Assert.Equal("Succeeded", (await context.PaymentRequests.SingleAsync()).Status);
         Assert.Equal(1, await context.Payments.CountAsync(payment => payment.InvoiceId != null));
     }
@@ -277,7 +277,7 @@ public class PayOSWebhookApiTests
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         context.PaymentRequests.Add(new PaymentRequests
         {
-            InvoiceId = invoiceId, CustomerId = 10, Amount = 3355000, OrderCode = 123,
+            InvoiceId = invoiceId, CustomerId = 10, Amount = 355000, OrderCode = 123,
             PaymentLinkId = "test-link", Status = "Pending", CreatedAtUtc = DateTime.UtcNow.AddMinutes(-1),
             UpdatedAtUtc = DateTime.UtcNow, ExpiresAtUtc = DateTime.UtcNow.AddMinutes(30)
         });
@@ -411,12 +411,12 @@ public class PayOSWebhookApiTests
             var transactionTime = (string)data["transactionDateTime"];
             var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(new
             {
-                OrderCode = 123L, PaymentLinkId = "test-link", Amount = 3355000m, Currency = "VND",
+                OrderCode = 123L, PaymentLinkId = "test-link", Amount = 355000m, Currency = "VND",
                 Code = "00", Reference = "TEST-REF-1", TransactionDateTime = transactionTime
             }))));
             context.PaymentWebhookReceipts.Add(new PaymentWebhookReceipts
             {
-                Reference = "TEST-REF-1", OrderCode = 123, PaymentLinkId = "test-link", Amount = 3355000,
+                Reference = "TEST-REF-1", OrderCode = 123, PaymentLinkId = "test-link", Amount = 355000,
                 Currency = "VND", DataCode = "00", TransactionDateTime = transactionTime,
                 Fingerprint = fingerprint, Outcome = "Verified", ReceivedAtUtc = receivedAt,
                 PaymentRequestId = request.PaymentRequestId

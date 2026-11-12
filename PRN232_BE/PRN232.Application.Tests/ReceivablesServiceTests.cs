@@ -31,6 +31,7 @@ public class ReceivablesServiceTests
 
     private class Repository : IReceivablesRepository
     {
+        public Task<bool> IsManagerAssignedAsync(int propertyId, int managerId, CancellationToken cancellationToken) => Task.FromResult(managerId == 7);
         public Task<int?> GetPropertyOwnerAsync(int propertyId, CancellationToken cancellationToken) => Task.FromResult<int?>(7);
         public Task<List<ReceivableReadModel>> GetOutstandingAsync(int? propertyId, int? ownerId, CancellationToken cancellationToken)
         {

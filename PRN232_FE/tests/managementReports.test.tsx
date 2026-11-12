@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router"
 import { AuthProvider } from "@/auth/AuthContext"
@@ -8,52 +8,38 @@ import ManagementReportsPage from "@/pages/ManagementReportsPage/ManagementRepor
 import { formatVnd } from "@/utils/publicFormatting"
 
 vi.mock("@/components/management/ManagementPage", () => ({
-  default: ({ children, title, description }: { children: ReactNode; title: string; description: string }) =>
-    <main><h1>{title}</h1><p>{description}</p>{children}</main>,
+  default: ({ children, title }: { children: ReactNode; title: string }) => <main><h1>{title}</h1>{children}</main>,
 }))
-
-const admin = { userId: 7, fullName: "Admin Thật", email: "admin@example.test", roleId: 3, roleName: "Admin", isActive: true }
-const rooms = [{ roomId: 1, status: "Occupied" }, { roomId: 2, status: "Occupied" }, { roomId: 3, status: "Available" }]
-const invoices = [
-  { invoiceId: 1, invoiceMonth: "2026-11-01", amountPaid: 1_500_000, total: 4_000_000, status: "Paid" },
-  { invoiceId: 2, invoiceMonth: "2026-11-01", amountPaid: 500_000, total: 3_000_000, status: "Unpaid" },
-  { invoiceId: 3, invoiceMonth: "2026-10-01", amountPaid: 0, total: 2_000_000, status: "Overdue" },
-  { invoiceId: 4, invoiceMonth: "2026-10-01", amountPaid: 3_000_000, status: "Paid" },
-  { invoiceId: 5, invoiceMonth: "2026-04-01", amountPaid: 9_000_000, status: "Paid" },
-  { invoiceId: 0, invoiceMonth: "2026-11-01", amountPaid: 1234, status: "Preview" },
-  { invoiceId: 7, invoiceMonth: "2026-12-01", amountPaid: 10_000_000, status: "Paid" },
-]
-const maintenance = [{ requestId: 1, status: "Completed" }, { requestId: 2, status: "Completed" }, { requestId: 3, status: "Pending" }]
-function contract(contractId: number, endDate: string, status = "Active", startDate = "2026-01-01") {
-  return { contractId, propertyName: `Khu trọ hợp đồng ${contractId}`, roomCode: `P${contractId}`, customerName: `Khách ${contractId}`, startDate, endDate, status }
-}
-const contracts = [contract(1, "2026-11-11"), contract(2, "2026-11-20"), contract(3, "2026-12-11"),
-  contract(4, "2026-12-12"), contract(5, "2026-11-10"), contract(6, "2026-11-15", "Terminated"),
-  contract(7, "2026-11-14", "Active", "2026-11-13"), contract(8, "invalid")]
-
+const revenue = { totalCollected: 3355000, paymentCount: 1, unknownDateAmount: 75000, unknownDatePaymentCount: 2,
+  byProperty: [{ propertyId: 21, propertyName: "Khu trọ API", collectedAmount: 3355000,
+    paymentCount: 1, unknownDateAmount: 75000, unknownDatePaymentCount: 2 }] }
+const debt = { asOfDate: "2026-11-11", outstandingAmount: 900000, outstandingInvoiceCount: 3,
+  overdueAmount: 200000, overdueInvoiceCount: 1 }
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })
 }
-function api(options: { empty?: boolean; failed?: () => boolean; failStatus?: number; overrides?: Record<string, unknown> } = {}) {
-  const responses: Record<string, unknown> = {
-    "/api/rooms": rooms, "/api/invoices": invoices,
-    "/api/maintenance-requests": maintenance, "/api/contracts": contracts,
-    ...options.overrides,
-  }
-  const fetchMock = vi.fn<typeof fetch>(async (input) => {
-    const path = new URL(String(input), window.location.origin).pathname
-    if (path === "/api/users/me") return json(admin)
-    if (path === "/api/invoices" && options.failed?.()) return json({ title: "Unavailable" }, options.failStatus ?? 503)
-    return path in responses ? json(options.empty ? [] : responses[path]) : json({ title: "Not found" }, 404)
+function api(options: { manager?: boolean; status?: () => number; revenue?: () => typeof revenue;
+  onReport?: (url: URL, init?: RequestInit) => Promise<Response> | undefined } = {}) {
+  const mock = vi.fn<typeof fetch>(async (input, init) => {
+    const url = new URL(String(input), window.location.origin)
+    if (url.pathname === "/api/users/me") return json({ userId: 7, fullName: "Người xem báo cáo",
+      email: "reports@example.test", roleId: options.manager ? 2 : 3,
+      roleName: options.manager ? "Manager" : "Admin", isActive: true })
+    const intercepted = options.onReport?.(url, init)
+    if (intercepted) return intercepted
+    const status = options.status?.() ?? 200
+    if (status !== 200) return json({ title: "Unavailable" }, status)
+    if (url.pathname === "/api/reports/revenue") return json(options.revenue?.() ?? revenue)
+    if (url.pathname === "/api/reports/receivables") return json(debt)
+    return json({ title: "Unexpected endpoint" }, 404)
   })
-  vi.stubGlobal("fetch", fetchMock)
-  return fetchMock
+  vi.stubGlobal("fetch", mock)
+  return mock
 }
 function renderReports() {
-  sessionStorage.setItem("troviet-auth-session-v1", JSON.stringify({
-    accessToken: "test.reports.token", expiresAtUtc: new Date(Date.now() + 60_000).toISOString(),
-  }))
-  return render(<MemoryRouter><AuthProvider><ProtectedRoute roles={["ADMIN"]}>
+  sessionStorage.setItem("troviet-auth-session-v1", JSON.stringify({ accessToken: "test.reports.token",
+    expiresAtUtc: new Date(Date.now() + 60000).toISOString() }))
+  return render(<MemoryRouter><AuthProvider><ProtectedRoute roles={["ADMIN", "MANAGER"]}>
     <ManagementReportsPage />
   </ProtectedRoute></AuthProvider></MemoryRouter>)
 }
@@ -61,122 +47,85 @@ function value(label: string) { return screen.getByText(label).nextElementSiblin
 beforeEach(() => { sessionStorage.clear(); vi.setSystemTime(new Date("2026-11-11T02:00:00Z")) })
 afterEach(() => { vi.useRealTimers() })
 
-describe("management reports API data", () => {
-  it("uses received payments rather than invoice face values, and loads all report data from authenticated APIs", async () => {
+describe("management financial reports", () => {
+  it.each([false, true])("loads server reports for manager=%s without summing invoice periods", async manager => {
+    const fetchMock = api({ manager })
+    renderReports()
+    await screen.findByText("Khu trọ API")
+    expect(value("Doanh thu tháng")).toBe(formatVnd(revenue.totalCollected))
+    expect(value("Tổng công nợ")).toBe(formatVnd(debt.outstandingAmount))
+    expect(value("Nợ quá hạn")).toBe(formatVnd(debt.overdueAmount))
+    expect(value("Chưa xác định thời gian thu")).toBe(formatVnd(revenue.unknownDateAmount))
+    expect(screen.getByText("1 giao dịch đã ghi nhận")).toBeTruthy()
+    const reports = fetchMock.mock.calls.filter(([url]) => String(url).includes("/reports/"))
+    expect(reports).toHaveLength(2)
+    for (const [, init] of reports) {
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer test.reports.token")
+      expect(init?.signal).toBeInstanceOf(AbortSignal)
+      expect(init?.cache).toBe("no-store")
+    }
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/invoices"))).toBe(false)
+  })
+  it("filters revenue by selected month while retaining the debt as-of date", async () => {
     const fetchMock = api()
     renderReports()
-    await screen.findByText("Khu trọ hợp đồng 2 · P2")
-    expect(value("Doanh thu tháng")).toBe("2 triệu")
-    expect(value("Tỷ lệ lấp đầy")).toBe("66,7%")
-    expect(value("Hóa đơn còn nợ")).toBe("2")
-    expect(value("Bảo trì hoàn thành")).toBe("2")
-    expect(screen.queryByText(/mock|624,5|Sunrise/)).toBeNull()
-    expect(screen.getByText("05/2026")).toBeTruthy()
-    expect(screen.getByText("11/2026")).toBeTruthy()
-    expect(screen.getByLabelText("10/2026: 3.000.000 ₫")).toBeTruthy()
-    expect(screen.getByLabelText("11/2026: 2.000.000 ₫")).toBeTruthy()
-    const novemberBar = screen.getByLabelText("11/2026: 2.000.000 ₫").querySelector<HTMLElement>("div > div")
-    expect(parseFloat(novemberBar?.style.height ?? "")).toBeCloseTo(200 / 3)
-    expect(screen.getByLabelText("10/2026: 3.000.000 ₫").querySelector<HTMLElement>("div > div")?.style.height).toBe("100%")
-    for (const path of ["/rooms", "/invoices", "/maintenance-requests", "/contracts"]) {
-      const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith(path))
-      expect(call).toBeTruthy()
-      expect(new Headers(call?.[1]?.headers).get("Authorization")).toBe("Bearer test.reports.token")
-      expect(call?.[1]?.signal).toBeInstanceOf(AbortSignal)
-      expect(call?.[1]?.cache).toBe("no-store")
-    }
+    await screen.findByText("Khu trọ API")
+    fireEvent.change(screen.getByLabelText("Tháng doanh thu"), { target: { value: "2026-10" } })
+    await screen.findByText("Doanh thu theo khu trọ · 2026-10")
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("fromMonth=2026-10-01&toMonth=2026-10-01"))).toBe(true)
+    expect(screen.getByText(/đến 2026-11-11/)).toBeTruthy()
   })
-
-  it("includes only active contracts ending today through 30 days and shows actual days remaining", async () => {
-    api()
+  it("uses the Vietnamese month across the year boundary", async () => {
+    vi.setSystemTime(new Date("2026-12-31T18:00:00Z"))
+    const fetchMock = api()
     renderReports()
-    await screen.findByText("Khu trọ hợp đồng 2 · P2")
-    expect(screen.getByText("Hết hạn hôm nay")).toBeTruthy()
-    expect(screen.getByText("9 ngày")).toBeTruthy()
-    expect(screen.getByText("30 ngày")).toBeTruthy()
-    for (const id of [4, 5, 6, 7, 8]) expect(screen.queryByText(`Khu trọ hợp đồng ${id} · P${id}`)).toBeNull()
+    await screen.findByText("Khu trọ API")
+    expect((screen.getByLabelText("Tháng doanh thu") as HTMLInputElement).value).toBe("2027-01")
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("fromMonth=2027-01-01"))).toBe(true)
   })
-
-  it("uses the Vietnamese business date and handles the year boundary", async () => {
-    vi.setSystemTime(new Date("2026-12-31T18:00:00Z")) // 01/01/2027 in Vietnam.
-    api({ overrides: {
-      "/api/invoices": [{ invoiceId: 1, invoiceMonth: "2027-01-01", amountPaid: 1_000_000, status: "Paid" }],
-      "/api/contracts": [contract(1, "2027-01-01")],
-    } })
+  it("renders an empty result without fabricated revenue", async () => {
+    api({ revenue: () => ({ ...revenue, totalCollected: 0, paymentCount: 0, unknownDateAmount: 0,
+      unknownDatePaymentCount: 0, byProperty: [] }) })
     renderReports()
-    await screen.findByText("Hết hạn hôm nay")
-    expect(value("Doanh thu tháng")).toBe("1 triệu")
-    expect(screen.getByText("07/2026")).toBeTruthy()
-    expect(screen.getByText("01/2027")).toBeTruthy()
+    await screen.findByText("Chưa có doanh thu thuộc phạm vi được xem.")
+    expect(value("Doanh thu tháng")).toBe(formatVnd(0))
   })
-
-  it("shows successful empty states without fake bars, contracts or invalid percentages", async () => {
-    api({ empty: true })
-    renderReports()
-    await screen.findByText("Không có hợp đồng sắp hết hạn trong 30 ngày tới.")
-    expect(value("Tỷ lệ lấp đầy")).toBe("0%")
-    expect(value("Hóa đơn còn nợ")).toBe("0")
-    expect(value("Bảo trì hoàn thành")).toBe("0")
-    expect(screen.getByText("Chưa ghi nhận tiền đã thu trong 7 kỳ hóa đơn gần nhất.")).toBeTruthy()
-    expect(screen.queryByText(/NaN|Infinity|624,5/)).toBeNull()
-    expect(screen.getByLabelText("11/2026: 0 ₫").querySelector<HTMLElement>("div > div")?.style.height).toBe("0%")
-  })
-
-  it("shows an error instead of fabricated report numbers, and retries against the backend", async () => {
-    let failed = true
-    api({ failed: () => failed })
+  it("shows request errors and reloads both reports", async () => {
+    let status = 503
+    const fetchMock = api({ status: () => status })
     renderReports()
     await screen.findByRole("alert")
     expect(screen.queryByText("Doanh thu tháng")).toBeNull()
-    failed = false
+    status = 200
     fireEvent.click(screen.getByRole("button", { name: "Tải lại báo cáo" }))
-    await screen.findByText("Khu trọ hợp đồng 2 · P2")
-    expect(value("Doanh thu tháng")).toBe("2 triệu")
+    await screen.findByText("Khu trọ API")
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/reports/")).length).toBeGreaterThanOrEqual(4)
   })
-
-  it("rejects forbidden access without displaying cached or mock figures", async () => {
-    api({ failed: () => true, failStatus: 403 })
+  it("shows forbidden access without financial figures", async () => {
+    api({ status: () => 403 })
     renderReports()
-    expect((await screen.findByRole("alert")).textContent).toContain("Bạn không có quyền xem báo cáo.")
-    expect(screen.queryByText("Tỷ lệ lấp đầy")).toBeNull()
+    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Bạn không có quyền xem báo cáo.")
+    expect(screen.queryByText("Doanh thu tháng")).toBeNull()
   })
-
-  it("keeps missing payment amounts at zero, ignores invalid periods, and does not fabricate revenue", async () => {
-    api({ overrides: { "/api/invoices": [
-      { invoiceId: 1, invoiceMonth: "2026-11-01", total: 9_000_000, status: "Paid" },
-      { invoiceId: 2, invoiceMonth: "not-a-date", amountPaid: 5_000_000, status: "Paid" },
-      { invoiceId: 3, invoiceMonth: "2026-11-01", amountPaid: -100, status: "Paid" },
-      { invoiceId: 4, invoiceMonth: "2026-11-01", amountPaid: 250_000, status: "Paid" },
-    ] } })
+  it("refreshes server totals instead of keeping the old snapshot", async () => {
+    let amount = 100
+    api({ revenue: () => ({ ...revenue, totalCollected: amount }) })
     renderReports()
-    await screen.findByText("Khu trọ hợp đồng 2 · P2")
-    expect(value("Doanh thu tháng")).toBe(formatVnd(250_000))
-    expect(value("Hóa đơn còn nợ")).toBe("0")
+    await screen.findByText("Khu trọ API")
+    amount = 200
+    fireEvent.click(screen.getByRole("button", { name: "Tải lại báo cáo" }))
+    await waitFor(() => expect(value("Doanh thu tháng")).toBe(formatVnd(200)))
   })
-
-  it("counts the expiry window in calendar days across leap February", async () => {
-    vi.setSystemTime(new Date("2028-02-01T02:00:00Z"))
-    api({ overrides: { "/api/contracts": [
-      contract(1, "2028-02-29"), contract(2, "2028-03-02"),
-      contract(3, "2028-03-03"), contract(4, "2028-02-30"),
-    ] } })
-    renderReports()
-    await screen.findByText("Khu trọ hợp đồng 1 · P1")
-    expect(screen.getByText("28 ngày")).toBeTruthy()
-    expect(screen.getByText("30 ngày")).toBeTruthy()
-    expect(screen.queryByText("Khu trọ hợp đồng 3 · P3")).toBeNull()
-    expect(screen.queryByText("Khu trọ hợp đồng 4 · P4")).toBeNull()
-  })
-
-  it("refreshes from the backend instead of reusing a static report", async () => {
-    const fetchMock = api()
+  it("aborts both pending requests on unmount", async () => {
+    const signals: AbortSignal[] = []
+    api({ onReport: (url, init) => {
+      if (!url.pathname.includes("/reports/")) return undefined
+      signals.push(init!.signal!)
+      return new Promise<Response>(() => {})
+    } })
     const view = renderReports()
-    await screen.findByText("Khu trọ hợp đồng 2 · P2")
-    fireEvent.click(screen.getByRole("button", { name: "Làm mới báo cáo" }))
-    await screen.findByText("Khu trọ hợp đồng 2 · P2")
-    const calls = fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/contracts"))
-    expect(calls).toHaveLength(2)
+    await waitFor(() => expect(signals).toHaveLength(2))
     view.unmount()
-    expect(calls.every(([, init]) => init?.signal?.aborted)).toBe(true)
+    expect(signals.every(signal => signal.aborted)).toBe(true)
   })
 })

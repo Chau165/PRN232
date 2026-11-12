@@ -52,7 +52,7 @@ public class RevenueApiTests
     }
 
     [Fact]
-    public async Task Current_owner_sees_history_and_old_owner_loses_access()
+    public async Task Current_assigned_manager_sees_history_and_old_manager_loses_access()
     {
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
@@ -60,7 +60,8 @@ public class RevenueApiTests
         using (var scope = factory.Services.CreateScope())
         {
             var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            (await context.Properties.SingleAsync(property => property.PropertyId == 1)).OwnerId = 8;
+            context.PropertyManagerAssignments.RemoveRange(await context.PropertyManagerAssignments.Where(item => item.PropertyId == 1).ToListAsync());
+            context.PropertyManagerAssignments.Add(new PropertyManagerAssignment { PropertyId = 1, ManagerId = 8 });
             await context.SaveChangesAsync();
         }
         await LoginAsync(client, "manager@example.test");
@@ -116,6 +117,9 @@ public class RevenueApiTests
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         context.Properties.AddRange(new Property { PropertyId = 2, OwnerId = 8, PropertyName = "Other" },
             new Property { PropertyId = 3, OwnerId = 7, PropertyName = "Empty" });
+        context.PropertyManagerAssignments.AddRange(
+            new PropertyManagerAssignment { PropertyId = 2, ManagerId = 8 },
+            new PropertyManagerAssignment { PropertyId = 3, ManagerId = 7 });
         context.Rooms.Add(new Rooms { RoomId = 3, PropertyId = 2, RoomTypeId = 1, RoomCode = "B101", Status = "Occupied" });
         foreach (var id in new[] { 1, 2 })
         {

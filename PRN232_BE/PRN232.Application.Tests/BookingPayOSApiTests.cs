@@ -326,7 +326,10 @@ public class BookingPayOSApiTests
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/payment-requests/{link.PaymentRequestId}")).StatusCode);
         using (var scope = app.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>(); (await db.Properties.SingleAsync()).OwnerId = 8; await db.SaveChangesAsync();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.PropertyManagerAssignments.RemoveRange(await db.PropertyManagerAssignments.Where(item => item.PropertyId == 1).ToListAsync());
+            db.PropertyManagerAssignments.Add(new PropertyManagerAssignment { PropertyId = 1, ManagerId = 8 });
+            await db.SaveChangesAsync();
         }
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/api/payment-requests/{link.PaymentRequestId}")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsync($"/api/payment-requests/{link.PaymentRequestId}/reconcile", null)).StatusCode);

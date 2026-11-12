@@ -19,7 +19,7 @@ public class PaymentRequestStatusApiTests
     [InlineData("manager@example.test", HttpStatusCode.OK)]
     [InlineData("manager-b@example.test", HttpStatusCode.Forbidden)]
     [InlineData("admin@example.test", HttpStatusCode.OK)]
-    public async Task Read_access_follows_customer_and_current_property_owner(string? email, HttpStatusCode expected)
+    public async Task Read_access_follows_customer_and_current_manager_assignment(string? email, HttpStatusCode expected)
     {
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
@@ -35,7 +35,7 @@ public class PaymentRequestStatusApiTests
             Assert.Equal(id, body.PaymentRequestId);
             Assert.Equal(10, body.CustomerId);
             Assert.Equal(1, body.PropertyId);
-            Assert.Equal(3355000m, body.Amount);
+            Assert.Equal(355000m, body.Amount);
             Assert.Equal("Unpaid", body.InvoiceStatus);
             Assert.True(body.CanOpenCheckout);
             Assert.False(body.IsExpired);
@@ -108,7 +108,8 @@ public class PaymentRequestStatusApiTests
         using (var scope = factory.Services.CreateScope())
         {
             var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            (await context.Properties.SingleAsync()).OwnerId = 8;
+            context.PropertyManagerAssignments.RemoveRange(await context.PropertyManagerAssignments.Where(item => item.PropertyId == 1).ToListAsync());
+            context.PropertyManagerAssignments.Add(new PropertyManagerAssignment { PropertyId = 1, ManagerId = 8 });
             await context.SaveChangesAsync();
         }
         await LoginAsync(client, "manager@example.test");
@@ -137,7 +138,7 @@ public class PaymentRequestStatusApiTests
         var now = DateTime.UtcNow.AddHours(-1);
         var request = new PaymentRequests
         {
-            InvoiceId = invoiceId, CustomerId = 10, Amount = 3355000m, OrderCode = 123,
+            InvoiceId = invoiceId, CustomerId = 10, Amount = 355000m, OrderCode = 123,
             Status = status, CreatedAtUtc = now, UpdatedAtUtc = now,
             ExpiresAtUtc = expired ? now.AddMinutes(30) : now.AddHours(2),
             CheckoutUrl = "https://pay.payos.vn/web/test", PaymentLinkId = "test-link",

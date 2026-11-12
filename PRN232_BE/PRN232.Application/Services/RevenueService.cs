@@ -23,7 +23,8 @@ public class RevenueService(IRevenueRepository repository, TimeProvider timeProv
         {
             var ownerId = await repository.GetPropertyOwnerAsync(propertyId.Value, cancellationToken);
             if (ownerId is null) throw new RevenueNotFoundException();
-            if (role == RoleNames.Manager && ownerId != userId) throw new RevenueForbiddenException();
+            if (role == RoleNames.Manager && !await repository.IsManagerAssignedAsync(propertyId.Value, userId, cancellationToken))
+                throw new RevenueForbiddenException();
         }
         DateTime Utc(DateOnly date) => TimeZoneInfo.ConvertTimeToUtc(date.ToDateTime(TimeOnly.MinValue), Zone);
         var buckets = await repository.GetBucketsAsync(propertyId, role == RoleNames.Manager ? userId : null,

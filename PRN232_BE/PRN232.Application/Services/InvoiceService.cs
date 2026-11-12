@@ -129,7 +129,8 @@ public class InvoiceService : IInvoiceService
             customerId,
             dto.PaymentMethod,
             amount => _paymentGateway.ChargeAsync(dto.PaymentMethod, amount),
-            notification);
+            notification,
+            _timeProvider.GetUtcNow().UtcDateTime);
         var logLevel = result == InvoicePaymentAttemptStatus.Completed ? LogLevel.Information : LogLevel.Warning;
         _logger.Log(logLevel, "Online payment for invoice {InvoiceId} by customer {CustomerId} via {PaymentMethod}: {Result}.",
             id, customerId, dto.PaymentMethod, result);
