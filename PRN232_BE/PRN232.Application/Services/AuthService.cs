@@ -3,6 +3,7 @@ using PRN232.Application.Interfaces;
 using PRN232.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using PRN232.Application.Validation;
 
 namespace PRN232.Application.Services;
 
@@ -32,17 +33,10 @@ public class AuthService : IAuthService
 
     public async Task<AuthResponseDto> RegisterAsync(RegisterDto dto)
     {
-        if (string.IsNullOrWhiteSpace(dto.FullName))
+        var validationError = AccountValidation.FirstError(AccountValidation.Register, dto);
+        if (validationError is not null)
         {
-            throw new AuthValidationException("Họ tên không được để trống.");
-        }
-        if (string.IsNullOrWhiteSpace(dto.Email) || !dto.Email.Contains('@'))
-        {
-            throw new AuthValidationException("Email không hợp lệ.");
-        }
-        if (string.IsNullOrWhiteSpace(dto.Password) || dto.Password.Length < 6)
-        {
-            throw new AuthValidationException("Mật khẩu phải có ít nhất 6 ký tự.");
+            throw new AuthValidationException(validationError);
         }
 
         var normalizedEmail = dto.Email.Trim().ToLowerInvariant();

@@ -11,6 +11,7 @@ import {
 } from "@/services/userService"
 import type { RoleDto } from "@/types/user"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
+import { registrationError } from "@/utils/accountValidation"
 import ManagementPage from "@/components/management/ManagementPage"
 import StatusBadge from "@/components/customer/StatusBadge"
 
@@ -56,6 +57,11 @@ export default function ManagementUsersPage() {
     event.preventDefault()
     if (!accessToken) return
     setError("")
+    const validationError = registrationError(form)
+    if (validationError) {
+      setError(validationError)
+      return
+    }
     setCreating(true)
     try {
       const created = await createUser(accessToken, {
@@ -115,7 +121,7 @@ export default function ManagementUsersPage() {
           <input required value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} placeholder="Họ và tên" aria-label="Họ và tên người dùng mới" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
           <input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="Email" aria-label="Email người dùng mới" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
           <input required type="tel" value={form.phoneNumber} onChange={(event) => setForm({ ...form, phoneNumber: event.target.value })} placeholder="Số điện thoại" aria-label="Số điện thoại người dùng mới" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-          <input required type="password" minLength={6} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="Mật khẩu tạm" aria-label="Mật khẩu người dùng mới" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+          <input required type="password" minLength={8} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="Mật khẩu tạm" aria-label="Mật khẩu người dùng mới" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
           <div className="flex gap-2">
             <select required aria-label="Role tài khoản mới" value={form.roleId} onChange={(event) => setForm({ ...form, roleId: event.target.value })} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm">
               {roles.map((role) => <option key={role.roleId} value={role.roleId}>{role.roleName}</option>)}

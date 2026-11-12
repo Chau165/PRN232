@@ -4,6 +4,7 @@ import { useAuth } from "@/auth/AuthContext"
 import AuthShell from "@/components/auth/AuthShell"
 import PasswordInput from "@/components/auth/PasswordInput"
 import { roleLandingPath } from "@/components/auth/ProtectedRoute"
+import { registrationError } from "@/utils/accountValidation"
 
 export default function RegisterPage() {
   const navigate = useNavigate()
@@ -20,8 +21,9 @@ export default function RegisterPage() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError("")
-    if (password.length < 6) {
-      setError("Mật khẩu phải có ít nhất 6 ký tự.")
+    const validationError = registrationError({ fullName, email, password, phoneNumber })
+    if (validationError) {
+      setError(validationError)
       return
     }
     if (password !== confirmPassword) {

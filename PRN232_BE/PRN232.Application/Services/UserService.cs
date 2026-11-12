@@ -4,6 +4,7 @@ using PRN232.Application.ReadModels;
 using DomainUser = PRN232.Domain.Entities.Users;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using PRN232.Application.Validation;
 
 namespace PRN232.Application.Services;
 
@@ -40,17 +41,10 @@ public class UserService : IUserService
     // /api/auth/register (công khai, luôn gán Customer).
     public async Task<UserDto> CreateAsync(CreateUserDto dto)
     {
-        if (string.IsNullOrWhiteSpace(dto.FullName))
+        var validationError = AccountValidation.FirstError(AccountValidation.CreateUser, dto);
+        if (validationError is not null)
         {
-            throw new UserValidationException("Họ tên không được để trống.");
-        }
-        if (string.IsNullOrWhiteSpace(dto.Email) || !dto.Email.Contains('@'))
-        {
-            throw new UserValidationException("Email không hợp lệ.");
-        }
-        if (string.IsNullOrWhiteSpace(dto.Password) || dto.Password.Length < 6)
-        {
-            throw new UserValidationException("Mật khẩu phải có ít nhất 6 ký tự.");
+            throw new UserValidationException(validationError);
         }
         if (!await _repository.RoleExistsAsync(dto.RoleId))
         {
@@ -141,9 +135,10 @@ public class UserService : IUserService
         {
             return null;
         }
-        if (string.IsNullOrWhiteSpace(dto.FullName))
+        var validationError = AccountValidation.FirstError(AccountValidation.UpdateProfile, dto);
+        if (validationError is not null)
         {
-            throw new UserValidationException("Họ tên không được để trống.");
+            throw new UserValidationException(validationError);
         }
 
         ApplyUpdateToEntity(dto, entity);
@@ -172,9 +167,10 @@ public class UserService : IUserService
         {
             throw new UserInvalidCurrentPasswordException();
         }
-        if (string.IsNullOrWhiteSpace(dto.NewPassword) || dto.NewPassword.Length < 6)
+        var validationError = AccountValidation.FirstError(AccountValidation.ChangePassword, dto);
+        if (validationError is not null)
         {
-            throw new UserValidationException("Mật khẩu mới phải có ít nhất 6 ký tự.");
+            throw new UserValidationException(validationError);
         }
 
         entity.PasswordHash = _passwordHasher.Hash(dto.NewPassword);

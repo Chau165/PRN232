@@ -194,6 +194,17 @@ builder.Services.AddRateLimiter(options =>
                 PermitLimit = 10,
                 QueueLimit = 0
             }));
+    // A10: chặn spam tạo tài khoản. Rộng hơn LoginPolicy vì khi A7 chưa sửa, trên Railway
+    // mọi request đi qua proxy có cùng IP nên hạn mức này đang tính chung cho mọi người.
+    options.AddPolicy("RegisterPolicy", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ClientIpPartitionKey(httpContext),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromMinutes(1),
+                PermitLimit = 10,
+                QueueLimit = 0
+            }));
 });
 
 // Railway đứng sau reverse proxy: không đọc X-Forwarded-For thì mọi request đều có IP của proxy

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { useAuth } from "@/auth/AuthContext"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
+import { fullNameError, newPasswordError, phoneError } from "@/utils/accountValidation"
 
 function initials(name: string) {
   return name
@@ -36,6 +37,11 @@ export default function ProfilePage() {
     if (!user) return
     setError("")
     setMessage("")
+    const validationError = fullNameError(fullName) ?? phoneError(phoneNumber)
+    if (validationError) {
+      setError(validationError)
+      return
+    }
     setSavingProfile(true)
     try {
       await updateProfile({ fullName: fullName.trim(), phoneNumber: phoneNumber.trim() })
@@ -52,8 +58,9 @@ export default function ProfilePage() {
     event.preventDefault()
     setError("")
     setMessage("")
-    if (newPassword.length < 6) {
-      setError("Mật khẩu mới phải có ít nhất 6 ký tự.")
+    const validationError = newPasswordError(currentPassword, newPassword)
+    if (validationError) {
+      setError(validationError)
       return
     }
     if (newPassword !== confirmPassword) {

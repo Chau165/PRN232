@@ -175,7 +175,7 @@ describe("Phase 4A Admin user APIs", () => {
     fireEvent.change(screen.getByLabelText("Họ và tên Manager"), { target: { value: "Manager Mới" } })
     fireEvent.change(screen.getByLabelText("Email Manager"), { target: { value: "new.manager@example.test" } })
     fireEvent.change(screen.getByLabelText("Số điện thoại Manager"), { target: { value: "0900000010" } })
-    fireEvent.change(screen.getByLabelText("Mật khẩu Manager"), { target: { value: "temp-password" } })
+    fireEvent.change(screen.getByLabelText("Mật khẩu Manager"), { target: { value: "temp-password-1" } })
     fireEvent.click(screen.getByRole("button", { name: "Tạo tài khoản" }))
 
     await waitFor(() => expect(calls.some((call) => call.init?.method === "POST")).toBe(true))
@@ -185,7 +185,7 @@ describe("Phase 4A Admin user APIs", () => {
       fullName: "Manager Mới",
       email: "new.manager@example.test",
       phoneNumber: "0900000010",
-      password: "temp-password",
+      password: "temp-password-1",
       roleId: 2,
     })
   })
