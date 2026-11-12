@@ -34,7 +34,7 @@ public class UtilityReadingServiceTests
         var repository = new FakeReadingRepository { Latest = new LatestReadingReadModel(new DateOnly(2026, 9, 1), 1320m, 104m) };
 
         await CreateService(repository).CreateAsync(
-            new CreateUtilityReadingDto(1, October, 1465m, 109m, ElectricStart: 0m, WaterStart: 0m), 9, RoleNames.Admin);
+            new CreateUtilityReadingDto(1, October, 1465m, 109m, ElectricStart: 0m, WaterStart: 0m), 7, RoleNames.Manager);
 
         var added = Assert.Single(repository.Added);
         Assert.Equal((1320m, 104m), (added.ElectricStart, added.WaterStart));
@@ -101,7 +101,8 @@ public class UtilityReadingServiceTests
     [Theory]
     [InlineData(RoleNames.Customer, 10)]
     [InlineData(RoleNames.Manager, 8)]
-    public async Task CreateAsync_allows_only_the_owner_or_an_admin(string role, int userId)
+    [InlineData(RoleNames.Admin, 7)]
+    public async Task CreateAsync_requires_an_assigned_manager(string role, int userId)
     {
         await Assert.ThrowsAsync<UtilityReadingAuthorizationException>(() => CreateService(new FakeReadingRepository())
             .CreateAsync(new CreateUtilityReadingDto(1, October, 150m, 14m, 100m, 10m), userId, role));
@@ -111,10 +112,10 @@ public class UtilityReadingServiceTests
     public async Task CreateAsync_rejects_missing_or_inactive_contract()
     {
         await Assert.ThrowsAsync<UtilityReadingNotFoundException>(() => CreateService(new FakeReadingRepository { Contract = null })
-            .CreateAsync(new CreateUtilityReadingDto(1, October, 150m, 14m, 100m, 10m), 9, RoleNames.Admin));
+            .CreateAsync(new CreateUtilityReadingDto(1, October, 150m, 14m, 100m, 10m), 7, RoleNames.Manager));
         await Assert.ThrowsAsync<UtilityReadingConflictException>(() =>
             CreateService(new FakeReadingRepository { Contract = SampleContract() with { Status = "Terminated" } })
-                .CreateAsync(new CreateUtilityReadingDto(1, October, 150m, 14m, 100m, 10m), 9, RoleNames.Admin));
+                .CreateAsync(new CreateUtilityReadingDto(1, October, 150m, 14m, 100m, 10m), 7, RoleNames.Manager));
     }
 
     [Fact]
@@ -123,7 +124,7 @@ public class UtilityReadingServiceTests
         var repository = new FakeReadingRepository { AddSucceeds = false };
 
         await Assert.ThrowsAsync<UtilityReadingConflictException>(() => CreateService(repository)
-            .CreateAsync(new CreateUtilityReadingDto(1, October, 150m, 14m, 100m, 10m), 9, RoleNames.Admin));
+            .CreateAsync(new CreateUtilityReadingDto(1, October, 150m, 14m, 100m, 10m), 7, RoleNames.Manager));
     }
 
     [Theory]
@@ -143,7 +144,7 @@ public class UtilityReadingServiceTests
         new(repository, new FixedTimeProvider(Now));
 
     private static ReadingContractReadModel SampleContract() =>
-        new(1, 7, ContractStatuses.Active, new DateOnly(2026, 6, 1), new DateOnly(2027, 5, 31));
+        new(1, 7, ContractStatuses.Active, new DateOnly(2026, 6, 1), new DateOnly(2027, 5, 31), 1);
 
     private sealed class FakeReadingRepository : IUtilityReadingRepository
     {
@@ -162,9 +163,12 @@ public class UtilityReadingServiceTests
         public Task<ReadingContractReadModel?> GetContractAsync(int contractId) =>
             Task.FromResult(Contract?.ContractId == contractId ? Contract : null);
 
+        public Task<bool> HasActiveManagerAssignmentAsync(int propertyId, int managerId) =>
+            Task.FromResult(propertyId == 1 && managerId == 7);
+
         public Task<LatestReadingReadModel?> GetLatestAsync(int contractId) => Task.FromResult(Latest);
 
-        public Task<bool> AddIfLatestAsync(UtilityReadings reading)
+        public Task<bool> AddIfLatestAsync(UtilityReadings reading, int managerId = 0)
         {
             if (!AddSucceeds)
             {

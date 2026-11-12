@@ -38,18 +38,18 @@ public class InvoiceComplaintRepository : IInvoiceComplaintRepository
         await _context.SaveChangesAsync();
     }
 
-    public Task<List<InvoiceComplaintReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status)
+    public Task<List<InvoiceComplaintReadModel>> GetAllAsync(int? customerId, int? managerId, string? status)
     {
-        return InScope(customerId, ownerId)
+        return InScope(customerId, managerId)
             .Where(complaint => status == null || complaint.Status == status)
             .OrderByDescending(complaint => complaint.ComplaintId)
             .Select(ToReadModel)
             .ToListAsync();
     }
 
-    public Task<InvoiceComplaintReadModel?> GetByIdAsync(int complaintId, int? customerId, int? ownerId)
+    public Task<InvoiceComplaintReadModel?> GetByIdAsync(int complaintId, int? customerId, int? managerId)
     {
-        return InScope(customerId, ownerId)
+        return InScope(customerId, managerId)
             .Where(complaint => complaint.ComplaintId == complaintId)
             .Select(ToReadModel)
             .FirstOrDefaultAsync();
@@ -60,24 +60,74 @@ public class InvoiceComplaintRepository : IInvoiceComplaintRepository
         return _context.InvoiceComplaints.AnyAsync(complaint => complaint.ComplaintId == complaintId);
     }
 
-    public async Task UpdateStatusAsync(int complaintId, string status, Notifications customerNotification)
+    public Task<bool> HasActiveManagerAssignmentAsync(int complaintId, int managerId)
+    {
+        return _context.InvoiceComplaints.AnyAsync(complaint =>
+            complaint.ComplaintId == complaintId &&
+            complaint.Invoice!.Contract!.Room!.Property!.ManagerAssignments.Any(assignment =>
+                assignment.ManagerId == managerId &&
+                assignment.Manager!.IsActive &&
+                assignment.Manager.Role!.RoleName == PRN232.Application.States.RoleNames.Manager));
+    }
+
+    public async Task<bool> UpdateStatusAsync(
+        int complaintId,
+        string status,
+        Notifications customerNotification,
+        int? managerId = null)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
-        await _context.InvoiceComplaints
+        if (managerId.HasValue)
+        {
+            var propertyId = await _context.InvoiceComplaints
+                .Where(complaint => complaint.ComplaintId == complaintId)
+                .Select(complaint => (int?)complaint.Invoice!.Contract!.Room!.PropertyId)
+                .FirstOrDefaultAsync();
+            if (!propertyId.HasValue)
+            {
+                return false;
+            }
+
+            if (_context.Database.IsNpgsql())
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT assignment.\"PropertyId\" FROM \"PropertyManagerAssignments\" assignment WHERE assignment.\"PropertyId\" = {propertyId.Value} AND assignment.\"ManagerId\" = {managerId.Value} FOR SHARE");
+            }
+
+            if (!await _context.PropertyManagerAssignments.AnyAsync(assignment =>
+                    assignment.PropertyId == propertyId.Value &&
+                    assignment.ManagerId == managerId.Value &&
+                    assignment.Manager!.IsActive &&
+                    assignment.Manager.Role!.RoleName == PRN232.Application.States.RoleNames.Manager))
+            {
+                return false;
+            }
+        }
+
+        var updated = await _context.InvoiceComplaints
             .Where(complaint => complaint.ComplaintId == complaintId)
             .ExecuteUpdateAsync(setters => setters.SetProperty(complaint => complaint.Status, status));
+        if (updated == 0)
+        {
+            return false;
+        }
+
         await _context.Notifications.AddAsync(customerNotification);
         await _context.SaveChangesAsync();
         await transaction.CommitAsync();
+        return true;
     }
 
     // Lọc dùng chung cho GetById và GetAll; tham số nào null thì không lọc theo tiêu chí đó.
-    private IQueryable<InvoiceComplaints> InScope(int? customerId, int? ownerId)
+    private IQueryable<InvoiceComplaints> InScope(int? customerId, int? managerId)
     {
         return _context.InvoiceComplaints
             .AsNoTracking()
             .Where(complaint => customerId == null || complaint.CustomerId == customerId)
-            .Where(complaint => ownerId == null || complaint.Invoice!.Contract!.Room!.Property!.OwnerId == ownerId);
+            .Where(complaint => managerId == null || complaint.Invoice!.Contract!.Room!.Property!.ManagerAssignments.Any(assignment =>
+                assignment.ManagerId == managerId &&
+                assignment.Manager!.IsActive &&
+                assignment.Manager.Role!.RoleName == PRN232.Application.States.RoleNames.Manager));
     }
 
     private static readonly Expression<Func<InvoiceComplaints, InvoiceComplaintReadModel>> ToReadModel = complaint => new InvoiceComplaintReadModel(

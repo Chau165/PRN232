@@ -69,7 +69,8 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
-function stubGeolocation(getCurrentPosition: Geolocation["getCurrentPosition"]) {
+function stubGeolocation(getCurrentPosition: Geolocation["getCurrentPosition"],
+) {
   const navigatorWithGeolocation = Object.create(navigator) as Navigator
   Object.defineProperty(navigatorWithGeolocation, "geolocation", {
     value: { getCurrentPosition },
@@ -94,6 +95,112 @@ function renderMapSection() {
 }
 
 describe("public area map section", () => {
+  it("shows Quận 7 properties as map markers using local data even while geocoding is unavailable", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input) => {
+      const url = new URL(String(input), window.location.origin)
+      if (url.pathname === "/api/public/properties/by-area" && url.searchParams.get("district") === "Quận 7") {
+        return jsonResponse([property(42, {
+          propertyName: "Tân Thuận Residence", district: "Khu vực Quận 7 cũ",
+          latitude: 10.738, longitude: 106.728,
+        })])
+      }
+      throw new Error("Geocoding unavailable")
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    renderMapSection()
+    fireEvent.change(screen.getByLabelText("Bạn muốn tìm khu trọ ở đâu?"), { target: { value: "Quận 7" } })
+    fireEvent.click(screen.getByRole("button", { name: "Tìm trên bản đồ" }))
+
+    expect(await screen.findByRole("heading", { name: "Khu trọ tại Quận 7" })).toBeTruthy()
+    expect(await screen.findByRole("button", { name: "Bản đồ: Tân Thuận Residence" })).toBeTruthy()
+    expect(screen.getByTestId("area-map").getAttribute("data-property-count")).toBe("1")
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("searches a typed place without requesting the user's location", async () => {
+    const getCurrentPosition = vi.fn()
+
+    stubGeolocation(getCurrentPosition)
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+
+      .mockResolvedValueOnce(
+        jsonResponse({
+          features: [
+            {
+              geometry: { coordinates: [105.85, 21.03] },
+
+              properties: {
+                name: "Hồ Hoàn Kiếm",
+                district: "Hoàn Kiếm",
+                city: "Hà Nội",
+              },
+            },
+          ],
+        }),
+      )
+
+      .mockResolvedValueOnce(jsonResponse([property(42)]))
+
+    vi.stubGlobal("fetch", fetchMock)
+
+    renderMapSection()
+
+    const input = screen.getByLabelText("Bạn muốn tìm khu trọ ở đâu?")
+
+    fireEvent.focus(input)
+
+    expect(
+      screen.getByRole("button", { name: "Theo vị trí của bạn hiện tại" }),
+    ).toBeTruthy()
+
+    fireEvent.change(input, { target: { value: "Hồ Hoàn Kiếm, Hà Nội" } })
+
+    fireEvent.click(screen.getByRole("button", { name: "Tìm trên bản đồ" }))
+
+    expect(
+      await screen.findByRole("heading", { name: "Khu trọ tại Hoàn Kiếm" }),
+    ).toBeTruthy()
+
+    expect(getCurrentPosition).not.toHaveBeenCalled()
+
+    expect(
+      screen.getByTestId("area-map").getAttribute("data-has-user-location"),
+    ).toBe("false")
+
+    const request = new URL(
+      String(fetchMock.mock.calls[1][0]),
+      window.location.origin,
+    )
+
+    expect(request.searchParams.get("district")).toBe("Hoàn Kiếm")
+
+    expect(request.searchParams.get("city")).toBe("Hà Nội")
+  })
+
+  it("asks for a location when submitted empty instead of requesting geolocation", async () => {
+    const getCurrentPosition = vi.fn()
+
+    stubGeolocation(getCurrentPosition)
+
+    const fetchMock = vi.fn<typeof fetch>()
+
+    vi.stubGlobal("fetch", fetchMock)
+
+    renderMapSection()
+
+    fireEvent.click(screen.getByRole("button", { name: "Tìm trên bản đồ" }))
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Hãy nhập địa điểm",
+    )
+
+    expect(getCurrentPosition).not.toHaveBeenCalled()
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it("loads district properties and keeps marker selection synchronized", async () => {
     grantLocationPermission()
     const properties = [property(42), property(43)]
@@ -112,25 +219,39 @@ describe("public area map section", () => {
     vi.stubGlobal("fetch", fetchMock)
 
     renderMapSection()
-    fireEvent.click(screen.getByRole("button", { name: "Tìm khu trọ quanh tôi" }))
+    fireEvent.focus(screen.getByLabelText("Bạn muốn tìm khu trọ ở đâu?"))
+
+    fireEvent.click(screen.getByRole("button", { name: "Theo vị trí của bạn hiện tại" }),
+    )
 
     expect(
       await screen.findByRole("heading", { name: "Khu trọ tại Quận Gò Vấp" }),
     ).toBeTruthy()
-    expect((await screen.findByTestId("area-map")).getAttribute("data-property-count")).toBe("2")
-    expect(screen.getByTestId("area-map").getAttribute("data-has-user-location")).toBe("true")
-    expect(screen.queryByRole("heading", { name: "Danh sách khu trọ" })).toBeNull()
-    const areaRequest = new URL(String(fetchMock.mock.calls[1][0]), window.location.origin)
+    expect((await screen.findByTestId("area-map")).getAttribute("data-property-count",
+      ),
+    ).toBe("2")
+    expect(screen.getByTestId("area-map").getAttribute("data-has-user-location"),
+    ).toBe("true")
+    expect(screen.queryByRole("heading", { name: "Danh sách khu trọ" }),
+    ).toBeNull()
+    const areaRequest = new URL(String(fetchMock.mock.calls[1][0]), window.location.origin,
+    )
     expect(areaRequest.pathname).toBe("/api/public/properties/by-area")
     expect(areaRequest.searchParams.get("district")).toBe("Quận Gò Vấp")
     expect(areaRequest.searchParams.get("city")).toBe("TP. Hồ Chí Minh")
     expect(areaRequest.searchParams.has("radius")).toBe(false)
 
-    fireEvent.click(screen.getByRole("button", { name: "Bản đồ: Residence 42 từ API" }))
-    expect((await screen.findByTestId("area-map")).getAttribute("data-selected-property")).toBe("42")
+    fireEvent.click(screen.getByRole("button", { name: "Bản đồ: Residence 42 từ API" }),
+    )
+    expect((await screen.findByTestId("area-map")).getAttribute("data-selected-property",
+      ),
+    ).toBe("42")
 
-    fireEvent.click(screen.getByRole("button", { name: "Bản đồ: Residence 43 từ API" }))
-    expect((await screen.findByTestId("area-map")).getAttribute("data-selected-property")).toBe("43")
+    fireEvent.click(screen.getByRole("button", { name: "Bản đồ: Residence 43 từ API" }),
+    )
+    expect((await screen.findByTestId("area-map")).getAttribute("data-selected-property",
+      ),
+    ).toBe("43")
   })
 
   it("shows a distinct loading state and a permission-denied state", async () => {
@@ -142,28 +263,43 @@ describe("public area map section", () => {
     vi.stubGlobal("fetch", fetchMock)
 
     renderMapSection()
-    expect((await screen.findByTestId("area-map")).getAttribute("data-has-user-location")).toBe("false")
-    fireEvent.click(screen.getByRole("button", { name: "Tìm khu trọ quanh tôi" }))
-    expect(screen.getByRole("status").textContent?.toLowerCase()).toContain("vị trí")
+    expect((await screen.findByTestId("area-map")).getAttribute("data-has-user-location",
+      ),
+    ).toBe("false")
+
+    fireEvent.focus(screen.getByLabelText("Bạn muốn tìm khu trọ ở đâu?"))
+    fireEvent.click(screen.getByRole("button", { name: "Theo vị trí của bạn hiện tại" }),
+    )
+    expect(screen.getByRole("status").textContent?.toLowerCase()).toContain("vị trí",
+    )
 
     rejectLocation?.({ code: 1, message: "denied" } as GeolocationPositionError)
 
-    expect((await screen.findByRole("alert")).textContent).toContain("quyền vị trí")
-    expect(screen.getByTestId("area-map").getAttribute("data-has-user-location")).toBe("false")
+    expect((await screen.findByRole("alert")).textContent).toContain("quyền vị trí",
+    )
+    expect(screen.getByTestId("area-map").getAttribute("data-has-user-location"),
+    ).toBe("false")
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it("shows reverse-geocoding errors and keeps the location marker visible", async () => {
     grantLocationPermission()
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(new TypeError("Failed to fetch")))
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(new TypeError("Failed to fetch")),
+    )
 
     renderMapSection()
-    fireEvent.click(screen.getByRole("button", { name: "Tìm khu trọ quanh tôi" }))
 
-    expect((await screen.findByRole("alert")).textContent?.toLowerCase()).toContain(
+    fireEvent.focus(screen.getByLabelText("Bạn muốn tìm khu trọ ở đâu?"))
+    fireEvent.click(screen.getByRole("button", { name: "Theo vị trí của bạn hiện tại" }),
+    )
+
+    expect((await screen.findByRole("alert")).textContent?.toLowerCase(),
+    ).toContain(
       "không thể kết nối dịch vụ xác định khu vực",
     )
-    expect((await screen.findByTestId("area-map")).getAttribute("data-has-user-location")).toBe("true")
+    expect((await screen.findByTestId("area-map")).getAttribute("data-has-user-location",
+      ),
+    ).toBe("true")
   })
 
   it("keeps the map on the user location without requesting city-wide properties when district data is missing", async () => {
@@ -174,12 +310,17 @@ describe("public area map section", () => {
     vi.stubGlobal("fetch", fetchMock)
 
     renderMapSection()
-    fireEvent.click(screen.getByRole("button", { name: "Tìm khu trọ quanh tôi" }))
+    fireEvent.focus(screen.getByLabelText("Bạn muốn tìm khu trọ ở đâu?"))
 
-    expect((await screen.findByRole("alert")).textContent?.toLowerCase()).toContain(
+    fireEvent.click(screen.getByRole("button", { name: "Theo vị trí của bạn hiện tại" }),
+    )
+
+    expect((await screen.findByRole("alert")).textContent?.toLowerCase(),
+    ).toContain(
       "chỉ xác định được thành phố",
     )
-    expect(screen.getByTestId("area-map").getAttribute("data-has-user-location")).toBe("true")
+    expect(screen.getByTestId("area-map").getAttribute("data-has-user-location"),
+    ).toBe("true")
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
@@ -194,15 +335,21 @@ describe("public area map section", () => {
             suburb: "Phường 10",
             city: "TP.HCM",
           },
-        }))
+        }),
+        )
         .mockResolvedValueOnce(jsonResponse([])),
     )
 
     renderMapSection()
-    fireEvent.click(screen.getByRole("button", { name: "Tìm khu trọ quanh tôi" }))
+    fireEvent.focus(screen.getByLabelText("Bạn muốn tìm khu trọ ở đâu?"))
 
-    expect(await screen.findByText(/Chưa có khu trọ đang cho thuê tại/)).toBeTruthy()
-    expect(screen.getByTestId("area-map").getAttribute("data-property-count")).toBe("0")
+    fireEvent.click(screen.getByRole("button", { name: "Theo vị trí của bạn hiện tại" }),
+    )
+
+    expect(await screen.findByText(/Chưa có khu trọ đang cho thuê tại/),
+    ).toBeTruthy()
+    expect(screen.getByTestId("area-map").getAttribute("data-property-count"),
+    ).toBe("0")
     expect(screen.queryByText(/đang hiển thị toàn/)).toBeNull()
   })
 
@@ -216,12 +363,16 @@ describe("public area map section", () => {
             city_district: "Quận Gò Vấp",
             city: "TP.HCM",
           },
-        }))
+        }),
+        )
         .mockResolvedValueOnce(jsonResponse({ title: "Unavailable" }, 503)),
     )
 
     renderMapSection()
-    fireEvent.click(screen.getByRole("button", { name: "Tìm khu trọ quanh tôi" }))
+    fireEvent.focus(screen.getByLabelText("Bạn muốn tìm khu trọ ở đâu?"))
+
+    fireEvent.click(screen.getByRole("button", { name: "Theo vị trí của bạn hiện tại" }),
+    )
 
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent?.toLowerCase()).toContain(

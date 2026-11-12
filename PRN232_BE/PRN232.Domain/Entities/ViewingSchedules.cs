@@ -20,6 +20,11 @@ public class ViewingSchedules
     }
     public string Status { get; set; } = string.Empty;
 
+    public int? AssignedTo { get; set; }
+    public string? ManagerNote { get; set; }
+    public int? RespondedBy { get; set; }
+    public DateTime? RespondedAt { get; set; }
+
     public Rooms? Room
     {
         get; set;
@@ -28,4 +33,6 @@ public class ViewingSchedules
     {
         get; set;
     }
+    public Users? AssignedManager { get; set; }
+    public Users? RespondedByUser { get; set; }
 }

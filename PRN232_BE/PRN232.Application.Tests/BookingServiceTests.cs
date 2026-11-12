@@ -15,7 +15,7 @@ public class BookingServiceTests
     [Fact]
     public async Task CreateAsync_creates_pending_booking_with_one_month_deposit_and_payment_window()
     {
-        var repository = new FakeBookingRepository { Room = new BookingRoomReadModel(5, 3_000_000m) };
+        var repository = new FakeBookingRepository { Room = new BookingRoomReadModel(5, "A-101", 7, 3_000_000m) };
 
         var created = await CreateService(repository).CreateAsync(new CreateBookingDto(5), 42);
 
@@ -25,6 +25,9 @@ public class BookingServiceTests
         Assert.Equal(DateTimeKind.Utc, added.ExpiryDate.Kind);
         Assert.Equal(Now, repository.LastAsOfUtc);
         Assert.Equal(added.BookingId, created.BookingId);
+        var notification = Assert.Single(repository.Notifications);
+        Assert.Equal((7, NotificationTypes.Booking, false), (notification.UserId, notification.Type, notification.IsRead));
+        Assert.Contains("chờ thanh toán cọc", notification.Title);
     }
 
     [Fact]
@@ -40,7 +43,7 @@ public class BookingServiceTests
     [Fact]
     public async Task CreateAsync_rejects_room_that_is_not_rentable()
     {
-        var repository = new FakeBookingRepository { Room = new BookingRoomReadModel(5, 3_000_000m), RoomIsRentable = false };
+        var repository = new FakeBookingRepository { Room = new BookingRoomReadModel(5, "A-101", 7, 3_000_000m), RoomIsRentable = false };
 
         await Assert.ThrowsAsync<BookingRoomUnavailableException>(() =>
             CreateService(repository).CreateAsync(new CreateBookingDto(5), 42));
@@ -241,6 +244,21 @@ public class BookingServiceTests
         Assert.Contains("A-101", cancellation.Notification.Title);
     }
 
+    [Fact]
+    public async Task CancelAsync_rejects_admin_who_does_not_own_the_property()
+    {
+        var repository = new FakeBookingRepository
+        {
+            Booking = SampleBooking(customerId: 10, BookingStatuses.Deposited),
+            OwnerId = 7
+        };
+
+        await Assert.ThrowsAsync<BookingAuthorizationException>(() =>
+            CreateService(repository).CancelAsync(1, 42, RoleNames.Admin));
+
+        Assert.Empty(repository.Cancellations);
+    }
+
     [Theory]
     [InlineData(RoleNames.Customer, BookingStatuses.Deposited)]
     [InlineData(RoleNames.Customer, BookingStatuses.Cancelled)]
@@ -305,12 +323,15 @@ public class BookingServiceTests
         public bool RoomIsRentable { get; init; } = true;
         public bool DepositSucceeds { get; init; } = true;
         public bool CancelSucceeds { get; init; } = true;
+        public bool ManagerAssignmentActive { get; init; } = true;
         public BookingDto? Booking
         {
             get; set;
         }
         public int OwnerId { get; init; } = 7;
+        public int? LastCancelManagerId { get; private set; }
         public List<Bookings> Added { get; } = [];
+        public List<Notifications> Notifications { get; } = [];
         public List<(int BookingId, DateTimeOffset AsOfUtc, DateTime HoldUntilUtc, Payments Payment,
             Notifications Notification)> Deposits
         {
@@ -333,7 +354,7 @@ public class BookingServiceTests
         public Task<BookingRoomReadModel?> GetRoomAsync(int roomId) =>
             Task.FromResult(Room?.RoomId == roomId ? Room : null);
 
-        public Task<bool> AddIfRoomRentableAsync(Bookings booking, DateTimeOffset asOfUtc)
+        public Task<bool> AddIfRoomRentableAsync(Bookings booking, Func<int, Notifications> notificationFactory, DateTimeOffset asOfUtc)
         {
             LastAsOfUtc = asOfUtc;
             if (!RoomIsRentable)
@@ -343,6 +364,7 @@ public class BookingServiceTests
 
             booking.BookingId = Added.Count + 1;
             Added.Add(booking);
+            Notifications.Add(notificationFactory(booking.BookingId));
             Booking = new BookingDto(booking.BookingId, booking.RoomId, "A-101", 1, "Sunrise", booking.CustomerId,
                 "Customer", booking.DepositAmount, booking.Status, booking.ExpiryDate, "0900000000", null);
             return Task.FromResult(true);
@@ -363,6 +385,9 @@ public class BookingServiceTests
                 (ownerId is null || OwnerId == ownerId);
             return Task.FromResult(visible && Booking is not null ? ToReadModel(Booking) : null);
         }
+
+        public Task<bool> IsPropertyOwnerAsync(int propertyId, int adminId) =>
+            Task.FromResult(OwnerId == adminId);
 
         public Task<bool> ExistsAsync(int bookingId) => Task.FromResult(Booking?.BookingId == bookingId);
 
@@ -389,8 +414,17 @@ public class BookingServiceTests
             return Task.FromResult(true);
         }
 
-        public Task<bool> CancelAsync(int bookingId, string expectedStatus, Notifications? customerNotification)
+        public Task<bool> CancelAsync(
+            int bookingId,
+            string expectedStatus,
+            Notifications? customerNotification,
+            int? managerId = null)
         {
+            LastCancelManagerId = managerId;
+            if (managerId.HasValue && !ManagerAssignmentActive)
+            {
+                return Task.FromResult(false);
+            }
             if (!CancelSucceeds)
             {
                 return Task.FromResult(false);

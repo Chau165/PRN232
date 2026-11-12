@@ -1,5 +1,6 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Normalizers;
@@ -14,10 +15,18 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
     private const int MaximumAmenitiesSummary = 5;
 
     private readonly AppDbContext _context;
+    private readonly string? _roomImageUrlPrefix;
 
-    public PublicPropertyListingRepository(AppDbContext context)
+    public PublicPropertyListingRepository(AppDbContext context, IConfiguration? configuration = null)
     {
         _context = context;
+        var baseUrl = configuration?["Supabase:Url"]?.TrimEnd('/');
+        var bucket = configuration?["Supabase:RoomBucket"]?.Trim();
+        if (Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps &&
+            uri.AbsolutePath == "/" && uri.Query.Length == 0 && uri.Fragment.Length == 0 && uri.UserInfo.Length == 0)
+        {
+            _roomImageUrlPrefix = $"{baseUrl}/storage/v1/object/public/{Uri.EscapeDataString(string.IsNullOrEmpty(bucket) ? "room-images" : bucket)}/rooms/";
+        }
     }
 
     public async Task<bool> AmenityIdsExistAsync(int[] amenityIds, CancellationToken cancellationToken)
@@ -42,7 +51,9 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
         var matchingRooms = ApplyRoomFilters(
             RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc),
             criteria);
-        var eligibleProperties = ApplyPropertyFilters(_context.Properties.AsNoTracking(), criteria)
+        var filteredProperties = await ApplyPropertyFiltersAsync(
+            _context.Properties.AsNoTracking(), criteria, cancellationToken);
+        var eligibleProperties = filteredProperties
             .Where(property => matchingRooms.Any(room => room.PropertyId == property.PropertyId));
 
         var totalCount = await eligibleProperties.CountAsync(cancellationToken);
@@ -404,6 +415,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             })
             .ToListAsync(cancellationToken);
         var roomIds = pageRows.Select(room => room.RoomId).ToArray();
+        var images = await GetPublicRoomImagesAsync(roomIds, cancellationToken);
         var amenityRows = await _context.RoomAmenities
             .AsNoTracking()
             .Where(link => roomIds.Contains(link.RoomId))
@@ -433,7 +445,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 room.RoomTypeName,
                 room.BaseRent,
                 room.AreaSqm,
-                null,
+                images.FirstOrDefault(image => image.RoomId == room.RoomId && image.IsPrimary)?.ImageUrl,
                 amenitiesByRoom.TryGetValue(room.RoomId, out var amenities)
                     ? amenities
                      : Array.Empty<PublicAmenitySummaryReadModel>()))
@@ -506,6 +518,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 link.Service.Price))
             .ToListAsync(cancellationToken);
 
+        var images = await GetPublicRoomImagesAsync([roomId], cancellationToken);
         if (transaction is not null)
         {
             await transaction.CommitAsync(cancellationToken);
@@ -518,10 +531,36 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             room.RoomType,
             room.BaseRent,
             room.Property,
-            Array.Empty<string>(),
+            images.Select(image => image.ImageUrl).ToArray(),
             amenities,
             services,
             Array.Empty<PublicRoomEquipmentReadModel>());
+    }
+
+    private async Task<List<RoomImageReadModel>> GetPublicRoomImagesAsync(int[] roomIds, CancellationToken cancellationToken)
+    {
+        if (_roomImageUrlPrefix is null || roomIds.Length == 0)
+        {
+            return [];
+        }
+        var images = await _context.RoomImages.AsNoTracking()
+            .Where(image => roomIds.Contains(image.RoomId))
+            .OrderByDescending(image => image.IsPrimary).ThenBy(image => image.RoomImageId)
+            .Select(image => new RoomImageReadModel(image.RoomImageId, image.RoomId, image.ImageUrl, image.IsPrimary))
+            .ToListAsync(cancellationToken);
+        return images.Where(image => IsPublicRoomImage(image.ImageUrl)).ToList();
+    }
+
+    private bool IsPublicRoomImage(string imageUrl)
+    {
+        if (_roomImageUrlPrefix is null || !imageUrl.StartsWith(_roomImageUrlPrefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+        var fileName = imageUrl[_roomImageUrlPrefix.Length..];
+        return Path.GetExtension(fileName) is ".jpg" or ".jpeg" or ".png" or ".webp" &&
+               Guid.TryParseExact(Path.GetFileNameWithoutExtension(fileName), "N", out _) &&
+               !fileName.Contains('/') && !fileName.Contains('\\');
     }
 
     private static IQueryable<Rooms> ApplyRoomFilters(
@@ -544,15 +583,18 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
 
         foreach (var amenityId in criteria.AmenityIds)
         {
-            rooms = rooms.Where(room => room.RoomAmenities.Any(link => link.AmenityId == amenityId));
+            rooms = rooms.Where(room =>
+                room.RoomAmenities.Any(link => link.AmenityId == amenityId) ||
+                room.Property!.PropertyAmenities.Any(link => link.AmenityId == amenityId));
         }
 
         return rooms;
     }
 
-    private static IQueryable<Property> ApplyPropertyFilters(
+    private static async Task<IQueryable<Property>> ApplyPropertyFiltersAsync(
         IQueryable<Property> properties,
-        PublicPropertySearchCriteria criteria)
+        PublicPropertySearchCriteria criteria,
+        CancellationToken cancellationToken)
     {
         if (criteria.Keyword is not null)
         {
@@ -565,20 +607,36 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 property.City.ToLower().Contains(keyword));
         }
 
+        if (criteria.City is null && criteria.District is null && criteria.Ward is null)
+        {
+            return properties;
+        }
+
+        // Resolve normalized names against distinct stored locations, then keep filtering,
+        // counts, sorting and pagination in SQL. No database unaccent extension required.
+        var locations = await properties.Select(property => new { property.City, property.District, property.Ward })
+            .Distinct()
+            .ToListAsync(cancellationToken);
         if (criteria.City is not null)
         {
-            var city = criteria.City.ToLowerInvariant();
-            properties = properties.Where(property => property.City.Trim().ToLower() == city);
+            var city = PublicAreaNameNormalizer.Normalize(criteria.City);
+            var cityNames = locations.Where(location => PublicAreaNameNormalizer.Normalize(location.City) == city)
+                .Select(location => location.City).Distinct().ToArray();
+            properties = properties.Where(property => cityNames.Contains(property.City));
         }
         if (criteria.District is not null)
         {
-            var district = criteria.District.ToLowerInvariant();
-            properties = properties.Where(property => property.District.Trim().ToLower() == district);
+            var district = PublicAreaNameNormalizer.Normalize(criteria.District);
+            var districtNames = locations.Where(location => PublicAreaNameNormalizer.Normalize(location.District) == district)
+                .Select(location => location.District).Distinct().ToArray();
+            properties = properties.Where(property => districtNames.Contains(property.District));
         }
         if (criteria.Ward is not null)
         {
-            var ward = criteria.Ward.ToLowerInvariant();
-            properties = properties.Where(property => property.Ward.Trim().ToLower() == ward);
+            var ward = PublicAreaNameNormalizer.Normalize(criteria.Ward);
+            var wardNames = locations.Where(location => PublicAreaNameNormalizer.Normalize(location.Ward) == ward)
+                .Select(location => location.Ward).Distinct().ToArray();
+            properties = properties.Where(property => wardNames.Contains(property.Ward));
         }
 
         return properties;

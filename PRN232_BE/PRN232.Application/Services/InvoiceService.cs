@@ -17,15 +17,22 @@ public class InvoiceService : IInvoiceService
     private readonly IInvoiceRepository _repository;
     private readonly IPaymentGateway _paymentGateway;
     private readonly TimeProvider _timeProvider;
+    private readonly INotificationRealtimePublisher? _realtimePublisher;
     private readonly ICashCheckoutCoordinator _cashCheckout;
 
-    public InvoiceService(IInvoiceRepository repository, IPaymentGateway paymentGateway, TimeProvider timeProvider,
-        ICashCheckoutCoordinator cashCheckout)
+
+    public InvoiceService(
+        IInvoiceRepository repository,
+        IPaymentGateway paymentGateway,
+        TimeProvider timeProvider,
+        ICashCheckoutCoordinator cashCheckout,
+        INotificationRealtimePublisher? realtimePublisher = null)
     {
         _repository = repository;
         _paymentGateway = paymentGateway;
         _timeProvider = timeProvider;
         _cashCheckout = cashCheckout;
+        _realtimePublisher = realtimePublisher;
     }
 
     // Xem trước và tạo thật dùng chung BuildAsync, nên số tiền xem trước luôn khớp hoá đơn được lưu.
@@ -46,11 +53,14 @@ public class InvoiceService : IInvoiceService
             Type = NotificationTypes.Invoice,
             IsRead = false
         };
-        if (!await _repository.AddIfAbsentAsync(invoice, notification))
+        if (!await _repository.AddIfAbsentAsync(invoice, notification, userId))
         {
             throw new InvoiceConflictException("An invoice for this month already exists.");
         }
-
+        if (_realtimePublisher is not null)
+        {
+            await _realtimePublisher.PublishCreatedAsync([notification]);
+        }
         var created = await _repository.GetByIdAsync(invoice.InvoiceId, null, null);
         if (created is null)
         {
@@ -66,16 +76,16 @@ public class InvoiceService : IInvoiceService
             throw new InvoiceBusinessRuleException("Status must be Unpaid, Paid, or Overdue.");
         }
 
-        var (customerId, ownerId) = GetScope(userId, role);
-        var invoices = await _repository.GetAllAsync(customerId, ownerId, contractId, status);
+        var (customerId, managerId) = GetScope(userId, role);
+        var invoices = await _repository.GetAllAsync(customerId, managerId, contractId, status);
         return invoices.Select(ConvertToDto).ToList();
     }
 
     public async Task<InvoiceDto?> GetByIdAsync(int id, int userId, string role)
     {
-        var (customerId, ownerId) = GetScope(userId, role);
-        var invoice = await _repository.GetByIdAsync(id, customerId, ownerId);
-        if (invoice is null && (customerId.HasValue || ownerId.HasValue) && await _repository.ExistsAsync(id))
+        var (customerId, managerId) = GetScope(userId, role);
+        var invoice = await _repository.GetByIdAsync(id, customerId, managerId);
+        if (invoice is null && (customerId.HasValue || managerId.HasValue) && await _repository.ExistsAsync(id))
         {
             throw new InvoiceAuthorizationException("You cannot access this invoice.");
         }
@@ -99,33 +109,53 @@ public class InvoiceService : IInvoiceService
         {
             throw new InvoiceAuthorizationException("You cannot pay another customer's invoice.");
         }
-        if (!await _paymentGateway.ChargeAsync(dto.PaymentMethod, invoice.Total))
+        var notification = new Notifications
         {
-            throw new InvoicePaymentFailedException("The payment was declined.");
-        }
-
-        return await MarkPaidAsync(invoice, dto.PaymentMethod, invoice.OwnerId,
-            $"Phòng {invoice.RoomCode} đã thanh toán hoá đơn tháng {Period(invoice.InvoiceMonth)}");
+            UserId = invoice.OwnerId,
+            Title = $"Phòng {invoice.RoomCode} đã thanh toán hoá đơn tháng {Period(invoice.InvoiceMonth)}",
+            Type = NotificationTypes.Invoice,
+            IsRead = false
+        };
+        var result = await _repository.TryPayOnlineAsync(
+            id,
+            customerId,
+            dto.PaymentMethod,
+            amount => _paymentGateway.ChargeAsync(dto.PaymentMethod, amount),
+            notification);
+        return result switch
+        {
+            InvoicePaymentAttemptStatus.Completed => await PublishPaymentAndLoadAsync(id, notification),
+            InvoicePaymentAttemptStatus.NoAmountDue => await LoadSavedInvoiceAsync(id),
+            InvoicePaymentAttemptStatus.Declined => throw new InvoicePaymentFailedException("The payment was declined."),
+            InvoicePaymentAttemptStatus.NotFound => throw new InvoiceNotFoundException("Invoice does not exist."),
+            InvoicePaymentAttemptStatus.Forbidden => throw new InvoiceAuthorizationException("You cannot pay another customer's invoice."),
+            _ => throw new InvoiceConflictException("This invoice has already been paid.")
+        };
     }
 
     // Quản lý ghi nhận khách đã trả tiền mặt tại khu trọ (thay cho nút "Đã thu" mock trước đây).
     public async Task<InvoiceDto> RecordCashPaymentAsync(int id, int userId, string role)
     {
-        if (role is not (RoleNames.Manager or RoleNames.Admin))
+        if (role != RoleNames.Manager)
         {
-            throw new InvoiceAuthorizationException("Only property managers can record cash payments.");
+            throw new InvoiceAuthorizationException("Only an assigned property manager can record cash payments.");
         }
 
         var invoice = await GetUnpaidForPaymentAsync(id);
-        if (role == RoleNames.Manager && invoice.OwnerId != userId)
+        if (!await _repository.HasActiveManagerAssignmentAsync(invoice.PropertyId, userId))
         {
             throw new InvoiceAuthorizationException("You cannot record payments for this invoice.");
         }
 
-        var ownerId = role == RoleNames.Manager ? (int?)userId : null;
-        await _cashCheckout.PrepareAsync(id, ownerId, CancellationToken.None);
+
+        await _cashCheckout.PrepareAsync(id, userId, CancellationToken.None);
+
+        var title = invoice.Total <= 0m
+            ? $"Hoá đơn tháng {Period(invoice.InvoiceMonth)} - Phòng {invoice.RoomCode} đã được bù trừ bằng tiền trả trước"
+            : $"Đã ghi nhận thanh toán tiền mặt hoá đơn tháng {Period(invoice.InvoiceMonth)} - Phòng {invoice.RoomCode}";
         return await MarkPaidAsync(invoice, PaymentMethods.Cash, invoice.CustomerId,
-            $"Đã ghi nhận thanh toán tiền mặt hoá đơn tháng {Period(invoice.InvoiceMonth)} - Phòng {invoice.RoomCode}", ownerId);
+            title,
+            userId);
     }
 
     private async Task<InvoicePaymentReadModel> GetUnpaidForPaymentAsync(int id)
@@ -144,7 +174,12 @@ public class InvoiceService : IInvoiceService
 
     // Người trả luôn là khách thuê; số tiền là tổng các dòng do server tính, client không gửi số tiền.
     private async Task<InvoiceDto> MarkPaidAsync(
-        InvoicePaymentReadModel invoice, string paymentMethod, int notifyUserId, string notificationTitle, int? ownerId = null)
+
+        InvoicePaymentReadModel invoice,
+        string paymentMethod,
+        int notifyUserId,
+        string notificationTitle,
+        int? managerId = null)
     {
         var payment = new Payments
         {
@@ -163,12 +198,32 @@ public class InvoiceService : IInvoiceService
             IsRead = false
         };
         // Repository chỉ chuyển sang Paid khi hoá đơn vẫn chưa thanh toán: hai lần trả cùng lúc thì chỉ một lần được ghi.
-        if (!await _repository.MarkPaidAsync(invoice.InvoiceId, payment, notification, ownerId))
-        {
-            throw new InvoiceConflictException("This invoice is already paid or has an active online checkout that must be resolved first.");
-        }
 
-        var paid = await _repository.GetByIdAsync(invoice.InvoiceId, null, null);
+        if (!await _repository.MarkPaidAsync(invoice.InvoiceId, payment, notification, managerId))
+        {
+            if (managerId.HasValue &&
+                !await _repository.HasActiveManagerAssignmentAsync(invoice.PropertyId, managerId.Value))
+            {
+                throw new InvoiceAuthorizationException("You are no longer assigned to manage this property's invoices.");
+            }
+            throw new InvoiceConflictException("This invoice has already been paid.");
+
+        }
+        return await PublishPaymentAndLoadAsync(invoice.InvoiceId, notification);
+    }
+
+    private async Task<InvoiceDto> PublishPaymentAndLoadAsync(int invoiceId, Notifications notification)
+    {
+        if (_realtimePublisher is not null)
+        {
+            await _realtimePublisher.PublishCreatedAsync([notification]);
+        }
+        return await LoadSavedInvoiceAsync(invoiceId);
+    }
+
+    private async Task<InvoiceDto> LoadSavedInvoiceAsync(int invoiceId)
+    {
+        var paid = await _repository.GetByIdAsync(invoiceId, null, null);
         if (paid is null)
         {
             throw new InvalidOperationException("Paid invoice was not found.");
@@ -178,9 +233,9 @@ public class InvoiceService : IInvoiceService
 
     private async Task<(InvoiceContractReadModel Contract, Invoices Invoice)> BuildAsync(CreateInvoiceDto dto, int userId, string role)
     {
-        if (role is not (RoleNames.Manager or RoleNames.Admin))
+        if (role != RoleNames.Manager)
         {
-            throw new InvoiceAuthorizationException("Only property managers can create invoices.");
+            throw new InvoiceAuthorizationException("Only an assigned property manager can create invoices.");
         }
 
         var contract = await _repository.GetContractAsync(dto.ContractId);
@@ -188,7 +243,7 @@ public class InvoiceService : IInvoiceService
         {
             throw new InvoiceNotFoundException("Contract does not exist.");
         }
-        if (role == RoleNames.Manager && contract.OwnerId != userId)
+        if (!await _repository.HasActiveManagerAssignmentAsync(contract.PropertyId, userId))
         {
             throw new InvoiceAuthorizationException("You cannot create invoices for this contract.");
         }
@@ -228,6 +283,28 @@ public class InvoiceService : IInvoiceService
         foreach (var service in services)
         {
             details.Add(BuildServiceLine(service, usage, period));
+        }
+
+        var invoiceMonth = new DateOnly(contract.StartDate.Year, contract.StartDate.Month, 1);
+        if (dto.InvoiceMonth == invoiceMonth && contract.BookingId.HasValue)
+        {
+            var credit = await _repository.GetAvailablePrepaidRentCreditAsync(contract.ContractId);
+            if (credit is not null)
+            {
+                var prepaidRentApplied = Math.Min(
+                    credit.AvailableAmount,
+                    details.Where(detail => detail.ItemType == InvoiceItemTypes.Rent)
+                        .Sum(detail => detail.Amount));
+                if (prepaidRentApplied > 0m)
+                {
+                    details.Add(new InvoiceDetails
+                    {
+                        ItemType = InvoiceItemTypes.PrepaidRentCredit,
+                        Description = $"Tiền cọc đã thanh toán - khấu trừ tiền phòng tháng {period}",
+                        Amount = -prepaidRentApplied
+                    });
+                }
+            }
         }
 
         var invoice = new Invoices
@@ -298,6 +375,11 @@ public class InvoiceService : IInvoiceService
 
     private static InvoiceDto ConvertToDto(Invoices invoice, InvoiceContractReadModel contract, string status)
     {
+        var total = invoice.InvoiceDetails.Sum(detail => detail.Amount);
+        var prepaidRentApplied = invoice.InvoiceDetails
+            .Where(detail => detail.ItemType == InvoiceItemTypes.PrepaidRentCredit && detail.Amount < 0m)
+            .Sum(detail => -detail.Amount);
+        var netPayable = Math.Max(0m, total);
         return new InvoiceDto(
             invoice.InvoiceId,
             contract.ContractId,
@@ -307,10 +389,14 @@ public class InvoiceService : IInvoiceService
             invoice.InvoiceMonth,
             invoice.DueDate,
             status,
-            invoice.InvoiceDetails.Sum(detail => detail.Amount),
+            total,
             invoice.InvoiceDetails
             .Select(ConvertToDto)
-            .ToList());
+            .ToList(),
+            prepaidRentApplied,
+            netPayable,
+            0m,
+            netPayable);
     }
 
     private static InvoiceDto ConvertToDto(InvoiceReadModel invoice)
@@ -325,7 +411,11 @@ public class InvoiceService : IInvoiceService
             invoice.DueDate,
             invoice.Status,
             invoice.Total,
-            invoice.Lines.Select(ConvertToDto).ToList());
+            invoice.Lines.Select(ConvertToDto).ToList(),
+            invoice.PrepaidRentApplied,
+            invoice.NetPayable,
+            invoice.AmountPaid,
+            invoice.RemainingPayable);
     }
 
     private static InvoiceLineDto ConvertToDto(InvoiceDetails detail)
@@ -345,7 +435,7 @@ public class InvoiceService : IInvoiceService
         return month.ToString("MM/yyyy", CultureInfo.InvariantCulture);
     }
 
-    private static (int? CustomerId, int? OwnerId) GetScope(int userId, string role)
+    private static (int? CustomerId, int? ManagerId) GetScope(int userId, string role)
     {
         var scope = AccessScope.For(userId, role);
         if (scope is null)

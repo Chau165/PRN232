@@ -9,7 +9,7 @@ type PageInput = string | number
 
 const DEFAULT_PAGE_SIZE = 10
 const MAX_PAGE_SIZE = 50
-const MAX_AMENITY_IDS = 20
+export const MAX_AMENITY_IDS = 20
 const MAX_OFFSET = 2_147_483_647
 
 function validationError(field: string, message: string): PublicApiError {

@@ -24,7 +24,7 @@ import { formatVnd } from "@/utils/publicFormatting"
 type InvoiceSection = "invoices" | "complaints"
 
 export default function ManagementInvoicesPage() {
-  const { accessToken } = useAuth()
+  const { accessToken, user } = useAuth()
   const today = localToday()
   const [section, setSection] = useState<InvoiceSection>("invoices")
   const [invoices, setInvoices] = useState<InvoiceDto[]>([])
@@ -131,7 +131,7 @@ export default function ManagementInvoicesPage() {
             Khiếu nại hóa đơn
           </button>
         </div>
-        {section === "invoices" && (
+        {user?.role === "MANAGER" && section === "invoices" && (
           <button
             onClick={() => setCreatingInvoice(true)}
             className="rounded-lg bg-[#087775] px-4 py-2.5 text-[13px] font-bold text-white"
@@ -175,7 +175,7 @@ export default function ManagementInvoicesPage() {
                       >
                         Xem
                       </button>
-                      {invoice.status !== "Paid" && (
+                      {user?.role === "MANAGER" && invoice.status !== "Paid" && (
                         <button
                           disabled={recordingId !== null}
                           onClick={() => recordCash(invoice)}
@@ -258,8 +258,9 @@ export default function ManagementInvoicesPage() {
             </div>
             <fieldset disabled={updatingComplaint}>
               <legend className="text-[12px] font-semibold text-slate-500">Cập nhật trạng thái</legend>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {complaintStatuses.map(({ value, label }) => (
+              {user?.role === "MANAGER" || user?.role === "ADMIN" ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {complaintStatuses.map(({ value, label }) => (
                   <button
                     key={value}
                     type="button"
@@ -272,9 +273,10 @@ export default function ManagementInvoicesPage() {
                     }`}
                   >
                     {label}
-                  </button>
-                ))}
-              </div>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </fieldset>
             <div className="grid gap-3 rounded-xl bg-slate-50 p-5 text-[14px] sm:grid-cols-2">
               <p>

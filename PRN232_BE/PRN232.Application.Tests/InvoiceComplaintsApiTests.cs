@@ -62,7 +62,7 @@ public class InvoiceComplaintsApiTests
         Assert.Equal(("New", rentLine), (body.GetProperty("status").GetString(), body.GetProperty("feeType").GetString()));
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Assert.Equal(1, await context.Notifications.CountAsync(item => item.UserId == 7 && item.Type == "Complaint"));
+        Assert.Equal(1, await context.Notifications.CountAsync(item => item.UserId == 9 && item.Type == "Complaint"));
     }
 
     [Fact]

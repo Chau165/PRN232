@@ -38,4 +38,5 @@ public class Users
     public ICollection<Notifications> Notifications { get; set; } = new List<Notifications>();
     public ICollection<IdentityDocuments> IdentityDocumentsOwned { get; set; } = new List<IdentityDocuments>();
     public ICollection<IdentityDocuments> IdentityDocumentsReviewed { get; set; } = new List<IdentityDocuments>();
+    public ICollection<PropertyManagerAssignment> ManagerAssignments { get; set; } = new List<PropertyManagerAssignment>();
 }

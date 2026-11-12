@@ -4,8 +4,15 @@ namespace PRN232.Application.Interfaces;
 
 public interface IRoomService
 {
-    Task<List<RoomDto>> GetAllAsync(int? propertyId, string? status, string? city, decimal? maxPrice);
-    Task<RoomDto?> GetByIdAsync(int id);
+    Task<List<RoomDto>> GetAllAsync(
+        int? propertyId,
+        string? status,
+        string? city,
+        decimal? maxPrice,
+        int? managerId = null,
+        int? roomTypeId = null,
+        string? search = null);
+    Task<RoomDto?> GetByIdAsync(int id, int? managerId = null);
     Task<List<RentableRoomDto>> GetRentableRoomsAsync(DateTimeOffset asOfUtc);
     Task<List<PropertyAvailabilityDto>> GetPropertyAvailabilityAsync(DateTimeOffset asOfUtc);
     Task<RoomDto> CreateAsync(CreateRoomDto dto, int requestingUserId, bool isAdmin);
@@ -14,6 +21,8 @@ public interface IRoomService
 
     Task<List<RoomImageDto>?> GetImagesAsync(int roomId);
     Task<RoomImageDto?> AddImageAsync(int roomId, AddRoomImageDto dto, int requestingUserId, bool isAdmin);
+    Task<RoomImageDto?> UploadImageAsync(int roomId, RoomImageInput image, bool isPrimary, int requestingUserId, bool isAdmin);
+    Task<bool> SetPrimaryImageAsync(int roomId, int imageId, int requestingUserId, bool isAdmin);
     Task<bool> RemoveImageAsync(int roomId, int imageId, int requestingUserId, bool isAdmin);
 
     Task<List<AmenityDto>?> GetAmenitiesAsync(int roomId);

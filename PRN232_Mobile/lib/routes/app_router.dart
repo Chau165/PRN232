@@ -11,12 +11,20 @@ import '../features/customer/screens/customer_bills_screen.dart';
 import '../features/customer/screens/customer_explore_screen.dart';
 import '../features/customer/screens/customer_my_room_screen.dart';
 import '../features/customer/screens/deposit_screen.dart';
+import '../features/customer/screens/identity_documents_screen.dart';
+import '../features/customer/screens/my_bookings_screen.dart';
+import '../features/customer/screens/my_contracts_screen.dart';
+import '../features/customer/screens/my_maintenance_requests_screen.dart';
 import '../features/customer/screens/payment_success_screen.dart';
 import '../features/customer/screens/property_detail_screen.dart';
 import '../features/customer/screens/room_detail_screen.dart';
 import '../features/manager/manager_shell_screen.dart';
+import '../features/manager/screens/create_contract_screen.dart';
 import '../features/manager/screens/manager_billing_screen.dart';
+import '../features/manager/screens/manager_contracts_screen.dart';
 import '../features/manager/screens/manager_dashboard_screen.dart';
+import '../features/manager/screens/manager_equipment_screen.dart';
+import '../features/manager/screens/manager_identity_review_screen.dart';
 import '../features/manager/screens/manager_rooms_screen.dart';
 import '../features/manager/screens/manager_tasks_screen.dart';
 import '../features/profile/notifications_screen.dart';
@@ -132,6 +140,50 @@ final GoRouter appRouter = GoRouter(
           code: extraMap['code'] as String? ?? 'TXN-000000',
         );
       },
+    ),
+
+    // Customer Extended Sub-screens
+    GoRoute(
+      path: AppRoutes.customerBookings,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const MyBookingsScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.customerContracts,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const MyContractsScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.customerIdentity,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const IdentityDocumentsScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.customerMaintenance,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const MyMaintenanceRequestsScreen(),
+    ),
+
+    // Manager Extended Sub-screens
+    GoRoute(
+      path: AppRoutes.managerContracts,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const ManagerContractsScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.managerCreateContract,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const CreateContractScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.managerEquipments,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const ManagerEquipmentScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.managerIdentityReviews,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const ManagerIdentityReviewScreen(),
     ),
 
     // ==========================================

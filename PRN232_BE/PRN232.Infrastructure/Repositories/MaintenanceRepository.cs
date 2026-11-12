@@ -21,7 +21,11 @@ public class MaintenanceRepository : IMaintenanceRepository
         return await _context.MaintenanceRequests
             .AsNoTracking()
             .Where(r => customerId == null || r.Contract!.CustomerId == customerId)
-            .Where(r => assignedManagerId == null || r.AssignedTo == assignedManagerId)
+            .Where(r => assignedManagerId == null ||
+                (r.AssignedTo == assignedManagerId && r.Contract!.Room!.Property!.ManagerAssignments.Any(assignment =>
+                    assignment.ManagerId == assignedManagerId &&
+                    assignment.Manager!.IsActive &&
+                    assignment.Manager.Role!.RoleName == RoleNames.Manager)))
             .Where(r => status == null || r.Status == status)
             .Where(r => assignedTo == null || r.AssignedTo == assignedTo)
             .OrderBy(r => r.RequestId)
@@ -49,7 +53,11 @@ public class MaintenanceRepository : IMaintenanceRepository
             .AsNoTracking()
             .Where(r => r.RequestId == id)
             .Where(r => customerId == null || r.Contract!.CustomerId == customerId)
-            .Where(r => assignedManagerId == null || r.AssignedTo == assignedManagerId)
+            .Where(r => assignedManagerId == null ||
+                (r.AssignedTo == assignedManagerId && r.Contract!.Room!.Property!.ManagerAssignments.Any(assignment =>
+                    assignment.ManagerId == assignedManagerId &&
+                    assignment.Manager!.IsActive &&
+                    assignment.Manager.Role!.RoleName == RoleNames.Manager)))
             .Select(r => new MaintenanceRequestReadModel(
             r.RequestId,
             r.Description,
@@ -73,7 +81,11 @@ public class MaintenanceRepository : IMaintenanceRepository
         return await _context.MaintenanceRequests
             .AsNoTracking()
             .Where(r => r.RequestId == id)
-            .Where(r => assignedManagerId == null || r.AssignedTo == assignedManagerId)
+            .Where(r => assignedManagerId == null ||
+                (r.AssignedTo == assignedManagerId && r.Contract!.Room!.Property!.ManagerAssignments.Any(assignment =>
+                    assignment.ManagerId == assignedManagerId &&
+                    assignment.Manager!.IsActive &&
+                    assignment.Manager.Role!.RoleName == RoleNames.Manager)))
             .Select(r => new MaintenanceRequestStateReadModel(
             r.RequestId, r.ContractId, r.EquipmentId, r.AssignedTo, r.Status))
             .FirstOrDefaultAsync();
@@ -92,6 +104,16 @@ public class MaintenanceRepository : IMaintenanceRepository
             .Select(c => new MaintenanceContractReadModel(
             c.ContractId, c.RoomId, c.Room!.RoomCode, c.CustomerId, c.StartDate, c.EndDate, c.Status))
             .FirstOrDefaultAsync();
+    }
+
+    public Task<bool> HasActiveManagerAssignmentAsync(int contractId, int managerId)
+    {
+        return _context.Contracts.AnyAsync(contract =>
+            contract.ContractId == contractId &&
+            contract.Room!.Property!.ManagerAssignments.Any(assignment =>
+                assignment.ManagerId == managerId &&
+                assignment.Manager!.IsActive &&
+                assignment.Manager.Role!.RoleName == RoleNames.Manager));
     }
 
     public Task<int?> GetEquipmentRoomIdAsync(int equipmentId)
@@ -139,6 +161,29 @@ public class MaintenanceRepository : IMaintenanceRepository
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
 
+        if (assignedTo.HasValue)
+        {
+            var propertyId = await _context.MaintenanceRequests
+                .Where(request => request.RequestId == requestId)
+                .Select(request => (int?)request.Contract!.Room!.PropertyId)
+                .FirstOrDefaultAsync();
+            if (!propertyId.HasValue)
+            {
+                return false;
+            }
+
+            if (_context.Database.IsNpgsql())
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT assignment.\"PropertyId\" FROM \"PropertyManagerAssignments\" assignment WHERE assignment.\"PropertyId\" = {propertyId.Value} AND assignment.\"ManagerId\" = {assignedTo.Value} FOR SHARE");
+            }
+
+            if (!await HasActiveManagerAssignmentAsyncForProperty(propertyId.Value, assignedTo.Value))
+            {
+                return false;
+            }
+        }
+
         var updatedCount = await _context.MaintenanceRequests
             .Where(r => r.RequestId == requestId && r.Status == expectedStatus)
             .ExecuteUpdateAsync(update => update
@@ -174,7 +219,11 @@ public class MaintenanceRepository : IMaintenanceRepository
         var request = _context.MaintenanceRequests
             .Where(r => r.RequestId == requestId)
             .Where(r => customerId == null || r.Contract!.CustomerId == customerId)
-            .Where(r => assignedManagerId == null || r.AssignedTo == assignedManagerId);
+            .Where(r => assignedManagerId == null ||
+                (r.AssignedTo == assignedManagerId && r.Contract!.Room!.Property!.ManagerAssignments.Any(assignment =>
+                    assignment.ManagerId == assignedManagerId &&
+                    assignment.Manager!.IsActive &&
+                    assignment.Manager.Role!.RoleName == RoleNames.Manager)));
         if (!await request.AnyAsync())
         {
             return null;
@@ -240,6 +289,26 @@ public class MaintenanceRepository : IMaintenanceRepository
         IReadOnlyCollection<Notifications>? notifications = null)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
+        var propertyId = await _context.MaintenanceRequests
+            .Where(item => item.RequestId == requestId)
+            .Select(item => (int?)item.Contract!.Room!.PropertyId)
+            .FirstOrDefaultAsync();
+        if (!propertyId.HasValue)
+        {
+            return false;
+        }
+
+        if (_context.Database.IsNpgsql())
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT assignment.\"PropertyId\" FROM \"PropertyManagerAssignments\" assignment WHERE assignment.\"PropertyId\" = {propertyId.Value} AND assignment.\"ManagerId\" = {changedBy} FOR SHARE");
+        }
+
+        if (!await HasActiveManagerAssignmentAsyncForProperty(propertyId.Value, changedBy))
+        {
+            return false;
+        }
+
         if (await _context.MaintenanceReports.AnyAsync(item => item.RequestId == requestId))
         {
             return false;
@@ -271,5 +340,14 @@ public class MaintenanceRepository : IMaintenanceRepository
         await _context.SaveChangesAsync();
         await transaction.CommitAsync();
         return true;
+    }
+
+    private Task<bool> HasActiveManagerAssignmentAsyncForProperty(int propertyId, int managerId)
+    {
+        return _context.PropertyManagerAssignments.AnyAsync(assignment =>
+            assignment.PropertyId == propertyId &&
+            assignment.ManagerId == managerId &&
+            assignment.Manager!.IsActive &&
+            assignment.Manager.Role!.RoleName == RoleNames.Manager);
     }
 }

@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Npgsql;
 using PRN232.Api.Controllers;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
@@ -14,8 +15,235 @@ using Xunit;
 
 namespace PRN232.Application.Tests;
 
+public sealed class AmenityPostgreSqlFactAttribute : FactAttribute
+{
+    public AmenityPostgreSqlFactAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PRN232_AMENITY_TEST_POSTGRES_CONNECTION")))
+        {
+            Skip = "Set PRN232_AMENITY_TEST_POSTGRES_CONNECTION to an isolated local PostgreSQL server.";
+        }
+    }
+}
+
 public sealed class PublicPropertyListingApiTests
 {
+    [Theory]
+    [InlineData("/api/public/properties?district=", "Quận 7", "Khu vực Quận 7 cũ")]
+    [InlineData("/api/public/properties/by-area?district=", "Quận 7", "Khu vực Quận 7 cũ")]
+    [InlineData("/api/public/properties?district=", "quan 7", "Khu vực Quận 7 cũ")]
+    [InlineData("/api/public/properties/by-area?district=", "quan 7", "Khu vực Quận 7 cũ")]
+    [InlineData("/api/public/properties?district=", "Gò Vấp", "Khu vực Quận Gò Vấp cũ")]
+    [InlineData("/api/public/properties/by-area?district=", "Go Vap", "Khu vực Quận Gò Vấp cũ")]
+    [InlineData("/api/public/properties?district=", "Quận 7", "Quận 7")]
+    [InlineData("/api/public/properties/by-area?district=", "Quận 7", "Quận 7")]
+    public async Task Home_location_search_finds_legacy_district_names(string endpoint, string district, string storedDistrict)
+    {
+        using var factory = new PublicPropertiesApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var property = await context.Properties.SingleAsync(property => property.PropertyId == 1);
+            property.District = storedDistrict;
+            property.City = "Thành phố Hồ Chí Minh";
+            property.Ward = "Tân Thuận";
+            property.Latitude = 10.738m;
+            property.Longitude = 106.728m;
+            var other = await context.Properties.SingleAsync(property => property.PropertyId == 2);
+            other.District = "Khu vực Quận 70 cũ";
+            await context.SaveChangesAsync();
+        }
+
+        using var response = await client.GetAsync(endpoint + Uri.EscapeDataString(district));
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var items = endpoint.Contains("by-area")
+            ? document.RootElement : document.RootElement.GetProperty("items");
+        Assert.Equal(new[] { 1 }, items.EnumerateArray()
+            .Select(property => property.GetProperty("propertyId").GetInt32()));
+    }
+
+    [Theory]
+    [InlineData("/api/public/properties?")]
+    [InlineData("/api/public/properties/by-area?")]
+    public async Task Home_location_search_combines_normalized_city_district_and_ward(string endpoint)
+    {
+        using var factory = new PublicPropertiesApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var property = await context.Properties.SingleAsync(property => property.PropertyId == 1);
+            property.City = "Thành phố Hồ Chí Minh";
+            property.District = "Khu vực Quận 7 cũ";
+            property.Ward = "Tân Thuận";
+            await context.SaveChangesAsync();
+        }
+
+        using var response = await client.GetAsync(endpoint + "city=TP.HCM&district=quan%207&ward=Phuong%20Tan%20Thuan");
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var items = endpoint.Contains("by-area")
+            ? document.RootElement : document.RootElement.GetProperty("items");
+        Assert.Equal(new[] { 1 }, items.EnumerateArray()
+            .Select(property => property.GetProperty("propertyId").GetInt32()));
+    }
+
+    [AmenityPostgreSqlFact]
+    public async Task Mixed_amenity_search_executes_on_isolated_postgresql_with_correct_counts_and_pagination()
+    {
+        var connectionBuilder = new NpgsqlConnectionStringBuilder(
+            Environment.GetEnvironmentVariable("PRN232_AMENITY_TEST_POSTGRES_CONNECTION"));
+        if (connectionBuilder.Host is not ("localhost" or "127.0.0.1"))
+        {
+            throw new InvalidOperationException("Amenity integration tests require a local PostgreSQL server.");
+        }
+        connectionBuilder.Database = "postgres";
+        connectionBuilder.Pooling = false;
+        await using var admin = new NpgsqlConnection(connectionBuilder.ConnectionString);
+        await admin.OpenAsync();
+        var databaseName = $"prn232_amenity_test_{Guid.NewGuid():N}";
+        await using (var create = new NpgsqlCommand($"CREATE DATABASE \"{databaseName}\"", admin))
+        {
+            await create.ExecuteNonQueryAsync();
+        }
+        try
+        {
+            connectionBuilder.Database = databaseName;
+            using var factory = new PublicPropertiesApiFactory(postgresConnection: connectionBuilder.ConnectionString);
+            using var client = factory.CreateClient();
+            using (var scope = factory.Services.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                context.RoomAmenities.RemoveRange(context.RoomAmenities);
+                context.PropertyAmenities.RemoveRange(context.PropertyAmenities);
+                await context.SaveChangesAsync();
+                context.PropertyAmenities.AddRange(
+                    new PropertyAmenities { PropertyId = 1, AmenityId = 1 },
+                    new PropertyAmenities { PropertyId = 1, AmenityId = 3 });
+                context.RoomAmenities.AddRange(
+                    new RoomAmenities { RoomId = 102, AmenityId = 1 },
+                    new RoomAmenities { RoomId = 102, AmenityId = 2 },
+                    new RoomAmenities { RoomId = 103, AmenityId = 4 },
+                    new RoomAmenities { RoomId = 100, AmenityId = 2 },
+                    new RoomAmenities { RoomId = 201, AmenityId = 2 });
+                await context.SaveChangesAsync();
+            }
+            using var mixed = await GetListingAsync(client, "?amenityIds=1&amenityIds=2&amenityIds=3");
+            Assert.Equal(new[] { 1 }, GetPropertyIds(mixed));
+            Assert.Equal(1, mixed.RootElement.GetProperty("totalCount").GetInt32());
+            Assert.Equal(1, GetItem(mixed, 1).GetProperty("availableRoomCount").GetInt32());
+            using var roomsResponse = await client.GetAsync("/api/public/properties/1/rooms?amenityIds=1&amenityIds=2");
+            roomsResponse.EnsureSuccessStatusCode();
+            using var rooms = JsonDocument.Parse(await roomsResponse.Content.ReadAsStringAsync());
+            Assert.Equal(102, Assert.Single(rooms.RootElement.GetProperty("items").EnumerateArray()).GetProperty("roomId").GetInt32());
+            using var split = await GetListingAsync(client, "?amenityIds=1&amenityIds=2&amenityIds=4");
+            Assert.Empty(GetPropertyIds(split));
+            using (var scope = factory.Services.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                context.PropertyAmenities.Add(new PropertyAmenities { PropertyId = 2, AmenityId = 1 });
+                await context.SaveChangesAsync();
+            }
+            using var firstPage = await GetListingAsync(client, "?amenityIds=1&amenityIds=2&pageSize=1&page=1");
+            using var secondPage = await GetListingAsync(client, "?amenityIds=1&amenityIds=2&pageSize=1&page=2");
+            Assert.Equal(2, firstPage.RootElement.GetProperty("totalCount").GetInt32());
+            Assert.Equal(2, secondPage.RootElement.GetProperty("totalCount").GetInt32());
+            Assert.Equal(new[] { 1 }, GetPropertyIds(firstPage));
+            Assert.Equal(new[] { 2 }, GetPropertyIds(secondPage));
+        }
+        finally
+        {
+            await using var drop = new NpgsqlCommand($"DROP DATABASE \"{databaseName}\" WITH (FORCE)", admin);
+            await drop.ExecuteNonQueryAsync();
+        }
+    }
+
+    [Theory]
+    [InlineData("amenityIds=1", 3)]
+    [InlineData("amenityIds=1&amenityIds=2", 1)]
+    [InlineData("amenityIds=1&amenityIds=2&amenityIds=3", 1)]
+    [InlineData("amenityIds=1&amenityIds=4", 2)]
+    [InlineData("amenityIds=1&amenityIds=2&amenityIds=4", 1)]
+    public async Task Amenities_match_the_same_rentable_room_or_its_property(string query, int matchingRoomCount)
+    {
+        using var factory = new PublicPropertiesApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            context.RoomAmenities.RemoveRange(context.RoomAmenities);
+            context.PropertyAmenities.RemoveRange(context.PropertyAmenities);
+            await context.SaveChangesAsync();
+            context.PropertyAmenities.AddRange(
+                new PropertyAmenities { PropertyId = 1, AmenityId = 1 },
+                new PropertyAmenities { PropertyId = 1, AmenityId = 3 });
+            context.RoomAmenities.AddRange(
+                new RoomAmenities { RoomId = 102, AmenityId = 2 },
+                new RoomAmenities { RoomId = 102, AmenityId = 4 },
+                new RoomAmenities { RoomId = 103, AmenityId = 4 },
+                new RoomAmenities { RoomId = 100, AmenityId = 2 },
+                new RoomAmenities { RoomId = 201, AmenityId = 2 });
+            await context.SaveChangesAsync();
+        }
+
+        using var listing = await GetListingAsync(client, $"?{query}&pageSize=1");
+        Assert.Equal(new[] { 1 }, GetPropertyIds(listing));
+        Assert.Equal(1, listing.RootElement.GetProperty("totalCount").GetInt32());
+        Assert.Equal(matchingRoomCount, GetItem(listing, 1).GetProperty("availableRoomCount").GetInt32());
+        using var response = await client.GetAsync($"/api/public/properties/1/rooms?{query}");
+        response.EnsureSuccessStatusCode();
+        using var rooms = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(matchingRoomCount, rooms.RootElement.GetProperty("totalCount").GetInt32());
+        Assert.DoesNotContain(rooms.RootElement.GetProperty("items").EnumerateArray(), room => room.GetProperty("roomId").GetInt32() == 100);
+    }
+
+    [Fact]
+    public async Task Common_amenities_do_not_combine_amenities_from_different_rooms()
+    {
+        using var factory = new PublicPropertiesApiFactory();
+        using var client = factory.CreateClient();
+        using var listing = await GetListingAsync(client, "?amenityIds=1&amenityIds=2&amenityIds=3");
+        Assert.DoesNotContain(1, GetPropertyIds(listing));
+        using var response = await client.GetAsync("/api/public/properties/1/rooms?amenityIds=1&amenityIds=2&amenityIds=3");
+        response.EnsureSuccessStatusCode();
+        using var rooms = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(0, rooms.RootElement.GetProperty("totalCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task Anonymous_amenity_catalog_reflects_additions_and_deletions_in_the_test_database()
+    {
+        using var factory = new PublicPropertiesApiFactory();
+        using var client = factory.CreateClient();
+        int amenityId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var amenity = new Amenities { Name = "Tiện ích mới từ test database" };
+            context.Amenities.Add(amenity);
+            await context.SaveChangesAsync();
+            amenityId = amenity.AmenityId;
+        }
+        using var response = await client.GetAsync("/api/amenities");
+        response.EnsureSuccessStatusCode();
+        using var catalog = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Contains(catalog.RootElement.EnumerateArray(), amenity =>
+            amenity.GetProperty("amenityId").GetInt32() == amenityId &&
+            amenity.GetProperty("name").GetString() == "Tiện ích mới từ test database");
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            context.Amenities.Remove(await context.Amenities.SingleAsync(amenity => amenity.AmenityId == amenityId));
+            await context.SaveChangesAsync();
+        }
+        using var updatedResponse = await client.GetAsync("/api/amenities");
+        updatedResponse.EnsureSuccessStatusCode();
+        using var updatedCatalog = JsonDocument.Parse(await updatedResponse.Content.ReadAsStringAsync());
+        Assert.DoesNotContain(updatedCatalog.RootElement.EnumerateArray(), amenity => amenity.GetProperty("amenityId").GetInt32() == amenityId);
+    }
+
     private static readonly DateTimeOffset AsOfUtc = new(2026, 10, 19, 5, 0, 0, TimeSpan.Zero);
 
     [Fact]
@@ -885,6 +1113,7 @@ public sealed class PublicPropertyListingApiTests
         private readonly string _databaseName = Guid.NewGuid().ToString();
         private readonly bool? _propertyDetailEnrichmentEnabled;
         private readonly string _environment;
+        private readonly string? _postgresConnection;
         public FixedTimeProvider Clock
         {
             get;
@@ -893,10 +1122,12 @@ public sealed class PublicPropertyListingApiTests
         public PublicPropertiesApiFactory(
             bool? propertyDetailEnrichmentEnabled = false,
             DateTimeOffset? utcNow = null,
-            string environment = "Testing")
+            string environment = "Testing",
+            string? postgresConnection = null)
         {
             _propertyDetailEnrichmentEnabled = propertyDetailEnrichmentEnabled;
             _environment = environment;
+            _postgresConnection = postgresConnection;
             Clock = new FixedTimeProvider(utcNow ?? AsOfUtc);
         }
 
@@ -925,7 +1156,17 @@ public sealed class PublicPropertyListingApiTests
                 services.RemoveAll<DbContextOptions<AppDbContext>>();
                 services.RemoveAll<TimeProvider>();
                 services.AddSingleton<TimeProvider>(Clock);
-                services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase(_databaseName));
+                services.AddDbContext<AppDbContext>(options =>
+                {
+                    if (_postgresConnection is null)
+                    {
+                        options.UseInMemoryDatabase(_databaseName);
+                    }
+                    else
+                    {
+                        options.UseNpgsql(_postgresConnection);
+                    }
+                });
             });
         }
 

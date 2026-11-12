@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Services;
+using PRN232.Application.States;
 
 namespace PRN232.Api.Controllers;
 
@@ -19,15 +20,36 @@ public class EquipmentsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<EquipmentDto>>> GetAll([FromQuery] int? roomId)
+    public async Task<ActionResult<IEnumerable<EquipmentDto>>> GetAll(
+        [FromQuery] int? roomId,
+        [FromQuery] int? propertyId,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize)
     {
-        return Ok(await _equipmentService.GetAllAsync(roomId));
+        try
+        {
+            return Ok(await _equipmentService.GetAllAsync(
+                roomId,
+                propertyId,
+                status,
+                search,
+                CurrentUserId(),
+                CurrentRole(),
+                page,
+                pageSize));
+        }
+        catch (EquipmentBusinessRuleException exception)
+        {
+            return BadRequest(new ProblemDetails { Title = "Invalid equipment filter", Detail = exception.Message });
+        }
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<EquipmentDto>> GetById(int id)
     {
-        var equipment = await _equipmentService.GetByIdAsync(id);
+        var equipment = await _equipmentService.GetByIdAsync(id, CurrentUserId(), CurrentRole());
         if (equipment is null)
         {
             return NotFound();
@@ -40,7 +62,7 @@ public class EquipmentsController : ControllerBase
     {
         try
         {
-            var created = await _equipmentService.CreateAsync(dto, CurrentUserId(), IsAdmin());
+            var created = await _equipmentService.CreateAsync(dto, CurrentUserId(), CurrentRole());
             return CreatedAtAction(nameof(GetById), new
             {
                 id = created.EquipmentId
@@ -48,7 +70,7 @@ public class EquipmentsController : ControllerBase
         }
         catch (EquipmentForbiddenException exception)
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Not the owner", Detail = exception.Message });
+            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Equipment access denied", Detail = exception.Message });
         }
         catch (EquipmentBusinessRuleException exception)
         {
@@ -61,7 +83,7 @@ public class EquipmentsController : ControllerBase
     {
         try
         {
-            var updated = await _equipmentService.UpdateAsync(id, dto, CurrentUserId(), IsAdmin());
+            var updated = await _equipmentService.UpdateAsync(id, dto, CurrentUserId(), CurrentRole());
             if (updated is null)
             {
                 return NotFound();
@@ -70,7 +92,7 @@ public class EquipmentsController : ControllerBase
         }
         catch (EquipmentForbiddenException exception)
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Not the owner", Detail = exception.Message });
+            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Equipment access denied", Detail = exception.Message });
         }
         catch (EquipmentBusinessRuleException exception)
         {
@@ -83,7 +105,7 @@ public class EquipmentsController : ControllerBase
     {
         try
         {
-            var operationSucceeded = await _equipmentService.DeleteAsync(id, CurrentUserId(), IsAdmin());
+            var operationSucceeded = await _equipmentService.DeleteAsync(id, CurrentUserId(), CurrentRole());
             if (!operationSucceeded)
             {
                 return NotFound();
@@ -92,7 +114,11 @@ public class EquipmentsController : ControllerBase
         }
         catch (EquipmentForbiddenException exception)
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Not the owner", Detail = exception.Message });
+            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Equipment access denied", Detail = exception.Message });
+        }
+        catch (EquipmentDependencyConflictException exception)
+        {
+            return Conflict(new ProblemDetails { Title = "Equipment has maintenance history", Detail = exception.Message });
         }
     }
 
@@ -106,8 +132,8 @@ public class EquipmentsController : ControllerBase
         return int.Parse(subjectId);
     }
 
-    private bool IsAdmin()
+    private string CurrentRole()
     {
-        return User.IsInRole("Admin");
+        return User.IsInRole(RoleNames.Admin) ? RoleNames.Admin : RoleNames.Manager;
     }
 }

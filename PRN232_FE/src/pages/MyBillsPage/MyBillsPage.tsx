@@ -123,8 +123,11 @@ export default function MyBillsPage() {
               </div>
               <div className="mt-5 flex items-end justify-between border-t border-slate-100 pt-5">
                 <div>
-                  <p className="text-[13px] text-slate-400">Tổng cộng</p>
+                  <p className="text-[13px] text-slate-400">Tổng hóa đơn</p>
                   <p className="mt-1 text-[22px] font-bold text-[#087775]">{formatVnd(invoice.total)}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Trả trước đã trừ {formatVnd(invoice.prepaidRentApplied ?? 0)} · Còn phải trả {formatVnd(invoice.remainingPayable ?? invoice.netPayable ?? invoice.total)}
+                  </p>
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -139,7 +142,7 @@ export default function MyBillsPage() {
                   >
                     Khiếu nại
                   </button>
-                  {invoice.status !== "Paid" && (
+                  {invoice.status !== "Paid" && (invoice.remainingPayable ?? invoice.netPayable ?? invoice.total) > 0 && (
                     <button
                       onClick={() => setPaying(invoice)}
                       className="rounded-lg bg-[#087775] px-3 py-2.5 text-[12px] font-bold text-white"

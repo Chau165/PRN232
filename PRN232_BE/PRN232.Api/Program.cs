@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
@@ -17,8 +18,11 @@ using PRN232.Infrastructure.Security;
 using PRN232.Api.Security;
 using PRN232.Api.Swagger;
 using PRN232.Infrastructure.Storage;
+using PRN232.Infrastructure.Geocoding;
 using PRN232.Infrastructure.PaymentGateways;
 using PRN232.Api.Configuration;
+using PRN232.Api.Hubs;
+using PRN232.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddPayOSConfiguration(builder.Configuration, builder.Environment);
@@ -30,17 +34,15 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // ---- CORS: chỉ origin của FE ----
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
-if (allowedOrigins is null)
-{
-    allowedOrigins = new[] { "http://localhost:5173" };
-}
+allowedOrigins ??= [];
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendPolicy", policy =>
     {
         policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
-              .AllowAnyMethod();
+              .AllowAnyMethod()
+              .AllowCredentials();
     });
 });
 
@@ -104,6 +106,21 @@ builder.Services.AddAuthentication(options =>
     // dùng được. Mỗi request đều kiểm tra lại user còn tồn tại và còn active trong DB.
     options.Events = new JwtBearerEvents
     {
+        // Browser SignalR transports need the token in the query string. Accept it only
+        // on this Hub's transport and negotiate endpoints, never on ordinary API routes.
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var requestPath = context.HttpContext.Request.Path.Value;
+            var isNotificationHubEndpoint =
+                string.Equals(requestPath, "/hubs/notifications", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(requestPath, "/hubs/notifications/negotiate", StringComparison.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(accessToken) && isNotificationHubEndpoint)
+            {
+                context.Token = accessToken;
+            }
+            return Task.CompletedTask;
+        },
         OnTokenValidated = async context =>
         {
             if (!int.TryParse(context.Principal?.FindFirst("sub")?.Value, out var userId) || userId <= 0)
@@ -154,11 +171,32 @@ builder.Services.AddRateLimiter(options =>
 // Railway đứng sau reverse proxy: không đọc X-Forwarded-For thì mọi request đều có IP của proxy
 // và lại dùng chung một hạn mức. ForwardLimit mặc định = 1 nên chỉ lấy IP do proxy gắn vào
 // cuối header, client tự thêm IP giả ở đầu header cũng không có tác dụng.
+var knownProxyAddresses = builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? [];
+var knownProxyNetworks = builder.Configuration.GetSection("ForwardedHeaders:KnownNetworks").Get<string[]>() ?? [];
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    options.KnownNetworks.Clear();
-    options.KnownProxies.Clear();
+    options.ForwardLimit = 1;
+    foreach (var configuredProxy in knownProxyAddresses)
+    {
+        if (!IPAddress.TryParse(configuredProxy, out var proxyAddress))
+        {
+            throw new InvalidOperationException("ForwardedHeaders:KnownProxies must contain valid IP addresses.");
+        }
+        options.KnownProxies.Add(proxyAddress);
+    }
+    foreach (var configuredNetwork in knownProxyNetworks)
+    {
+        var separator = configuredNetwork.LastIndexOf('/');
+        if (separator <= 0 ||
+            !IPAddress.TryParse(configuredNetwork[..separator], out var networkAddress) ||
+            !int.TryParse(configuredNetwork[(separator + 1)..], out var prefixLength) ||
+            prefixLength < 0 || prefixLength > networkAddress.GetAddressBytes().Length * 8)
+        {
+            throw new InvalidOperationException("ForwardedHeaders:KnownNetworks must contain valid CIDR ranges.");
+        }
+        options.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(networkAddress, prefixLength));
+    }
 });
 
 // ---- DI: mỗi module thêm repository + service của mình vào đây theo đúng mẫu Roles ----
@@ -168,7 +206,12 @@ builder.Services.AddScoped<IMaintenanceRepository, MaintenanceRepository>();
 builder.Services.AddScoped<IMaintenanceService, MaintenanceService>();
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<INotificationRealtimePublisher, NotificationRealtimePublisher>();
+builder.Services.AddSignalR();
 builder.Services.AddHttpClient<IMaintenanceReportImageStorage, SupabaseMaintenanceReportImageStorage>();
+builder.Services.AddHttpClient<IPropertyImageStorage, SupabasePropertyImageStorage>();
+builder.Services.AddHttpClient<IRoomImageStorage, SupabaseRoomImageStorage>();
+builder.Services.AddHttpClient<IPropertyGeocodingService, NominatimPropertyGeocodingService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddSingleton(TimeProvider.System);
@@ -185,6 +228,8 @@ builder.Services.AddScoped<IServiceRepository, ServiceRepository>();
 builder.Services.AddScoped<IServiceService, ServiceCatalogService>();
 builder.Services.AddScoped<IPropertyRepository, PropertyRepository>();
 builder.Services.AddScoped<IPropertyService, PropertyService>();
+builder.Services.AddScoped<IPropertyManagerAssignmentRepository, PropertyManagerAssignmentRepository>();
+builder.Services.AddScoped<IPropertyManagerAssignmentService, PropertyManagerAssignmentService>();
 builder.Services.AddScoped<IRoomTypeRepository, RoomTypeRepository>();
 builder.Services.AddScoped<IRoomTypeService, RoomTypeService>();
 builder.Services.AddScoped<IRoomRepository, RoomRepository>();
@@ -284,6 +329,10 @@ app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<NotificationHub>("/hubs/notifications", options =>
+{
+    options.CloseOnAuthenticationExpiration = true;
+});
 
 app.Run();
 

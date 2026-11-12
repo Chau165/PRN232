@@ -3,6 +3,7 @@ import {
   AreaDiscoveryError,
   buildGoogleMapsDirectionsUrl,
   discoverCurrentArea,
+  discoverEnteredArea,
 } from "@/utils/areaDiscovery"
 import type {
   PublicPropertyAreaCard,
@@ -17,12 +18,12 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function locationPermission(
-  errorCode?: number,
-): Geolocation {
+  errorCode?: number): Geolocation {
   return {
     getCurrentPosition: vi.fn((success, error) => {
       if (errorCode !== undefined) {
-        error?.({ code: errorCode, message: "location unavailable" } as GeolocationPositionError)
+        error?.({ code: errorCode, message: "location unavailable",
+        } as GeolocationPositionError)
         return
       }
 
@@ -33,7 +34,8 @@ function locationPermission(
   } as unknown as Geolocation
 }
 
-function property(overrides: Partial<PublicPropertyAreaCard> = {}): PublicPropertyAreaCard {
+function property(overrides: Partial<PublicPropertyAreaCard> = {},
+): PublicPropertyAreaCard {
   return {
     propertyId: 42,
     propertyName: "Residence từ API",
@@ -50,15 +52,181 @@ function property(overrides: Partial<PublicPropertyAreaCard> = {}): PublicProper
   }
 }
 
+describe("typed-area property discovery", () => {
+  it("finds Quận 7 properties even when Photon resolves the input to another province", async () => {
+    // Captured Photon response for q=Quận 7: a street in Gia Lai, not the requested district.
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
+      features: [{
+        geometry: { coordinates: [109.1479799, 13.7874638] },
+        properties: {
+          name: "Lac Long Quan road", type: "street", osm_value: "trunk",
+          district: "North Quy Nhon", city: "Diêu Trì", state: "Gia Lai province",
+        },
+      }],
+    }))
+    const expectedProperty = property({ district: "Khu vực Quận 7 cũ", latitude: 10.738, longitude: 106.728 })
+    const listPropertiesByArea = vi.fn(async (query: PublicPropertyAreaQuery) =>
+      query.district === "Quận 7" ? [expectedProperty] : [],
+    )
+
+    const result = await discoverEnteredArea("Quận 7", {
+      fetchImplementation: fetchMock, listPropertiesByArea,
+    })
+
+    expect(result.properties).toEqual([expectedProperty])
+    expect(result.area.district).toBe("Quận 7")
+    expect(result.coordinates).toEqual({ latitude: 10.738, longitude: 106.728 })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["Quận Gò Vấp", { district: "Quận Gò Vấp" }],
+    ["quan 7", { district: "quan 7" }],
+    ["Phường Tân Thuận", { ward: "Phường Tân Thuận" }],
+    ["Thành phố Hồ Chí Minh", { city: "Thành phố Hồ Chí Minh" }],
+    ["Quận 7, TP.HCM", { district: "Quận 7", city: "TP.HCM" }],
+    ["Phường Tân Thuận, Quận 7, TP.HCM", { ward: "Phường Tân Thuận", district: "Quận 7", city: "TP.HCM" }],
+  ])("looks up explicit administrative input %s without external geocoding", async (input, query) => {
+    const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(new Error("offline"))
+    const listPropertiesByArea = vi.fn().mockResolvedValue([property()])
+    const onLocation = vi.fn()
+    const controller = new AbortController()
+    const result = await discoverEnteredArea(input, {
+      fetchImplementation: fetchMock, listPropertiesByArea, onLocation, signal: controller.signal,
+    })
+    expect(listPropertiesByArea).toHaveBeenCalledWith(query, controller.signal)
+    expect(result.properties).toEqual([property()])
+    expect(onLocation).toHaveBeenCalledWith(result.coordinates)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("keeps an explicit district filter when no matching properties exist", async () => {
+    const listPropertiesByArea = vi.fn().mockResolvedValue([])
+    const result = await discoverEnteredArea("Quận 7", {
+      fetchImplementation: vi.fn().mockResolvedValue(jsonResponse({
+        features: [{ geometry: { coordinates: [109.14, 13.78] },
+          properties: { district: "North Quy Nhon", city: "Diêu Trì" } }],
+      })),
+      listPropertiesByArea,
+    })
+    expect(result.properties).toEqual([])
+    expect(result.area).toEqual({ district: "Quận 7" })
+    expect(listPropertiesByArea).toHaveBeenCalledExactlyOnceWith({ district: "Quận 7" }, undefined)
+  })
+
+  it("preserves unlocated properties without inventing property coordinates", async () => {
+    const unlocated = property({ latitude: 0, longitude: 0 })
+    const result = await discoverEnteredArea("Quận 7", {
+      fetchImplementation: vi.fn().mockResolvedValue(jsonResponse({
+        features: [{ geometry: { coordinates: [106.72, 10.73] }, properties: { district: "Quận 7" } }],
+      })),
+      listPropertiesByArea: vi.fn().mockResolvedValue([unlocated]),
+    })
+    expect(result.properties).toEqual([unlocated])
+    expect(result.coordinates).toEqual({ latitude: 10.73, longitude: 106.72 })
+  })
+
+  it("reports local API failures instead of silently switching to an unrelated geocoded area", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    await expect(discoverEnteredArea("Quận 7", {
+      fetchImplementation: fetchMock,
+      listPropertiesByArea: vi.fn().mockRejectedValue(new Error("unavailable")),
+    })).rejects.toMatchObject({ kind: "area-api" })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("does not publish local results after the request is aborted", async () => {
+    const controller = new AbortController()
+    const onLocation = vi.fn()
+    await expect(discoverEnteredArea("Quận 7", {
+      fetchImplementation: vi.fn(), signal: controller.signal, onLocation,
+      listPropertiesByArea: vi.fn(async () => {
+        controller.abort()
+        return [property()]
+      }),
+    })).rejects.toMatchObject({ name: "AbortError" })
+    expect(onLocation).not.toHaveBeenCalled()
+  })
+
+  it("supports city searches and encodes Vietnamese input", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        features: [
+          {
+            geometry: { coordinates: [105.85, 21.03] },
+
+            properties: { name: "Hà Nội", osm_value: "city" },
+          },
+        ],
+      }),
+    )
+
+    const listPropertiesByArea = vi.fn().mockResolvedValue([])
+
+    const result = await discoverEnteredArea("  Hà Nội  ", {
+      fetchImplementation: fetchMock,
+      listPropertiesByArea,
+    })
+
+    expect(result.matchedLevel).toBe("city")
+
+    expect(result.coordinates).toEqual({ latitude: 21.03, longitude: 105.85 })
+
+    expect(listPropertiesByArea.mock.calls[0][0]).toEqual({ city: "Hà Nội" })
+
+    const url = new URL(String(fetchMock.mock.calls[0][0]))
+
+    expect(url.searchParams.get("q")).toBe("Hà Nội")
+
+    expect(url.searchParams.get("countrycode")).toBe("VN")
+  })
+
+  it("does not request properties when a place cannot be found", async () => {
+    const listPropertiesByArea = vi.fn()
+
+    await expect(
+      discoverEnteredArea("unknown", {
+        fetchImplementation: vi
+          .fn()
+          .mockResolvedValue(jsonResponse({ features: [] })),
+
+        listPropertiesByArea,
+      }),
+    ).rejects.toMatchObject({ kind: "geocode" })
+
+    expect(listPropertiesByArea).not.toHaveBeenCalled()
+  })
+
+  it("rejects invalid coordinates and failed geocoding requests", async () => {
+    for (const response of [
+      jsonResponse({ features: [{ geometry: { coordinates: [200, 100] } }] }),
+      jsonResponse({}, 503),
+    ]) {
+      const listPropertiesByArea = vi.fn()
+
+      await expect(
+        discoverEnteredArea("Hà Nội", {
+          fetchImplementation: vi.fn().mockResolvedValue(response),
+          listPropertiesByArea,
+        }),
+      ).rejects.toMatchObject({ kind: "geocode" })
+
+      expect(listPropertiesByArea).not.toHaveBeenCalled()
+    }
+  })
+})
+
 describe("current-area property discovery", () => {
   it("uses Photon reverse geocoding and resolves its district and city fields", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
-        features: [{ properties: { district: "Gò Vấp", city: "Ho Chi Minh City" } }],
+        features: [{ properties: { district: "Gò Vấp", city: "Ho Chi Minh City" } },
+        ],
       }),
     )
     const listPropertiesByArea = vi
-      .fn<(query: PublicPropertyAreaQuery) => Promise<PublicPropertyAreaCard[]>>()
+      .fn<(query: PublicPropertyAreaQuery,
+      ) => Promise<PublicPropertyAreaCard[]>>()
       .mockResolvedValue([property()])
 
     const result = await discoverCurrentArea({
@@ -67,11 +235,13 @@ describe("current-area property discovery", () => {
       listPropertiesByArea,
     })
 
-    expect(result.area).toEqual({ district: "Gò Vấp", city: "Ho Chi Minh City" })
+    expect(result.area).toEqual({ district: "Gò Vấp", city: "Ho Chi Minh City",
+    })
     expect(listPropertiesByArea).toHaveBeenCalledWith({
       district: "Gò Vấp",
       city: "Ho Chi Minh City",
-    }, undefined)
+    }, undefined,
+    )
     const reverseUrl = new URL(String(fetchMock.mock.calls[0][0]))
     expect(reverseUrl.hostname).toBe("photon.komoot.io")
     expect(reverseUrl.searchParams.has("format")).toBe(false)
@@ -88,7 +258,8 @@ describe("current-area property discovery", () => {
       }),
     ).rejects.toMatchObject({ kind: "reverse-geocode" })
 
-    expect(onLocation).toHaveBeenCalledWith({ latitude: 10.8231, longitude: 106.7624 })
+    expect(onLocation).toHaveBeenCalledWith({ latitude: 10.8231, longitude: 106.7624,
+    })
   })
 
   it("requests location, reverse-geocodes it, then loads the whole district", async () => {
@@ -104,7 +275,8 @@ describe("current-area property discovery", () => {
     )
     const properties = [property()]
     const listPropertiesByArea = vi
-      .fn<(query: PublicPropertyAreaQuery) => Promise<PublicPropertyAreaCard[]>>()
+      .fn<(query: PublicPropertyAreaQuery,
+      ) => Promise<PublicPropertyAreaCard[]>>()
       .mockResolvedValue(properties)
 
     const result = await discoverCurrentArea({
@@ -115,7 +287,8 @@ describe("current-area property discovery", () => {
     })
 
     expect(steps).toEqual(["location", "reverse-geocode", "properties"])
-    expect(result.coordinates).toEqual({ latitude: 10.8231, longitude: 106.7624 })
+    expect(result.coordinates).toEqual({ latitude: 10.8231, longitude: 106.7624,
+    })
     expect(result.area).toEqual({
       district: "Quận Gò Vấp",
       ward: "Phường Sáu",
@@ -126,7 +299,8 @@ describe("current-area property discovery", () => {
     expect(listPropertiesByArea).toHaveBeenCalledWith({
       district: "Quận Gò Vấp",
       city: "TP. Hồ Chí Minh",
-    }, undefined)
+    }, undefined,
+    )
     const reverseUrl = new URL(String(fetchMock.mock.calls[0][0]))
     expect(reverseUrl.hostname).toBe("photon.komoot.io")
     expect(reverseUrl.searchParams.get("lat")).toBe("10.8231")
@@ -145,7 +319,8 @@ describe("current-area property discovery", () => {
       }),
     )
     const listPropertiesByArea = vi
-      .fn<(query: PublicPropertyAreaQuery) => Promise<PublicPropertyAreaCard[]>>()
+      .fn<(query: PublicPropertyAreaQuery,
+      ) => Promise<PublicPropertyAreaCard[]>>()
       .mockResolvedValueOnce([])
 
     const result = await discoverCurrentArea({
@@ -157,7 +332,8 @@ describe("current-area property discovery", () => {
     expect(listPropertiesByArea).toHaveBeenNthCalledWith(1, {
       district: "Quận Gò Vấp",
       city: "Thành phố Hồ Chí Minh",
-    }, undefined)
+    }, undefined,
+    )
     expect(listPropertiesByArea).toHaveBeenCalledTimes(1)
     expect(result.matchedLevel).toBe("district")
     expect(result.properties).toEqual([])
@@ -174,7 +350,8 @@ describe("current-area property discovery", () => {
         ),
         listPropertiesByArea,
       }),
-    ).rejects.toMatchObject<Partial<AreaDiscoveryError>>({ kind: "area-not-specific" })
+    ).rejects.toMatchObject<Partial<AreaDiscoveryError>>({ kind: "area-not-specific",
+    })
     expect(listPropertiesByArea).not.toHaveBeenCalled()
   })
 
@@ -183,7 +360,8 @@ describe("current-area property discovery", () => {
       jsonResponse({ address: { suburb: "Phường Sáu", city: "TP.HCM" } }),
     )
     const listPropertiesByArea = vi
-      .fn<(query: PublicPropertyAreaQuery) => Promise<PublicPropertyAreaCard[]>>()
+      .fn<(query: PublicPropertyAreaQuery,
+      ) => Promise<PublicPropertyAreaCard[]>>()
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([property()])
 
@@ -196,7 +374,8 @@ describe("current-area property discovery", () => {
     expect(listPropertiesByArea).toHaveBeenNthCalledWith(1, {
       ward: "Phường Sáu",
       city: "TP.HCM",
-    }, undefined)
+    }, undefined,
+    )
     expect(listPropertiesByArea).toHaveBeenCalledTimes(1)
     expect(result.matchedLevel).toBe("ward")
     expect(result.properties).toEqual([])
@@ -209,7 +388,8 @@ describe("current-area property discovery", () => {
         fetchImplementation: vi.fn<typeof fetch>(),
         listPropertiesByArea: vi.fn(),
       }),
-    ).rejects.toMatchObject<Partial<AreaDiscoveryError>>({ kind: "permission-denied" })
+    ).rejects.toMatchObject<Partial<AreaDiscoveryError>>({ kind: "permission-denied",
+    })
   })
 
   it("reports missing location and reverse-geocoding failures", async () => {

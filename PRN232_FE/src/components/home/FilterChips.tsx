@@ -1,43 +1,38 @@
-import Icon from "@/components/common/Icon"
-
+import AmenityMultiSelect from "@/components/common/AmenityMultiSelect"
+import type { usePublicAmenities } from "@/hooks/usePublicAmenities"
 import type { PropertySearchDraft } from "@/utils/publicQueryState"
 
 type FilterChipsProps = {
   draft: PropertySearchDraft
-
-  onChange: (field: keyof PropertySearchDraft, value: string) => void
+  amenities: ReturnType<typeof usePublicAmenities>
+  onChange: <Field extends keyof PropertySearchDraft>(field: Field, value: PropertySearchDraft[Field]) => void
 }
 
-export default function FilterChips({ draft, onChange }: FilterChipsProps) {
+export default function FilterChips({ draft, amenities, onChange }: FilterChipsProps) {
   return (
-    <details open className="mt-3 rounded-lg border-t border-slate-100 pt-3">
-      <summary className="flex cursor-pointer list-none items-center gap-2 text-[13px] font-medium text-slate-500 hover:text-[#087775]">
-        <Icon name="sliders" size={15} />
-        Khu vực và tiện ích
-        <Icon name="chevron" size={14} />
-      </summary>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="space-y-5">
+      <div className="grid gap-4 sm:grid-cols-3">
         {([
-          ["city", "Thành phố", draft.city],
-
-          ["district", "Quận/Huyện", draft.district],
-
-          ["ward", "Phường/Xã", draft.ward],
-
-          ["amenityIds", "Mã tiện ích", draft.amenityIds],
-        ] as const).map(([field, label, value]) => (
-          <label key={field} className="text-[12px] font-medium text-slate-500">
+          ["city", "Thành phố"],
+          ["district", "Quận/Huyện"],
+          ["ward", "Phường/Xã"],
+        ] as const).map(([field, label]) => (
+          <label key={field} className="text-sm font-medium text-slate-700">
             {label}
             <input
-              aria-label={label}
-              value={value}
+              value={draft[field]}
               onChange={(event) => onChange(field, event.target.value)}
-              placeholder={field === "amenityIds" ? "Ví dụ: 2, 5" : label}
-              className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[13px] text-slate-700 outline-none focus:border-teal-600"
+              placeholder={label}
+              className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
             />
           </label>
         ))}
       </div>
-    </details>
+      <AmenityMultiSelect
+        resource={amenities}
+        selectedAmenityIds={draft.amenityIds}
+        onChange={(ids) => onChange("amenityIds", ids)}
+      />
+    </div>
   )
 }

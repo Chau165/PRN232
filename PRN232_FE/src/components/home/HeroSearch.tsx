@@ -1,7 +1,7 @@
 export default function HeroSearch() {
   return (
     <section id="gioi-thieu" className="hero-wash scroll-mt-24">
-      <div className="relative mx-auto grid max-w-[1180px] items-center gap-8 px-6 py-10 lg:grid-cols-[.9fr_1.1fr] lg:gap-12 lg:py-12">
+      <div className="public-container relative grid items-center gap-8 py-10 lg:grid-cols-[.9fr_1.1fr] lg:gap-12 lg:py-12">
         <div className="relative z-10 max-w-xl">
           <p className="mb-4 text-[12px] font-bold uppercase tracking-[.2em] text-[#087775]">
             Không gian sống đúng ý bạn

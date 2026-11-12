@@ -15,6 +15,23 @@ public record ContractDto(
     decimal MonthlyRent,
     decimal DepositAmount,
     string Status,
-    string? ProcessedByStaffName);
+    string? ProcessedByStaffName,
+    decimal PrepaidRentAmount = 0m,
+    decimal PrepaidRentApplied = 0m,
+    decimal RemainingPrepaidCredit = 0m,
+    string? PropertyAddress = null,
+    int? LessorUserId = null,
+    string? LessorName = null,
+    string? LessorAddress = null,
+    string DisplayStatus = "Upcoming");
 
 public record CreateContractDto(int BookingId, DateOnly StartDate, DateOnly EndDate);
+
+public record ExtendContractRequestDto(DateOnly NewEndDate);
+
+public record TerminateContractRequestDto(
+    bool CheckoutConfirmed,
+    bool RoomReadyForRental,
+    bool OutstandingDebtAcknowledged);
+
+public record TerminateContractResponseDto(ContractDto Contract, decimal OutstandingDebt);

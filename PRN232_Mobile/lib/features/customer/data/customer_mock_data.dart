@@ -325,4 +325,200 @@ class CustomerMockData {
       ],
     ),
   ];
+
+  // ==========================================
+  // DỮ LIỆU MOCK BỔ SUNG CHO CUSTOMER
+  // ==========================================
+
+  // 1. Danh sách Lịch hẹn xem phòng của tôi
+  static final List<CustomerViewingModel> myViewings = [
+    CustomerViewingModel(
+      id: 1,
+      propertyId: 1,
+      propertyName: 'Nhà trọ Bình An',
+      propertyAddress: '12 Đường Số 5, Phường 10, Gò Vấp, TP.HCM',
+      roomId: 101,
+      roomCode: 'P.101',
+      viewingDate: DateTime.now().add(const Duration(hours: 3)),
+      slotTime: '16:30 - 17:00',
+      note: 'Xem ban công thoáng mát và khu để xe máy',
+      status: 'Confirmed',
+    ),
+    CustomerViewingModel(
+      id: 2,
+      propertyId: 2,
+      propertyName: 'Khu Căn Hộ Mini Saigon Pearl',
+      propertyAddress: '45/3A Ung Văn Khiêm, Phường 25, Bình Thạnh, TP.HCM',
+      roomId: 202,
+      roomCode: 'Studio 202',
+      viewingDate: DateTime.now().add(const Duration(days: 2)),
+      slotTime: '09:00 - 09:30',
+      note: 'Muốn xem thực tế trước khi quyết định đặt cọc',
+      status: 'Pending',
+    ),
+  ];
+
+  // 2. Danh sách Đơn đặt cọc giữ chỗ của tôi
+  static final List<CustomerBookingModel> myBookings = [
+    CustomerBookingModel(
+      id: 101,
+      bookingCode: 'BK-2026-081',
+      propertyId: 1,
+      propertyName: 'Nhà trọ Bình An',
+      propertyAddress: '12 Đường Số 5, Phường 10, Gò Vấp, TP.HCM',
+      roomId: 204,
+      roomCode: 'P.204',
+      roomTypeName: 'Phòng Đơn Có Gác',
+      depositAmount: 3200000,
+      monthlyPrice: 3200000,
+      paymentMethod: 'Cổng VNPAY (Thẻ ATM/QR)',
+      bookingDate: DateTime(2026, 1, 1),
+      moveInDate: DateTime(2026, 1, 5),
+      status: 'ContractCreated',
+    ),
+    CustomerBookingModel(
+      id: 102,
+      bookingCode: 'BK-2026-112',
+      propertyId: 3,
+      propertyName: 'Nhà Trọ Sinh Viên Làng Đại Học',
+      propertyAddress: '88 Đường Số 6, Linh Trung, TP. Thủ Đức, TP.HCM',
+      roomId: 301,
+      roomCode: 'P.301',
+      roomTypeName: 'Studio Ban Công',
+      depositAmount: 3700000,
+      monthlyPrice: 3700000,
+      paymentMethod: 'Ví Điện Tử MoMo',
+      bookingDate: DateTime.now().subtract(const Duration(hours: 2)),
+      moveInDate: DateTime.now().add(const Duration(days: 7)),
+      status: 'Pending',
+    ),
+  ];
+
+  // 3. Danh sách Hợp đồng thuê của tôi
+  static final List<CustomerContractModel> myContracts = [
+    CustomerContractModel(
+      id: 204,
+      contractCode: 'HD-2026-204',
+      propertyId: 1,
+      propertyName: 'Nhà trọ Bình An',
+      propertyAddress: '12 Đường Số 5, Phường 10, Gò Vấp, TP.HCM',
+      roomId: 204,
+      roomCode: 'P.204',
+      roomTypeName: 'Phòng Đơn Có Gác • Tầng 2',
+      primaryTenantName: 'Nguyễn Văn An',
+      tenantCccd: '079201001234',
+      tenantPhone: '0901 234 567',
+      startDate: DateTime(2026, 1, 1),
+      endDate: DateTime(2026, 12, 31),
+      monthlyRent: 3200000,
+      depositAmount: 3200000,
+      paymentCycleMonths: 1,
+      terms: '1. Bên B có trách nhiệm thanh toán tiền thuê phòng từ ngày 01 đến ngày 05 hàng tháng.\n2. Giữ gìn vệ sinh chung, không làm ồn sau 23:00.\n3. Tiền đặt cọc được hoàn trả sau khi kết thúc hợp đồng và nghiệm thu phòng không hư hao tài sản.',
+      status: 'Active',
+      billingTimeline: [
+        ContractTimelineItem(
+          periodName: 'Kỳ 11/2026',
+          dueDate: DateTime(2026, 11, 10),
+          amount: 3462000,
+          isPaid: false,
+        ),
+        ContractTimelineItem(
+          periodName: 'Kỳ 10/2026',
+          dueDate: DateTime(2026, 10, 10),
+          amount: 3410000,
+          isPaid: true,
+        ),
+        ContractTimelineItem(
+          periodName: 'Kỳ 09/2026',
+          dueDate: DateTime(2026, 9, 10),
+          amount: 3385000,
+          isPaid: true,
+        ),
+      ],
+    ),
+    CustomerContractModel(
+      id: 101,
+      contractCode: 'HD-2025-101',
+      propertyId: 1,
+      propertyName: 'Nhà trọ Bình An',
+      propertyAddress: '12 Đường Số 5, Phường 10, Gò Vấp, TP.HCM',
+      roomId: 101,
+      roomCode: 'P.101',
+      roomTypeName: 'Studio Tiêu Chuẩn',
+      primaryTenantName: 'Nguyễn Văn An',
+      tenantCccd: '079201001234',
+      tenantPhone: '0901 234 567',
+      startDate: DateTime(2025, 1, 1),
+      endDate: DateTime(2025, 12, 31),
+      monthlyRent: 2900000,
+      depositAmount: 2900000,
+      paymentCycleMonths: 1,
+      terms: 'Đã hoàn tất hợp đồng và hoàn trả cọc đầy đủ ngày 31/12/2025.',
+      status: 'Terminated',
+      billingTimeline: const [],
+    ),
+  ];
+
+  // 4. Hồ sơ định danh CCCD của tôi
+  static IdentityDocumentModel? myIdentityDocument = IdentityDocumentModel(
+    id: 1,
+    fullName: 'NGUYỄN VĂN AN',
+    idNumber: '079201001234',
+    issueDate: DateTime(2022, 5, 10),
+    frontImageUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80',
+    backImageUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80',
+    status: 'Verified',
+    uploadedAt: DateTime(2026, 1, 2),
+  );
+
+  // 5. Danh sách yêu cầu báo hỏng sự cố của tôi
+  static final List<CustomerMaintenanceModel> myMaintenanceRequests = [
+    CustomerMaintenanceModel(
+      id: 1,
+      title: 'Vòi sen tắm rò rỉ nước',
+      description: 'Khách báo vòi nước tắm bị rò rỉ chảy liên tục gây lãng phí nước.',
+      roomCode: 'P.204',
+      propertyName: 'Nhà trọ Bình An',
+      priority: 'Khẩn cấp',
+      status: 'InProgress',
+      createdAt: DateTime.now().subtract(const Duration(hours: 4)),
+      technicianName: 'Lê Văn Hùng',
+      technicianPhone: '0987 654 321',
+      images: const [
+        'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=600&q=80',
+      ],
+    ),
+    CustomerMaintenanceModel(
+      id: 2,
+      title: 'Bảo dưỡng và vệ sinh máy lạnh',
+      description: 'Vệ sinh định kỳ và bơm gas điều hòa',
+      roomCode: 'P.204',
+      propertyName: 'Nhà trọ Bình An',
+      priority: 'Bình thường',
+      status: 'Completed',
+      createdAt: DateTime(2026, 10, 15),
+      technicianName: 'Nguyễn Văn Nam',
+      technicianPhone: '0912 345 678',
+      actualCost: 250000,
+      completedDate: DateTime(2026, 10, 16),
+      images: const [],
+    ),
+  ];
+
+  // Aliases và helper methods cho Network Fallback
+  static List<CustomerBookingModel> get bookings => myBookings;
+  static List<CustomerViewingModel> get viewings => myViewings;
+  static List<CustomerContractModel> get contracts => myContracts;
+  static List<InvoiceModel> get invoices => myInvoices;
+  static List<CustomerMaintenanceModel> get maintenanceRequests => myMaintenanceRequests;
+  static List<IdentityDocumentModel> get identityDocuments =>
+      myIdentityDocument != null ? [myIdentityDocument!] : [];
+  static List<EquipmentItem> get myEquipments => myRoomEquipments;
+  static RoomItem get myCurrentRoom => properties.first.rooms[1];
+
+  static PropertyItem getPropertyById(int id) =>
+      properties.firstWhere((p) => p.propertyId == id, orElse: () => properties.first);
+
+  static RoomItem getRoomById(int id) =>
+      properties.expand((p) => p.rooms).firstWhere((r) => r.roomId == id, orElse: () => properties.first.rooms.first);
 }

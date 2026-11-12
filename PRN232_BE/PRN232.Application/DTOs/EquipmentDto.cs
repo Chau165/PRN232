@@ -7,7 +7,10 @@ public record EquipmentDto(
     DateOnly InstallDate,
     DateOnly WarrantyExpiry,
     string Supplier,
-    string Status);
+    string Status,
+    string? RoomCode = null,
+    int? PropertyId = null,
+    string? PropertyName = null);
 
 public record CreateEquipmentDto(
     int RoomId,

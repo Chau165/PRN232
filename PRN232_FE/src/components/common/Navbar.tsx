@@ -5,6 +5,7 @@ import Icon from "@/components/common/Icon"
 import { useCustomerNotificationsState } from "@/auth/CustomerNotificationsContext"
 import { routes } from "@/constants/routes"
 import { scrollToHash } from "@/utils/scrollToHash"
+import { notificationPath } from "@/services/notificationNavigation"
 
 export default function Navbar() {
   const location = useLocation()
@@ -13,7 +14,6 @@ export default function Navbar() {
   const notificationState = useCustomerNotificationsState()
   const currentUser = auth?.user
   const authenticated = auth?.status === "authenticated" && currentUser !== null
-  const customer = authenticated && currentUser?.role === "CUSTOMER"
   const managementUser =
     currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER"
   const [profileOpen, setProfileOpen] = useState(false)
@@ -42,7 +42,7 @@ export default function Navbar() {
 
   return (
     <header className="border-b border-slate-100 bg-white">
-      <div className="relative mx-auto flex h-[76px] max-w-[1180px] items-center px-6">
+      <div className="public-container public-header relative flex h-[76px] items-center">
         <a href={routes.home} className="flex items-center gap-2.5">
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#087775] text-white">
             <Icon name="building" size={22} />
@@ -219,7 +219,7 @@ export default function Navbar() {
                         }
                         setNotificationsOpen(false)
                         setNotificationActionError(null)
-                        navigate(item.type === "Maintenance" ? (customer ? `${routes.myRoom}?tab=maintenance` : routes.managementMaintenance) : routes.notifications)
+                        navigate(notificationPath(item.type, currentUser?.role))
                       }}
                       className={`block w-full rounded-lg px-2 py-2.5 text-left hover:bg-slate-50 ${item.isRead ? "" : "bg-teal-50/50"}`}
                     >
@@ -228,8 +228,9 @@ export default function Navbar() {
                     </button>
                   ))}
                   {notificationActionError && <p role="alert" className="px-2 pt-2 text-[11px] text-rose-600">{notificationActionError}</p>}
+                  <p role="status" className="px-2 text-[10px] text-slate-400">{notificationState.connected ? "Đang kết nối realtime" : "Mất kết nối · đang đồng bộ dự phòng"}</p>
                   {authenticated && notificationState.notifications.length > 0 && <button onClick={() => { setNotificationsOpen(false); navigate(routes.notifications) }} className="mt-2 w-full border-t border-slate-100 px-2 pt-3 text-left text-[11px] font-semibold text-[#087775]">Xem tất cả</button>}
-                </div>
+                  </div>
               )}
             </>
           ) : (

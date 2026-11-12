@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/auth/AuthContext"
+import { ApiError } from "@/api/apiClient"
 import ManagementPage from "@/components/management/ManagementPage"
 import ManagementStatCard from "@/components/management/ManagementStatCard"
 import { getReceivablesReport, getRevenueReport, type ReceivablesReport, type RevenueReport } from "@/services/reportService"
@@ -13,15 +14,43 @@ export default function ManagementReportsPage() {
   const [loading, setLoading] = useState(true)
   const [version, setVersion] = useState(0)
   useEffect(() => {
-    if (!accessToken || !/^\d{4}-\d{2}$/.test(month)) return
-    const controller = new AbortController()
-    setLoading(true); setError(null); setData(null)
-    Promise.all([getRevenueReport(accessToken, month, controller.signal), getReceivablesReport(accessToken, controller.signal)])
-      .then(([revenue, debt]) => { if (!controller.signal.aborted) setData({ revenue, debt }) })
-      .catch(() => { if (!controller.signal.aborted) setError("Không thể tải báo cáo từ máy chủ. Vui lòng thử lại.") })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
-    return () => controller.abort()
-  }, [accessToken, month, version])
+  if (!accessToken || !/^\d{4}-\d{2}$/.test(month)) return
+
+  const controller = new AbortController()
+
+  setLoading(true)
+  setError(null)
+  setData(null)
+
+  async function loadReports() {
+    try {
+      const [revenue, debt] = await Promise.all([
+        getRevenueReport(accessToken!, month, controller.signal),
+        getReceivablesReport(accessToken!, controller.signal),
+      ])
+
+      if (controller.signal.aborted) return
+
+      setData({ revenue, debt })
+    } catch (failure: unknown) {
+      if (controller.signal.aborted) return
+
+      setError(
+        failure instanceof ApiError && failure.status === 403
+          ? "Bạn không có quyền xem báo cáo."
+          : "Không thể tải báo cáo từ máy chủ. Vui lòng thử lại.",
+      )
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoading(false)
+      }
+    }
+  }
+
+  void loadReports()
+
+  return () => controller.abort()
+}, [accessToken, month, version])
   return <ManagementPage title="Báo cáo" description="Doanh thu theo ngày nhận tiền và công nợ từ hóa đơn thực tế. Dữ liệu theo quyền quản lý hiện tại.">
     <div className="mb-6 flex flex-wrap items-end gap-3">
       <label className="text-sm font-semibold text-slate-700">Tháng doanh thu<input aria-label="Tháng doanh thu" type="month" value={month} onChange={event => { if (event.target.value) setMonth(event.target.value) }} className="ml-3 rounded-lg border border-slate-200 p-2" /></label>
@@ -44,4 +73,5 @@ export default function ManagementReportsPage() {
       </section>
     </>}
   </ManagementPage>
+
 }

@@ -1,89 +1,121 @@
 import Icon, { type IconName } from "@/components/common/Icon"
+
 import { routes } from "@/constants/routes"
+
 import type { CurrentUser } from "@/types/user"
 
 type ManagementSidebarProps = {
   user: CurrentUser
+
   pathname: string
+
   open: boolean
+
   onClose: () => void
 }
 
 type SidebarItem = {
   label: string
+
   href: string
+
   icon: IconName
+
   adminOnly?: boolean
 }
 
 const items: SidebarItem[] = [
   { label: "Dashboard", href: routes.managementDashboard, icon: "building" },
-  {
-    label: "Khu vực",
-    href: routes.managementAreas,
-    icon: "pin",
-    adminOnly: true,
-  },
+
   { label: "Khu trọ", href: routes.managementProperties, icon: "building" },
-  { label: "Phòng", href: routes.managementRooms, icon: "home" as IconName },
-  {
-    label: "Khách thuê",
-    href: routes.managementTenants,
-    icon: "user" as IconName,
-  },
+
   {
     label: "Đặt phòng & Đặt cọc",
+
     href: routes.managementBookings,
+
     icon: "calendar" as IconName,
   },
+
   {
     label: "Lịch xem phòng",
+
     href: routes.managementViewings,
+
     icon: "calendar" as IconName,
   },
+
   {
     label: "Hợp đồng",
+
     href: routes.managementContracts,
+
     icon: "file" as IconName,
   },
+
   {
     label: "Hóa đơn",
+
     href: routes.managementInvoices,
+
     icon: "receipt" as IconName,
   },
+
   {
     label: "Thiết bị",
+
     href: routes.managementEquipment,
+
     icon: "tool" as IconName,
   },
+
   {
     label: "Bảo trì / Sửa chữa",
+
     href: routes.managementMaintenance,
+
     icon: "wrench" as IconName,
   },
+
   {
     label: "Báo cáo",
+
     href: routes.managementReports,
+
     icon: "chart" as IconName,
+
+    adminOnly: true,
+
   },
+
   {
     label: "Phân công Manager",
+
     href: routes.managementManagers,
+
     icon: "users" as IconName,
+
     adminOnly: true,
   },
+
   {
     label: "Người dùng",
+
     href: routes.managementUsers,
+
     icon: "user" as IconName,
+
     adminOnly: true,
   },
 ]
 
 export default function ManagementSidebar({
   user,
+
   pathname,
+
   open,
+
   onClose,
 }: ManagementSidebarProps) {
   return (
@@ -126,12 +158,15 @@ export default function ManagementSidebar({
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto p-4">
           {items
+
             .filter((item) => !item.adminOnly || user.role === "ADMIN")
+
             .map((item) => {
               const active =
                 pathname === item.href ||
                 (item.href !== routes.managementDashboard &&
                   pathname.startsWith(item.href))
+
               return (
                 <a
                   key={item.href}

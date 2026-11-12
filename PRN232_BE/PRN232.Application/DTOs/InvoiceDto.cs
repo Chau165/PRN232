@@ -11,7 +11,14 @@ public record InvoiceDto(
     DateOnly DueDate,
     string Status,
     decimal Total,
-    IReadOnlyList<InvoiceLineDto> Lines);
+    IReadOnlyList<InvoiceLineDto> Lines,
+    decimal PrepaidRentApplied = 0m,
+    decimal NetPayable = 0m,
+    decimal AmountPaid = 0m,
+    decimal RemainingPayable = 0m,
+    string? PaymentMethod = null,
+    DateTime? PaymentDateUtc = null,
+    string? DisplayStatus = null);
 
 public record InvoiceLineDto(
     string ItemType,

@@ -409,7 +409,9 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.HasKey("InvoiceId");
 
-                    b.HasIndex("ContractId");
+                    b.HasIndex("ContractId", "InvoiceMonth")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Invoices_ContractId_InvoiceMonth");
 
                     b.ToTable("Invoices");
                 });
@@ -547,8 +549,14 @@ namespace PRN232.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("NotificationId"));
 
+                    b.Property<string>("Body")
+                        .HasColumnType("text");
+
                     b.Property<bool>("IsRead")
                         .HasColumnType("boolean");
+
+                    b.Property<int?>("RelatedEntityId")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -1116,6 +1124,21 @@ namespace PRN232.Infrastructure.Migrations
                     b.ToTable("PropertyAmenities");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.PropertyManagerAssignment", b =>
+                {
+                    b.Property<int>("PropertyId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ManagerId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("PropertyId", "ManagerId");
+
+                    b.HasIndex("ManagerId");
+
+                    b.ToTable("PropertyManagerAssignments");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.PropertyServiceRates", b =>
                 {
                     b.Property<int>("RateId")
@@ -1398,7 +1421,19 @@ namespace PRN232.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ViewingId"));
 
+                    b.Property<int?>("AssignedTo")
+                        .HasColumnType("integer");
+
                     b.Property<int>("CustomerId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ManagerNote")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("RespondedBy")
                         .HasColumnType("integer");
 
                     b.Property<int>("RoomId")
@@ -1413,11 +1448,19 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.HasKey("ViewingId");
 
+                    b.HasIndex("AssignedTo")
+                        .HasDatabaseName("IX_ViewingSchedules_AssignedTo");
+
                     b.HasIndex("CustomerId");
+
+                    b.HasIndex("RespondedBy");
 
                     b.HasIndex("RoomId");
 
-                    b.ToTable("ViewingSchedules");
+                    b.ToTable("ViewingSchedules", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ViewingSchedules_ManagerNote_500", "\"ManagerNote\" IS NULL OR char_length(\"ManagerNote\") <= 500");
+                        });
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.BookingRefundRequests", b =>
@@ -1838,6 +1881,25 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("Property");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.PropertyManagerAssignment", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Users", "Manager")
+                        .WithMany("ManagerAssignments")
+                        .HasForeignKey("ManagerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Property", "Property")
+                        .WithMany("ManagerAssignments")
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Manager");
+
+                    b.Navigation("Property");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.PropertyServiceRates", b =>
                 {
                     b.HasOne("PRN232.Domain.Entities.Property", "Property")
@@ -1949,11 +2011,21 @@ namespace PRN232.Infrastructure.Migrations
 
             modelBuilder.Entity("PRN232.Domain.Entities.ViewingSchedules", b =>
                 {
+                    b.HasOne("PRN232.Domain.Entities.Users", "AssignedManager")
+                        .WithMany()
+                        .HasForeignKey("AssignedTo")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PRN232.Domain.Entities.Users", "Customer")
                         .WithMany()
                         .HasForeignKey("CustomerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "RespondedByUser")
+                        .WithMany()
+                        .HasForeignKey("RespondedBy")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("PRN232.Domain.Entities.Rooms", "Room")
                         .WithMany()
@@ -1961,7 +2033,11 @@ namespace PRN232.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("AssignedManager");
+
                     b.Navigation("Customer");
+
+                    b.Navigation("RespondedByUser");
 
                     b.Navigation("Room");
                 });
@@ -2035,6 +2111,8 @@ namespace PRN232.Infrastructure.Migrations
 
             modelBuilder.Entity("PRN232.Domain.Entities.Property", b =>
                 {
+                    b.Navigation("ManagerAssignments");
+
                     b.Navigation("PropertyAmenities");
 
                     b.Navigation("PropertyServiceRates");
@@ -2102,6 +2180,8 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("MaintenanceReportsReported");
 
                     b.Navigation("MaintenanceRequestsAssigned");
+
+                    b.Navigation("ManagerAssignments");
 
                     b.Navigation("Notifications");
 

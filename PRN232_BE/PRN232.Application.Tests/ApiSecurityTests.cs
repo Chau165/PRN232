@@ -52,6 +52,29 @@ public sealed class ApiSecurityTests
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/bookings")).StatusCode);
     }
 
+    [Fact]
+    public async Task Token_of_deactivated_user_is_rejected_by_notification_hub()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await BookingsApiTests.LoginAsync(client, "customer@example.test");
+        var token = client.DefaultRequestHeaders.Authorization!.Parameter!;
+        client.DefaultRequestHeaders.Authorization = null;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var user = await context.Users.SingleAsync(item => item.Email == "customer@example.test");
+            user.IsActive = false;
+            await context.SaveChangesAsync();
+        }
+
+        using var response = await client.PostAsync(
+            $"/hubs/notifications/negotiate?negotiateVersion=1&access_token={Uri.EscapeDataString(token)}", null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
     // A2: Production mà còn dùng key mẫu trên GitHub thì không cho server khởi động.
     [Theory]
     [InlineData("PUT_A_REAL_SECRET_HERE_VIA_USER_SECRETS_DO_NOT_COMMIT")]

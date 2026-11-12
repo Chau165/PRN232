@@ -11,7 +11,7 @@ export interface PropertySearchDraft {
   minPrice: string
   maxPrice: string
   roomTypeName: string
-  amenityIds: string
+  amenityIds: number[]
   sortBy: string
 }
 
@@ -19,7 +19,7 @@ export interface RoomSearchDraft {
   minPrice: string
   maxPrice: string
   roomTypeName: string
-  amenityIds: string
+  amenityIds: number[]
   sortBy: string
 }
 
@@ -57,7 +57,7 @@ export function propertySearchDraft(
     minPrice: String(query.minPrice ?? ""),
     maxPrice: String(query.maxPrice ?? ""),
     roomTypeName: String(query.roomTypeName ?? ""),
-    amenityIds: (query.amenityIds ?? []).join(", "),
+    amenityIds: selectedAmenityIds(query.amenityIds),
     sortBy: String(query.sortBy ?? "propertyId"),
   }
 }
@@ -79,10 +79,8 @@ export function propertySearchParams(
     if (value.trim()) params.set(key, value.trim())
   }
 
-  for (const amenityId of new Set(
-    draft.amenityIds.split(/[ ,]+/).filter(Boolean),
-  )) {
-    params.append("amenityIds", amenityId)
+  for (const amenityId of new Set(draft.amenityIds)) {
+    params.append("amenityIds", String(amenityId))
   }
   params.set("sortBy", draft.sortBy || "propertyId")
   params.set("page", "1")
@@ -108,7 +106,7 @@ export function roomSearchDraft(query: PublicRoomListQuery): RoomSearchDraft {
     minPrice: String(query.minPrice ?? ""),
     maxPrice: String(query.maxPrice ?? ""),
     roomTypeName: String(query.roomTypeName ?? ""),
-    amenityIds: (query.amenityIds ?? []).join(", "),
+    amenityIds: selectedAmenityIds(query.amenityIds),
     sortBy: String(query.sortBy ?? "roomId"),
   }
 }
@@ -119,13 +117,15 @@ export function roomSearchParams(draft: RoomSearchDraft): URLSearchParams {
     const value = draft[field].trim()
     if (value) params.set(field, value)
   }
-  for (const amenityId of new Set(
-    draft.amenityIds.split(/[ ,]+/).filter(Boolean),
-  )) {
-    params.append("amenityIds", amenityId)
+  for (const amenityId of new Set(draft.amenityIds)) {
+    params.append("amenityIds", String(amenityId))
   }
   params.set("sortBy", draft.sortBy || "roomId")
   params.set("page", "1")
   params.set("pageSize", "10")
   return params
+}
+
+function selectedAmenityIds(values: readonly (string | number)[] = []): number[] {
+  return [...new Set(values.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))]
 }

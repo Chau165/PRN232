@@ -15,6 +15,8 @@ import HorizontalPropertyCard from "@/components/home/HorizontalPropertyCard"
 import ResultsHeader from "@/components/home/ResultsHeader"
 
 import type { PublicResourceState } from "@/hooks/usePublicApiResource"
+import { usePublicAmenities } from "@/hooks/usePublicAmenities"
+import { buildPropertyListParams } from "@/utils/publicBrowsingQuery"
 
 import {
   publicApiErrorMessage,
@@ -36,6 +38,7 @@ type SearchSectionProps = {
   onSearch: (draft: PropertySearchDraft) => void
 
   onPageChange: (page: number) => void
+  onClear: () => void
 }
 
 export default function SearchSection({
@@ -43,19 +46,32 @@ export default function SearchSection({
   query,
   onSearch,
   onPageChange,
+  onClear,
 }: SearchSectionProps) {
   const [draft, setDraft] = useState(() => propertySearchDraft(query))
+  const amenities = usePublicAmenities()
+  const [filterError, setFilterError] = useState<string | null>(null)
+  const canApplyAmenities = draft.amenityIds.length === 0 || amenities.status === "success"
 
   useEffect(() => setDraft(propertySearchDraft(query)), [query])
 
-  function updateDraft(field: keyof PropertySearchDraft, value: string) {
+  function updateDraft<Field extends keyof PropertySearchDraft>(field: Field, value: PropertySearchDraft[Field]) {
     setDraft((current) => ({ ...current, [field]: value }))
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    onSearch(draft)
+    if (!canApplyAmenities) return
+    const availableIds = new Set(amenities.status === "success" ? amenities.data.map((amenity) => amenity.amenityId) : [])
+    const searchDraft = { ...draft, amenityIds: draft.amenityIds.filter((id) => availableIds.has(id)) }
+    try {
+      buildPropertyListParams(searchDraft)
+      setFilterError(null)
+      onSearch(searchDraft)
+    } catch (error) {
+      setFilterError(error instanceof Error ? error.message : "Hãy kiểm tra lại bộ lọc.")
+    }
   }
 
   const resultPage = resource.status === "success" ? resource.data : null
@@ -66,75 +82,38 @@ export default function SearchSection({
 
   return (
     <section id="tim-phong" className="scroll-mt-24">
-      <div className="mx-auto max-w-[1020px] px-6 py-10 lg:py-12">
-        <div className="mb-6">
-          <p className="text-[11px] font-bold uppercase tracking-[.16em] text-[#087775]">
-            Khám phá lựa chọn phù hợp
-          </p>
-          <h2 className="mt-2 font-display text-[30px] font-bold tracking-[-.045em] text-slate-900">
-            Tìm Phòng
-          </h2>
-        </div>
+      <div className="public-container py-10 lg:py-12">
         <form
           onSubmit={submit}
-          className="rounded-2xl bg-white p-3 shadow-[0_14px_36px_rgba(17,68,70,.10)]"
+          className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
         >
-          <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-[minmax(220px,1.6fr)_1fr_1fr_1fr_auto]">
-            <label className="flex h-11 min-w-0 items-center gap-3 rounded-lg px-3 text-slate-500">
-              <Icon name="search" size={19} />
-              <input
-                type="search"
-                aria-label="Từ khóa"
-                value={draft.keyword}
-                onChange={(event) => updateDraft("keyword", event.target.value)}
-                placeholder="Khu vực, tên đường..."
-                className="min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-slate-400"
-              />
-            </label>
-            <label className="flex h-11 items-center rounded-lg border border-slate-100 px-3 text-[13px] text-slate-500">
-              <input
-                aria-label="Giá tối thiểu"
-                inputMode="decimal"
-                value={draft.minPrice}
-                onChange={(event) =>
-                  updateDraft("minPrice", event.target.value)
-                }
-                placeholder="Giá từ"
-                className="w-full min-w-0 bg-transparent outline-none"
-              />
-            </label>
-            <label className="flex h-11 items-center rounded-lg border border-slate-100 px-3 text-[13px] text-slate-500">
-              <input
-                aria-label="Giá tối đa"
-                inputMode="decimal"
-                value={draft.maxPrice}
-                onChange={(event) =>
-                  updateDraft("maxPrice", event.target.value)
-                }
-                placeholder="Giá đến"
-                className="w-full min-w-0 bg-transparent outline-none"
-              />
-            </label>
-            <label className="flex h-11 items-center rounded-lg border border-slate-100 px-3 text-[13px] text-slate-500">
-              <input
-                aria-label="Loại phòng"
-                value={draft.roomTypeName}
-                onChange={(event) =>
-                  updateDraft("roomTypeName", event.target.value)
-                }
-                placeholder="Loại phòng"
-                className="w-full min-w-0 bg-transparent outline-none"
-              />
-            </label>
+          <div className="mb-6">
+            <h2 className="font-display text-2xl font-bold tracking-tight text-slate-900">Tìm phòng phù hợp với bạn</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">Chọn khu vực và tiện ích phù hợp với nhu cầu của bạn.</p>
+          </div>
+          <FilterChips draft={draft} amenities={amenities} onChange={updateDraft} />
+          {filterError && <p role="alert" className="mt-3 text-sm text-rose-700">{filterError}</p>}
+          <div className="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(propertySearchDraft({}))
+                setFilterError(null)
+                onClear()
+              }}
+              className="min-h-12 rounded-xl border border-slate-200 px-5 text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+            >
+              Xóa bộ lọc
+            </button>
             <button
               type="submit"
-              className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#087775] px-5 text-[14px] font-bold text-white shadow-sm hover:bg-[#066a68]"
+              disabled={!canApplyAmenities}
+              className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#087775] px-6 text-sm font-bold text-white shadow-sm hover:bg-[#066a68] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 disabled:opacity-50"
             >
               <Icon name="search" size={16} />
-              Tìm phòng
+              Tìm phòng phù hợp
             </button>
           </div>
-          <FilterChips draft={draft} onChange={updateDraft} />
         </form>
 
         <div className="mt-8">

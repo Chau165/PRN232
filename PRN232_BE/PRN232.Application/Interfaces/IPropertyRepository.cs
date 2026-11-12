@@ -4,14 +4,15 @@ namespace PRN232.Application.Interfaces;
 
 public interface IPropertyRepository
 {
-    Task<List<PropertySummaryReadModel>> GetAllAsync(int? ownerId);
+    Task<List<PropertySummaryReadModel>> GetAllAsync(int? ownerId, int? managerId);
     Task<PropertySummaryReadModel?> GetByIdAsync(int id);
     Task<List<PropertyServiceRateReadModel>> GetServiceRatesAsync(int propertyId, DateOnly? month, CancellationToken cancellationToken);
     Task<bool> ServiceExistsAsync(int serviceId, CancellationToken cancellationToken);
     Task<bool> AddServiceRateIfNoOverlapAsync(PRN232.Domain.Entities.PropertyServiceRates rate, CancellationToken cancellationToken);
+    Task<bool> IsManagerAssignedAsync(int propertyId, int managerId);
     Task<PRN232.Domain.Entities.Property?> GetTrackedByIdAsync(int id);
     Task<PRN232.Domain.Entities.Property> AddAsync(PRN232.Domain.Entities.Property property);
     void Remove(PRN232.Domain.Entities.Property property);
-    Task<bool> HasRoomsAsync(int propertyId);
+    Task<bool> HasDependentsAsync(int propertyId);
     Task SaveChangesAsync();
 }

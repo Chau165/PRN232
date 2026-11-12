@@ -33,15 +33,18 @@ public class MaintenanceServiceTests
         Assert.Collection(repository.GeneratedNotifications,
             notification => Assert.Equal("Có yêu cầu bảo trì mới #1 - Phòng A-12", notification.Title),
             notification => Assert.Equal("Bạn đã gửi yêu cầu sửa chữa #1 cho phòng A-12. Yêu cầu đang chờ duyệt.", notification.Title));
+        Assert.Equal(2, repository.PublishedNotifications.Single(notifications => notifications.Count > 0).Count);
     }
 
     [Fact]
     public async Task CreateAsync_rejects_missing_contract()
     {
-        var service = CreateService(new FakeMaintenanceRepository());
+        var repository = new FakeMaintenanceRepository();
+        var service = CreateService(repository);
 
         await Assert.ThrowsAsync<MaintenanceNotFoundException>(() =>
             service.CreateAsync(new CreateMaintenanceRequestDto(10, null, "broken"), 42));
+        Assert.Empty(repository.PublishedNotifications);
     }
 
     [Theory]
@@ -133,6 +136,19 @@ public class MaintenanceServiceTests
         await Assert.ThrowsAsync<MaintenanceAuthorizationException>(() =>
             new MaintenanceService(repository, new FakeNotificationService(), storage, new FixedTimeProvider(DateTimeOffset.UtcNow))
                 .CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager));
+        Assert.Equal(0, storage.UploadCount);
+    }
+
+    [Fact]
+    public async Task CreateReportAsync_rejects_manager_without_active_property_assignment()
+    {
+        var repository = ValidRequest("Approved", assignedTo: 7);
+        repository.ManagerHasActivePropertyAssignment = false;
+        var storage = new FakeImageStorage();
+
+        await Assert.ThrowsAsync<MaintenanceAuthorizationException>(() =>
+            CreateService(repository).CreateReportAsync(1, ValidReportInput(), 7, RoleNames.Manager));
+
         Assert.Equal(0, storage.UploadCount);
     }
 
@@ -385,6 +401,24 @@ public class MaintenanceServiceTests
         Assert.Equal(DateTimeKind.Utc, log.ChangedAt.Kind);
         Assert.Equal(1, repository.AtomicUpdateCount);
         Assert.Null(repository.LastAssignmentNote);
+        var notifications = repository.PublishedNotifications.First(items => items.Any(item => item.Title.Contains("được duyệt", StringComparison.Ordinal)));
+        Assert.Equal(2, notifications.Count);
+        Assert.Contains(7, notifications.Select(notification => notification.UserId));
+        Assert.Contains(42, notifications.Select(notification => notification.UserId));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_rejects_manager_not_assigned_to_request_property()
+    {
+        var repository = ValidRequest("Pending", assignedTo: null);
+        repository.ActiveUsers[7] = new MaintenanceUserAssignmentDto(true, RoleNames.Manager);
+        repository.ManagerHasActivePropertyAssignment = false;
+
+        await Assert.ThrowsAsync<MaintenanceAssigneeException>(() => CreateService(repository)
+            .UpdateAsync(1, new UpdateMaintenanceRequestDto(7), 99, RoleNames.Admin));
+
+        Assert.Equal("Pending", repository.State!.Status);
+        Assert.Empty(repository.Logs);
     }
 
     [Fact]
@@ -625,7 +659,8 @@ public class MaintenanceServiceTests
     }
 
     private static MaintenanceService CreateService(FakeMaintenanceRepository repository) =>
-        new(repository, new FakeNotificationService(), new FakeImageStorage(), new FixedTimeProvider(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero)));
+        new(repository, new FakeNotificationService(), new FakeImageStorage(),
+            new FixedTimeProvider(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero)), repository);
 
     private static FakeMaintenanceRepository ValidRequest(string status, int? assignedTo) => new()
     {
@@ -660,7 +695,7 @@ public class MaintenanceServiceTests
         public override DateTimeOffset GetUtcNow() => utcNow;
     }
 
-    private sealed class FakeMaintenanceRepository : IMaintenanceRepository
+    private sealed class FakeMaintenanceRepository : IMaintenanceRepository, INotificationRealtimePublisher
     {
         private int _nextId = 1;
 
@@ -676,6 +711,7 @@ public class MaintenanceServiceTests
         public Dictionary<int, MaintenanceUserAssignmentDto> ActiveUsers { get; } = new();
         public List<MaintenanceLogDto> Logs { get; } = new();
         public List<Notifications> GeneratedNotifications { get; } = new();
+        public List<List<Notifications>> PublishedNotifications { get; } = [];
         public int AddCount
         {
             get; private set;
@@ -702,10 +738,19 @@ public class MaintenanceServiceTests
         }
         public bool RequestExists { get; set; } = true;
         public bool CustomerOwnsContract { get; set; } = true;
+        public bool ManagerHasActivePropertyAssignment { get; set; } = true;
         public int ReportReadCount
         {
             get; private set;
         }
+
+        public Task PublishCreatedAsync(IEnumerable<Notifications> notifications)
+        {
+            PublishedNotifications.Add(notifications.ToList());
+            return Task.CompletedTask;
+        }
+
+        public Task PublishReadUpdatedAsync(int userId, int notificationId, bool isRead) => Task.CompletedTask;
         public (int? CustomerId, string? Status, int? AssignedTo) LastFilters
         {
             get; private set;
@@ -733,6 +778,9 @@ public class MaintenanceServiceTests
                 ? new MaintenanceContractReadModel(Contract.ContractId, Contract.RoomId, Contract.RoomCode, Contract.CustomerId,
                     Contract.StartDate, Contract.EndDate, Contract.Status)
                 : null);
+
+        public Task<bool> HasActiveManagerAssignmentAsync(int contractId, int managerId) =>
+            Task.FromResult(ManagerHasActivePropertyAssignment && contractId == 10 && managerId == 7);
 
         public Task<int?> GetEquipmentRoomIdAsync(int equipmentId) =>
             Task.FromResult(EquipmentRooms.TryGetValue(equipmentId, out var roomId) ? (int?)roomId : null);
@@ -784,6 +832,7 @@ public class MaintenanceServiceTests
                 AssignedTo = assignedTo ?? State.AssignedTo
             };
             AtomicUpdateCount++;
+            if (notifications is not null) PublishedNotifications.Add(notifications.ToList());
             return Task.FromResult(true);
         }
 
@@ -822,6 +871,7 @@ public class MaintenanceServiceTests
             {
                 Status = "Completed"
             };
+            if (notifications is not null) PublishedNotifications.Add(notifications.ToList());
             return Task.FromResult(true);
         }
 

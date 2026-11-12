@@ -22,6 +22,7 @@ import {
 } from "@/utils/areaDiscovery"
 
 interface AreaPropertyMapProps {
+  searchLocationLabel?: string
   properties: PublicPropertyAreaCard[]
   center: AreaCoordinates
   userLocation: AreaCoordinates | null
@@ -137,6 +138,7 @@ function MapViewport({
 }
 
 export default function AreaPropertyMap({
+  searchLocationLabel,
   properties,
   center,
   userLocation,
@@ -175,14 +177,14 @@ export default function AreaPropertyMap({
           attribution={attribution}
           eventHandlers={{ tileerror: () => setTileError(true) }}
         />
-        {userLocation && (
+        {(userLocation || searchLocationLabel) && (
           <CircleMarker
-            center={[userLocation.latitude, userLocation.longitude]}
+            center={[center.latitude, center.longitude]}
             radius={10}
             pathOptions={{ color: "#ffffff", fillColor: "#087775", fillOpacity: 1, weight: 3 }}
           >
             <Tooltip permanent direction="top" offset={[0, -8]}>
-              Vị trí hiện tại của bạn
+              {userLocation ? "Vị trí hiện tại của bạn" : searchLocationLabel}
             </Tooltip>
           </CircleMarker>
         )}

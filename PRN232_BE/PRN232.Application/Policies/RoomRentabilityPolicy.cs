@@ -8,7 +8,8 @@ public static class RoomRentabilityPolicy
 {
     private static readonly string[] RecognizedBookingStatuses =
         { BookingStatuses.Pending, BookingStatuses.Deposited, BookingStatuses.Cancelled };
-    private static readonly string[] RecognizedContractStatuses = { ContractStatuses.Active };
+    private static readonly string[] RecognizedContractStatuses =
+        { ContractStatuses.Active, ContractStatuses.Terminated };
 
     public static Expression<Func<Rooms, bool>> IsRentableAt(DateTimeOffset asOfUtc)
         => Build(asOfUtc, null);
