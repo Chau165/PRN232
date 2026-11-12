@@ -1,6 +1,8 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Domain.Entities;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace PRN232.Application.Services;
 
@@ -12,17 +14,20 @@ public class AuthService : IAuthService
     private readonly IRoleRepository _roleRepository;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
+    private readonly ILogger<AuthService> _logger;
 
     public AuthService(
         IUserRepository userRepository,
         IRoleRepository roleRepository,
         IPasswordHasher passwordHasher,
-        IJwtTokenGenerator jwtTokenGenerator)
+        IJwtTokenGenerator jwtTokenGenerator,
+        ILogger<AuthService>? logger = null)
     {
         _userRepository = userRepository;
         _roleRepository = roleRepository;
         _passwordHasher = passwordHasher;
         _jwtTokenGenerator = jwtTokenGenerator;
+        _logger = logger ?? NullLogger<AuthService>.Instance;
     }
 
     public async Task<AuthResponseDto> RegisterAsync(RegisterDto dto)
@@ -62,6 +67,7 @@ public class AuthService : IAuthService
 
         var created = await _userRepository.AddAsync(user);
         await _userRepository.SaveChangesAsync();
+        _logger.LogInformation("User {UserId} registered as {Role}.", created.UserId, customerRole.RoleName);
 
         return BuildAuthResponse(created, customerRole.RoleName);
     }
@@ -70,15 +76,24 @@ public class AuthService : IAuthService
     {
         var normalizedEmail = dto.Email?.Trim().ToLowerInvariant() ?? string.Empty;
         var user = await _userRepository.GetByEmailAsync(normalizedEmail);
-        if (user is null || !_passwordHasher.Verify(dto.Password ?? string.Empty, user.PasswordHash))
+        // Không ghi email hay mật khẩu vào log: chỉ ghi UserId khi đã biết tài khoản.
+        if (user is null)
         {
+            _logger.LogWarning("Login failed: unknown account.");
+            throw new AuthInvalidCredentialsException();
+        }
+        if (!_passwordHasher.Verify(dto.Password ?? string.Empty, user.PasswordHash))
+        {
+            _logger.LogWarning("Login failed for user {UserId}: wrong password.", user.UserId);
             throw new AuthInvalidCredentialsException();
         }
         if (!user.IsActive)
         {
+            _logger.LogWarning("Login refused for user {UserId}: account is inactive.", user.UserId);
             throw new AuthAccountInactiveException();
         }
 
+        _logger.LogInformation("User {UserId} logged in.", user.UserId);
         return BuildAuthResponse(user, user.Role?.RoleName ?? string.Empty);
     }
 
