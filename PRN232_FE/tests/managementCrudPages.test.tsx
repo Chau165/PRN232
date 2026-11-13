@@ -115,10 +115,10 @@ describe("management property and room CRUD", () => {
     vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input) => {
       const url = String(input)
       if (url.endsWith("/users/me")) return jsonResponse(admin)
-      if (url.endsWith("/properties/21/managers")) return jsonResponse([{
+      if (url.includes("/properties/managers?propertyIds=21")) return jsonResponse([{ propertyId: 21, managers: [{
         propertyId: 21, managerId: 8, managerName: "Nguyễn Hoàng An",
         managerEmail: "manager.private@example.test", managerIsActive: true,
-      }])
+      }] }])
       if (url.endsWith("/properties")) return jsonResponse([{
         ...property, primaryImageUrl: "https://images.example.test/property-21.jpg",
       }])
@@ -146,7 +146,7 @@ describe("management property and room CRUD", () => {
         if (url.endsWith("/roles"))
           return jsonResponse([{ roleId: 2, roleName: "Manager" }])
         if (url.endsWith("/users?roleId=2")) return jsonResponse([])
-        if (url.endsWith("/properties/21/managers")) return jsonResponse([])
+        if (url.includes("/properties/managers?propertyIds=21")) return jsonResponse([])
         if (url.endsWith("/properties") && init?.method === "POST")
           return jsonResponse(property, 201)
         if (url.endsWith("/properties")) return jsonResponse([])
@@ -216,16 +216,19 @@ describe("management property and room CRUD", () => {
               isActive: true,
             },
           ])
-        if (url.endsWith("/properties/21/managers"))
-          return jsonResponse([
-            {
-              propertyId: 21,
-              managerId: 11,
-              managerName: "Nguyễn Hoàng An",
-              managerEmail: "an@example.test",
-              managerIsActive: true,
-            },
-          ])
+        if (url.includes("/properties/managers?propertyIds=21"))
+          return jsonResponse([{
+            propertyId: 21,
+            managers: [
+              {
+                propertyId: 21,
+                managerId: 11,
+                managerName: "Nguyễn Hoàng An",
+                managerEmail: "an@example.test",
+                managerIsActive: true,
+              },
+            ],
+          }])
         if (url.endsWith("/properties")) return jsonResponse([property])
         return jsonResponse({ title: "Not Found" }, 404)
       }),
@@ -249,7 +252,7 @@ describe("management property and room CRUD", () => {
         const url = String(input)
         calls.push(url)
         if (url.endsWith("/users/me")) return jsonResponse(admin)
-        if (url.endsWith("/properties/21/managers")) return jsonResponse([])
+        if (url.includes("/properties/managers?propertyIds=21")) return jsonResponse([])
         if (url.endsWith("/properties")) {
           return jsonResponse([{ ...property, roomCount: 12 }])
         }
@@ -269,9 +272,9 @@ describe("management property and room CRUD", () => {
     expect(screen.getByTestId("location-probe").textContent).toBe(
       "/management/properties/21/rooms",
     )
-    expect(calls.some((url) => url.endsWith("/properties/21/managers"))).toBe(
-      true,
-    )
+    expect(calls.filter((url) => url.includes("/managers")).map((url) => url.replace(/^.*\/api/, ""))).toEqual([
+      "/properties/managers?propertyIds=21",
+    ])
   })
 
   it("scopes room CRUD to the property in the route", async () => {

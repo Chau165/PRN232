@@ -337,7 +337,7 @@ describe("Phase 4A Admin user APIs", () => {
       const url = String(input)
       calls.push({ url, init })
       if (url.endsWith("/users/me")) return jsonResponse(admin)
-      if (url.endsWith("/properties/21/managers")) return jsonResponse(assignments)
+      if (url.includes("/properties/managers?propertyIds=21")) return jsonResponse([{ propertyId: 21, managers: assignments }])
       if (url.endsWith("/properties")) return jsonResponse([property])
       return jsonResponse({ title: "Not Found" }, 404)
     })

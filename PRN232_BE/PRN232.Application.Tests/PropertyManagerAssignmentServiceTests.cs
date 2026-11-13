@@ -155,6 +155,13 @@ public sealed class PropertyManagerAssignmentServiceTests
             return Task.FromResult(new List<PropertyManagerAssignmentReadModel>());
         }
 
+        public Task<List<PropertyManagerAssignmentReadModel>> GetByPropertyIdsAsync(
+            IReadOnlyCollection<int>? propertyIds,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new List<PropertyManagerAssignmentReadModel>());
+        }
+
         public Task<List<PropertyManagerAssignmentReadModel>> GetByManagerIdAsync(
             int managerId,
             bool requireActiveManager,

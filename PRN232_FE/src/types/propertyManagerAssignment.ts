@@ -6,3 +6,8 @@ export interface PropertyManagerAssignmentDto {
   managerEmail: string
   managerIsActive: boolean
 }
+
+export interface PropertyManagersDto {
+  propertyId: number
+  managers: PropertyManagerAssignmentDto[]
+}
