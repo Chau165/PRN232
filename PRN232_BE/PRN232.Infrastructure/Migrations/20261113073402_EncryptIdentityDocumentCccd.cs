@@ -38,6 +38,11 @@ namespace PRN232.Infrastructure.Migrations
                 name: "IX_IdentityDocuments_CCCDNumberHash",
                 table: "IdentityDocuments",
                 column: "CCCDNumberHash");
+
+            // DataProtectionKeys holds the keys that decrypt CCCD numbers: never expose it through
+            // Supabase's REST API (same convention as every other table in this schema).
+            migrationBuilder.Sql("ALTER TABLE \"DataProtectionKeys\" ENABLE ROW LEVEL SECURITY;");
+            migrationBuilder.Sql("REVOKE ALL PRIVILEGES ON TABLE \"DataProtectionKeys\" FROM PUBLIC, anon, authenticated, service_role;");
         }
 
         /// <inheritdoc />
