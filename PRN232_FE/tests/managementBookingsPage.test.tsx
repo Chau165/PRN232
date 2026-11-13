@@ -79,6 +79,31 @@ describe("ManagementBookingsPage", () => {
     expect(screen.queryByRole("button", { name: "Huỷ booking" })).toBeNull()
   })
 
+  it("shows the 7-day hold and releases only an overdue deposited booking after confirmation", async () => {
+    mocks.getBookings.mockResolvedValue([
+      booking({ holdUntilUtc: inMinutes(-60), canReleaseRoom: true }),
+      booking({ bookingId: 5, roomCode: "A105", holdUntilUtc: inMinutes(3 * 24 * 60), canReleaseRoom: false }),
+    ])
+    mocks.cancelBooking.mockResolvedValue(booking({ status: "Cancelled", holdUntilUtc: null, canReleaseRoom: false }))
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true)
+    renderPage()
+
+    await screen.findByText("#5")
+    expect(screen.queryByText(/giữ đến khi chốt hợp đồng/)).toBeNull()
+    expect(screen.getAllByText("Quá hạn nhận phòng")).toHaveLength(1)
+    expect(screen.queryByRole("button", { name: "Giải phóng phòng #5" })).toBeNull()
+    const release = screen.getByRole("button", { name: "Giải phóng phòng #9" })
+
+    fireEvent.click(release)
+    expect(confirm.mock.calls[0][0]).toContain("tiền cọc không được hoàn")
+    expect(mocks.cancelBooking).not.toHaveBeenCalled()
+
+    fireEvent.click(release)
+    await screen.findByText("Đã giải phóng phòng A101 (booking #9) và thông báo cho khách.")
+    expect(mocks.cancelBooking).toHaveBeenCalledWith("manager-token", 9)
+    expect(screen.queryByRole("button", { name: "Giải phóng phòng #9" })).toBeNull()
+  })
+
   it("explains a conflict when the booking changed before cancelling", async () => {
     mocks.cancelBooking.mockRejectedValue(new ApiError("Booking is already cancelled.", { status: 409 }))
     vi.spyOn(window, "confirm").mockReturnValue(true)

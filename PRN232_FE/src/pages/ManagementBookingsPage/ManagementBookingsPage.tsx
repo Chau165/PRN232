@@ -31,6 +31,19 @@ export default function ManagementBookingsPage() {
     }
   }
 
+  // OD07: after the 7-day hold the customer did not move in; the room reopens and the deposit is kept.
+  const release = async (booking: BookingDto) => {
+    if (cancellingId !== null) return
+    const question = `Giải phóng phòng ${booking.roomCode} (booking #${booking.bookingId}) vì khách ${booking.customerName} không nhận phòng trong 7 ngày? Phòng sẽ mở cho người khác thuê và tiền cọc không được hoàn.`
+    if (!window.confirm(question)) return
+    try {
+      await cancelById(booking.bookingId)
+      setToast(`Đã giải phóng phòng ${booking.roomCode} (booking #${booking.bookingId}) và thông báo cho khách.`)
+    } catch (releaseError) {
+      setToast(bookingErrorMessage(releaseError, "Booking vừa đổi trạng thái hoặc khách vừa xin hoàn cọc, vui lòng tải lại trang."))
+    }
+  }
+
   return (
     <ManagementPage
       title="Đặt phòng & Đặt cọc"
@@ -71,7 +84,11 @@ export default function ManagementBookingsPage() {
                     </span>
                     <span className="font-semibold text-[#087775]">{formatVnd(booking.depositAmount)}</span>
                     <span className="text-[13px] text-slate-600">
-                      {booking.status === "Cancelled" ? "—" : booking.status === "Deposited" ? "Đã cọc, giữ đến khi chốt hợp đồng hoặc hoàn cọc" : formatDateTime(booking.expiryDate)}
+                      {booking.status === "Pending" ? formatDateTime(booking.expiryDate)
+                        : booking.status === "Deposited" && booking.contractId === null
+                          ? booking.holdUntilUtc ? formatDateTime(booking.holdUntilUtc) : "Không rõ (dữ liệu cũ)"
+                          : "—"}
+                      {booking.canReleaseRoom && <small className="block font-semibold text-rose-700">Quá hạn nhận phòng</small>}
                     </span>
                     <div className="space-y-2"><StatusBadge tone={display.tone}>{display.label}</StatusBadge>
                       {booking.refundStatus && <StatusBadge tone={refundDisplay(booking.refundStatus).tone}>{refundDisplay(booking.refundStatus).label}</StatusBadge>}</div>
@@ -93,6 +110,17 @@ export default function ManagementBookingsPage() {
                           className="rounded-lg bg-rose-50 px-3 py-2 text-[12px] font-bold text-rose-700 disabled:opacity-60"
                         >
                           {cancellingId === booking.bookingId ? "Đang huỷ..." : "Huỷ booking"}
+                        </button>
+                      )}
+                      {booking.canReleaseRoom && (
+                        <button
+                          type="button"
+                          onClick={() => release(booking)}
+                          disabled={cancellingId !== null}
+                          aria-label={`Giải phóng phòng #${booking.bookingId}`}
+                          className="rounded-lg bg-rose-50 px-3 py-2 text-[12px] font-bold text-rose-700 disabled:opacity-60"
+                        >
+                          {cancellingId === booking.bookingId ? "Đang giải phóng..." : "Giải phóng phòng"}
                         </button>
                       )}
                       {(booking.status === "Deposited" && booking.contractId === null || booking.refundStatus) && <button type="button"

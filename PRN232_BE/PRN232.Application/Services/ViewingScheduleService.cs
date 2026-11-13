@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
@@ -10,6 +11,7 @@ namespace PRN232.Application.Services;
 public class ViewingScheduleService : IViewingScheduleService
 {
     private const int MaxManagerNoteLength = 500;
+    private static readonly TimeZoneInfo BusinessTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh");
     private readonly IViewingScheduleRepository _repository;
     private readonly TimeProvider _timeProvider;
     private readonly INotificationService? _notificationService;
@@ -131,7 +133,8 @@ public class ViewingScheduleService : IViewingScheduleService
             throw new ViewingBusinessRuleException("Choose a future viewing time before approving.");
         }
 
-        var customerBody = $"Lịch xem phòng {viewing.RoomCode} đã được xác nhận lúc {scheduledAtUtc.Value:O}.";
+        var scheduledAtText = FormatVietnamTime(scheduledAtUtc.Value);
+        var customerBody = $"Lịch xem phòng {viewing.RoomCode} đã được xác nhận lúc {scheduledAtText}.";
         if (managerNote is not null)
         {
             customerBody += $" Ghi chú: {managerNote}";
@@ -147,7 +150,7 @@ public class ViewingScheduleService : IViewingScheduleService
                 manager.UserId,
                 viewing.ViewingId,
                 $"Bạn được giao lịch xem phòng {viewing.RoomCode}",
-                managerNote ?? $"Thời gian đã xác nhận: {scheduledAtUtc.Value:O}.")
+                managerNote ?? $"Thời gian đã xác nhận: {scheduledAtText}.")
         };
 
         return await DecideAsync(
@@ -241,6 +244,11 @@ public class ViewingScheduleService : IViewingScheduleService
         RelatedEntityId = viewingId,
         IsRead = false
     };
+
+    // Notifications are read by people: show Vietnam local time, e.g. "14:30 15/11/2026".
+    private static string FormatVietnamTime(DateTime utc) =>
+        TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), BusinessTimeZone)
+            .ToString("HH:mm dd/MM/yyyy", CultureInfo.InvariantCulture);
 
     private static string? NormalizeNote(string? note, bool required = false)
     {

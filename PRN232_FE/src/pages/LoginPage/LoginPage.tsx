@@ -1,13 +1,14 @@
 import { useState, type FormEvent } from "react"
-import { Link, useNavigate } from "react-router"
+import { Link, useLocation, useNavigate } from "react-router"
 import AuthShell from "@/components/auth/AuthShell"
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton"
 import PasswordInput from "@/components/auth/PasswordInput"
 import { useAuth } from "@/auth/AuthContext"
-import { roleLandingPath } from "@/components/auth/ProtectedRoute"
+import { postLoginPath } from "@/components/auth/ProtectedRoute"
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const from = (useLocation().state as { from?: unknown } | null)?.from
   const { login, loginWithGoogle } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -20,7 +21,7 @@ export default function LoginPage() {
     setIsSubmitting(true)
     try {
       const user = await login(email.trim(), password)
-      navigate(roleLandingPath(user.role), { replace: true })
+      navigate(postLoginPath(user.role, from), { replace: true })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Đăng nhập không thành công.")
     } finally {
@@ -33,7 +34,7 @@ export default function LoginPage() {
     setIsSubmitting(true)
     try {
       const user = await loginWithGoogle(credential)
-      navigate(roleLandingPath(user.role), { replace: true })
+      navigate(postLoginPath(user.role, from), { replace: true })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Đăng nhập Google không thành công.")
     } finally {

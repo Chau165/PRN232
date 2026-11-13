@@ -14,7 +14,8 @@ public class BookingService : IBookingService
     // Thời gian giữ chỗ để khách hoàn tất thanh toán cọc; quá hạn thì phòng tự được nhả (D3).
     public static readonly TimeSpan PaymentWindow = TimeSpan.FromMinutes(15);
 
-    // Legacy mock display timestamp only; Deposited holds the room indefinitely in RoomRentabilityPolicy.
+    // Legacy mock display timestamp only: ExpiryDate does not end a Deposited hold. The hold rule
+    // (deposit time + 7 days, see DepositHoldPolicy) is read from the deposit payment's PaidAtUtc.
     // payOS settlement keeps the original checkout deadline and never uses this legacy duration.
     public static readonly TimeSpan DepositHoldPeriod = TimeSpan.FromDays(7);
 
@@ -210,19 +211,36 @@ public class BookingService : IBookingService
             throw new BookingStatusConflictException("Deposited bookings require a cancellation/refund request.");
         }
 
+        // OD07: staff release a deposited room only when the customer did not move in within the hold.
+        var releasesDeposit = booking.Status == BookingStatuses.Deposited;
+        if (releasesDeposit && !booking.CanReleaseRoom)
+        {
+            throw new BookingStatusConflictException(
+                "A deposited booking can be released only 7 days after the deposit was paid, with no refund request in progress.");
+        }
+
         Notifications? notification = null;
         if (role != RoleNames.Customer)
         {
-            notification = new Notifications
-            {
-                UserId = booking.CustomerId,
-                Title = $"Booking #{id} - Phòng {booking.RoomCode} đã bị huỷ",
-                Type = NotificationTypes.Booking,
-                IsRead = false
-            };
+            notification = releasesDeposit
+                ? new Notifications
+                {
+                    UserId = booking.CustomerId,
+                    Title = $"Booking #{id} - Phòng {booking.RoomCode} đã được giải phóng do quá hạn nhận phòng",
+                    Body = "Bạn không nhận phòng trong 7 ngày kể từ khi đặt cọc nên phòng đã được mở cho người khác thuê. Theo chính sách giữ phòng, tiền cọc không được hoàn.",
+                    Type = NotificationTypes.Booking,
+                    IsRead = false
+                }
+                : new Notifications
+                {
+                    UserId = booking.CustomerId,
+                    Title = $"Booking #{id} - Phòng {booking.RoomCode} đã bị huỷ",
+                    Type = NotificationTypes.Booking,
+                    IsRead = false
+                };
         }
         int? managerId = role == RoleNames.Manager ? userId : null;
-        if (!await _repository.CancelAsync(id, booking.Status, notification, managerId))
+        if (!await _repository.CancelAsync(id, booking.Status, notification, _timeProvider.GetUtcNow(), managerId))
         {
             throw new BookingStatusConflictException("Booking status has changed. Please reload and try again.");
         }
@@ -260,8 +278,13 @@ public class BookingService : IBookingService
         return scope.Value;
     }
 
-    private static BookingDto ConvertToDto(BookingReadModel booking)
+    private BookingDto ConvertToDto(BookingReadModel booking)
     {
+        var holding = booking.Status == BookingStatuses.Deposited && booking.ContractId is null;
+        var holdUntil = holding ? DepositHoldPolicy.HoldUntilUtc(booking.DepositPaidAtUtc) : null;
+        var canReleaseRoom = holding &&
+            (booking.RefundStatus is null or BookingRefundRequestStatuses.Rejected) &&
+            DepositHoldPolicy.IsHoldOver(booking.DepositPaidAtUtc, _timeProvider.GetUtcNow().UtcDateTime);
         return new BookingDto(
             booking.BookingId,
             booking.RoomId,
@@ -274,7 +297,8 @@ public class BookingService : IBookingService
             booking.Status,
             UtcTimestamp.ForResponse(booking.ExpiryDate),
             booking.CustomerPhone,
-            booking.ContractId, booking.RefundStatus, booking.CanRequestRefund, booking.LatestPaymentRequestId);
+            booking.ContractId, booking.RefundStatus, booking.CanRequestRefund, booking.LatestPaymentRequestId,
+            UtcTimestamp.ForResponse(holdUntil), canReleaseRoom);
     }
 }
 

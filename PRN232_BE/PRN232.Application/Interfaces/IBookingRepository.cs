@@ -18,5 +18,6 @@ public interface IBookingRepository
         int bookingId,
         string expectedStatus,
         Notifications? customerNotification,
+        DateTimeOffset asOfUtc,
         int? managerId = null);
 }

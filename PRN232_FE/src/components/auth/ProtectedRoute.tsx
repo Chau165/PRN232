@@ -8,6 +8,16 @@ export function roleLandingPath(role: AppRole) {
   return role === "CUSTOMER" ? routes.home : routes.managementDashboard
 }
 
+// After login, go back to the page ProtectedRoute sent the user away from (state.from) when it
+// is an in-site path that fits the role; otherwise use the role's landing page.
+export function postLoginPath(role: AppRole, from: unknown) {
+  if (typeof from !== "string" || !from.startsWith("/") || from.startsWith("//") || from.startsWith("/\\")) {
+    return roleLandingPath(role)
+  }
+  const isManagementPath = from === "/management" || from.startsWith("/management/")
+  return isManagementPath === (role !== "CUSTOMER") ? from : roleLandingPath(role)
+}
+
 function SessionStatus({ message }: { message: string }) {
   const { retrySessionCheck } = useAuth()
   return (
@@ -66,12 +76,14 @@ export function ProtectedRoute({
 
 export function GuestOnlyRoute({ children }: { children: ReactNode }) {
   const { status, user, error } = useAuth()
+  const location = useLocation()
   if (status === "loading") return <SessionStatus message="Đang kiểm tra phiên đăng nhập..." />
   if (status === "error") {
     return <SessionStatus message={error ?? "Không thể xác minh phiên đăng nhập."} />
   }
   if (status === "authenticated" && user) {
-    return <Navigate to={roleLandingPath(user.role)} replace />
+    const from = (location.state as { from?: unknown } | null)?.from
+    return <Navigate to={postLoginPath(user.role, from)} replace />
   }
   return children
 }

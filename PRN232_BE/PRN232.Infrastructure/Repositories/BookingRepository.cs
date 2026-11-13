@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using System.Linq.Expressions;
 using PRN232.Application.Interfaces;
+using PRN232.Application.Policies;
 using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
@@ -130,6 +131,7 @@ public class BookingRepository : IBookingRepository
         int bookingId,
         string expectedStatus,
         Notifications? customerNotification,
+        DateTimeOffset asOfUtc,
         int? managerId = null)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
@@ -137,8 +139,28 @@ public class BookingRepository : IBookingRepository
         // P6-P10 will provide the refund workflow. Until then, never bypass a real deposit or an uncertain checkout.
         //NGHIA
         if (await _context.PaymentRequests.AnyAsync(item => item.BookingId == bookingId &&
-            (item.Status == PaymentRequestStatuses.Creating || item.Status == PaymentRequestStatuses.Pending || item.Status == PaymentRequestStatuses.RequiresReview)) ||
-            await _context.Payments.AnyAsync(item => item.BookingId == bookingId && item.PaymentMethod == PaymentMethods.PayOS && item.Status == PaymentStatuses.Success))
+            (item.Status == PaymentRequestStatuses.Creating || item.Status == PaymentRequestStatuses.Pending || item.Status == PaymentRequestStatuses.RequiresReview)))
+        { return false; }
+        if (expectedStatus == BookingStatuses.Deposited)
+        {
+            // OD07: re-check the 7-day hold and refund requests under the lock; the deposit is kept.
+            var hold = await _context.Bookings
+                .Where(booking => booking.BookingId == bookingId)
+                .Select(booking => new
+                {
+                    HasOpenRefund = booking.RefundRequests.Any(refund => refund.Status != BookingRefundRequestStatuses.Rejected),
+                    DepositPaidAtUtc = booking.Payments
+                        .Where(payment => payment.Status == PaymentStatuses.Success && payment.InvoiceId == null &&
+                            payment.ContractId == null && payment.ReadingId == null)
+                        .OrderBy(payment => payment.PaymentId)
+                        .Select(payment => payment.PaidAtUtc)
+                        .FirstOrDefault()
+                })
+                .SingleOrDefaultAsync();
+            if (hold is null || hold.HasOpenRefund || !DepositHoldPolicy.IsHoldOver(hold.DepositPaidAtUtc, asOfUtc.UtcDateTime))
+            { return false; }
+        }
+        else if (await _context.Payments.AnyAsync(item => item.BookingId == bookingId && item.PaymentMethod == PaymentMethods.PayOS && item.Status == PaymentStatuses.Success))
         { return false; }
         //NGHIA
         if (_context.Database.IsNpgsql())
@@ -228,5 +250,11 @@ public class BookingRepository : IBookingRepository
                 payment.PaymentRequest.Currency == "VND" && payment.PaymentRequest.Amount == payment.Amount && payment.PaymentRequest.CustomerId == booking.CustomerId &&
                 payment.PaymentRequest.BookingId == booking.BookingId && payment.PaymentRequest.InvoiceId == null) &&
             !booking.PaymentRequests.Any(request => request.Status == PaymentRequestStatuses.Creating || request.Status == PaymentRequestStatuses.Pending || request.Status == PaymentRequestStatuses.RequiresReview),
-        booking.PaymentRequests.OrderByDescending(request => request.CreatedAtUtc).ThenByDescending(request => request.PaymentRequestId).Select(request => (int?)request.PaymentRequestId).FirstOrDefault());
+        booking.PaymentRequests.OrderByDescending(request => request.CreatedAtUtc).ThenByDescending(request => request.PaymentRequestId).Select(request => (int?)request.PaymentRequestId).FirstOrDefault(),
+        booking.Payments
+            .Where(payment => payment.Status == PaymentStatuses.Success && payment.InvoiceId == null &&
+                payment.ContractId == null && payment.ReadingId == null)
+            .OrderBy(payment => payment.PaymentId)
+            .Select(payment => payment.PaidAtUtc)
+            .FirstOrDefault());
 }

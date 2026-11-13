@@ -91,7 +91,12 @@ export default function MyBookingsPage() {
                 {booking.status === "Deposited" && booking.contractId === null && !refundBlocksContract(booking.refundStatus) && (
                   <p className="mt-4 text-[13px] text-slate-500">Chủ trọ sẽ liên hệ để lập hợp đồng thuê.</p>
                 )}
-                {booking.status === "Deposited" && booking.contractId === null && <p className="mt-3 text-[13px] text-slate-500">Phòng được giữ đến khi lập hợp đồng hoặc hoàn tất hoàn cọc.</p>}
+                {booking.status === "Deposited" && booking.contractId === null && (
+                  <p className="mt-3 text-[13px] text-slate-500">
+                    {booking.holdUntilUtc ? `Phòng được giữ đến ${formatDateTime(booking.holdUntilUtc)}` : "Phòng được giữ"} (7 ngày kể từ khi đặt cọc).
+                    Nếu chưa lập hợp đồng khi hết hạn, chủ trọ có thể mở lại phòng và tiền cọc không được hoàn.
+                  </p>
+                )}
                 {booking.refundStatus && <div className="mt-3"><StatusBadge tone={refundDisplay(booking.refundStatus).tone}>{refundDisplay(booking.refundStatus).label}</StatusBadge></div>}
                 {(booking.status === "Deposited" && booking.contractId === null || booking.refundStatus) && <button type="button"
                   onClick={() => setOpenedRefund(value => value === booking.bookingId ? null : booking.bookingId)}

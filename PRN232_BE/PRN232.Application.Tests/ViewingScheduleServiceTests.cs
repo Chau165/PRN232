@@ -130,6 +130,25 @@ public class ViewingScheduleServiceTests
     }
 
     [Fact]
+    public async Task ApproveAsync_shows_confirmed_time_in_vietnam_time_in_notifications()
+    {
+        var repository = new FakeViewingRepository
+        {
+            Viewing = SampleViewing(customerId: 10) with { ScheduledAt = null }
+        };
+
+        // 12:00 UTC on 29/10 is 19:00 in Vietnam (UTC+7).
+        await CreateService(repository)
+            .ApproveAsync(1, new ApproveViewingScheduleDto(Now.AddDays(1), 7, null), 42, RoleNames.Admin);
+
+        Assert.All(Assert.Single(repository.Decisions).Notifications, notification =>
+        {
+            Assert.Contains("19:00 29/10/2026", notification.Body);
+            Assert.DoesNotContain("T12:00", notification.Body);
+        });
+    }
+
+    [Fact]
     public async Task ApproveAsync_rejects_manager_without_active_property_assignment()
     {
         var repository = new FakeViewingRepository

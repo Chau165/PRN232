@@ -1,6 +1,6 @@
 # Kịch bản kiểm thử hệ thống TrọViệt
 
-Phiên bản 1.1 • 13/11/2026 • Đối chiếu với SRS v1.1 (docs/SRS_HeThongThuePhongTro_v1.1.md) và mã nguồn nhánh main đã gộp các thay đổi ngày 13/11/2026 (hoàn cọc, chỉ số bàn giao, báo cáo tiền cọc)
+Phiên bản 1.2 • 14/11/2026 • Đối chiếu với SRS v1.2 (docs/SRS_HeThongThuePhongTro_v1.1.md) và mã nguồn nhánh main đã gộp các thay đổi đến ngày 14/11/2026 (hoàn cọc, chỉ số bàn giao, báo cáo tiền cọc, giữ phòng 7 ngày sau khi đặt cọc)
 
 > Tên nút và thông báo ghi trong kịch bản lấy từ mã nguồn; nơi nào chữ trên giao diện thật khác thì ưu tiên chữ trên giao diện và sửa lại kịch bản.
 
@@ -95,18 +95,34 @@ Tiền cọc bằng giá thuê một tháng của P1.
 
 | Bước | Tài khoản | Thao tác | Kết quả mong đợi | SRS |
 | --- | --- | --- | --- | --- |
+| 3.0 | C1 | Chi tiết phòng P1 > đặt cọc, **chưa** bấm giữ phòng | Trang báo trước: tiền cọc được trừ vào tiền phòng tháng đầu; phòng được giữ 7 ngày sau khi đặt cọc, quá hạn thì có thể mất cọc | FR56, BR14 |
 | 3.1 | C1 | Chi tiết phòng P1 > đặt cọc > **Giữ phòng và thanh toán cọc** | Chuyển sang bước thanh toán; thấy "Giữ phòng đến" cách hiện tại 15 phút | FR18, FR19 |
 | 3.2 | C2 | Cùng lúc thử giữ phòng P1 | Báo "Phòng vừa được người khác giữ hoặc không còn trống." | FR18, BR01 |
 | 3.3 | C1 | Bấm **Thanh toán … qua payOS** | Chuyển sang trang pay.payos.vn; số tiền đúng tiền cọc | FR20 |
 | 3.4 | C1 | 🔎 Ở trang kết quả, sửa tay URL thêm `?status=PAID&code=00` rồi tải lại | Trang **không** báo thành công khi tiền chưa được xác nhận | FR20, BR03 |
-| 3.5 | C1 | Quay lại từ checkout mà **không** trả tiền (nút hủy) | Trang kết quả báo "Liên kết đã hủy"; booking vẫn Chờ thanh toán | FR21 |
+| 3.5 | C1 | Quay lại từ checkout mà **không** trả tiền (nút hủy) | Lúc đầu trang kết quả báo đang chờ xác nhận; trong khoảng 1 phút (worker đối soát hỏi lại payOS) tự chuyển sang "Liên kết cọc đã đóng"; booking vẫn Chờ thanh toán và vẫn thanh toán lại được | FR21, BR03 |
 | 3.6 | C1 | Quay lại Lịch xem và đặt cọc > Thanh toán cọc > trả tiền thật 💰 | Trang kết quả hiện **Đặt cọc thành công**, "Booking #… " và nút Về booking của tôi | FR20, FR21 |
-| 3.7 | C1 | Mở Lịch xem và đặt cọc | Booking ở trạng thái **Đã đặt cọc**, dòng "Giữ phòng: Đến khi lập hợp đồng hoặc hoàn cọc" | BR02 |
-| 3.8 | M1 | Quản lý > Đặt phòng và đặt cọc | Thấy booking của C1 với trạng thái Đã đặt cọc | FR28 |
+| 3.7 | C1 | Mở Lịch xem và đặt cọc | Booking ở trạng thái **Đã đặt cọc**, dòng "Phòng được giữ đến <ngày giờ> (7 ngày kể từ khi đặt cọc)" kèm cảnh báo quá hạn thì tiền cọc không được hoàn | BR02, FR56 |
+| 3.8 | M1 | Quản lý > Đặt phòng và đặt cọc | Thấy booking của C1 với trạng thái Đã đặt cọc; cột Giữ phòng đến hiện đúng hạn 7 ngày; **không có** nút Giải phóng phòng vì chưa quá hạn | FR28, FR56 |
 | 3.9 | M1 hoặc A | Quản lý > Báo cáo, chọn tháng hiện tại, xem mục **Tiền cọc thu / hoàn** | Có khoản cọc vừa trả trong cột Thu cọc của khu trọ KT1; tách riêng với doanh thu hóa đơn | FR51 |
 | 3.10 | C1 | Mở lại URL trang kết quả sau khi đã thành công (tải lại) | Vẫn báo thành công, **không** thanh toán thêm | FR21 |
 | 3.11 | Không | Để một booking Pending quá 15 phút | Booking hiện "Hết hạn thanh toán" và phòng được nhả | FR19 |
 | 3.12 | 🔎 | Swagger: gọi `POST /api/bookings/{id}/pay` bằng token Customer | **409** "Use payOS checkout" (API giả lập bị khóa) | NFR05 |
+| 3.13 | 🔎 M1 | Swagger: gọi `POST /api/bookings/{id}/cancel` cho booking vừa đặt cọc ở bước 3.6 | **409**, booking vẫn Đã đặt cọc (chưa hết 7 ngày giữ phòng) | BR04, BR13 |
+
+### 5.1 Giải phóng phòng quá hạn giữ cọc
+
+Cần một booking đã cọc quá 7 ngày, chưa có hợp đồng và không có yêu cầu hoàn cọc đang xử lý. Trên cơ sở dữ liệu thử có thể lùi `PaidAtUtc` của khoản cọc trong bảng `Payments` về 8 ngày trước thay vì chờ.
+
+| Bước | Tài khoản | Thao tác | Kết quả mong đợi | SRS |
+| --- | --- | --- | --- | --- |
+| 3.14 | M1 | Quản lý > Đặt phòng và đặt cọc | Booking quá hạn có nhãn đỏ **Quá hạn nhận phòng** và nút **Giải phóng phòng**; booking còn hạn không có nút này | FR56 |
+| 3.15 | M2 | Gọi `POST /api/bookings/{id}/cancel` cho booking quá hạn của KT1 | **403**, booking không đổi | BR06 |
+| 3.16 | M1 | Bấm **Giải phóng phòng**, đọc hộp xác nhận rồi bấm Hủy | Hộp xác nhận nói rõ phòng sẽ mở cho người khác thuê và tiền cọc không được hoàn; bấm Hủy thì không có gì thay đổi | FR56 |
+| 3.17 | M1 | Bấm lại **Giải phóng phòng** và xác nhận | Thông báo "Đã giải phóng phòng … và thông báo cho khách"; booking chuyển **Đã huỷ**; phòng hiện lại trong danh sách phòng trống công khai | FR56, BR13 |
+| 3.18 | C1 | Chuông thông báo | Có thông báo "…đã được giải phóng do quá hạn nhận phòng", nội dung ghi tiền cọc không được hoàn | FR50, FR56 |
+| 3.19 | A | Báo cáo > Tiền cọc thu / hoàn | Khoản cọc của booking vừa giải phóng vẫn nằm ở cột Thu cọc, không có dòng hoàn | FR51, BR13 |
+| 3.20 | M1 | Với một booking quá hạn nhưng khách đã gửi yêu cầu hoàn cọc (đang chờ duyệt) | Không có nút Giải phóng phòng; gọi API hủy trả **409** | BR13 |
 
 ## 6. Luồng 4: hoàn cọc
 
@@ -240,12 +256,12 @@ cd ../PRN232_BE
 dotnet test
 ```
 
-| Bộ kiểm tra | Kết quả mong đợi (13/11/2026) |
+| Bộ kiểm tra | Kết quả mong đợi (14/11/2026) |
 | --- | --- |
 | tsc | Không lỗi |
-| Vitest | 340 đạt (44 file) |
+| Vitest | 354 đạt (45 file) |
 | vite build | Thành công (cảnh báo kích thước chunk có sẵn, không ảnh hưởng) |
-| dotnet test | 1419 đạt, 23 bỏ qua, **1 lỗi** |
+| dotnet test | 1468 đạt, 23 bỏ qua, **1 lỗi** |
 
 Lỗi duy nhất của `dotnet test` là `SupabaseReadOnlyInspectionTests`: bài kiểm tra này cần biến môi trường `ConnectionStrings__DefaultConnection` trỏ đến cơ sở dữ liệu thật. Máy không đặt biến này thì bài sẽ lỗi; đây không phải lỗi mã. Các bài cần PostgreSQL riêng sẽ được bỏ qua nếu chưa cung cấp.
 
@@ -266,7 +282,9 @@ Các hành vi dưới đây đúng theo thiết kế hiện tại và đã nêu 
 | Không nhập được phí theo người hoặc xe | FR43 chưa làm |
 | Ứng dụng di động còn dữ liệu mẫu | FR53, FR54 |
 | Duyệt lịch xem do Admin; Manager không tự duyệt | Thiết kế hiện tại (L06) |
-| Manager không có nút huỷ booking đã đặt cọc | Booking đã cọc qua payOS chỉ được giải phóng bằng hoàn cọc hoặc lập hợp đồng (L09) |
+| Manager không có nút huỷ booking đã đặt cọc trong 7 ngày đầu | Trong thời gian giữ phòng, booking đã cọc chỉ được giải phóng bằng hoàn cọc hoặc lập hợp đồng (BR04, BR13) |
+| Booking quá hạn giữ phòng vẫn chiếm phòng | Giải phóng phòng làm bằng tay, hệ thống không tự hủy (L09) |
+| Trả phòng không có bước hoàn cọc | Tiền cọc đã trừ vào tiền phòng tháng đầu (OD01, BR14); FR34 ngoài phạm vi |
 | Hợp đồng kỳ đầu không nhập được chỉ số khi chưa ghi nhận chỉ số bàn giao | Quy tắc mới của FR55, không phải lỗi |
 
 ## 16. Thứ tự chạy khi chỉ có 30 phút trước buổi chấm

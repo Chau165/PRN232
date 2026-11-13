@@ -108,6 +108,15 @@ describe("DepositPage", () => {
     expect(screen.queryByText("payment success page")).toBeNull()
   })
 
+  it("explains before the hold that the deposit is the first month's rent and holds the room for 7 days", async () => {
+    renderAt("/deposit?roomId=501")
+    await screen.findByText("A101 · Studio")
+
+    const rules = screen.getByText(/được trừ vào tiền phòng tháng đầu tiên/)
+    expect(rules.textContent).toContain("giữ 7 ngày")
+    expect(rules.textContent).toContain("không được hoàn")
+  })
+
   it("tracks Creating without redirecting to a fabricated success page", async () => {
     mocks.createLink.mockResolvedValue({ paymentRequestId: 12, bookingId: 7, amount: 3000000, currency: "VND", status: "Creating", checkoutUrl: null, expiresAtUtc: null })
     renderAt("/deposit?bookingId=7")
@@ -172,6 +181,18 @@ describe("MyBookingsPage", () => {
     expect(confirm).toHaveBeenCalledTimes(2)
     expect(mocks.cancelBooking).toHaveBeenCalledWith("customer-token", 7)
     expect(screen.queryByRole("button", { name: "Huỷ giữ phòng" })).toBeNull()
+  })
+
+  it("tells the customer how long a deposited room is held and that a missed move-in keeps the deposit", async () => {
+    mocks.getBookings.mockResolvedValue([
+      booking({ bookingId: 9, status: "Deposited", holdUntilUtc: "2026-11-21T03:00:00Z", canReleaseRoom: false }),
+    ])
+    renderAt("/my-bookings")
+
+    const hold = await screen.findByText(/Phòng được giữ đến/)
+    expect(hold.textContent).toContain("7 ngày kể từ khi đặt cọc")
+    expect(hold.textContent).toContain("tiền cọc không được hoàn")
+    expect(screen.queryByText(/giữ đến khi lập hợp đồng/)).toBeNull()
   })
 
   it("shows the customer's viewing requests above the deposit holds", async () => {
