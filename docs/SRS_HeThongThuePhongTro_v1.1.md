@@ -235,7 +235,7 @@ Ngoài phạm vi: kế toán tổng hợp, hóa đơn điện tử thuế, chữ
 | Mã | Yêu cầu và tiêu chí kiểm tra | Mức |
 | --- | --- | --- |
 | FR50 | Hệ thống tạo thông báo cho các sự kiện booking, lịch xem, hợp đồng, hóa đơn, khiếu nại, bảo trì; đẩy realtime qua SignalR; người dùng đánh dấu đã đọc | Đã làm |
-| FR51 | Báo cáo doanh thu theo thời điểm thu tiền, công nợ phải thu và tiền cọc booking; Manager chỉ thấy khu được giao | Đã làm |
+| FR51 | Báo cáo doanh thu theo thời điểm thu tiền và công nợ phải thu trên màn hình Báo cáo; Manager chỉ thấy khu được giao. Báo cáo tiền cọc booking (`/api/reports/booking-deposits`) mới có API, chưa có màn hình | Đã làm (báo cáo tiền cọc chỉ có API) |
 | FR52 | Trang tổng quan quản lý: số phòng, tình trạng khu trọ, chỉ số chính | Đã làm |
 
 ### 4.14 Ứng dụng di động
