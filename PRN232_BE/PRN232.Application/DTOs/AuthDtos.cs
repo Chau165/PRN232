@@ -4,6 +4,9 @@ public record RegisterDto(string FullName, string Email, string Password, string
 
 public record LoginDto(string Email, string Password);
 
+// Body of POST /api/auth/google: the ID token ("credential") from Google Identity Services.
+public record GoogleLoginDto(string IdToken);
+
 public record AuthenticatedUserDto(
     int UserId,
     string FullName,

@@ -24,6 +24,13 @@ public class UserRepository : IUserRepository
             .FirstOrDefaultAsync(u => u.Email == email);
     }
 
+    public Task<Users?> GetByGoogleSubjectAsync(string googleSubject)
+    {
+        return _context.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.GoogleSubject == googleSubject);
+    }
+
     public Task<bool> EmailExistsAsync(string email)
     {
         return _context.Users.AnyAsync(u => u.Email == email);
