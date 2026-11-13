@@ -174,6 +174,18 @@ describe("MyBookingsPage", () => {
     expect(screen.queryByRole("button", { name: "Huỷ giữ phòng" })).toBeNull()
   })
 
+  it("tells the customer how long a deposited room is held and that a missed move-in keeps the deposit", async () => {
+    mocks.getBookings.mockResolvedValue([
+      booking({ bookingId: 9, status: "Deposited", holdUntilUtc: "2026-11-21T03:00:00Z", canReleaseRoom: false }),
+    ])
+    renderAt("/my-bookings")
+
+    const hold = await screen.findByText(/Phòng được giữ đến/)
+    expect(hold.textContent).toContain("7 ngày kể từ khi đặt cọc")
+    expect(hold.textContent).toContain("tiền cọc không được hoàn")
+    expect(screen.queryByText(/giữ đến khi lập hợp đồng/)).toBeNull()
+  })
+
   it("shows the customer's viewing requests above the deposit holds", async () => {
     mocks.getViewingSchedules.mockResolvedValue([
       { viewingId: 3, roomId: 501, roomCode: "A101", propertyId: 1, propertyName: "Sunrise", customerId: 10,

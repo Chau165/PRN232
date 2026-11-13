@@ -17,4 +17,8 @@ export interface BookingDto {
   refundStatus?: string | null
   canRequestRefund?: boolean
   latestPaymentRequestId?: number | null
+  // OD07: deposit time + 7 days, only for a deposited booking without a contract.
+  holdUntilUtc?: string | null
+  // True once that hold is over and no refund request is open; staff may then release the room.
+  canReleaseRoom?: boolean
 }
