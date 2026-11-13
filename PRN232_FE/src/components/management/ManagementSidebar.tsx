@@ -37,6 +37,13 @@ const items: SidebarItem[] = [
   },
 
   {
+    label: "Đối soát thanh toán",
+    href: routes.managementPaymentReviews,
+    icon: "receipt",
+    adminOnly: true,
+  },
+
+  {
     label: "Đặt phòng & Đặt cọc",
 
     href: routes.managementBookings,
