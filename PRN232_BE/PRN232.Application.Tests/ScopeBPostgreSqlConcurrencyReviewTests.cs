@@ -186,7 +186,7 @@ public class ScopeBPostgreSqlConcurrencyReviewTests
     public async Task Revocation_waits_for_manager_shared_assignment_lock_then_prevents_new_writes()
     {
         await using var db = await ScopeBReviewPostgres.CreateAsync();
-        await db.SeedContractAndInvoiceAsync();
+        await db.SeedContractAndInvoiceAsync(includeInvoice: false);
         var gate = new ScopeBSqlPause("INSERT INTO \"UtilityReadings\"");
         await using var writing = db.Context(gate);
         await using var revoking = db.Context();
@@ -211,7 +211,7 @@ public class ScopeBPostgreSqlConcurrencyReviewTests
     public async Task Manager_write_waits_for_revocation_and_rechecks_assignment_after_the_lock()
     {
         await using var db = await ScopeBReviewPostgres.CreateAsync();
-        await db.SeedContractAndInvoiceAsync();
+        await db.SeedContractAndInvoiceAsync(includeInvoice: false);
         var gate = new ScopeBSqlPause("DELETE FROM \"PropertyManagerAssignments\"");
         await using var revoking = db.Context(gate);
         await using var writing = db.Context();
@@ -240,7 +240,7 @@ public class ScopeBPostgreSqlConcurrencyReviewTests
     public async Task Manager_permission_changed_after_last_check_does_not_stop_the_write_in_flight(string loss)
     {
         await using var db = await ScopeBReviewPostgres.CreateAsync();
-        await db.SeedContractAndInvoiceAsync();
+        await db.SeedContractAndInvoiceAsync(includeInvoice: false);
         var gate = new ScopeBSqlPause("INSERT INTO \"UtilityReadings\"");
         await using var writing = db.Context(gate);
         await using var administration = db.Context();
@@ -412,7 +412,7 @@ internal sealed class ScopeBReviewPostgres : IAsyncDisposable
         await context.SaveChangesAsync();
     }
 
-    public async Task SeedContractAndInvoiceAsync()
+    public async Task SeedContractAndInvoiceAsync(bool includeInvoice = true)
     {
         await SeedPaidBookingAsync();
         await using var context = Context();
@@ -420,12 +420,16 @@ internal sealed class ScopeBReviewPostgres : IAsyncDisposable
         var month = new DateOnly(today.Year, today.Month, 1);
         // The contract was processed by another member of staff, so revocation of Manager 7 is allowed.
         context.Contracts.Add(new Contracts { ContractId = 1, BookingId = 1, RoomId = 1, CustomerId = 10,
-            StartDate = month, EndDate = today.AddYears(1), MonthlyRent = 700, DepositAmount = 700, Status = "Active" });
+            StartDate = month, EndDate = today.AddYears(1), MonthlyRent = 700, DepositAmount = 700, Status = "Active",
+            InitialElectricReading = 100m, InitialWaterReading = 10m, MeterHandoverDate = today });
         var invoice = new Invoices { InvoiceId = 1, ContractId = 1, InvoiceMonth = month, DueDate = today.AddDays(7), Status = "Unpaid" };
         invoice.InvoiceDetails.Add(new InvoiceDetails { ItemType = InvoiceItemTypes.Rent, Description = "Rent", Amount = 700 });
         invoice.InvoiceDetails.Add(new InvoiceDetails { ItemType = InvoiceItemTypes.Service, Description = "Service", Amount = 200 });
         invoice.InvoiceDetails.Add(new InvoiceDetails { ItemType = InvoiceItemTypes.PrepaidRentCredit, Description = "Prepaid rent", Amount = -700 });
-        context.Invoices.Add(invoice);
+        if (includeInvoice)
+        {
+            context.Invoices.Add(invoice);
+        }
         await context.Rooms.Where(row => row.RoomId == 1).ExecuteUpdateAsync(setters => setters.SetProperty(row => row.Status, "Occupied"));
         await context.SaveChangesAsync();
     }

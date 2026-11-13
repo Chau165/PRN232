@@ -2,9 +2,22 @@ import { apiRequest } from "@/api/apiClient"
 import type {
   ContractBillingTimelineDto,
   ContractDto,
+  SaveContractMeterHandoverRequest,
   TerminateContractRequestDto,
   TerminateContractResponseDto,
 } from "@/types/contract"
+
+export function getContract(accessToken: string, contractId: number, signal?: AbortSignal) {
+  return apiRequest<ContractDto>(`/contracts/${contractId}`, { accessToken, signal, cache: "no-store" })
+}
+
+export function saveContractMeterHandover(
+  accessToken: string, contractId: number, request: SaveContractMeterHandoverRequest,
+) {
+  return apiRequest<ContractDto>(`/contracts/${contractId}/meter-handover`, {
+    accessToken, method: "PUT", body: JSON.stringify(request),
+  })
+}
 
 export function getContracts(accessToken: string, signal?: AbortSignal) {
   return apiRequest<ContractDto[]>("/contracts", { accessToken, signal, cache: "no-store" })

@@ -5,6 +5,11 @@ namespace PRN232.Application.Interfaces;
 
 public interface IContractRepository
 {
+    Task<ContractMutationResult> SaveMeterHandoverAsync(
+        int contractId, int managerId, DateOnly handoverDate,
+        decimal initialElectricReading, decimal initialWaterReading,
+        DateOnly? expectedHandoverDate, decimal? expectedElectricReading, decimal? expectedWaterReading,
+        DateOnly today, CancellationToken cancellationToken);
     Task<ContractBookingReadModel?> GetBookingAsync(int bookingId);
     Task<bool> HasActiveManagerAssignmentAsync(int propertyId, int managerId);
     Task<bool> AddFromBookingAsync(Contracts contract, Notifications customerNotification);

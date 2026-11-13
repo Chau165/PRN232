@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using PRN232.Application.Interfaces;
 using PRN232.Application.ReadModels;
+using PRN232.Application.Policies;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
 
@@ -10,10 +11,12 @@ namespace PRN232.Infrastructure.Repositories;
 public class UtilityReadingRepository : IUtilityReadingRepository
 {
     private readonly AppDbContext _context;
+    private readonly TimeProvider _timeProvider;
 
-    public UtilityReadingRepository(AppDbContext context)
+    public UtilityReadingRepository(AppDbContext context, TimeProvider? timeProvider = null)
     {
         _context = context;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public Task<ReadingContractReadModel?> GetContractAsync(int contractId)
@@ -27,7 +30,10 @@ public class UtilityReadingRepository : IUtilityReadingRepository
             contract.Status,
             contract.StartDate,
             contract.EndDate,
-            contract.Room!.PropertyId))
+            contract.Room!.PropertyId,
+            contract.InitialElectricReading,
+            contract.InitialWaterReading,
+            contract.MeterHandoverDate))
             .FirstOrDefaultAsync();
     }
 
@@ -63,11 +69,8 @@ public class UtilityReadingRepository : IUtilityReadingRepository
                 $"SELECT assignment.\"PropertyId\" FROM \"PropertyManagerAssignments\" assignment JOIN \"Rooms\" room ON room.\"PropertyId\" = assignment.\"PropertyId\" JOIN \"Contracts\" contract ON contract.\"RoomId\" = room.\"RoomId\" WHERE contract.\"ContractId\" = {reading.ContractId} AND assignment.\"ManagerId\" = {managerId} FOR SHARE OF assignment");
         }
 
-        var propertyId = await _context.Contracts
-            .Where(contract => contract.ContractId == reading.ContractId)
-            .Select(contract => (int?)contract.Room!.PropertyId)
-            .FirstOrDefaultAsync();
-        if (!propertyId.HasValue || !await HasActiveManagerAssignmentAsync(propertyId.Value, managerId))
+        var contract = await GetContractAsync(reading.ContractId);
+        if (contract is null || !await HasActiveManagerAssignmentAsync(contract.PropertyId, managerId))
         {
             return false;
         }
@@ -75,6 +78,21 @@ public class UtilityReadingRepository : IUtilityReadingRepository
         var monthTaken = await _context.UtilityReadings.AnyAsync(existing =>
             existing.ContractId == reading.ContractId && existing.ReadingMonth >= reading.ReadingMonth);
         if (monthTaken)
+        {
+            return false;
+        }
+
+        var latest = await GetLatestAsync(reading.ContractId);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(_timeProvider.GetUtcNow(),
+            TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh")).DateTime);
+        var validationError = UtilityReadingPolicy.ValidateAndResolve(contract, latest, reading.ReadingMonth, today,
+            out var electricStart, out var waterStart);
+        if (validationError is not null || reading.ElectricStart != electricStart || reading.WaterStart != waterStart ||
+            !UtilityReadingPolicy.IsValidMeterValue(electricStart) || !UtilityReadingPolicy.IsValidMeterValue(waterStart) ||
+            !UtilityReadingPolicy.IsValidMeterValue(reading.ElectricEnd) || !UtilityReadingPolicy.IsValidMeterValue(reading.WaterEnd) ||
+            reading.ElectricEnd < electricStart || reading.WaterEnd < waterStart ||
+            await _context.Invoices.AnyAsync(invoice => invoice.ContractId == reading.ContractId &&
+                invoice.InvoiceMonth >= reading.ReadingMonth))
         {
             return false;
         }

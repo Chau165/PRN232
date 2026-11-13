@@ -91,5 +91,5 @@ it(`verifies the full invoice payment chain: ${scenario}`, async () => {
   expect(screen.getAllByText(/355\.000/).length).toBeGreaterThanOrEqual(1)
   expect(screen.getByText(/0 hóa đơn · đến/)).toBeTruthy()
   expect(screen.queryByText("624,5 triệu")).toBeNull()
-  expect(screen.getByText("Sunrise")).toBeTruthy()
+  expect(screen.getAllByText("Sunrise").length).toBeGreaterThanOrEqual(1)
 }, 60000)

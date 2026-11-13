@@ -488,6 +488,11 @@ public class ContractServiceTests
             new(contractId, 1, 5, "A-101", 1, "Sunrise", 10, "Customer", "0900000000",
                 VietnamToday, ExistingEndDate, 3_500_000m, 3_000_000m, ExistingContractStatus, "Manager");
 
+        public Task<ContractMutationResult> SaveMeterHandoverAsync(
+            int contractId, int managerId, DateOnly handoverDate, decimal electric, decimal water,
+            DateOnly? expectedDate, decimal? expectedElectric, decimal? expectedWater, DateOnly today,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public Task<bool> ExistsAsync(int contractId) => Task.FromResult(ExistingContractId == contractId);
     }
 

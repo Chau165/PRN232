@@ -2,12 +2,13 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, expect, it, vi } from "vitest"
 import ManagementReportsPage from "@/pages/ManagementReportsPage/ManagementReportsPage"
 
-const mocks = vi.hoisted(() => ({ revenue: vi.fn(), debt: vi.fn() }))
+const mocks = vi.hoisted(() => ({ revenue: vi.fn(), debt: vi.fn(), deposits: vi.fn() }))
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ accessToken: "manager-token" }) }))
-vi.mock("@/services/reportService", () => ({ getRevenueReport: mocks.revenue, getReceivablesReport: mocks.debt }))
+vi.mock("@/services/reportService", () => ({ getRevenueReport: mocks.revenue, getReceivablesReport: mocks.debt, getDepositReport: mocks.deposits }))
 vi.mock("@/components/management/ManagementPage", () => ({ default: ({ children }: { children: React.ReactNode }) => <main>{children}</main> }))
 
 beforeEach(() => {
+  mocks.deposits.mockReset().mockResolvedValue({ totals: { collectedAmount: 0, collectionCount: 0, refundedAmount: 0, refundCount: 0, netCashFlow: 0 }, unknownDate: { collectedAmount: 0, collectionCount: 0, refundedAmount: 0, refundCount: 0 }, byProperty: [] })
   mocks.revenue.mockReset().mockResolvedValue({ totalCollected: 3355000, paymentCount: 1, unknownDateAmount: 500, unknownDatePaymentCount: 1,
     byProperty: [{ propertyId: 1, propertyName: "Sunrise", collectedAmount: 3355000, paymentCount: 1, unknownDateAmount: 500, unknownDatePaymentCount: 1 }] })
   mocks.debt.mockReset().mockResolvedValue({ asOfDate: "2026-11-11", outstandingAmount: 0, outstandingInvoiceCount: 0, overdueAmount: 0, overdueInvoiceCount: 0 })

@@ -282,6 +282,15 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<DateOnly>("EndDate")
                         .HasColumnType("date");
 
+                    b.Property<decimal?>("InitialElectricReading")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("InitialWaterReading")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateOnly?>("MeterHandoverDate")
+                        .HasColumnType("date");
+
                     b.Property<decimal>("MonthlyRent")
                         .HasColumnType("decimal(18,2)");
 

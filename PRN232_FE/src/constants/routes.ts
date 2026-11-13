@@ -26,6 +26,7 @@ export const routes = {
   managementRooms: "/management/rooms",
 
   managementBookings: "/management/bookings",
+  managementRefunds: "/management/refunds",
 
   managementViewings: "/management/viewings",
 

@@ -3,6 +3,7 @@ import { useAuth } from "@/auth/AuthContext"
 import { ApiError } from "@/api/apiClient"
 import ManagementPage from "@/components/management/ManagementPage"
 import ManagementStatCard from "@/components/management/ManagementStatCard"
+import DepositReportPanel from "@/components/management/DepositReportPanel"
 import { getReceivablesReport, getRevenueReport, type ReceivablesReport, type RevenueReport } from "@/services/reportService"
 import { formatVnd } from "@/utils/publicFormatting"
 
@@ -56,6 +57,7 @@ export default function ManagementReportsPage() {
       <label className="text-sm font-semibold text-slate-700">Tháng doanh thu<input aria-label="Tháng doanh thu" type="month" value={month} onChange={event => { if (event.target.value) setMonth(event.target.value) }} className="ml-3 rounded-lg border border-slate-200 p-2" /></label>
       <button onClick={() => setVersion(value => value + 1)} disabled={loading} className="rounded-lg bg-[#087775] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Tải lại báo cáo</button>
     </div>
+    <DepositReportPanel token={accessToken} month={month} version={version} />
     {loading && <p role="status">Đang tải báo cáo...</p>}
     {error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-700">{error}</p>}
     {data && <>

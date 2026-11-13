@@ -328,6 +328,11 @@ public class InvoicesApiTests
         await LoginAsync(client, "manager@example.test");
         var contract = await PostContractAsync(client, bookingId, VietnamToday, VietnamToday.AddYears(1));
         var contractId = (await contract.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("contractId").GetInt32();
+        var handover = await client.PutAsJsonAsync($"/api/contracts/{contractId}/meter-handover", new
+        {
+            meterHandoverDate = VietnamToday, initialElectricReading = 100m, initialWaterReading = 10m
+        });
+        Assert.Equal(HttpStatusCode.OK, handover.StatusCode);
         var reading = await client.PostAsJsonAsync("/api/utility-readings", new
         {
             contractId,

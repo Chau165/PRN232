@@ -1,5 +1,11 @@
 import { apiRequest } from "@/api/apiClient"
 import type { BookingDto, PaymentMethod } from "@/types/booking"
+import type { PaymentRequestStatus } from "@/types/invoicePayment"
+
+export interface BookingPaymentLinkDto { paymentRequestId: number; bookingId: number; status: PaymentRequestStatus; amount: number; currency: string; checkoutUrl: string | null; expiresAtUtc: string | null; reused: boolean }
+export function createBookingPaymentLink(accessToken: string, bookingId: number) {
+  return apiRequest<BookingPaymentLinkDto>(`/bookings/${bookingId}/payment-link`, { accessToken, method: "POST", cache: "no-store", requireJson: true })
+}
 
 export function getBookings(accessToken: string, signal?: AbortSignal) {
   return apiRequest<BookingDto[]>("/bookings", { accessToken, signal, cache: "no-store" })

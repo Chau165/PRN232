@@ -14,12 +14,11 @@ public record UtilityReadingDto(
     decimal WaterEnd,
     decimal WaterUsage);
 
-// ElectricStart/WaterStart chỉ dùng cho lần ghi đầu tiên của hợp đồng;
-// các tháng sau server tự lấy chỉ số cuối kỳ của lần ghi gần nhất.
+// Các trường đầu kỳ cũ chỉ để tương thích: server dùng baseline hoặc kỳ trước.
 public record CreateUtilityReadingDto(
     int ContractId,
     DateOnly ReadingMonth,
     decimal ElectricEnd,
     decimal WaterEnd,
-    decimal? ElectricStart,
-    decimal? WaterStart);
+    decimal? ElectricStart = null,
+    decimal? WaterStart = null);

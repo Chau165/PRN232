@@ -14,4 +14,7 @@ export interface BookingDto {
   expiryDate: string
   customerPhone: string
   contractId: number | null
+  refundStatus?: string | null
+  canRequestRefund?: boolean
+  latestPaymentRequestId?: number | null
 }

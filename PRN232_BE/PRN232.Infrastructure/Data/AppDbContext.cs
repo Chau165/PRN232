@@ -582,6 +582,9 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
             property.SetColumnType("decimal(18,2)");
         }
 
+        modelBuilder.Entity<Contracts>().Property(contract => contract.InitialElectricReading).HasColumnType("numeric");
+        modelBuilder.Entity<Contracts>().Property(contract => contract.InitialWaterReading).HasColumnType("numeric");
+
         modelBuilder.Entity<InvoiceDetails>()
             .Property(detail => detail.Quantity)
             .HasColumnType("numeric(18,4)");

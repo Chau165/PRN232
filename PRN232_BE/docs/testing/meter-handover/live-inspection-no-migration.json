@@ -1,0 +1,124 @@
+{
+  "counts": {
+    "Bookings": 8,
+    "Invoices": 1,
+    "Payments": 4,
+    "Contracts": 2,
+    "InvoiceDetails": 8,
+    "UtilityReadings": 1,
+    "PropertyManagerAssignments": 30
+  },
+  "migrations": [
+    {
+      "MigrationId": "20261003142421_InitialCreate",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261004073837_RenameKhuTroDichVuToPropertyService",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261013140609_SeedRolesAndAuthSetup",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261013192052_ReconcileMaintenanceReportsAndLogNullability",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261019034905_AddPropertyPrimaryImageUrl",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261019143543_AddPropertyDescriptionAndAmenities",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261019143615_AddPropertyServiceRates",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261019143633_AddInvoiceDetailBillingSnapshot",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261019195719_FixPropertyCoordinatePrecision",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261027054119_AddMaintenanceAssignmentNote",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261028022644_AddViewingSchedules",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261028092219_AddInvoiceComplaints",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261103180414_AddViewingAssignmentsAndNotificationLinks",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261104032932_AddPropertyManagerAssignments",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261105002457_AddUniqueInvoiceContractMonthIndex",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261109065159_AddPaymentPaidAtUtc",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261110164307_AddInvoicePaymentRequests",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261110182057_AddPaymentWebhookReceipts",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261110190057_AddPaymentReceiptSource",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261111014953_AddPaymentReviewCases",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261111152245_AddBookingPaymentRequestTarget",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261111165922_AddBookingRefundRequestsAndPayoutAttempts",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261113073402_EncryptIdentityDocumentCccd",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261113075616_AddBookingRefundLedger",
+      "ProductVersion": "8.0.10"
+    },
+    {
+      "MigrationId": "20261113103807_SecurePaymentTables",
+      "ProductVersion": "8.0.10"
+    }
+  ],
+  "businessHashes": {
+    "Bookings": "db94712b80c4cf5028fd8451adb9a8fa",
+    "Invoices": "27557b71c2ffd1530f0534f3b82609da",
+    "Payments": "e6c23e922c7bd56be3ad6af41d0e5eae",
+    "Contracts": "fc8ba32740b86da7883209d2b9b66cf4",
+    "InvoiceDetails": "d5d18c68080389d8cf224779e3b6b310",
+    "UtilityReadings": "68c9ac1f088443217f64349531ee273d",
+    "PropertyManagerAssignments": "ca72165758adf89f0ad5f3eef9c917c0"
+  },
+  "baselineColumns": null,
+  "unchangedSchemaHash": "7365ff869d31d710d0280cda7e7f609b"
+}

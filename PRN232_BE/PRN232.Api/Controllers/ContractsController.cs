@@ -86,6 +86,37 @@ public class ContractsController : ControllerBase
         }
     }
 
+    [HttpPut("{id:int}/meter-handover")]
+    [Authorize(Roles = "Manager")]
+    public async Task<ActionResult<ContractDto>> SaveMeterHandover(
+        int id, SaveContractMeterHandoverDto request, CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+        try
+        {
+            return Ok(await _contractService.SaveMeterHandoverAsync(id, request, userId, role, cancellationToken));
+        }
+        catch (ContractBusinessRuleException exception)
+        {
+            return BadRequest(new ProblemDetails { Title = "Invalid meter handover", Detail = exception.Message });
+        }
+        catch (ContractNotFoundException exception)
+        {
+            return NotFound(new ProblemDetails { Title = "Contract not found", Detail = exception.Message });
+        }
+        catch (ContractAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
+        catch (ContractConflictException exception)
+        {
+            return Conflict(new ProblemDetails { Title = "Meter handover conflict", Detail = exception.Message });
+        }
+    }
+
     [HttpPut("{id:int}/extend")]
     [Authorize(Roles = "Manager")]
     public async Task<ActionResult<ContractDto>> Extend(

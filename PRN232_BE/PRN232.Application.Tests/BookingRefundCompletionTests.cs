@@ -257,14 +257,17 @@ public class BookingRefundCompletionTests
         using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=localhost;Database=unused").Options);
         Assert.False(db.Database.HasPendingModelChanges());
         var migrations = db.Database.GetMigrations().ToArray();
-        Assert.EndsWith("_AddBookingRefundLedger", migrations[^1]);
-        var sql = db.GetService<IMigrator>().GenerateScript(migrations[^2], migrations[^1]);
+        var ledger = Assert.Single(migrations, migration => migration.EndsWith("_AddBookingRefundLedger", StringComparison.Ordinal));
+        var ledgerIndex = Array.IndexOf(migrations, ledger);
+        Assert.InRange(ledgerIndex, 1, migrations.Length - 1);
+        var previous = migrations[ledgerIndex - 1];
+        var sql = db.GetService<IMigrator>().GenerateScript(previous, ledger);
         Assert.Contains("CREATE TABLE \"BookingRefunds\"", sql); Assert.Contains("ON DELETE RESTRICT", sql);
         foreach (var column in new[] { "BookingRefundRequestId", "PayoutAttemptId", "OriginalPaymentId", "BookingId" })
             Assert.Contains($"CREATE UNIQUE INDEX \"IX_BookingRefunds_{column}\"", sql);
         Assert.Contains("CK_BookingRefunds_Amount", sql); Assert.Contains("CK_BookingRefunds_Times", sql);
         Assert.DoesNotContain("ALTER TABLE \"Payments\"", sql); Assert.DoesNotContain("UPDATE \"Payments\"", sql);
-        var rollback = db.GetService<IMigrator>().GenerateScript(migrations[^1], migrations[^2]);
+        var rollback = db.GetService<IMigrator>().GenerateScript(ledger, previous);
         Assert.Contains("DROP TABLE \"BookingRefunds\"", rollback); Assert.DoesNotContain("DROP TABLE \"Payments\"", rollback);
     }
 

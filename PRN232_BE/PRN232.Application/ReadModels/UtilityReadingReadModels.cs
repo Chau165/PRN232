@@ -6,7 +6,10 @@ public sealed record ReadingContractReadModel(
     string Status,
     DateOnly StartDate,
     DateOnly EndDate,
-    int PropertyId = 0);
+    int PropertyId = 0,
+    decimal? InitialElectricReading = null,
+    decimal? InitialWaterReading = null,
+    DateOnly? MeterHandoverDate = null);
 
 public sealed record LatestReadingReadModel(
     DateOnly ReadingMonth,

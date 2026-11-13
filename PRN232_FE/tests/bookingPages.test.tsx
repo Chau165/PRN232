@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   getBooking: vi.fn(),
   createBooking: vi.fn(),
   payBooking: vi.fn(),
+  createLink: vi.fn(),
+  openCheckout: vi.fn(),
   cancelBooking: vi.fn(),
   getRoom: vi.fn(),
   getViewingSchedules: vi.fn(),
@@ -31,12 +33,14 @@ vi.mock("@/auth/CustomerNotificationsContext", () => ({
   }),
 }))
 vi.mock("@/services/bookingService", () => ({
+  createBookingPaymentLink: mocks.createLink,
   getBookings: mocks.getBookings,
   getBooking: mocks.getBooking,
   createBooking: mocks.createBooking,
   payBooking: mocks.payBooking,
   cancelBooking: mocks.cancelBooking,
 }))
+vi.mock("@/utils/invoicePayment", async original => ({ ...await original<typeof import("@/utils/invoicePayment")>(), openPayOSCheckout: mocks.openCheckout }))
 vi.mock("@/services/viewingScheduleService", () => ({ getViewingSchedules: mocks.getViewingSchedules }))
 vi.mock("@/services/publicBrowsingService", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/publicBrowsingService")>()),
@@ -66,12 +70,15 @@ function renderAt(path: string) {
         <Route path="/deposit" element={<DepositPage />} />
         <Route path="/my-bookings" element={<MyBookingsPage />} />
         <Route path="/payment-success" element={<p>payment success page</p>} />
+        <Route path="/payment-result" element={<p>checking server payment status</p>} />
       </Routes>
     </MemoryRouter>,
   )
 }
 
 beforeEach(() => {
+  sessionStorage.clear()
+  mocks.createLink.mockResolvedValue({ paymentRequestId: 12, bookingId: 7, amount: 3000000, currency: "VND", status: "Pending", checkoutUrl: "https://pay.payos.vn/web/booking-link", expiresAtUtc: "2099-01-01T00:00:00Z", reused: true })
   mocks.getRoom.mockResolvedValue(room)
   mocks.createBooking.mockResolvedValue(booking())
   mocks.getBooking.mockResolvedValue(booking())
@@ -81,24 +88,32 @@ beforeEach(() => {
 })
 
 describe("DepositPage", () => {
-  it("holds the room, then pays the deposit with the chosen mock gateway", async () => {
+  it("holds the room and opens a real payOS checkout once without calling the simulated payment API", async () => {
     renderAt("/deposit?roomId=501")
     await screen.findByText("A101 · Studio")
     fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
 
-    await screen.findByText("Phương thức thanh toán")
+    await screen.findByText("Thanh toán cọc qua payOS")
     expect(mocks.createBooking).toHaveBeenCalledWith("customer-token", 501)
     expect(mocks.getBooking).toHaveBeenCalledWith("customer-token", 7, expect.any(AbortSignal))
 
     const payButton = screen.getByRole("button", { name: /^Thanh toán/ })
     fireEvent.click(payButton)
-    expect(screen.getByRole("alert").textContent).toBe("Vui lòng chọn phương thức thanh toán.")
-    expect(mocks.payBooking).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByLabelText("MoMo"))
     fireEvent.click(payButton)
-    await screen.findByText("payment success page")
-    expect(mocks.payBooking).toHaveBeenCalledWith("customer-token", 7, "MoMo")
+    await waitFor(() => expect(mocks.openCheckout).toHaveBeenCalledWith("https://pay.payos.vn/web/booking-link"))
+    expect(mocks.createLink).toHaveBeenCalledTimes(1)
+    expect(mocks.createLink).toHaveBeenCalledWith("customer-token", 7)
+    expect(mocks.payBooking).not.toHaveBeenCalled()
+    expect(screen.queryByLabelText("MoMo")).toBeNull()
+    expect(screen.queryByText("payment success page")).toBeNull()
+  })
+
+  it("tracks Creating without redirecting to a fabricated success page", async () => {
+    mocks.createLink.mockResolvedValue({ paymentRequestId: 12, bookingId: 7, amount: 3000000, currency: "VND", status: "Creating", checkoutUrl: null, expiresAtUtc: null })
+    renderAt("/deposit?bookingId=7")
+    fireEvent.click(await screen.findByRole("button", { name: /^Thanh toán/ }))
+    await screen.findByText("checking server payment status")
+    expect(mocks.openCheckout).not.toHaveBeenCalled()
   })
 
   it("explains when someone else took the room before the hold", async () => {
