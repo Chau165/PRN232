@@ -10,9 +10,17 @@ export function positiveId(value: string | null): number | null {
 const key = (userId: string) => `troviet-invoice-payment:${userId}`
 // Per-tab, per-user context survives the external checkout round trip. Never store credentials or payment results.
 export function rememberInvoicePayment(userId: string, requestId: number, invoiceId: number, providerLinkId?: string) {
+  rememberPaymentTarget(userId, "Invoice")
   const previous = recalledInvoicePayment(userId)
   const linkId = providerLinkId ?? (previous?.requestId === requestId ? previous.providerLinkId : undefined)
   try { sessionStorage.setItem(key(userId), JSON.stringify({ requestId, invoiceId, providerLinkId: linkId })) } catch { /* storage may be disabled */ }
+}
+
+export function rememberPaymentTarget(userId: string, target: "Booking" | "Invoice") {
+  try { sessionStorage.setItem(`troviet-payment-target:${userId}`, target) } catch { /* optional per-tab navigation context */ }
+}
+export function recalledPaymentTarget(userId: string): "Booking" | "Invoice" | null {
+  try { const value = sessionStorage.getItem(`troviet-payment-target:${userId}`); return value === "Booking" || value === "Invoice" ? value : null } catch { return null }
 }
 
 export function recalledInvoicePayment(userId: string): { requestId: number; invoiceId: number; providerLinkId?: string } | null {
@@ -39,11 +47,19 @@ export function openPayOSCheckout(url: string) {
 }
 
 export function paymentIsFinal(item: PaymentRequestStatusDto) {
+  if (item.bookingId) return item.bookingStatus === "Deposited" || item.bookingStatus === "Cancelled" || !["Creating", "Pending"].includes(item.status)
   return item.invoiceStatus === "Paid" || !["Creating", "Pending"].includes(item.status)
 }
 
 export function paymentResultText(item: PaymentRequestStatusDto) {
   if (item.status === "RequiresReview") return { title: "Thanh toán cần kiểm tra", detail: "Vui lòng liên hệ quản lý để kiểm tra khoản thanh toán. Không thanh toán thêm khi chưa có xác nhận.", tone: "review" }
+  if (item.bookingId) {
+    if (item.status === "Succeeded" && item.bookingStatus === "Deposited") return { title: "Đặt cọc thành công", detail: "Hệ thống đã xác nhận nhận cọc qua payOS. Phòng được giữ để lập hợp đồng hoặc xử lý yêu cầu hoàn cọc.", tone: "success" }
+    if (item.status === "Succeeded" && item.bookingStatus === "Cancelled") return { title: "Khoản cọc đã được ghi nhận", detail: "Booking đã hủy. Xem tiến độ hoàn cọc tại Lịch xem & đặt cọc.", tone: "closed" }
+    if (item.bookingStatus === "Deposited") return { title: "Booking đã được đặt cọc", detail: "Vui lòng kiểm tra booking. Bạn không cần chuyển thêm tiền cọc.", tone: "success" }
+    if (["Cancelled", "Expired", "Create-failed"].includes(item.status) || item.bookingStatus === "Cancelled") return { title: "Liên kết cọc đã đóng", detail: "Quay lại booking để kiểm tra trước khi thanh toán tiếp. Nếu đã chuyển tiền, liên hệ quản lý để đối chiếu.", tone: "closed" }
+    return { title: "Đang chờ xác nhận tiền cọc", detail: "Kết quả được lấy từ hệ thống. Nếu đã chuyển tiền, vui lòng chờ xác nhận, không thanh toán thêm.", tone: "waiting" }
+  }
   if (item.status === "Succeeded" && item.invoiceStatus === "Paid") return { title: "Thanh toán thành công", detail: "Hệ thống đã xác nhận thanh toán hóa đơn qua payOS.", tone: "success" }
   if (item.invoiceStatus === "Paid") return { title: "Hóa đơn đã được thanh toán", detail: "Hóa đơn đã được ghi nhận thanh toán. Bạn không cần trả thêm.", tone: "success" }
   switch (item.status) {

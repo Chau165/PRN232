@@ -13,11 +13,13 @@ export interface InvoicePaymentLinkDto {
 
 export interface PaymentRequestStatusDto {
   paymentRequestId: number
-  invoiceId: number
+  invoiceId: number | null
+  bookingId?: number | null
+  bookingStatus?: string | null
   customerId: number
   propertyId: number
   status: PaymentRequestStatus
-  invoiceStatus: string
+  invoiceStatus: string | null
   amount: number
   currency: string
   createdAtUtc: string

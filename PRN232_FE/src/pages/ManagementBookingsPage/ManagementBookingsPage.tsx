@@ -5,6 +5,8 @@ import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementPage from "@/components/management/ManagementPage"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
+import BookingRefundPanel from "@/components/customer/BookingRefundPanel"
+import { refundBlocksContract, refundDisplay } from "@/utils/bookingRefund"
 import type { BookingDto } from "@/types/booking"
 import { routes } from "@/constants/routes"
 import { useBookings } from "@/hooks/useBookings"
@@ -15,12 +17,11 @@ export default function ManagementBookingsPage() {
   const { user } = useAuth()
   const { bookings, loading, error, retry, cancel: cancelById, cancellingId } = useBookings()
   const [toast, setToast] = useState("")
+  const [openedRefund, setOpenedRefund] = useState<number | null>(null)
 
   const cancel = async (booking: BookingDto) => {
     if (cancellingId !== null) return
-    const question = booking.status === "Deposited"
-      ? `Khách ${booking.customerName} đã đặt cọc phòng ${booking.roomCode}. Huỷ sẽ nhả phòng và báo cho khách; việc hoàn cọc xử lý ngoài hệ thống. Tiếp tục?`
-      : `Huỷ booking #${booking.bookingId} của khách ${booking.customerName}?`
+    const question = `Huỷ booking #${booking.bookingId} của khách ${booking.customerName}?`
     if (!window.confirm(question)) return
     try {
       await cancelById(booking.bookingId)
@@ -33,8 +34,10 @@ export default function ManagementBookingsPage() {
   return (
     <ManagementPage
       title="Đặt phòng & Đặt cọc"
-      description="Theo dõi các phòng đang được giữ, tiền cọc và huỷ booking khi khách không tiếp tục thuê."
+      description="Theo dõi giữ phòng, đặt cọc và tiến độ hoàn cọc. Khách gửi yêu cầu hoàn, Admin xét duyệt."
     >
+      <div className="mb-4 flex flex-wrap gap-3"><button type="button" onClick={retry} className="rounded-lg border border-[#087775] px-4 py-2 text-sm font-semibold text-[#087775]">Cập nhật booking</button>
+        {user?.role === "ADMIN" && <Link to={routes.managementRefunds} className="rounded-lg bg-[#087775] px-4 py-2 text-sm font-bold text-white">Xét duyệt hoàn cọc</Link>}</div>
       {loading && <p role="status" className="text-[14px] text-slate-500">Đang tải danh sách booking...</p>}
       {!loading && error && (
         <div role="alert" className="rounded-2xl bg-white p-6 text-center shadow-[0_3px_18px_rgba(16,65,67,.05)]">
@@ -59,7 +62,7 @@ export default function ManagementBookingsPage() {
               {bookings.map((booking) => {
                 const display = bookingStatusDisplay(booking)
                 return (
-                  <div key={booking.bookingId} className="grid gap-3 px-5 py-5 lg:grid-cols-7 lg:items-center">
+                  <div key={booking.bookingId}><div className="grid gap-3 px-5 py-5 lg:grid-cols-7 lg:items-center">
                     <strong className="text-[13px] text-slate-700">#{booking.bookingId}</strong>
                     <span className="text-[13px] text-slate-600">{booking.customerName}</span>
                     <span className="text-[13px] text-slate-600">
@@ -68,12 +71,13 @@ export default function ManagementBookingsPage() {
                     </span>
                     <span className="font-semibold text-[#087775]">{formatVnd(booking.depositAmount)}</span>
                     <span className="text-[13px] text-slate-600">
-                      {booking.status === "Cancelled" ? "—" : formatDateTime(booking.expiryDate)}
+                      {booking.status === "Cancelled" ? "—" : booking.status === "Deposited" ? "Đã cọc, giữ đến khi chốt hợp đồng hoặc hoàn cọc" : formatDateTime(booking.expiryDate)}
                     </span>
-                    <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
+                    <div className="space-y-2"><StatusBadge tone={display.tone}>{display.label}</StatusBadge>
+                      {booking.refundStatus && <StatusBadge tone={refundDisplay(booking.refundStatus).tone}>{refundDisplay(booking.refundStatus).label}</StatusBadge>}</div>
                     {/* Booking đã lên hợp đồng thì không còn thao tác: BE cũng chặn huỷ trường hợp này. */}
                     <div className="flex flex-wrap gap-2">
-                      {user?.role === "MANAGER" && booking.status === "Deposited" && booking.contractId === null && (
+                      {user?.role === "MANAGER" && booking.status === "Deposited" && booking.contractId === null && !refundBlocksContract(booking.refundStatus) && (
                         <Link
                           to={`${routes.managementCreateContract}?bookingId=${booking.bookingId}`}
                           className="rounded-lg bg-[#087775] px-3 py-2 text-[12px] font-bold text-white hover:bg-[#066a68]"
@@ -81,7 +85,7 @@ export default function ManagementBookingsPage() {
                           Tạo hợp đồng
                         </Link>
                       )}
-                      {booking.status !== "Cancelled" && booking.contractId === null && (
+                      {booking.status === "Pending" && booking.contractId === null && (
                         <button
                           type="button"
                           onClick={() => cancel(booking)}
@@ -91,8 +95,11 @@ export default function ManagementBookingsPage() {
                           {cancellingId === booking.bookingId ? "Đang huỷ..." : "Huỷ booking"}
                         </button>
                       )}
+                      {(booking.status === "Deposited" && booking.contractId === null || booking.refundStatus) && <button type="button"
+                        aria-expanded={openedRefund === booking.bookingId} onClick={() => setOpenedRefund(value => value === booking.bookingId ? null : booking.bookingId)}
+                        className="rounded-lg border border-[#087775] px-3 py-2 text-xs font-bold text-[#087775]">Theo dõi hoàn cọc #{booking.bookingId}</button>}
                     </div>
-                  </div>
+                  </div>{openedRefund === booking.bookingId && <div className="px-5 pb-5"><BookingRefundPanel booking={booking} onChanged={retry} /></div>}</div>
                 )
               })}
             </div>

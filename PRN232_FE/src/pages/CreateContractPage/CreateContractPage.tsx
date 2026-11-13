@@ -7,6 +7,7 @@ import { createContract } from "@/services/contractService"
 import type { BookingDto } from "@/types/booking"
 import { parsePositiveRouteId, routes } from "@/constants/routes"
 import { bookingErrorMessage } from "@/utils/bookingDisplay"
+import { refundBlocksContract } from "@/utils/bookingRefund"
 import { addContractMonths, isContractDate, localToday } from "@/utils/managementContracts"
 import { formatVnd } from "@/utils/publicFormatting"
 
@@ -60,6 +61,7 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
   if (!booking) return <p role="status" className="text-sm text-slate-500">Đang tải booking...</p>
   if (booking.contractId !== null) return <Warning message="Booking này đã được lập hợp đồng." />
   if (booking.status !== "Deposited") return <Warning message="Chỉ booking đã đặt cọc mới lập được hợp đồng." />
+  if (refundBlocksContract(booking.refundStatus)) return <Warning message="Booking đang có yêu cầu hoàn cọc hoặc đã hoàn cọc, chưa thể lập hợp đồng." />
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()

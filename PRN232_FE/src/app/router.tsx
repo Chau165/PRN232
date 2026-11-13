@@ -34,6 +34,7 @@ const ManagementMaintenancePage = lazy(() => import("@/pages/ManagementMaintenan
 const ManagementManagersPage = lazy(() => import("@/pages/ManagementManagersPage/ManagementManagersPage"))
 const ManagementPropertiesPage = lazy(() => import("@/pages/ManagementPropertiesPage/ManagementPropertiesPage"))
 const ManagementReportsPage = lazy(() => import("@/pages/ManagementReportsPage/ManagementReportsPage"))
+const ManagementRefundsPage = lazy(() => import("@/pages/ManagementRefundsPage/ManagementRefundsPage"))
 const ManagementRoomsPage = lazy(() => import("@/pages/ManagementRoomsPage/ManagementRoomsPage"))
 const ManagementUsersPage = lazy(() => import("@/pages/ManagementUsersPage/ManagementUsersPage"))
 const ManagementViewingsPage = lazy(() => import("@/pages/ManagementViewingsPage/ManagementViewingsPage"))
@@ -174,6 +175,10 @@ export const router = createBrowserRouter([
         ),
       },
 
+      {
+        path: routes.managementRefunds,
+        element: protectedElement(<ManagementRefundsPage />, adminOnly),
+      },
       {
         path: routes.managementReports,
         element: protectedElement(<ManagementReportsPage />, adminOnly),

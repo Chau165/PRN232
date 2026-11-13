@@ -32,7 +32,7 @@ export function CustomerNotificationsProvider({ children }: { children: ReactNod
   const previousToken = useRef(accessToken)
   useEffect(() => {
     if (authenticated && previousToken.current === accessToken && previousPath.current !== location.pathname &&
-      [routes.notifications, routes.managementMaintenance, routes.managementViewings, routes.managementBookings].includes(location.pathname as typeof routes.notifications)) {
+      [routes.notifications, routes.managementMaintenance, routes.managementViewings, routes.managementBookings, routes.managementRefunds].includes(location.pathname as typeof routes.notifications)) {
       void value.refresh()
     }
     previousPath.current = location.pathname
