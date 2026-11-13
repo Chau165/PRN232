@@ -313,4 +313,79 @@ public class PaymentReconciliationApiTests
             Assert.Equal(1, await scope.ServiceProvider.GetRequiredService<IPaymentReconciliationService>().RunBatchAsync(default));
         Assert.Equal(2, gateway.Calls);
     }
+
+    private static async Task<(int Id, string Timestamp)> SeedInvoiceTimeReviewAsync(IServiceProvider services, HttpClient client, bool cash = false)
+    {
+        var id = await SeedAsync(services, client);
+        var minute = DateTime.UtcNow.AddMinutes(-5); minute = new DateTime(minute.Ticks - minute.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
+        var timestamp = new DateTimeOffset(minute).ToOffset(TimeSpan.FromHours(7)).ToString("yyyy-MM-dd'T'HH:mm:sszzz");
+        using var scope = services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var request = await db.PaymentRequests.SingleAsync(); request.CreatedAtUtc = minute.AddSeconds(19.548336);
+        request.Status = "RequiresReview"; request.PaymentLinkId = "recovered-link"; request.LastErrorCode = "WEBHOOK_TRANSACTION_TIME_INVALID";
+        var receipt = new PaymentWebhookReceipts { PaymentRequestId = id, Source = "Reconciliation", OrderCode = 123,
+            PaymentLinkId = "recovered-link", Amount = Amount, Currency = "VND", DataCode = "00", Reference = "invoice-minute-ref",
+            TransactionDateTime = timestamp, ReceivedAtUtc = DateTime.UtcNow.AddMinutes(-3), Outcome = "RequiresReview" };
+        receipt.Fingerprint = PayOSReceiptFactory.Fingerprint(receipt); db.PaymentWebhookReceipts.Add(receipt);
+        if (cash)
+        {
+            (await db.Invoices.SingleAsync()).Status = "Paid";
+            db.Payments.Add(new Payments { InvoiceId = request.InvoiceId, UserId = 10, Amount = Amount, Status = "Success", PaymentMethod = "Cash", PaidAtUtc = DateTime.UtcNow.AddMinutes(-1) });
+        }
+        await db.SaveChangesAsync(); return (id, timestamp);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Admin_invoice_time_recheck_settles_once_or_preserves_cash_and_flags_duplicate(bool cash)
+    {
+        var gateway = new Gateway(); using var factory = new BookingsApiFactory();
+        using var app = factory.WithWebHostBuilder(builder => Configure(builder, gateway)); using var client = app.CreateClient();
+        var (id, timestamp) = await SeedInvoiceTimeReviewAsync(app.Services, client, cash);
+        gateway.Snapshot = new(123, "recovered-link", Amount, Amount, 0, "PAID", [new("invoice-minute-ref", Amount, timestamp)]);
+        await BookingsApiTests.LoginAsync(client, "customer@example.test");
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsync(Url(id) + "?recheckInvoice=true", null)).StatusCode);
+        await BookingsApiTests.LoginAsync(client, "manager@example.test");
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsync(Url(id) + "?recheckInvoice=true", null)).StatusCode);
+        await BookingsApiTests.LoginAsync(client, "admin@example.test");
+        Assert.Equal("ManualReviewOrClosed", (await (await client.PostAsync(Url(id), null)).Content.ReadFromJsonAsync<PaymentReconciliationDto>())!.Result);
+        Assert.Equal(0, gateway.Calls);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync(Url(id) + "?recheckInvoice=true", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync(Url(id) + "?recheckInvoice=true", null)).StatusCode);
+        using var check = app.Services.CreateScope(); var db = check.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal("Paid", (await db.Invoices.SingleAsync()).Status);
+        Assert.Equal(cash ? "RequiresReview" : "Succeeded", (await db.PaymentRequests.SingleAsync()).Status);
+        Assert.Equal(1, await db.Payments.CountAsync(p => p.InvoiceId != null));
+        Assert.Equal(cash ? "Cash" : "PayOS", (await db.Payments.SingleAsync(p => p.InvoiceId != null)).PaymentMethod);
+        Assert.Equal(cash ? 1 : 0, await db.PaymentReviewCases.CountAsync());
+        Assert.Single(await db.PaymentWebhookReceipts.ToListAsync());
+        if (!cash) { Assert.True(PayOSTransactionTime.TryGetUtc(timestamp, out var paid)); Assert.Equal(paid, (await db.Payments.SingleAsync(p => p.InvoiceId != null)).PaidAtUtc); }
+    }
+
+    [Theory]
+    [InlineData("timeout")]
+    [InlineData("unpaid")]
+    [InlineData("mismatch")]
+    [InlineData("other-review")]
+    public async Task Invoice_time_recheck_does_not_reopen_on_timeout_unpaid_mismatch_or_other_review(string mode)
+    {
+        var gateway = new Gateway(); using var factory = new BookingsApiFactory();
+        using var app = factory.WithWebHostBuilder(builder => Configure(builder, gateway)); using var client = app.CreateClient();
+        var (id, timestamp) = await SeedInvoiceTimeReviewAsync(app.Services, client);
+        if (mode == "timeout") gateway.Error = new TimeoutException();
+        if (mode == "mismatch") gateway.Snapshot = new(123, "wrong-link", Amount, Amount, 0, "PAID", [new("invoice-minute-ref", Amount, timestamp)]);
+        if (mode == "other-review")
+        {
+            using var scope = app.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            (await db.PaymentRequests.SingleAsync()).LastErrorCode = "WEBHOOK_REFERENCE_CONFLICT"; await db.SaveChangesAsync();
+        }
+        await BookingsApiTests.LoginAsync(client, "admin@example.test");
+        await client.PostAsync(Url(id) + "?recheckInvoice=true", null);
+        using var check = app.Services.CreateScope(); var context = check.ServiceProvider.GetRequiredService<AppDbContext>();
+        var request = await context.PaymentRequests.SingleAsync();
+        Assert.Equal("RequiresReview", request.Status); Assert.Null(request.PaymentId);
+        Assert.Equal("Unpaid", (await context.Invoices.SingleAsync()).Status);
+        Assert.Empty(await context.Payments.Where(p => p.InvoiceId != null).ToListAsync());
+        if (mode == "other-review") Assert.Equal(0, gateway.Calls);
+    }
 }

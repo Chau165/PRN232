@@ -455,4 +455,90 @@ public class BookingPayOSApiTests
         using var verifyScope = app.Services.CreateScope(); var verify = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Equal("Deposited", (await verify.Bookings.SingleAsync()).Status); Assert.Equal(1, await verify.Payments.CountAsync());
     }
+
+    [Fact]
+    public async Task Same_minute_provider_timestamp_settles_booking_without_changing_original_paid_time()
+    {
+        var gateway = new Gateway();
+        using var factory = new BookingsApiFactory(); using var app = factory.WithWebHostBuilder(builder => Configure(builder, gateway));
+        using var client = app.CreateClient(); var booking = await CreateBookingAsync(client); var link = await CreateLinkAsync(client, booking.BookingId);
+        var paid = DateTime.UtcNow.AddMinutes(-5); paid = new DateTime(paid.Ticks - paid.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            (await db.PaymentRequests.SingleAsync()).CreatedAtUtc = paid.AddSeconds(19.548336); await db.SaveChangesAsync();
+        }
+        var data = Signed(gateway, new DateTimeOffset(paid).ToOffset(TimeSpan.FromHours(7)).ToString("yyyy-MM-dd'T'HH:mm:sszzz"));
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Webhook, data)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Webhook, data)).StatusCode);
+        using var check = app.Services.CreateScope(); var context = check.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal("Deposited", (await context.Bookings.SingleAsync()).Status);
+        Assert.Equal("Succeeded", (await context.PaymentRequests.SingleAsync()).Status);
+        Assert.Equal(paid, (await context.Payments.SingleAsync()).PaidAtUtc);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Admin_can_recheck_legacy_minute_time_review_but_cannot_override_room_conflicts(bool roomBlocked)
+    {
+        var gateway = new Gateway();
+        using var factory = new BookingsApiFactory(); using var app = factory.WithWebHostBuilder(builder => Configure(builder, gateway));
+        using var client = app.CreateClient(); var booking = await CreateBookingAsync(client); var link = await CreateLinkAsync(client, booking.BookingId);
+        var now = DateTime.UtcNow; var paid = now.AddMinutes(-5);
+        paid = new DateTime(paid.Ticks - paid.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
+        var timestamp = new DateTimeOffset(paid).ToOffset(TimeSpan.FromHours(7)).ToString("yyyy-MM-dd'T'HH:mm:sszzz");
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>(); var request = await db.PaymentRequests.SingleAsync();
+            request.CreatedAtUtc = paid.AddSeconds(19.548336); request.UpdatedAtUtc = now.AddMinutes(-2);
+            request.Status = "RequiresReview"; request.LastErrorCode = "BOOKING_PAYMENT_REQUIRES_REVIEW";
+            if (roomBlocked) (await db.Rooms.SingleAsync(r => r.RoomId == booking.RoomId)).Status = "Maintenance";
+            var receipt = new PaymentWebhookReceipts { PaymentRequestId = request.PaymentRequestId, Source = "Reconciliation", OrderCode = gateway.Order,
+                PaymentLinkId = "booking-link", Amount = gateway.Amount, Currency = "VND", DataCode = "00", Reference = "minute-review-ref",
+                TransactionDateTime = timestamp, ReceivedAtUtc = now.AddMinutes(-3), Outcome = "RequiresReview" };
+            receipt.Fingerprint = PRN232.Application.Policies.PayOSReceiptFactory.Fingerprint(receipt);
+            db.PaymentWebhookReceipts.Add(receipt); await db.SaveChangesAsync();
+        }
+        gateway.Remote = new(gateway.Order, "booking-link", gateway.Amount, gateway.Amount, 0, "PAID", [new("minute-review-ref", gateway.Amount, timestamp)]);
+        var url = $"/api/payment-requests/{link.PaymentRequestId}/reconcile";
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsync(url + "?recheckBooking=true", null)).StatusCode);
+        await BookingsApiTests.LoginAsync(client, "manager@example.test");
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsync(url + "?recheckBooking=true", null)).StatusCode);
+        await BookingsApiTests.LoginAsync(client, "admin@example.test");
+        var untouched = (await (await client.PostAsync(url, null)).Content.ReadFromJsonAsync<PaymentReconciliationDto>())!;
+        Assert.Equal("ManualReviewOrClosed", untouched.Result);
+        var result = await client.PostAsync(url + "?recheckBooking=true", null); Assert.Equal(HttpStatusCode.OK, result.StatusCode);
+        if (!roomBlocked) Assert.Equal(HttpStatusCode.OK, (await client.PostAsync(url + "?recheckBooking=true", null)).StatusCode);
+        using var check = app.Services.CreateScope(); var context = check.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(roomBlocked ? "RequiresReview" : "Succeeded", (await context.PaymentRequests.SingleAsync()).Status);
+        Assert.Equal(roomBlocked ? "Pending" : "Deposited", (await context.Bookings.SingleAsync()).Status);
+        Assert.Equal(roomBlocked ? 0 : 1, await context.Payments.CountAsync());
+        Assert.Single(await context.PaymentWebhookReceipts.ToListAsync());
+        if (!roomBlocked) Assert.Equal(paid, (await context.Payments.SingleAsync()).PaidAtUtc);
+    }
+
+    [Theory]
+    [InlineData(-60)]
+    [InlineData(10)]
+    [InlineData(50)]
+    public async Task Minute_tolerance_does_not_accept_older_seconds_previous_minutes_or_expiry_boundary(int seconds)
+    {
+        var gateway = new Gateway();
+        using var factory = new BookingsApiFactory(); using var app = factory.WithWebHostBuilder(builder => Configure(builder, gateway));
+        using var client = app.CreateClient(); var booking = await CreateBookingAsync(client); await CreateLinkAsync(client, booking.BookingId);
+        var minute = DateTime.UtcNow.AddMinutes(-5); minute = new DateTime(minute.Ticks - minute.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>(); var request = await db.PaymentRequests.SingleAsync();
+            request.CreatedAtUtc = minute.AddSeconds(19.548336); request.ExpiresAtUtc = minute.AddSeconds(50); await db.SaveChangesAsync();
+        }
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Webhook, Signed(gateway, minute.AddSeconds(seconds).ToString("O")))).StatusCode);
+        using var check = app.Services.CreateScope(); var context = check.ServiceProvider.GetRequiredService<AppDbContext>();
+        var stored = await context.PaymentRequests.SingleAsync();
+        Assert.Equal("RequiresReview", stored.Status);
+        Assert.Equal(PRN232.Application.Policies.BookingPaymentTimePolicy.ReviewCode, stored.LastErrorCode);
+        Assert.Empty(await context.Payments.ToListAsync());
+        Assert.Equal("Pending", (await context.Bookings.SingleAsync()).Status);
+    }
 }

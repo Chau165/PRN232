@@ -19,12 +19,12 @@ public class PaymentRequestsController(IPaymentRequestStatusService service, ICu
     [EnableRateLimiting("BookingPolicy")]
     [ProducesResponseType(typeof(PaymentReconciliationDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(PaymentReconciliationDto), StatusCodes.Status202Accepted)]
-    public async Task<ActionResult<PaymentReconciliationDto>> Reconcile(int id, CancellationToken cancellationToken)
+    public async Task<ActionResult<PaymentReconciliationDto>> Reconcile(int id, CancellationToken cancellationToken, [FromQuery] bool recheckBooking = false, [FromQuery] bool recheckInvoice = false)
     {
         if (!currentUser.IsAuthenticated || currentUser.UserId is not > 0) return Unauthorized();
         try
         {
-            var result = await reconciliation.ReconcileAsync(id, currentUser.UserId.Value, currentUser.Role ?? "", cancellationToken);
+            var result = await reconciliation.ReconcileAsync(id, currentUser.UserId.Value, currentUser.Role ?? "", cancellationToken, recheckBooking, recheckInvoice);
             if (result is null) return NotFound();
             return result.Result is "TooRecent" or "ProviderUnavailable" or "NotFoundAtProvider"
                 ? StatusCode(202, result) : Ok(result);

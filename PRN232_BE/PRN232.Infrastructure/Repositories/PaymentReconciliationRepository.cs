@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PRN232.Application.Interfaces;
+using PRN232.Application.Policies;
 using PRN232.Application.ReadModels;
 using PRN232.Application.Services;
 using PRN232.Application.States;
@@ -30,7 +31,7 @@ public class PaymentReconciliationRepository(AppDbContext context) : IPaymentRec
             item.DataCode == "00").OrderBy(item => item.PaymentWebhookReceiptId).FirstOrDefaultAsync(cancellationToken);
 
     public async Task<string> ApplyAsync(int id, int? ownerId, PayOSRemoteSnapshot? remote, string? errorCode,
-        DateTime nowUtc, CancellationToken cancellationToken)
+        DateTime nowUtc, CancellationToken cancellationToken, bool recheckBooking = false, bool recheckInvoice = false)
     {
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         var target = await context.PaymentRequests.AsNoTracking().Where(item => item.PaymentRequestId == id)
@@ -50,7 +51,11 @@ public class PaymentReconciliationRepository(AppDbContext context) : IPaymentRec
                 .Select(item => new { item.Status, item.Contract!.CustomerId, item.Contract.Room!.PropertyId,
                     Amounts = item.InvoiceDetails.Select(line => line.Amount).ToList() }).SingleAsync(cancellationToken);
             customerId = invoice.CustomerId; propertyId = invoice.PropertyId; amount = invoice.Amounts.Sum();
-            payable = invoice.Status is InvoiceStatuses.Unpaid or InvoiceStatuses.Overdue;
+            // A paid invoice can only be inspected here to classify the reviewed transfer
+            // as a duplicate. Settlement never creates another payment for a paid invoice.
+            payable = invoice.Status is InvoiceStatuses.Unpaid or InvoiceStatuses.Overdue ||
+                (recheckInvoice && request.Status == PaymentRequestStatuses.RequiresReview &&
+                 request.LastErrorCode == PayOSPaymentTimePolicy.InvoiceReviewCode && invoice.Status == InvoiceStatuses.Paid);
         }
         else
         {
@@ -72,7 +77,11 @@ public class PaymentReconciliationRepository(AppDbContext context) : IPaymentRec
                 throw new PaymentRequestStatusForbiddenException();
         }
         if (request.Status == PaymentRequestStatuses.Succeeded) return "AlreadyCompleted";
-        if (!Recoverable(request.Status, request.LastErrorCode)) return "ManualReviewOrClosed";
+        var bookingReview = recheckBooking && request.BookingId.HasValue && request.Status == PaymentRequestStatuses.RequiresReview && BookingPaymentTimePolicy.IsReviewCode(request.LastErrorCode);
+        var invoiceReview = recheckInvoice && request.InvoiceId.HasValue && request.Status == PaymentRequestStatuses.RequiresReview && request.LastErrorCode == PayOSPaymentTimePolicy.InvoiceReviewCode;
+        var review = bookingReview || invoiceReview;
+        if (!Recoverable(request.Status, request.LastErrorCode) && !review) return "ManualReviewOrClosed";
+        if (review && remote?.Status != "PAID") return "ManualReviewOrClosed";
 
         request.UpdatedAtUtc = nowUtc;
         string result;
@@ -104,8 +113,7 @@ public class PaymentReconciliationRepository(AppDbContext context) : IPaymentRec
             else
             {
                 request.PaymentLinkId = remote.LinkId;
-                request.LastErrorCode = null;
-                request.LastErrorMessage = null;
+                if (!review) { request.LastErrorCode = null; request.LastErrorMessage = null; }
                 if (remote.Status == "PENDING" && remote.AmountPaid == 0 && remote.Transactions.Count == 0)
                 {
                     request.Status = PaymentRequestStatuses.Pending;
@@ -127,7 +135,7 @@ public class PaymentReconciliationRepository(AppDbContext context) : IPaymentRec
                     !string.IsNullOrWhiteSpace(remote.Transactions[0].Reference) && remote.Transactions[0].Reference.Length <= 256 &&
                     remote.Transactions[0].TransactionDateTime?.Length <= 64)
                 {
-                    request.Status = PaymentRequestStatuses.Pending;
+                    if (!review) request.Status = PaymentRequestStatuses.Pending;
                     result = "ReadyToSettle";
                 }
                 else result = Review(request, "RECONCILIATION_TRANSFER_REVIEW");

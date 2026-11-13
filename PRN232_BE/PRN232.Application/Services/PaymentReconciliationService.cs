@@ -11,10 +11,11 @@ public class PaymentReconciliationService(IPaymentReconciliationRepository repos
     IPayOSReconciliationGateway gateway, IPayOSWebhookRepository settlement, PayOSSettings settings,
     TimeProvider timeProvider, IPropertyRepository properties) : IPaymentReconciliationService
 {
-    public async Task<PaymentReconciliationDto?> ReconcileAsync(int id, int userId, string role, CancellationToken cancellationToken)
+    public async Task<PaymentReconciliationDto?> ReconcileAsync(int id, int userId, string role, CancellationToken cancellationToken, bool recheckBooking = false, bool recheckInvoice = false)
     {
         if (id <= 0) throw new PaymentRequestStatusValidationException();
         if (userId <= 0 || role is not ("Admin" or "Manager")) throw new PaymentRequestStatusForbiddenException();
+        if ((recheckBooking || recheckInvoice) && role != "Admin") throw new PaymentRequestStatusForbiddenException();
         var request = await repository.GetAsync(id, cancellationToken);
         if (request is null) return null;
         if (role == "Manager" && !await properties.IsManagerAssignedAsync(request.PropertyId, userId))
@@ -23,7 +24,7 @@ public class PaymentReconciliationService(IPaymentReconciliationRepository repos
         var now = timeProvider.GetUtcNow().UtcDateTime;
         if (request.Status == PaymentRequestStatuses.Succeeded) return new(id, "AlreadyCompleted", request.Status, now);
         if (!(request.Status is PaymentRequestStatuses.Creating or PaymentRequestStatuses.Pending ||
-            (request.Status == PaymentRequestStatuses.RequiresReview && request.LastErrorCode == "EXPIRED_CHECKOUT_UNRESOLVED")))
+            (request.Status == PaymentRequestStatuses.RequiresReview && (request.LastErrorCode == "EXPIRED_CHECKOUT_UNRESOLVED" || recheckBooking && BookingPaymentTimePolicy.IsReviewCode(request.LastErrorCode) || recheckInvoice && request.LastErrorCode == PayOSPaymentTimePolicy.InvoiceReviewCode))))
             return new(id, "ManualReviewOrClosed", request.Status, now);
         if (request.UpdatedAtUtc > now.AddSeconds(-settings.ReconciliationMinAgeSeconds))
             return new(id, "TooRecent", request.Status, now);
@@ -45,7 +46,7 @@ public class PaymentReconciliationService(IPaymentReconciliationRepository repos
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception) { error = "RECONCILIATION_LOOKUP_FAILED"; } // never persist provider secrets/raw errors
         now = timeProvider.GetUtcNow().UtcDateTime;
-        var result = await repository.ApplyAsync(id, role == "Manager" ? userId : null, remote, error, now, cancellationToken);
+        var result = await repository.ApplyAsync(id, role == "Manager" ? userId : null, remote, error, now, cancellationToken, recheckBooking, recheckInvoice);
         if (result == "ReadyToSettle")
         {
             var transfer = remote!.Transactions.Single();
@@ -57,7 +58,7 @@ public class PaymentReconciliationService(IPaymentReconciliationRepository repos
                 TransactionDateTime = transfer.TransactionDateTime, ReceivedAtUtc = now
             };
             receipt.Fingerprint = PayOSReceiptFactory.Fingerprint(receipt);
-            await settlement.RecordReconciliationAsync(receipt, cancellationToken);
+            await settlement.RecordReconciliationAsync(receipt, cancellationToken, recheckBooking, recheckInvoice);
             result = "ReconciledPayment";
         }
         var updated = (await repository.GetAsync(id, cancellationToken))!;
