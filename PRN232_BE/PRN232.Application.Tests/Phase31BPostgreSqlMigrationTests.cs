@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
@@ -56,17 +56,16 @@ public sealed class Phase31BPostgreSqlMigrationTests
 
         await migrator.MigrateAsync(ratesMigration);
 
-        var owner = new Users
-        {
-            RoleId = 2,
-            FullName = "Phase 3.1B isolated test",
-            Email = $"phase31b-{Guid.NewGuid():N}@invalid.test",
-            PasswordHash = "isolated-test-only",
-            PhoneNumber = "0000000000",
-            IsActive = true
-        };
-        context.Users.Add(owner);
-        await context.SaveChangesAsync();
+        // The schema is at an older migration here, so insert the owner with SQL limited to the
+        // columns that exist at that point. Saving a Users entity would include columns added by
+        // later migrations (for example GoogleSubject) and fail.
+        var ownerEmail = $"phase31b-{Guid.NewGuid():N}@invalid.test";
+        var ownerId = (await context.Database.SqlQuery<int>($"""
+            INSERT INTO "Users" ("RoleId", "FullName", "Email", "PasswordHash", "PhoneNumber", "IsActive")
+            VALUES (2, 'Phase 3.1B isolated test', {ownerEmail}, 'isolated-test-only', '0000000000', TRUE)
+            RETURNING "UserId" AS "Value"
+            """).ToListAsync()).Single();
+        var owner = new Users { UserId = ownerId };
 
         var firstProperty = CreateProperty(owner.UserId, "Phase 3.1B property A");
         var secondProperty = CreateProperty(owner.UserId, "Phase 3.1B property B");
