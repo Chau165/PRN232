@@ -124,6 +124,7 @@ public sealed class PayoutReconciliationRepository(AppDbContext context) : IPayo
                 await context.BookingRefundRequests.Where(item => item.BookingRefundRequestId == refund.BookingRefundRequestId)
                     .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.Status, refundStatus).SetProperty(item => item.UpdatedAtUtc, now), cancellationToken);
                 if (refundStatus == BookingRefundRequestStatuses.RequiresReview) await NotifyAdminsAsync(current.PayoutAttemptId, cancellationToken);
+                if (succeeded) await BookingRefundCompletionWriter.CompleteLockedAsync(context, current.PayoutAttemptId, now, cancellationToken);
             }
             await transaction.CommitAsync(cancellationToken);
         }

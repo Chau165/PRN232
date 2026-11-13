@@ -301,6 +301,11 @@ builder.Services.AddScoped<IBookingRefundPayoutService>(provider => new BookingR
     provider.GetRequiredService<TimeProvider>()));
 builder.Services.AddHostedService<PRN232.Api.Workers.BookingRefundPayoutWorker>();
 builder.Services.AddScoped<IPayoutReconciliationRepository, PayoutReconciliationRepository>();
+builder.Services.AddScoped<IBookingRefundCompletionRepository, BookingRefundCompletionRepository>();
+builder.Services.AddScoped<IBookingRefundCompletionService>(provider => new BookingRefundCompletionService(
+    provider.GetRequiredService<IBookingRefundCompletionRepository>(),
+    provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PRN232.Application.Settings.PayOSPayoutSettings>>().Value,
+    provider.GetRequiredService<TimeProvider>()));
 builder.Services.AddScoped<IPayoutReconciliationService>(provider => new PayoutReconciliationService(
     provider.GetRequiredService<IPayoutReconciliationRepository>(), provider.GetRequiredService<IPayOSPayoutReconciliationGateway>(),
     provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PRN232.Application.Settings.PayOSPayoutSettings>>().Value,

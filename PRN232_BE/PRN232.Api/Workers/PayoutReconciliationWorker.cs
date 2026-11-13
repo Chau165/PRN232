@@ -19,6 +19,7 @@ public sealed class PayoutReconciliationWorker(IServiceScopeFactory scopes, IOpt
                 try
                 {
                     using var scope = scopes.CreateScope();
+                    await scope.ServiceProvider.GetRequiredService<IBookingRefundCompletionService>().RunBatchAsync(stoppingToken);
                     await scope.ServiceProvider.GetRequiredService<IPayoutReconciliationService>().RunBatchAsync(stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }

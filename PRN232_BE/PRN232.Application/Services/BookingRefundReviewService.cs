@@ -41,5 +41,5 @@ public sealed class BookingRefundReviewService(IBookingRefundRepository reposito
         item.BookingId, item.CustomerId, item.OriginalPaymentId, item.OriginalPayment!.Amount, item.RequestedAmount,
         item.ApprovedAmount, item.Currency, item.Status, item.Reason, item.RecipientBankBin, item.RecipientAccountNumber,
         item.RecipientAccountName, false, item.ReviewedByAdminId, item.ReviewNote, UtcTimestamp.ForResponse(item.CreatedAtUtc),
-        UtcTimestamp.ForResponse(item.UpdatedAtUtc), item.ReviewedAtUtc is { } reviewed ? UtcTimestamp.ForResponse(reviewed) : null);
+        UtcTimestamp.ForResponse(item.UpdatedAtUtc), UtcTimestamp.ForResponse(item.ReviewedAtUtc), UtcTimestamp.ForResponse(item.RefundedAtUtc));
 }

@@ -1,6 +1,6 @@
 # P9 — Đối soát và phục hồi payout
 
-Worker chỉ hỏi trạng thái payOS và cập nhật DB; không gọi API tạo hoặc hủy payout. Không cần migration. Chưa bao gồm hủy booking, nhả phòng, sổ hoàn tiền hay thông báo đã nhận tiền cho Customer (P10).
+Worker chỉ hỏi trạng thái payOS và cập nhật DB; không gọi API tạo hoặc hủy payout. Bản P9 ban đầu không đổi schema. Sau khi tích hợp P10, transaction ghi Succeeded gọi luôn bước ghi khoản hoàn, Refunded, hủy booking, bỏ giữ phòng và tạo thông báo nếu dữ liệu hợp lệ; cần migration AddBookingRefundLedger của P10 trước khi bật worker mới. Các dòng “chờ P10” dưới đây mô tả mốc xác nhận payout trước bước hoàn tất này.
 
 ## Cấu hình
 

@@ -302,7 +302,19 @@ public class BookingRefundRequestApiTests
                 await apply.ServiceProvider.GetRequiredService<IPayoutReconciliationRepository>().ApplyAsync(winner,
                     PayoutReconciliationPolicy.Evaluate(winner, remote, now, 3600), window, now, default);
                 using var verify = app.Services.CreateScope();
-                Assert.Equal("Succeeded", (await verify.ServiceProvider.GetRequiredService<AppDbContext>().PayoutAttempts.SingleAsync()).Status);
+                var finalDb = verify.ServiceProvider.GetRequiredService<AppDbContext>();
+                Assert.Equal("Succeeded", (await finalDb.PayoutAttempts.SingleAsync()).Status);
+                Assert.Equal("Refunded", (await finalDb.BookingRefundRequests.SingleAsync()).Status);
+                Assert.Equal("Cancelled", (await finalDb.Bookings.SingleAsync()).Status);
+                Assert.Equal(winner.Amount, (await finalDb.BookingRefunds.SingleAsync()).Amount);
+                async Task<bool> CompleteAgainAsync()
+                {
+                    using var worker = app.Services.CreateScope();
+                    return await worker.ServiceProvider.GetRequiredService<IBookingRefundCompletionRepository>().CompleteAsync(winner.PayoutAttemptId, now, default);
+                }
+                Assert.All(await Task.WhenAll(Enumerable.Range(0, 6).Select(_ => CompleteAgainAsync())), Assert.True);
+                Assert.Single(await finalDb.BookingRefunds.ToListAsync());
+                Assert.Equal(4, await finalDb.Notifications.CountAsync(item => item.Title.StartsWith("Đã hoàn cọc")));
             }
 
             var other = await SeedAsync(app, roomId: 2);

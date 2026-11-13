@@ -47,7 +47,7 @@ public class PayoutReconciliationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Recovers_original_attempt_using_reference_or_provider_id_without_cancelling_booking(bool processing)
+    public async Task Recovers_original_attempt_using_reference_or_provider_id_and_finalizes_booking_atomically(bool processing)
     {
         using var factory = new BookingsApiFactory(); using var client = factory.CreateClient();
         var original = await SeedAsync(factory, client, processing); var clock = new Clock();
@@ -60,9 +60,11 @@ public class PayoutReconciliationTests
         var attempt = await db.PayoutAttempts.SingleAsync();
         Assert.Equal("Succeeded", attempt.Status); Assert.Equal(original.IdempotencyKey, attempt.IdempotencyKey);
         Assert.Equal("BANK-123", attempt.BankReference); Assert.Equal(actualTime, attempt.TransferredAtUtc); Assert.NotNull(attempt.CompletedAtUtc);
-        Assert.Equal("Refunding", (await db.BookingRefundRequests.SingleAsync()).Status);
-        Assert.Null((await db.BookingRefundRequests.SingleAsync()).RefundedAtUtc);
-        Assert.Equal("Deposited", (await db.Bookings.SingleAsync()).Status); Assert.Equal(1, await db.Payments.CountAsync());
+        Assert.Equal("Refunded", (await db.BookingRefundRequests.SingleAsync()).Status);
+        Assert.NotNull((await db.BookingRefundRequests.SingleAsync()).RefundedAtUtc);
+        Assert.Equal("Cancelled", (await db.Bookings.SingleAsync()).Status); Assert.Equal(1, await db.Payments.CountAsync());
+        var refund = await db.BookingRefunds.SingleAsync(); Assert.Equal(original.Amount, refund.Amount);
+        Assert.Equal(actualTime, refund.TransferredAtUtc);
     }
 
     [Theory]

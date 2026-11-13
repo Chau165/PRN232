@@ -138,6 +138,7 @@ public class AppDbContext : DbContext
     public DbSet<PaymentReviewCases> PaymentReviewCases => Set<PaymentReviewCases>();
     public DbSet<BookingRefundRequests> BookingRefundRequests => Set<BookingRefundRequests>();
     public DbSet<PayoutAttempts> PayoutAttempts => Set<PayoutAttempts>();
+    public DbSet<BookingRefunds> BookingRefunds => Set<BookingRefunds>();
     public DbSet<Payments> Payments
     {
         get
@@ -212,6 +213,7 @@ public class AppDbContext : DbContext
     {
         modelBuilder.ApplyConfiguration(new Configurations.BookingRefundRequestConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.PayoutAttemptConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.BookingRefundConfiguration());
         // ---- composite keys (junction tables) ----
         modelBuilder.Entity<RoomTypeServices>().HasKey(x => new { x.RoomTypeId, x.ServiceId });
         modelBuilder.Entity<RoomAmenities>().HasKey(x => new { x.RoomId, x.AmenityId });
