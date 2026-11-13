@@ -343,6 +343,8 @@ builder.Services.AddScoped<IReceivablesRepository, ReceivablesRepository>();
 builder.Services.AddScoped<IReceivablesService, ReceivablesService>();
 builder.Services.AddScoped<IRevenueRepository, RevenueRepository>();
 builder.Services.AddScoped<IRevenueService, RevenueService>();
+builder.Services.AddScoped<IDepositReportRepository, DepositReportRepository>();
+builder.Services.AddScoped<IDepositReportService, DepositReportService>();
 builder.Services.AddScoped<IInvoiceComplaintRepository, InvoiceComplaintRepository>();
 builder.Services.AddScoped<IInvoiceComplaintService, InvoiceComplaintService>();
 

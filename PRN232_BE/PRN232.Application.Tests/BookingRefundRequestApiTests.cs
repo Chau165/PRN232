@@ -315,6 +315,11 @@ public class BookingRefundRequestApiTests
                 Assert.All(await Task.WhenAll(Enumerable.Range(0, 6).Select(_ => CompleteAgainAsync())), Assert.True);
                 Assert.Single(await finalDb.BookingRefunds.ToListAsync());
                 Assert.Equal(4, await finalDb.Notifications.CountAsync(item => item.Title.StartsWith("Đã hoàn cọc")));
+                // P12: the actual PostgreSQL query counts the ledger once despite all worker retries.
+                var report = await verify.ServiceProvider.GetRequiredService<IDepositReportService>().GetAsync(
+                    null, null, 1, 9, "Admin", default);
+                Assert.Equal(3000000m, report.UnknownDate.RefundedAmount);
+                Assert.Equal(1, report.UnknownDate.RefundCount);
             }
 
             var other = await SeedAsync(app, roomId: 2);

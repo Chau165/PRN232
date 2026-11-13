@@ -5,12 +5,14 @@ namespace PRN232.Application.Interfaces;
 
 public interface IBookingRefundService
 {
+    Task<IReadOnlyList<BookingRefundDto>> ListAsync(int bookingId, int userId, string role, CancellationToken cancellationToken);
     Task<BookingRefundDto> CreateAsync(int bookingId, int customerId, CreateBookingRefundDto input, CancellationToken cancellationToken);
     Task<BookingRefundDto?> GetAsync(int bookingId, int requestId, int customerId, CancellationToken cancellationToken);
 }
 
 public interface IBookingRefundRepository
 {
+    Task<IReadOnlyList<BookingRefundRequests>?> ListInScopeAsync(int bookingId, int? customerId, int? managerId, CancellationToken cancellationToken);
     Task<IReadOnlyList<BookingRefundRequests>> ListForReviewAsync(string? status, int skip, int take, CancellationToken cancellationToken);
     Task<BookingRefundRequests?> GetForReviewAsync(int requestId, CancellationToken cancellationToken);
     Task<BookingRefundRequests> ReviewAsync(int requestId, int adminId, bool approve, decimal? amount, string note, DateTime now, CancellationToken cancellationToken);

@@ -8,11 +8,12 @@ namespace PRN232.Api.Controllers;
 
 [ApiController]
 [Route("api/bookings/{bookingId:int}/refund-requests")]
-[Authorize(Roles = RoleNames.Customer)]
+[Authorize(Roles = "Customer,Manager,Admin")]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class BookingRefundRequestsController(IBookingRefundService service, ICurrentUserService currentUser) : ControllerBase
 {
     [HttpPost]
+    [Authorize(Roles = RoleNames.Customer)]
     public async Task<ActionResult<BookingRefundDto>> Create(int bookingId, CreateBookingRefundDto input, CancellationToken cancellationToken)
     {
         if (currentUser.UserId is not > 0) return Unauthorized();
@@ -28,10 +29,20 @@ public sealed class BookingRefundRequestsController(IBookingRefundService servic
     }
 
     [HttpGet("{requestId:int}")]
+    [Authorize(Roles = RoleNames.Customer)]
     public async Task<ActionResult<BookingRefundDto>> Get(int bookingId, int requestId, CancellationToken cancellationToken)
     {
         if (currentUser.UserId is not > 0) return Unauthorized();
         var result = await service.GetAsync(bookingId, requestId, currentUser.UserId.Value, cancellationToken);
         return result is null ? NotFound() : Ok(result);
+    }
+
+    [HttpGet]
+    public async Task<ActionResult<IReadOnlyList<BookingRefundDto>>> GetAll(int bookingId, CancellationToken cancellationToken)
+    {
+        if (currentUser.UserId is not > 0 || currentUser.Role is null) return Unauthorized();
+        try { return Ok(await service.ListAsync(bookingId, currentUser.UserId.Value, currentUser.Role, cancellationToken)); }
+        catch (BookingRefundNotFoundException) { return NotFound(); }
+        catch (BookingRefundForbiddenException) { return StatusCode(403); }
     }
 }

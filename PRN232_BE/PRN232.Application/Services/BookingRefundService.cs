@@ -9,6 +9,14 @@ namespace PRN232.Application.Services;
 
 public sealed class BookingRefundService(IBookingRefundRepository repository, TimeProvider clock) : IBookingRefundService
 {
+    public async Task<IReadOnlyList<BookingRefundDto>> ListAsync(int bookingId, int userId, string role, CancellationToken cancellationToken)
+    {
+        var scope = AccessScope.For(userId, role);
+        if (userId <= 0 || scope is null) throw new BookingRefundForbiddenException();
+        var history = await repository.ListInScopeAsync(bookingId, scope.Value.CustomerId, scope.Value.ManagerId, cancellationToken);
+        if (history is null) throw new BookingRefundNotFoundException();
+        return history.Select(ConvertToDto).ToList();
+    }
     public async Task<BookingRefundDto> CreateAsync(int bookingId, int customerId, CreateBookingRefundDto input, CancellationToken cancellationToken)
     {
         if (customerId <= 0) throw new BookingRefundForbiddenException();
