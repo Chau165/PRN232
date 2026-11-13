@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
-import PaymentMethodPicker from "@/components/customer/PaymentMethodPicker"
+import { ApiError } from "@/api/apiClient"
 import { useAuth } from "@/auth/AuthContext"
-import { createBooking, getBooking, payBooking } from "@/services/bookingService"
-import type { BookingDto, PaymentMethod } from "@/types/booking"
+import { createBooking, createBookingPaymentLink, getBooking } from "@/services/bookingService"
+import type { BookingDto } from "@/types/booking"
+import { checkoutLinkId, openPayOSCheckout, rememberBookingPayment, validPayOSCheckout } from "@/utils/invoicePayment"
 import { publicApi } from "@/services/publicBrowsingService"
 import { usePublicApiResource } from "@/hooks/usePublicApiResource"
 import { parsePositiveRouteId, routes } from "@/constants/routes"
@@ -89,14 +90,23 @@ function HoldRoomStep({ roomId }: { roomId: number }) {
   )
 }
 
+// 409 = booking đã đổi trạng thái (hết hạn, đã cọc, đang có link khác); 502/503 = payOS chưa sẵn sàng.
+function depositPaymentError(error: unknown) {
+  if (error instanceof ApiError && (error.status === 502 || error.status === 503)) {
+    return "Thanh toán payOS hiện chưa sẵn sàng. Vui lòng thử lại sau ít phút hoặc liên hệ quản lý."
+  }
+  return bookingErrorMessage(error, "Booking đã hết thời gian giữ phòng hoặc đang có thanh toán khác. Vui lòng xem lại booking của tôi.")
+}
+
 function PayDepositStep({ bookingId }: { bookingId: number }) {
-  const { accessToken } = useAuth()
+  const { accessToken, user } = useAuth()
   const navigate = useNavigate()
   const [booking, setBooking] = useState<BookingDto | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [method, setMethod] = useState<PaymentMethod | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  // useRef khoá ngay lập tức (state cập nhật trễ một nhịp), chặn bấm hai lần tạo hai yêu cầu thanh toán.
+  const locked = useRef(false)
 
   useEffect(() => {
     if (!accessToken) return
@@ -119,26 +129,33 @@ function PayDepositStep({ bookingId }: { bookingId: number }) {
     return <Notice message="Đã quá thời gian giữ phòng. Vui lòng đặt lại nếu phòng vẫn còn trống." />
   }
 
-  const pay = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (!accessToken || pending) return
-    if (!method) {
-      setError("Vui lòng chọn phương thức thanh toán.")
-      return
-    }
+  // Tạo (hoặc dùng lại) link payOS rồi chuyển khách sang trang checkout. Nếu không mở được checkout
+  // (link đã thành công/đang tạo/cần kiểm tra) thì sang /payment-result để đọc trạng thái thật từ BE.
+  const pay = async () => {
+    if (!accessToken || !user || locked.current) return
+    locked.current = true
     setPending(true)
     setError(null)
     try {
-      await payBooking(accessToken, booking.bookingId, method)
-      navigate(routes.paymentSuccess, { replace: true })
+      const result = await createBookingPaymentLink(accessToken, booking.bookingId)
+      if (result.bookingId !== booking.bookingId || !Number.isSafeInteger(result.paymentRequestId) || result.paymentRequestId <= 0)
+        throw new Error("Phản hồi thanh toán không hợp lệ. Vui lòng xem lại booking của tôi.")
+      const url = validPayOSCheckout(result.checkoutUrl)
+      rememberBookingPayment(user.id, result.paymentRequestId, booking.bookingId, checkoutLinkId(url))
+      if (result.status === "Pending" && url && result.expiresAtUtc && Date.parse(result.expiresAtUtc) > Date.now()) {
+        openPayOSCheckout(url)
+      } else {
+        navigate(`${routes.paymentResult}?requestId=${result.paymentRequestId}`)
+      }
     } catch (payError) {
-      setError(bookingErrorMessage(payError, "Booking đã hết thời gian giữ phòng hoặc đã được thanh toán."))
+      setError(depositPaymentError(payError))
+      locked.current = false
       setPending(false)
     }
   }
 
   return (
-    <form onSubmit={pay} className="space-y-6">
+    <div className="space-y-6">
       <Summary
         rows={[
           ["Khu trọ", booking.propertyName],
@@ -147,16 +164,19 @@ function PayDepositStep({ bookingId }: { bookingId: number }) {
         ]}
         amount={booking.depositAmount}
       />
-      <PaymentMethodPicker value={method} onChange={setMethod} />
+      <p className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+        Bạn sẽ được chuyển đến payOS để chuyển khoản. Tiền cọc chỉ được ghi nhận sau khi hệ thống xác nhận đã nhận tiền.
+      </p>
       {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
       <button
-        type="submit"
+        type="button"
+        onClick={pay}
         disabled={pending}
         className="w-full rounded-lg bg-[#087775] py-3.5 text-sm font-bold text-white hover:bg-[#066a68] disabled:opacity-60"
       >
-        {pending ? "Đang thanh toán..." : `Thanh toán ${formatVnd(booking.depositAmount)}`}
+        {pending ? "Đang tạo liên kết thanh toán..." : `Thanh toán ${formatVnd(booking.depositAmount)} qua payOS`}
       </button>
-    </form>
+    </div>
   )
 }
 

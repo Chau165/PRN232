@@ -146,6 +146,31 @@ describe("payment result verification", () => {
   })
 })
 
+describe("payOS deposit result", () => {
+  const deposit = (changes: Partial<PaymentRequestStatusDto> = {}) =>
+    status({ invoiceId: null, invoiceStatus: null, bookingId: 7, bookingStatus: "Pending", ...changes })
+
+  it("shows a BE-confirmed deposit as success and links back to the bookings", async () => {
+    mocks.get.mockResolvedValue(deposit({ status: "Succeeded", bookingStatus: "Deposited", canOpenCheckout: false }))
+    result()
+    expect(await screen.findByText("Đặt cọc thành công")).toBeTruthy()
+    expect(screen.getByText("Thanh toán tiền cọc")).toBeTruthy()
+    expect(screen.getByText(/Booking #7/)).toBeTruthy()
+    expect(screen.getByRole("link", { name: "Về booking của tôi" })).toBeTruthy()
+    expect(screen.queryByRole("link", { name: "Mở checkout payOS" })).toBeNull()
+    // Không ghi đè ngữ cảnh thành hoá đơn: trang Hoá đơn sẽ không nhặt nhầm yêu cầu tiền cọc.
+    expect(recalledInvoicePayment("10")).toBeNull()
+  })
+
+  it("restores a deposit checkout after the payOS callback without a requestId", async () => {
+    sessionStorage.setItem("troviet-invoice-payment:10", JSON.stringify({ requestId: 12, bookingId: 7, providerLinkId: "link-123" }))
+    mocks.get.mockResolvedValue(deposit({ status: "Cancelled", canOpenCheckout: false }))
+    result("/payment-result?id=link-123&cancel=true&status=CANCELLED")
+    expect(await screen.findByText("Liên kết đã hủy")).toBeTruthy()
+    expect(mocks.get).toHaveBeenCalledWith("token", 12, expect.any(AbortSignal))
+  })
+})
+
 it.each(["javascript:alert(1)", "https://evil.test/web/link", "https://pay.payos.vn.evil.test/web/link", "https://pay.payos.vn@evil.test/web/link", "http://pay.payos.vn/web/link"])("rejects unsafe checkout URLs: %s", url => {
   expect(validPayOSCheckout(url)).toBeNull()
 })

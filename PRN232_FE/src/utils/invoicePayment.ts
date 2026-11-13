@@ -23,6 +23,32 @@ export function recalledInvoicePayment(userId: string): { requestId: number; inv
   return null
 }
 
+// Tiền cọc dùng chung khoá với hoá đơn vì payOS chỉ có một ReturnUrl (/payment-result) cho cả hai.
+// recalledInvoicePayment bỏ qua ngữ cảnh booking nên trang Hoá đơn không hiểu nhầm.
+export function rememberBookingPayment(userId: string, requestId: number, bookingId: number, providerLinkId?: string) {
+  const previous = recalledPayment(userId)
+  const linkId = providerLinkId ?? (previous?.requestId === requestId ? previous.providerLinkId : undefined)
+  try { sessionStorage.setItem(key(userId), JSON.stringify({ requestId, bookingId, providerLinkId: linkId })) } catch { /* storage may be disabled */ }
+}
+
+export function recalledPayment(userId: string): { requestId: number; invoiceId?: number; bookingId?: number; providerLinkId?: string } | null {
+  try {
+    const item = JSON.parse(sessionStorage.getItem(key(userId)) ?? "null")
+    if (item && positiveId(String(item.requestId)) &&
+      (positiveId(String(item.invoiceId)) || positiveId(String(item.bookingId)))) return item
+  } catch { /* corrupted/disabled storage is not a payment failure */ }
+  return null
+}
+
+export function isBookingPayment(item: Pick<PaymentRequestStatusDto, "invoiceId" | "bookingId">) {
+  return item.invoiceId == null && item.bookingId != null
+}
+
+// providerLinkId là đoạn /web/{id} trong URL checkout payOS, dùng để khớp lần quay về từ payOS.
+export function checkoutLinkId(url: string | null) {
+  return url ? new URL(url).pathname.split("/")[2] : undefined
+}
+
 export function validPayOSCheckout(value: string | null): string | null {
   if (!value) return null
   try {
@@ -39,11 +65,12 @@ export function openPayOSCheckout(url: string) {
 }
 
 export function paymentIsFinal(item: PaymentRequestStatusDto) {
-  return item.invoiceStatus === "Paid" || !["Creating", "Pending"].includes(item.status)
+  return item.invoiceStatus === "Paid" || item.bookingStatus === "Deposited" || !["Creating", "Pending"].includes(item.status)
 }
 
 export function paymentResultText(item: PaymentRequestStatusDto) {
   if (item.status === "RequiresReview") return { title: "Thanh toán cần kiểm tra", detail: "Vui lòng liên hệ quản lý để kiểm tra khoản thanh toán. Không thanh toán thêm khi chưa có xác nhận.", tone: "review" }
+  if (isBookingPayment(item)) return depositResultText(item)
   if (item.status === "Succeeded" && item.invoiceStatus === "Paid") return { title: "Thanh toán thành công", detail: "Hệ thống đã xác nhận thanh toán hóa đơn qua payOS.", tone: "success" }
   if (item.invoiceStatus === "Paid") return { title: "Hóa đơn đã được thanh toán", detail: "Hóa đơn đã được ghi nhận thanh toán. Bạn không cần trả thêm.", tone: "success" }
   switch (item.status) {
@@ -52,6 +79,21 @@ export function paymentResultText(item: PaymentRequestStatusDto) {
     case "Expired": return { title: "Liên kết đã hết hạn", detail: "Quay lại hóa đơn để kiểm tra và tạo liên kết mới nếu vẫn chưa thanh toán.", tone: "closed" }
     case "Create-failed": return { title: "Chưa tạo được liên kết", detail: "Bạn có thể quay lại hóa đơn để thử tạo liên kết thanh toán mới.", tone: "closed" }
     default: return { title: "Đang chờ xác nhận thanh toán", detail: item.isExpired
+      ? "Liên kết đã quá hạn mở checkout. Hệ thống vẫn đang kiểm tra kết quả; nếu đã chuyển tiền, vui lòng không trả thêm."
+      : "Nếu bạn đã thanh toán, vui lòng chờ hệ thống xác nhận. Không cần thanh toán lại.", tone: "waiting" }
+  }
+}
+
+function depositResultText(item: PaymentRequestStatusDto) {
+  if (item.bookingStatus === "Deposited") return item.status === "Succeeded"
+    ? { title: "Đặt cọc thành công", detail: "Hệ thống đã xác nhận tiền cọc qua payOS. Phòng được giữ cho bạn đến khi lập hợp đồng.", tone: "success" }
+    : { title: "Booking đã được đặt cọc", detail: "Tiền cọc của booking này đã được ghi nhận. Bạn không cần trả thêm.", tone: "success" }
+  switch (item.status) {
+    case "Creating": return { title: "Đang tạo liên kết thanh toán", detail: "Hệ thống đang xác nhận liên kết với payOS. Vui lòng chờ, chưa cần tạo yêu cầu khác.", tone: "waiting" }
+    case "Cancelled": return { title: "Liên kết đã hủy", detail: "Tiền cọc chưa được xác nhận. Nếu vẫn còn thời gian giữ phòng, bạn có thể quay lại booking để thanh toán.", tone: "closed" }
+    case "Expired": return { title: "Liên kết đã hết hạn", detail: "Tiền cọc chưa được xác nhận. Nếu đã quá 15 phút giữ phòng, vui lòng đặt lại nếu phòng vẫn còn trống.", tone: "closed" }
+    case "Create-failed": return { title: "Chưa tạo được liên kết", detail: "Bạn có thể quay lại booking để thử thanh toán lại trong thời gian giữ phòng.", tone: "closed" }
+    default: return { title: "Đang chờ xác nhận tiền cọc", detail: item.isExpired
       ? "Liên kết đã quá hạn mở checkout. Hệ thống vẫn đang kiểm tra kết quả; nếu đã chuyển tiền, vui lòng không trả thêm."
       : "Nếu bạn đã thanh toán, vui lòng chờ hệ thống xác nhận. Không cần thanh toán lại.", tone: "waiting" }
   }

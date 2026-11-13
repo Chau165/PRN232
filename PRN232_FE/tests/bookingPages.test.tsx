@@ -12,10 +12,11 @@ const mocks = vi.hoisted(() => ({
   getBookings: vi.fn(),
   getBooking: vi.fn(),
   createBooking: vi.fn(),
-  payBooking: vi.fn(),
+  createBookingPaymentLink: vi.fn(),
   cancelBooking: vi.fn(),
   getRoom: vi.fn(),
   getViewingSchedules: vi.fn(),
+  openCheckout: vi.fn(),
 }))
 
 vi.mock("@/auth/AuthContext", () => ({
@@ -34,8 +35,12 @@ vi.mock("@/services/bookingService", () => ({
   getBookings: mocks.getBookings,
   getBooking: mocks.getBooking,
   createBooking: mocks.createBooking,
-  payBooking: mocks.payBooking,
+  createBookingPaymentLink: mocks.createBookingPaymentLink,
   cancelBooking: mocks.cancelBooking,
+}))
+vi.mock("@/utils/invoicePayment", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/utils/invoicePayment")>()),
+  openPayOSCheckout: mocks.openCheckout,
 }))
 vi.mock("@/services/viewingScheduleService", () => ({ getViewingSchedules: mocks.getViewingSchedules }))
 vi.mock("@/services/publicBrowsingService", async (importOriginal) => ({
@@ -75,30 +80,61 @@ beforeEach(() => {
   mocks.getRoom.mockResolvedValue(room)
   mocks.createBooking.mockResolvedValue(booking())
   mocks.getBooking.mockResolvedValue(booking())
-  mocks.payBooking.mockResolvedValue(booking({ status: "Deposited" }))
+  sessionStorage.clear()
+  mocks.openCheckout.mockReset()
+  mocks.createBookingPaymentLink.mockResolvedValue({
+    paymentRequestId: 31, bookingId: 7, status: "Pending", amount: 3_000_000, currency: "VND",
+    checkoutUrl: "https://pay.payos.vn/web/deposit-31", expiresAtUtc: inMinutes(15), reused: false,
+  })
   mocks.getBookings.mockResolvedValue([])
   mocks.getViewingSchedules.mockResolvedValue([])
 })
 
 describe("DepositPage", () => {
-  it("holds the room, then pays the deposit with the chosen mock gateway", async () => {
+  it("holds the room, then opens the payOS checkout once for the deposit", async () => {
     renderAt("/deposit?roomId=501")
     await screen.findByText("A101 · Studio")
     fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
 
-    await screen.findByText("Phương thức thanh toán")
+    const payButton = await screen.findByRole("button", { name: /qua payOS$/ })
     expect(mocks.createBooking).toHaveBeenCalledWith("customer-token", 501)
     expect(mocks.getBooking).toHaveBeenCalledWith("customer-token", 7, expect.any(AbortSignal))
 
-    const payButton = screen.getByRole("button", { name: /^Thanh toán/ })
     fireEvent.click(payButton)
-    expect(screen.getByRole("alert").textContent).toBe("Vui lòng chọn phương thức thanh toán.")
-    expect(mocks.payBooking).not.toHaveBeenCalled()
+    fireEvent.click(payButton)
+    await waitFor(() => expect(mocks.openCheckout).toHaveBeenCalledWith("https://pay.payos.vn/web/deposit-31"))
+    expect(mocks.createBookingPaymentLink).toHaveBeenCalledTimes(1)
+    expect(mocks.createBookingPaymentLink).toHaveBeenCalledWith("customer-token", 7)
+    expect(JSON.parse(sessionStorage.getItem("troviet-invoice-payment:10") ?? "null"))
+      .toEqual({ requestId: 31, bookingId: 7, providerLinkId: "deposit-31" })
+  })
 
-    fireEvent.click(screen.getByLabelText("MoMo"))
-    fireEvent.click(payButton)
-    await screen.findByText("payment success page")
-    expect(mocks.payBooking).toHaveBeenCalledWith("customer-token", 7, "MoMo")
+  it("goes to the verified result page when the deposit link cannot be opened", async () => {
+    mocks.createBookingPaymentLink.mockResolvedValue({
+      paymentRequestId: 31, bookingId: 7, status: "Succeeded", amount: 3_000_000, currency: "VND",
+      checkoutUrl: null, expiresAtUtc: null, reused: true,
+    })
+    render(
+      <MemoryRouter initialEntries={["/deposit?bookingId=7"]}>
+        <Routes>
+          <Route path="/deposit" element={<DepositPage />} />
+          <Route path="/payment-result" element={<p>payment result page</p>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByRole("button", { name: /qua payOS$/ }))
+    await screen.findByText("payment result page")
+    expect(mocks.openCheckout).not.toHaveBeenCalled()
+  })
+
+  it("explains when payOS is not available for deposits", async () => {
+    mocks.createBookingPaymentLink.mockRejectedValue(new ApiError("Checkout unavailable", { status: 503 }))
+    renderAt("/deposit?bookingId=7")
+    fireEvent.click(await screen.findByRole("button", { name: /qua payOS$/ }))
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Thanh toán payOS hiện chưa sẵn sàng. Vui lòng thử lại sau ít phút hoặc liên hệ quản lý.",
+    )
+    expect(mocks.openCheckout).not.toHaveBeenCalled()
   })
 
   it("explains when someone else took the room before the hold", async () => {
@@ -127,7 +163,24 @@ describe("DepositPage", () => {
     renderAt("/deposit?bookingId=7")
 
     expect((await screen.findByRole("alert")).textContent).toBe(message)
-    expect(screen.queryByText("Phương thức thanh toán")).toBeNull()
+    expect(screen.queryByRole("button", { name: /qua payOS$/ })).toBeNull()
+  })
+})
+
+describe("MyBookingsPage refunds", () => {
+  it("offers a refund only when the BE says the deposit is eligible and shows the refund status", async () => {
+    mocks.getBookings.mockResolvedValue([
+      booking({ bookingId: 7, status: "Deposited", canRequestRefund: true }),
+      booking({ bookingId: 8, roomCode: "B202", status: "Deposited", refundStatus: "PendingReview", canRequestRefund: false }),
+      booking({ bookingId: 9, roomCode: "C303", status: "Deposited", contractId: 3 }),
+    ])
+    renderAt("/my-bookings")
+    expect(await screen.findByRole("button", { name: "Xin hoàn cọc" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Xem yêu cầu hoàn cọc" })).toBeTruthy()
+    expect(screen.getByText("Chờ Admin xét duyệt")).toBeTruthy()
+    expect(screen.getAllByText("Đến khi lập hợp đồng hoặc hoàn cọc")).toHaveLength(2)
+    // Booking đang có đơn hoàn thì không còn báo "chủ trọ sẽ liên hệ lập hợp đồng".
+    expect(screen.getAllByText("Chủ trọ sẽ liên hệ để lập hợp đồng thuê.")).toHaveLength(1)
   })
 })
 
