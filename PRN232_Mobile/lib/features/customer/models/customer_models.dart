@@ -157,19 +157,31 @@ class PropertyItem {
     final roomsList = (json['rooms'] as List?)?.map((r) => RoomItem.fromJson(r as Map<String, dynamic>)).toList() ??
         <RoomItem>[];
 
+    final propName = json['propertyName']?.toString() ?? 'Khu trọ';
+    final addr = json['addressText']?.toString() ?? '';
+    final w = json['ward']?.toString() ?? '';
+    final d = json['district']?.toString() ?? '';
+    final c = json['city']?.toString() ?? '';
+    final fullAddr = [addr, w, d, c].where((s) => s.isNotEmpty).join(', ');
+
+    final rawDesc = json['description']?.toString().trim();
+    final dynamicDesc = (rawDesc != null && rawDesc.isNotEmpty)
+        ? rawDesc
+        : '$propName tọa lạc tại $fullAddr. Tòa nhà có không gian sống văn minh, an ninh 24/7, giờ giấc tự do, gần trường học, bệnh viện và các tiện ích sinh hoạt thuận tiện.';
+
     return PropertyItem(
       propertyId: json['propertyId'] ?? 0,
-      propertyName: json['propertyName'] ?? '',
-      addressText: json['addressText'] ?? '',
-      ward: json['ward'] ?? '',
-      district: json['district'] ?? '',
-      city: json['city'] ?? '',
+      propertyName: propName,
+      addressText: addr,
+      ward: w,
+      district: d,
+      city: c,
       location: LatLng(lat, lng),
       primaryImageUrl: primaryImg,
       galleryUrls: primaryImg != null ? [primaryImg] : const [],
       availableRoomCount: json['availableRoomCount'] ?? 0,
       startingPrice: json['startingPrice'] ?? 0,
-      description: json['description'] ?? 'Nhà trọ sạch sẽ, an ninh 24/7, vị trí thuận lợi.',
+      description: dynamicDesc,
       amenities: amenitiesList,
       livingCosts: livingCostsList,
       rooms: roomsList,

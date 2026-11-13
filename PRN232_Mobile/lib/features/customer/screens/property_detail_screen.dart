@@ -41,7 +41,7 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen> {
     setState(() => _isLoadingRooms = true);
     try {
       final detail = await _propertyService.getPropertyDetail(widget.property.propertyId);
-      final rooms = await _propertyService.getPropertyRooms(widget.property.propertyId);
+      final rooms = await _propertyService.getPropertyRooms(widget.property.propertyId, pageSize: 100);
       if (mounted) {
         setState(() {
           _property = detail;
@@ -157,7 +157,7 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen> {
                             style: AppTypography.displayMedium),
                       ),
                       StatusBadge(
-                        label: '${prop.availableRoomCount} phòng trống',
+                        label: '${_rooms.isNotEmpty ? _rooms.length : prop.availableRoomCount} phòng trống',
                         tone: StatusTone.green,
                       ),
                     ],
@@ -264,7 +264,7 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen> {
                     children: [
                       Text('Danh sách phòng',
                           style: AppTypography.headingSmall),
-                      Text('${prop.rooms.length} loại phòng',
+                      Text('${_rooms.length} phòng còn trống',
                           style: AppTypography.bodySmall),
                     ],
                   ),

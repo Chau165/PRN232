@@ -18,10 +18,16 @@ class CustomerExploreScreen extends StatefulWidget {
 class _CustomerExploreScreenState extends State<CustomerExploreScreen> {
   final PropertyService _propertyService = PropertyService();
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
   bool _isMapView = false;
   String _selectedDistrict = 'Tất cả';
   List<PropertyItem> _properties = CustomerMockData.properties;
   bool _isLoading = false;
+
+  int _currentPage = 1;
+  int _totalCount = 0;
+  final int _pageSize = 10;
 
   final List<String> _districts = [
     'Tất cả',
@@ -35,18 +41,47 @@ class _CustomerExploreScreenState extends State<CustomerExploreScreen> {
   @override
   void initState() {
     super.initState();
-    _loadProperties();
+    _loadProperties(page: 1);
   }
 
-  Future<void> _loadProperties() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadProperties({int page = 1}) async {
+    setState(() {
+      _isLoading = true;
+      _currentPage = page;
+    });
+
+    final keyword = _searchController.text.trim();
+    final isPriceFilter = _selectedDistrict == 'Dưới 3 triệu';
+    final districtFilter = (_selectedDistrict != 'Tất cả' && !isPriceFilter)
+        ? _selectedDistrict
+        : null;
+    final maxPriceFilter = isPriceFilter ? 3000000 : null;
+
     try {
-      final list = await _propertyService.getPublicProperties();
+      final paged = await _propertyService.getPublicPropertiesPaged(
+        keyword: keyword.isNotEmpty ? keyword : null,
+        district: districtFilter,
+        maxPrice: maxPriceFilter,
+        page: _currentPage,
+        pageSize: _pageSize,
+      );
+
       if (mounted) {
         setState(() {
-          _properties = list;
+          _properties = paged.items;
+          _totalCount = paged.totalCount;
+          _currentPage = paged.page;
           _isLoading = false;
         });
+
+        // Cuộn lên đầu trang danh sách nếu đang ở vị trí cuộn
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
       }
     } catch (_) {
       if (mounted) {
@@ -58,35 +93,22 @@ class _CustomerExploreScreenState extends State<CustomerExploreScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
-  }
-
-  List<PropertyItem> get _filteredProperties {
-    return _properties.where((p) {
-      final matchesQuery = _searchController.text.trim().isEmpty ||
-          p.propertyName
-              .toLowerCase()
-              .contains(_searchController.text.trim().toLowerCase()) ||
-          p.district
-              .toLowerCase()
-              .contains(_searchController.text.trim().toLowerCase());
-
-      final matchesDistrict = _selectedDistrict == 'Tất cả' ||
-          (_selectedDistrict == 'Dưới 3 triệu'
-              ? p.startingPrice <= 3000000
-              : p.district.contains(_selectedDistrict));
-
-      return matchesQuery && matchesDistrict;
-    }).toList();
   }
 
   void _navigateToDetail(PropertyItem property) {
     context.push('/property-detail', extra: property);
   }
 
+  int get _totalPages {
+    if (_totalCount == 0) return 1;
+    return (_totalCount / _pageSize).ceil();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final properties = _filteredProperties;
+    final totalPages = _totalPages;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -110,21 +132,25 @@ class _CustomerExploreScreenState extends State<CustomerExploreScreen> {
                         ),
                         child: TextField(
                           controller: _searchController,
-                          onChanged: (_) => setState(() {}),
+                          textInputAction: TextInputAction.search,
+                          onSubmitted: (_) => _loadProperties(page: 1),
                           style: AppTypography.bodyMedium,
                           decoration: InputDecoration(
                             hintText: 'Tìm theo quận, tên đường, khu trọ...',
                             hintStyle: AppTypography.bodySmall
                                 .copyWith(color: AppColors.textLight),
-                            prefixIcon: const Icon(Icons.search_rounded,
-                                color: AppColors.primary, size: 20),
+                            prefixIcon: IconButton(
+                              icon: const Icon(Icons.search_rounded,
+                                  color: AppColors.primary, size: 20),
+                              onPressed: () => _loadProperties(page: 1),
+                            ),
                             suffixIcon: _searchController.text.isNotEmpty
                                 ? IconButton(
                                     icon: const Icon(Icons.clear_rounded,
                                         size: 16),
                                     onPressed: () {
                                       _searchController.clear();
-                                      setState(() {});
+                                      _loadProperties(page: 1);
                                     },
                                   )
                                 : null,
@@ -190,7 +216,10 @@ class _CustomerExploreScreenState extends State<CustomerExploreScreen> {
                       final isSelected = _selectedDistrict == district;
                       return GestureDetector(
                         onTap: () {
-                          setState(() => _selectedDistrict = district);
+                          if (_selectedDistrict != district) {
+                            setState(() => _selectedDistrict = district);
+                            _loadProperties(page: 1);
+                          }
                         },
                         child: Container(
                           margin: const EdgeInsets.only(right: 8),
@@ -228,42 +257,162 @@ class _CustomerExploreScreenState extends State<CustomerExploreScreen> {
                   )
                 : _isMapView
                     ? ExploreMapView(
-                        properties: properties,
+                        properties: _properties,
                         onPropertySelected: _navigateToDetail,
                       )
                     : RefreshIndicator(
-                        onRefresh: _loadProperties,
+                        onRefresh: () => _loadProperties(page: _currentPage),
                         color: AppColors.primary,
-                        child: properties.isEmpty
+                        child: _properties.isEmpty
                             ? Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.search_off_rounded,
-                                        size: 56, color: AppColors.textMuted),
-                                    const SizedBox(height: 12),
-                                    Text('Không tìm thấy khu trọ phù hợp.',
-                                        style: AppTypography.headingSmall),
-                                    const SizedBox(height: 4),
-                                    Text('Thử tìm kiếm với từ khóa hoặc quận khác.',
-                                        style: AppTypography.bodySmall),
-                                  ],
+                                child: SingleChildScrollView(
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.search_off_rounded,
+                                          size: 56, color: AppColors.textMuted),
+                                      const SizedBox(height: 12),
+                                      Text('Không tìm thấy khu trọ phù hợp.',
+                                          style: AppTypography.headingSmall),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Thử tìm kiếm với từ khóa hoặc quận khác.',
+                                        style: AppTypography.bodySmall,
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               )
-                            : ListView.separated(
+                            : ListView.builder(
+                                controller: _scrollController,
                                 padding: const EdgeInsets.all(16),
-                                itemCount: properties.length,
-                                separatorBuilder: (_, _) =>
-                                    const SizedBox(height: 16),
+                                itemCount: _properties.length + 1, // +1 cho pagination bar
                                 itemBuilder: (context, index) {
-                                  final prop = properties[index];
-                                  return PropertyCardWidget(
-                                    property: prop,
-                                    onTap: () => _navigateToDetail(prop),
-                                  );
+                                  if (index < _properties.length) {
+                                    final prop = _properties[index];
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 16),
+                                      child: PropertyCardWidget(
+                                        property: prop,
+                                        onTap: () => _navigateToDetail(prop),
+                                      ),
+                                    );
+                                  }
+
+                                  // Pagination bar ở cuối danh sách
+                                  return _buildPaginationBar(totalPages);
                                 },
                               ),
                       ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaginationBar(int totalPages) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8, bottom: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.borderLight),
+      ),
+      child: Column(
+        children: [
+          Text(
+            'Trang $_currentPage / $totalPages (Tổng $_totalCount khu trọ)',
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Nút Trang trước
+              ElevatedButton.icon(
+                icon: const Icon(Icons.chevron_left_rounded, size: 18),
+                label: const Text('Trước'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _currentPage > 1 ? AppColors.primary : Colors.grey.shade200,
+                  foregroundColor: _currentPage > 1 ? Colors.white : Colors.grey.shade500,
+                  elevation: 0,
+                  minimumSize: const Size(90, 38),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: _currentPage > 1
+                    ? () => _loadProperties(page: _currentPage - 1)
+                    : null,
+              ),
+              const SizedBox(width: 12),
+
+              // Hiển thị danh sách số trang
+              ...List.generate(totalPages, (i) {
+                final pageNum = i + 1;
+                // Chỉ hiển thị trang lân cận nếu quá nhiều trang
+                if (totalPages > 5 &&
+                    (pageNum != 1 &&
+                        pageNum != totalPages &&
+                        (pageNum < _currentPage - 1 || pageNum > _currentPage + 1))) {
+                  if (pageNum == _currentPage - 2 || pageNum == _currentPage + 2) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: Text('...'),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                }
+
+                final isCurrent = pageNum == _currentPage;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: InkWell(
+                    onTap: isCurrent ? null : () => _loadProperties(page: pageNum),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: isCurrent ? AppColors.primary : AppColors.surfaceVariant,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '$pageNum',
+                        style: TextStyle(
+                          color: isCurrent ? Colors.white : AppColors.textPrimary,
+                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+
+              const SizedBox(width: 12),
+              // Nút Trang sau
+              ElevatedButton.icon(
+                label: const Text('Sau'),
+                icon: const Icon(Icons.chevron_right_rounded, size: 18),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _currentPage < totalPages ? AppColors.primary : Colors.grey.shade200,
+                  foregroundColor: _currentPage < totalPages ? Colors.white : Colors.grey.shade500,
+                  elevation: 0,
+                  minimumSize: const Size(90, 38),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: _currentPage < totalPages
+                    ? () => _loadProperties(page: _currentPage + 1)
+                    : null,
+              ),
+            ],
           ),
         ],
       ),
