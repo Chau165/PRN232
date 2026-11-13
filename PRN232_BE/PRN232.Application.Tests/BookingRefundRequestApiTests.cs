@@ -8,6 +8,9 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Npgsql;
 using PRN232.Application.DTOs;
+using PRN232.Application.Interfaces;
+using PRN232.Application.Policies;
+using PRN232.Application.ReadModels;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
 using Xunit;
@@ -283,6 +286,23 @@ public class BookingRefundRequestApiTests
                 var attempt = await query.ServiceProvider.GetRequiredService<AppDbContext>().PayoutAttempts.SingleAsync();
                 Assert.Equal("Processing", attempt.Status);
                 Assert.True(Guid.TryParseExact(attempt.IdempotencyKey, "N", out _));
+                // P9: leases and result application use independent PostgreSQL contexts too.
+                var now = DateTime.UtcNow.AddMinutes(5);
+                var window = new PayoutReconciliationWindow(now, now.AddMinutes(-1), now.AddMinutes(-3), now.AddMinutes(-5), false, 3);
+                async Task<PayoutAttempts?> LeaseAsync()
+                {
+                    using var worker = app.Services.CreateScope();
+                    return await worker.ServiceProvider.GetRequiredService<IPayoutReconciliationRepository>().TryLeaseAsync(attempt.PayoutAttemptId, window, default);
+                }
+                var leases = await Task.WhenAll(Enumerable.Range(0, 6).Select(_ => LeaseAsync()));
+                var winner = Assert.Single(leases, item => item is not null)!;
+                var remote = new PayoutRemoteSnapshot(winner.ProviderPayoutId!, winner.ReferenceId, winner.ProviderTransactionId!, winner.ReferenceId,
+                    winner.Amount, winner.RecipientBankBin, winner.RecipientAccountNumber, "Completed", "Succeeded");
+                using var apply = app.Services.CreateScope();
+                await apply.ServiceProvider.GetRequiredService<IPayoutReconciliationRepository>().ApplyAsync(winner,
+                    PayoutReconciliationPolicy.Evaluate(winner, remote, now, 3600), window, now, default);
+                using var verify = app.Services.CreateScope();
+                Assert.Equal("Succeeded", (await verify.ServiceProvider.GetRequiredService<AppDbContext>().PayoutAttempts.SingleAsync()).Status);
             }
 
             var other = await SeedAsync(app, roomId: 2);

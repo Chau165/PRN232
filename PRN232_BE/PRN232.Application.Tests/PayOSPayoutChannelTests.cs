@@ -26,6 +26,9 @@ public class PayOSPayoutChannelTests
         using var provider = services.BuildServiceProvider();
         Assert.False(provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value.Enabled);
         Assert.False(provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value.DispatchEnabled);
+        Assert.False(provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value.ReconciliationEnabled);
+        Assert.False(provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value.RetryFailedPayouts);
+        Assert.IsType<DisabledPayOSPayoutReconciliationGateway>(provider.GetRequiredService<IPayOSPayoutReconciliationGateway>());
         Assert.IsType<DisabledPayOSPayoutGateway>(provider.GetRequiredService<IPayOSPayoutGateway>());
         Assert.Null(provider.GetService<PayOSPayoutClient>());
     }
@@ -51,6 +54,23 @@ public class PayOSPayoutChannelTests
         using var provider = Services(new() { ["PayOSPayout:Enabled"] = enabled.ToString(), ["PayOSPayout:DispatchEnabled"] = "true",
             ["PayOSPayout:ClientId"] = "payout-client", ["PayOSPayout:ApiKey"] = "payout-api", ["PayOSPayout:ChecksumKey"] = "payout-checksum",
             ["PayOSPayout:DispatchIntervalSeconds"] = interval.ToString(), ["PayOSPayout:DispatchBatchSize"] = batch.ToString() }).BuildServiceProvider();
+        Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value);
+    }
+
+    [Theory]
+    [InlineData("ReconciliationIntervalSeconds", "4")]
+    [InlineData("ReconciliationBatchSize", "101")]
+    [InlineData("ReconciliationMinimumAgeSeconds", "30")]
+    [InlineData("ReconciliationStuckAfterSeconds", "60")]
+    [InlineData("MaxPayoutAttempts", "6")]
+    [InlineData("PayoutRetryDelaySeconds", "0")]
+    [InlineData("Enabled", "false")]
+    public void Reconciliation_configuration_rejects_unsafe_limits(string field, string value)
+    {
+        var config = new Dictionary<string, string?> { ["PayOSPayout:Enabled"] = "true", ["PayOSPayout:ReconciliationEnabled"] = "true",
+            ["PayOSPayout:ClientId"] = "payout-client", ["PayOSPayout:ApiKey"] = "payout-api", ["PayOSPayout:ChecksumKey"] = "payout-checksum" };
+        config["PayOSPayout:" + field] = value;
+        using var provider = Services(config).BuildServiceProvider();
         Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value);
     }
 
