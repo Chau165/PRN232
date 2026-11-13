@@ -30,6 +30,13 @@ const items: SidebarItem[] = [
   { label: "Khu trọ", href: routes.managementProperties, icon: "building" },
 
   {
+    label: "Xét duyệt hoàn cọc",
+    href: routes.managementRefunds,
+    icon: "receipt",
+    adminOnly: true,
+  },
+
+  {
     label: "Đặt phòng & Đặt cọc",
 
     href: routes.managementBookings,

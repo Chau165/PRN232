@@ -43,6 +43,8 @@ export const routes = {
 
   managementManagers: "/management/managers",
 
+  managementRefunds: "/management/refunds",
+
   managementUsers: "/management/users",
 
   login: "/login",
