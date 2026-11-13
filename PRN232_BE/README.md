@@ -60,6 +60,10 @@ và đăng ký DI trong `PRN232.Api/Program.cs`.
    dotnet user-secrets set "Jwt:Key" "<một chuỗi random tối thiểu 32 ký tự>"
    ```
 
+   Local (Development) không cần `IdentityDocuments:CccdHashKey` — tự dùng key dev. Production
+   (Railway) **bắt buộc** đặt `IdentityDocuments__CccdHashKey` (chuỗi ngẫu nhiên >= 32 ký tự, không
+   đổi sau khi đã có dữ liệu) — đây là khóa HMAC để kiểm tra trùng số CCCD đã mã hóa (A9).
+
    Connection string lấy trong Supabase Dashboard → Project Settings → Database →
    Connection string (cổng 5432 cho kết nối trực tiếp, hoặc 6543 cho pooler).
 

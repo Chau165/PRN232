@@ -374,6 +374,7 @@ public sealed class PublicPropertyListingPostgreSqlTests
                 }));
             builder.ConfigureTestServices(services =>
             {
+                services.UseSharedTestDataProtection();
                 services.RemoveAll<DbContextOptions<AppDbContext>>();
                 services.AddDbContext<AppDbContext>(options =>
                     options

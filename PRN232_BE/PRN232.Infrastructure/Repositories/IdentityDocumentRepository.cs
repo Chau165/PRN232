@@ -102,10 +102,10 @@ public class IdentityDocumentRepository : IIdentityDocumentRepository
             (d.Status == "Pending" || d.Status == "Approved"));
     }
 
-    public Task<bool> CccdNumberUsedByOtherAsync(string cccdNumber, int customerId)
+    public Task<bool> CccdNumberUsedByOtherAsync(string cccdNumberHash, int customerId)
     {
         return _context.IdentityDocuments.AnyAsync(d =>
-            d.CCCDNumber == cccdNumber && d.CustomerId != customerId);
+            d.CCCDNumberHash == cccdNumberHash && d.CustomerId != customerId);
     }
 
     public async Task<IdentityDocuments> AddAsync(IdentityDocuments document)

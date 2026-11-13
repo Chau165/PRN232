@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpLogging;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -57,6 +58,13 @@ builder.Services.AddHttpLogging(options =>
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// ---- A9: mã hóa số CCCD ----
+// Key ring của Data Protection lưu trong bảng DataProtectionKeys (cùng DB) để không mất key mỗi
+// lần Railway redeploy container — mất key = không giải mã được CCCD đã lưu.
+builder.Services.AddDataProtection()
+    .SetApplicationName("PRN232")
+    .PersistKeysToDbContext<AppDbContext>();
+
 // ---- CORS: chỉ origin của FE ----
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
 allowedOrigins ??= [];
@@ -104,6 +112,24 @@ var jwtSettings = new JwtSettings
     ExpiryMinutes = builder.Configuration.GetValue<int?>("Jwt:ExpiryMinutes") ?? 120,
 };
 builder.Services.AddSingleton(jwtSettings);
+
+// ---- A9: Khóa HMAC cho "blind index" CCCDNumberHash (kiểm tra trùng CCCD mà không cần giải mã).
+// Production bắt buộc đặt biến môi trường IdentityDocuments__CccdHashKey (>= 32 ký tự ngẫu nhiên)
+// và KHÔNG được đổi sau khi đã có dữ liệu, nếu không kiểm tra trùng sẽ sai.
+var cccdHashKey = builder.Configuration["IdentityDocuments:CccdHashKey"];
+if (string.IsNullOrWhiteSpace(cccdHashKey) ||
+    Encoding.UTF8.GetByteCount(cccdHashKey) < HmacCccdHasher.MinimumKeyBytes)
+{
+    if (builder.Environment.IsProduction())
+    {
+        throw new InvalidOperationException(
+            "IdentityDocuments:CccdHashKey chưa được cấu hình. Đặt biến môi trường " +
+            "IdentityDocuments__CccdHashKey là một chuỗi ngẫu nhiên dài ít nhất 32 ký tự.");
+    }
+    cccdHashKey = "DEV_ONLY_CCCD_HASH_KEY_NEVER_USE_IN_PRODUCTION";
+}
+builder.Services.AddSingleton<ICccdHasher>(new HmacCccdHasher(Encoding.UTF8.GetBytes(cccdHashKey)));
+builder.Services.AddScoped<IdentityDocumentEncryptionBackfill>();
 
 builder.Services.AddAuthentication(options =>
 {
@@ -373,6 +399,28 @@ app.MapHub<NotificationHub>("/hubs/notifications", options =>
 {
     options.CloseOnAuthenticationExpiration = true;
 });
+
+// A9: mã hóa các hồ sơ CCCD cũ còn plaintext (chỉ đụng các dòng chưa có CCCDNumberHash, chạy lại
+// nhiều lần vẫn an toàn). Test tự gọi backfill trực tiếp nên bỏ qua ở môi trường Testing.
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var encrypted = await scope.ServiceProvider
+            .GetRequiredService<IdentityDocumentEncryptionBackfill>()
+            .RunAsync();
+        if (encrypted > 0)
+        {
+            app.Logger.LogInformation("Encrypted {Count} legacy identity document(s).", encrypted);
+        }
+    }
+    catch (Exception exception)
+    {
+        // Không chặn khởi động: các dòng cũ vẫn đọc được, lần khởi động sau sẽ thử lại.
+        app.Logger.LogError(exception, "Identity document encryption backfill failed.");
+    }
+}
 
 app.Run();
 

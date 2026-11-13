@@ -22,6 +22,25 @@ namespace PRN232.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("FriendlyName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Xml")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DataProtectionKeys");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.Amenities", b =>
                 {
                     b.Property<int>("AmenityId")
@@ -275,6 +294,9 @@ namespace PRN232.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("CCCDNumberHash")
+                        .HasColumnType("text");
+
                     b.Property<int>("CustomerId")
                         .HasColumnType("integer");
 
@@ -286,6 +308,9 @@ namespace PRN232.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("IdentityDocumentId");
+
+                    b.HasIndex("CCCDNumberHash")
+                        .HasDatabaseName("IX_IdentityDocuments_CCCDNumberHash");
 
                     b.HasIndex("CustomerId");
 
