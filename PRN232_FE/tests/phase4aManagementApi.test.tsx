@@ -85,6 +85,39 @@ function renderManagerPage(page: ReactNode) {
 beforeEach(() => window.sessionStorage.clear())
 
 describe("Phase 4A Admin user APIs", () => {
+  it("pages through users with page/pageSize and shows the total (A15)", async () => {
+    adminSession()
+    const userUrls: string[] = []
+    const pageOneRows = Array.from({ length: 20 }, (_, index) => ({
+      ...customer, userId: 100 + index, fullName: `Khách ${index + 1}`, email: `k${index + 1}@example.test`,
+    }))
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+      if (url.endsWith("/users/me")) return jsonResponse(admin)
+      if (url.endsWith("/roles")) return jsonResponse(roles)
+      if (url.includes("/users?")) {
+        userUrls.push(url.replace(/^.*\/api/, ""))
+        return url.includes("page=2")
+          ? jsonResponse({ items: [customer], page: 2, pageSize: 20, totalCount: 21 })
+          : jsonResponse({ items: pageOneRows, page: 1, pageSize: 20, totalCount: 21 })
+      }
+      return jsonResponse({ title: "Not Found" }, 404)
+    }))
+    renderPage(<ManagementUsersPage />)
+
+    expect(await screen.findByText("k1@example.test")).toBeTruthy()
+    expect(screen.getByText("Trang 1/2 · 21 người dùng")).toBeTruthy()
+    expect((screen.getByRole("button", { name: "Trang trước" }) as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.click(screen.getByRole("button", { name: "Trang sau" }))
+
+    expect(await screen.findByText("customer@example.test")).toBeTruthy()
+    expect(screen.queryByText("k1@example.test")).toBeNull()
+    expect(screen.getByText("Trang 2/2 · 21 người dùng")).toBeTruthy()
+    expect((screen.getByRole("button", { name: "Trang sau" }) as HTMLButtonElement).disabled).toBe(true)
+    expect(userUrls).toEqual(["/users?page=1&pageSize=20", "/users?page=2&pageSize=20"])
+  })
+
   it("loads users and sends role/status updates with a Bearer token", async () => {
     adminSession()
     const calls: Array<{ url: string; init?: RequestInit }> = []
@@ -92,7 +125,7 @@ describe("Phase 4A Admin user APIs", () => {
       const url = String(input)
       calls.push({ url, init })
       if (url.endsWith("/users/me")) return jsonResponse(admin)
-      if (url.endsWith("/users")) return jsonResponse([admin, customer])
+      if (url.includes("/users?page=1")) return jsonResponse({ items: [admin, customer], page: 1, pageSize: 20, totalCount: 2 })
       if (url.endsWith("/roles")) return jsonResponse(roles)
       if (url.endsWith("/users/8/role")) return jsonResponse({ ...customer, roleId: 2, roleName: "Manager" })
       if (url.endsWith("/users/8/status")) return jsonResponse({ ...customer, isActive: false })
@@ -139,7 +172,8 @@ describe("Phase 4A Admin user APIs", () => {
       calls.push({ url, init })
       if (url.endsWith("/users/me")) return jsonResponse(admin)
       if (url.endsWith("/roles")) return jsonResponse(roles)
-      if (url.endsWith("/users?roleId=2")) return jsonResponse([manager])
+      if (url.includes("/users?roleId=2")) return jsonResponse({ items: [manager], page: 1, pageSize: 100, totalCount: 1 })
+      if (url.includes("/managers/properties?managerIds=9")) return jsonResponse([{ managerId: 9, properties: managerHasProperty ? [property] : [] }])
       if (url.endsWith("/managers/9/properties")) return jsonResponse(managerHasProperty ? [property] : [])
       if (url.endsWith("/properties")) return jsonResponse([property])
       if (url.endsWith("/properties/21/managers") && init?.method === "POST") {
@@ -209,8 +243,9 @@ describe("Phase 4A Admin user APIs", () => {
       calls.push({ url, init })
       if (url.endsWith("/users/me")) return jsonResponse(admin)
       if (url.endsWith("/roles")) return jsonResponse(roles)
-      if (url.endsWith("/users?roleId=2")) return jsonResponse([manager])
+      if (url.includes("/users?roleId=2")) return jsonResponse({ items: [manager], page: 1, pageSize: 100, totalCount: 1 })
       if (url.endsWith("/properties")) return jsonResponse([legacyProperty])
+      if (url.includes("/managers/properties?managerIds=9")) return jsonResponse([{ managerId: 9, properties: [legacyProperty] }])
       if (url.endsWith("/managers/9/properties")) return jsonResponse([legacyProperty])
       return jsonResponse({ title: "Not Found" }, 404)
     }))
@@ -227,6 +262,9 @@ describe("Phase 4A Admin user APIs", () => {
     expect(within(dialog).getByText(/OwnerId=9.*Manager/)).toBeTruthy()
     expect(within(dialog).getByRole("button", { name: "Lưu phân công" }).hasAttribute("disabled")).toBe(true)
     expect(calls.some((call) => call.init?.method === "POST")).toBe(false)
+    // C11b: the page loads every manager's properties with one batch request.
+    expect(calls.filter((call) => call.url.includes("/managers/properties")).length).toBe(1)
+    expect(calls.some((call) => /\/managers\/\d+\/properties/.test(call.url))).toBe(false)
   })
 
   it("refreshes persisted assignments and reports a partial save with the failed property", async () => {
@@ -254,7 +292,10 @@ describe("Phase 4A Admin user APIs", () => {
       calls.push({ url, init })
       if (url.endsWith("/users/me")) return jsonResponse(admin)
       if (url.endsWith("/roles")) return jsonResponse(roles)
-      if (url.endsWith("/users?roleId=2")) return jsonResponse([manager])
+      if (url.includes("/users?roleId=2")) return jsonResponse({ items: [manager], page: 1, pageSize: 100, totalCount: 1 })
+      if (url.includes("/managers/properties?managerIds=9")) {
+        return jsonResponse([{ managerId: 9, properties: propertyTwoAssigned ? [propertyOne, propertyTwo] : [propertyOne] }])
+      }
       if (url.endsWith("/managers/9/properties")) {
         return jsonResponse(propertyTwoAssigned ? [propertyOne, propertyTwo] : [propertyOne])
       }
@@ -337,7 +378,7 @@ describe("Phase 4A Admin user APIs", () => {
       const url = String(input)
       calls.push({ url, init })
       if (url.endsWith("/users/me")) return jsonResponse(admin)
-      if (url.endsWith("/properties/21/managers")) return jsonResponse(assignments)
+      if (url.includes("/properties/managers?propertyIds=21")) return jsonResponse([{ propertyId: 21, managers: assignments }])
       if (url.endsWith("/properties")) return jsonResponse([property])
       return jsonResponse({ title: "Not Found" }, 404)
     })

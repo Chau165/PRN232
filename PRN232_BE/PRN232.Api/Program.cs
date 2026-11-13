@@ -1,8 +1,10 @@
 using System.Net;
+using System.Security.Claims;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpLogging;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -57,6 +59,13 @@ builder.Services.AddHttpLogging(options =>
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// ---- A9: mã hóa số CCCD ----
+// Key ring của Data Protection lưu trong bảng DataProtectionKeys (cùng DB) để không mất key mỗi
+// lần Railway redeploy container — mất key = không giải mã được CCCD đã lưu.
+builder.Services.AddDataProtection()
+    .SetApplicationName("PRN232")
+    .PersistKeysToDbContext<AppDbContext>();
+
 // ---- CORS: chỉ origin của FE ----
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
 allowedOrigins ??= [];
@@ -105,6 +114,24 @@ var jwtSettings = new JwtSettings
 };
 builder.Services.AddSingleton(jwtSettings);
 
+// ---- A9: Khóa HMAC cho "blind index" CCCDNumberHash (kiểm tra trùng CCCD mà không cần giải mã).
+// Production bắt buộc đặt biến môi trường IdentityDocuments__CccdHashKey (>= 32 ký tự ngẫu nhiên)
+// và KHÔNG được đổi sau khi đã có dữ liệu, nếu không kiểm tra trùng sẽ sai.
+var cccdHashKey = builder.Configuration["IdentityDocuments:CccdHashKey"];
+if (string.IsNullOrWhiteSpace(cccdHashKey) ||
+    Encoding.UTF8.GetByteCount(cccdHashKey) < HmacCccdHasher.MinimumKeyBytes)
+{
+    if (builder.Environment.IsProduction())
+    {
+        throw new InvalidOperationException(
+            "IdentityDocuments:CccdHashKey chưa được cấu hình. Đặt biến môi trường " +
+            "IdentityDocuments__CccdHashKey là một chuỗi ngẫu nhiên dài ít nhất 32 ký tự.");
+    }
+    cccdHashKey = "DEV_ONLY_CCCD_HASH_KEY_NEVER_USE_IN_PRODUCTION";
+}
+builder.Services.AddSingleton<ICccdHasher>(new HmacCccdHasher(Encoding.UTF8.GetBytes(cccdHashKey)));
+builder.Services.AddScoped<IdentityDocumentEncryptionBackfill>();
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -128,7 +155,7 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Key)),
     };
     // Token chỉ hết hạn sau ExpiryMinutes, nên admin khoá tài khoản xong thì token cũ vẫn
-    // dùng được. Mỗi request đều kiểm tra lại user còn tồn tại và còn active trong DB.
+    // dùng được. Mỗi request đều kiểm tra lại user còn tồn tại, còn active và role còn khớp trong DB.
     options.Events = new JwtBearerEvents
     {
         // Browser SignalR transports need the token in the query string. Accept it only
@@ -162,6 +189,15 @@ builder.Services.AddAuthentication(options =>
                     .CreateLogger("PRN232.Api.Authentication")
                     .LogWarning("Rejected token for user {UserId}: account does not exist or is inactive.", userId);
                 context.Fail("Tài khoản không tồn tại hoặc đã bị khoá.");
+                return;
+            }
+
+            // Role nằm sẵn trong token: Admin bị hạ quyền xong mà token cũ còn hạn thì vẫn mang quyền Admin.
+            // Role trong DB mới là sự thật, lệch thì bắt đăng nhập lại.
+            var tokenRole = context.Principal?.FindFirst(ClaimTypes.Role)?.Value;
+            if (!string.Equals(tokenRole, user.RoleName, StringComparison.Ordinal))
+            {
+                context.Fail("Role trong token không còn khớp với tài khoản.");
             }
         }
     };
@@ -396,6 +432,28 @@ app.MapHub<NotificationHub>("/hubs/notifications", options =>
 {
     options.CloseOnAuthenticationExpiration = true;
 });
+
+// A9: mã hóa các hồ sơ CCCD cũ còn plaintext (chỉ đụng các dòng chưa có CCCDNumberHash, chạy lại
+// nhiều lần vẫn an toàn). Test tự gọi backfill trực tiếp nên bỏ qua ở môi trường Testing.
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var encrypted = await scope.ServiceProvider
+            .GetRequiredService<IdentityDocumentEncryptionBackfill>()
+            .RunAsync();
+        if (encrypted > 0)
+        {
+            app.Logger.LogInformation("Encrypted {Count} legacy identity document(s).", encrypted);
+        }
+    }
+    catch (Exception exception)
+    {
+        // Không chặn khởi động: các dòng cũ vẫn đọc được, lần khởi động sau sẽ thử lại.
+        app.Logger.LogError(exception, "Identity document encryption backfill failed.");
+    }
+}
 
 app.Run();
 

@@ -9,6 +9,7 @@ import {
 } from "@/services/userService"
 import {
   getPropertiesForManager,
+  getPropertiesForManagers,
   revokePropertyManager,
 } from "@/services/propertyManagerAssignmentService"
 import { getPropertyManagerAssignmentError } from "@/utils/propertyManagerAssignmentErrors"
@@ -47,11 +48,11 @@ export default function ManagementManagersPage() {
         setManagerRoleId(managerRole.roleId)
         setManagers(rows)
         setProperties(propertyRows)
-        const propertyResults = await Promise.all(rows.map(async (row) => [
-          String(row.userId),
-          await getPropertiesForManager(accessToken, Number(row.userId)),
-        ] as const))
-        if (active) setPropertiesByManager(Object.fromEntries(propertyResults))
+        const managerProperties = await getPropertiesForManagers(
+          accessToken,
+          rows.map((row) => Number(row.userId)),
+        )
+        if (active) setPropertiesByManager(managerProperties)
       })
       .catch((cause: unknown) => {
         if (active) setError(getPropertyManagerAssignmentError(cause))

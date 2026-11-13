@@ -1153,6 +1153,7 @@ public sealed class PublicPropertyListingApiTests
             });
             builder.ConfigureTestServices(services =>
             {
+                services.UseSharedTestDataProtection();
                 services.RemoveAll<DbContextOptions<AppDbContext>>();
                 services.RemoveAll<TimeProvider>();
                 services.AddSingleton<TimeProvider>(Clock);

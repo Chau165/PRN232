@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { lazy, Suspense, type ReactNode } from "react"
 
 import { createBrowserRouter, Outlet } from "react-router"
 
@@ -9,64 +9,41 @@ import {
 
 import type { AppRole } from "@/types/user"
 
-import HomePage from "@/pages/HomePage/HomePage"
-
-import AvailableRoomsPage from "@/pages/AvailableRoomsPage/AvailableRoomsPage"
-
-import MyBillsPage from "@/pages/MyBillsPage/MyBillsPage"
-
-import MyBookingsPage from "@/pages/MyBookingsPage/MyBookingsPage"
-
-import MyContractsPage from "@/pages/MyContractsPage/MyContractsPage"
-
-import MyRoomPage from "@/pages/MyRoomPage/MyRoomPage"
-
-import NotificationsPage from "@/pages/NotificationsPage/NotificationsPage"
-
-import ProfilePage from "@/pages/ProfilePage/ProfilePage"
-
-import ManagementBookingsPage from "@/pages/ManagementBookingsPage/ManagementBookingsPage"
-
-import ManagementContractsPage from "@/pages/ManagementContractsPage/ManagementContractsPage"
-
-import CreateContractPage from "@/pages/CreateContractPage/CreateContractPage"
-
-import ManagementDashboardPage from "@/pages/ManagementDashboardPage/ManagementDashboardPage"
-
-import ManagementEquipmentPage from "@/pages/ManagementEquipmentPage/ManagementEquipmentPage"
-
-import ManagementInvoicesPage from "@/pages/ManagementInvoicesPage/ManagementInvoicesPage"
-
-import ManagementMaintenancePage from "@/pages/ManagementMaintenancePage/ManagementMaintenancePage"
-
-import ManagementManagersPage from "@/pages/ManagementManagersPage/ManagementManagersPage"
-
-import ManagementPropertiesPage from "@/pages/ManagementPropertiesPage/ManagementPropertiesPage"
-
-import ManagementReportsPage from "@/pages/ManagementReportsPage/ManagementReportsPage"
-
-import ManagementRoomsPage from "@/pages/ManagementRoomsPage/ManagementRoomsPage"
-
-import ManagementUsersPage from "@/pages/ManagementUsersPage/ManagementUsersPage"
-
-import ManagementViewingsPage from "@/pages/ManagementViewingsPage/ManagementViewingsPage"
-
-import LoginPage from "@/pages/LoginPage/LoginPage"
-
-import PropertyDetailPage from "@/pages/PropertyDetailPage/PropertyDetailPage"
-
-import RegisterPage from "@/pages/RegisterPage/RegisterPage"
-
-import DepositPage from "@/pages/DepositPage/DepositPage"
-
-import ViewingRequestPage from "@/pages/ViewingRequestPage/ViewingRequestPage"
-
-import PaymentSuccessPage from "@/pages/PaymentSuccessPage/PaymentSuccessPage"
-import InvoicePaymentResultPage from "@/pages/InvoicePaymentResultPage/InvoicePaymentResultPage"
-
 import { routes } from "@/constants/routes"
 
 import { CustomerNotificationsProvider } from "@/auth/CustomerNotificationsContext"
+
+// The landing page stays in the main bundle; every other route is code-split (C6) so that
+// visitors of the home page do not download the management and customer screens.
+import HomePage from "@/pages/HomePage/HomePage"
+
+const AvailableRoomsPage = lazy(() => import("@/pages/AvailableRoomsPage/AvailableRoomsPage"))
+const MyBillsPage = lazy(() => import("@/pages/MyBillsPage/MyBillsPage"))
+const MyBookingsPage = lazy(() => import("@/pages/MyBookingsPage/MyBookingsPage"))
+const MyContractsPage = lazy(() => import("@/pages/MyContractsPage/MyContractsPage"))
+const MyRoomPage = lazy(() => import("@/pages/MyRoomPage/MyRoomPage"))
+const NotificationsPage = lazy(() => import("@/pages/NotificationsPage/NotificationsPage"))
+const ProfilePage = lazy(() => import("@/pages/ProfilePage/ProfilePage"))
+const ManagementBookingsPage = lazy(() => import("@/pages/ManagementBookingsPage/ManagementBookingsPage"))
+const ManagementContractsPage = lazy(() => import("@/pages/ManagementContractsPage/ManagementContractsPage"))
+const CreateContractPage = lazy(() => import("@/pages/CreateContractPage/CreateContractPage"))
+const ManagementDashboardPage = lazy(() => import("@/pages/ManagementDashboardPage/ManagementDashboardPage"))
+const ManagementEquipmentPage = lazy(() => import("@/pages/ManagementEquipmentPage/ManagementEquipmentPage"))
+const ManagementInvoicesPage = lazy(() => import("@/pages/ManagementInvoicesPage/ManagementInvoicesPage"))
+const ManagementMaintenancePage = lazy(() => import("@/pages/ManagementMaintenancePage/ManagementMaintenancePage"))
+const ManagementManagersPage = lazy(() => import("@/pages/ManagementManagersPage/ManagementManagersPage"))
+const ManagementPropertiesPage = lazy(() => import("@/pages/ManagementPropertiesPage/ManagementPropertiesPage"))
+const ManagementReportsPage = lazy(() => import("@/pages/ManagementReportsPage/ManagementReportsPage"))
+const ManagementRoomsPage = lazy(() => import("@/pages/ManagementRoomsPage/ManagementRoomsPage"))
+const ManagementUsersPage = lazy(() => import("@/pages/ManagementUsersPage/ManagementUsersPage"))
+const ManagementViewingsPage = lazy(() => import("@/pages/ManagementViewingsPage/ManagementViewingsPage"))
+const LoginPage = lazy(() => import("@/pages/LoginPage/LoginPage"))
+const PropertyDetailPage = lazy(() => import("@/pages/PropertyDetailPage/PropertyDetailPage"))
+const RegisterPage = lazy(() => import("@/pages/RegisterPage/RegisterPage"))
+const DepositPage = lazy(() => import("@/pages/DepositPage/DepositPage"))
+const ViewingRequestPage = lazy(() => import("@/pages/ViewingRequestPage/ViewingRequestPage"))
+const PaymentSuccessPage = lazy(() => import("@/pages/PaymentSuccessPage/PaymentSuccessPage"))
+const InvoicePaymentResultPage = lazy(() => import("@/pages/InvoicePaymentResultPage/InvoicePaymentResultPage"))
 
 const managementRoles: readonly AppRole[] = ["ADMIN", "MANAGER"]
 const adminOnly: readonly AppRole[] = ["ADMIN"]
@@ -77,10 +54,20 @@ function protectedElement(element: ReactNode, roles?: readonly AppRole[]) {
   return <ProtectedRoute roles={roles}>{element}</ProtectedRoute>
 }
 
+function RouteFallback() {
+  return (
+    <div role="status" aria-live="polite" className="flex min-h-[50vh] items-center justify-center text-sm text-slate-500">
+      Đang tải...
+    </div>
+  )
+}
+
 function AppLayout() {
   return (
     <CustomerNotificationsProvider>
-      <Outlet />
+      <Suspense fallback={<RouteFallback />}>
+        <Outlet />
+      </Suspense>
     </CustomerNotificationsProvider>
   )
 }
@@ -219,6 +206,11 @@ export const router = createBrowserRouter([
       {
         path: routes.paymentSuccess,
         element: protectedElement(<PaymentSuccessPage />, customerOnly),
+      },
+
+      {
+        path: routes.paymentResult,
+        element: protectedElement(<InvoicePaymentResultPage />, customerOnly),
       },
     ],
   },

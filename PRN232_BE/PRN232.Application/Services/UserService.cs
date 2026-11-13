@@ -1,3 +1,4 @@
+using PRN232.Application.Common;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.ReadModels;
@@ -21,10 +22,10 @@ public class UserService : IUserService
         _logger = logger ?? NullLogger<UserService>.Instance;
     }
 
-    public async Task<List<UserDto>> GetAllAsync(int? roleId)
+    public async Task<PagedResult<UserDto>> GetAllAsync(int? roleId, PageRequest page)
     {
-        var users = await _repository.GetAllAsync(roleId);
-        return users.Select(ConvertToDto).ToList();
+        var users = await _repository.GetPagedAsync(roleId, page);
+        return users.Map(ConvertToDto);
     }
 
     public async Task<UserDto?> GetByIdAsync(int id)

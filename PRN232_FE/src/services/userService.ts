@@ -1,5 +1,6 @@
 import { apiRequest } from "@/api/apiClient"
 import type { BackendUserDto } from "@/types/auth"
+import { MAX_PAGE_SIZE, type PageQuery, type PagedResult } from "@/types/pagination"
 import type {
   CreateUserRequestDto,
   MaintenanceRoomDto,
@@ -41,9 +42,39 @@ export function getRoles() {
   return apiRequest<RoleDto[]>("/roles")
 }
 
-export function getUsers(accessToken: string, roleId?: number) {
-  const query = roleId === undefined ? "" : `?roleId=${encodeURIComponent(roleId)}`
-  return apiRequest<BackendUserDto[]>(`/users${query}`, { accessToken })
+/** One page of users (A15). `roleId` filters by role before paging. */
+export function getUsersPage(
+  accessToken: string,
+  query: PageQuery & { roleId?: number } = {},
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams()
+  if (query.roleId !== undefined) params.set("roleId", String(query.roleId))
+  if (query.page !== undefined) params.set("page", String(query.page))
+  if (query.pageSize !== undefined) params.set("pageSize", String(query.pageSize))
+  const search = params.toString()
+  return apiRequest<PagedResult<BackendUserDto>>(`/users${search ? `?${search}` : ""}`, {
+    accessToken,
+    signal,
+  })
+}
+
+// Safety stop so a misbehaving backend can never make this loop forever.
+const MAX_USER_PAGES = 50
+
+/**
+ * Every user (optionally of one role), read page by page with the largest page size.
+ * Used by pickers such as the Manager lists, which normally fit in a single request.
+ */
+export async function getUsers(accessToken: string, roleId?: number) {
+  const users: BackendUserDto[] = []
+  for (let page = 1; page <= MAX_USER_PAGES; page += 1) {
+    const result = await getUsersPage(accessToken, { roleId, page, pageSize: MAX_PAGE_SIZE })
+    const items = result?.items ?? []
+    users.push(...items)
+    if (items.length === 0 || users.length >= (result?.totalCount ?? 0)) break
+  }
+  return users
 }
 
 export function getUser(accessToken: string, userId: string | number) {

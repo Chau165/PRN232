@@ -16,14 +16,14 @@ public class IdentityDocumentRepository : IIdentityDocumentRepository
         _context = context;
     }
 
-    public Task<List<IdentityDocumentReadModel>> GetAllAsync(string? status, int? ownerId)
+    public Task<List<IdentityDocumentReadModel>> GetAllAsync(string? status, int? managerId)
     {
         var documents = _context.IdentityDocuments
             .AsNoTracking()
             .Where(d => status == null || d.Status == status);
-        if (ownerId.HasValue)
+        if (managerId.HasValue)
         {
-            var customerIds = CustomerIdsOfOwner(ownerId.Value);
+            var customerIds = CustomerIdsOfManager(managerId.Value);
             documents = documents.Where(d => customerIds.Contains(d.CustomerId));
         }
 
@@ -78,19 +78,22 @@ public class IdentityDocumentRepository : IIdentityDocumentRepository
         return _context.IdentityDocuments.FirstOrDefaultAsync(d => d.IdentityDocumentId == id);
     }
 
-    public Task<bool> IsCustomerOfOwnerAsync(int customerId, int ownerId)
+    public Task<bool> IsCustomerOfManagerAsync(int customerId, int managerId)
     {
-        return CustomerIdsOfOwner(ownerId).AnyAsync(id => id == customerId);
+        return CustomerIdsOfManager(managerId).AnyAsync(id => id == customerId);
     }
 
-    // Khách "thuộc" một chủ trọ khi có booking chưa huỷ hoặc hợp đồng ở phòng thuộc khu trọ của chủ đó.
-    private IQueryable<int> CustomerIdsOfOwner(int ownerId)
+    // A3: a customer belongs to a Manager when they have a non-cancelled booking or a contract on a
+    // room whose property is assigned to that Manager in PropertyManagerAssignments. Property.OwnerId
+    // is deliberately not used: owning a property does not make someone its Manager.
+    private IQueryable<int> CustomerIdsOfManager(int managerId)
     {
         var bookingCustomers = _context.Bookings
-            .Where(b => b.Status != BookingStatuses.Cancelled && b.Room!.Property!.OwnerId == ownerId)
+            .Where(b => b.Status != BookingStatuses.Cancelled &&
+                b.Room!.Property!.ManagerAssignments.Any(a => a.ManagerId == managerId))
             .Select(b => b.CustomerId);
         var contractCustomers = _context.Contracts
-            .Where(c => c.Room!.Property!.OwnerId == ownerId)
+            .Where(c => c.Room!.Property!.ManagerAssignments.Any(a => a.ManagerId == managerId))
             .Select(c => c.CustomerId);
         return bookingCustomers.Concat(contractCustomers);
     }
@@ -102,10 +105,10 @@ public class IdentityDocumentRepository : IIdentityDocumentRepository
             (d.Status == "Pending" || d.Status == "Approved"));
     }
 
-    public Task<bool> CccdNumberUsedByOtherAsync(string cccdNumber, int customerId)
+    public Task<bool> CccdNumberUsedByOtherAsync(string cccdNumberHash, int customerId)
     {
         return _context.IdentityDocuments.AnyAsync(d =>
-            d.CCCDNumber == cccdNumber && d.CustomerId != customerId);
+            d.CCCDNumberHash == cccdNumberHash && d.CustomerId != customerId);
     }
 
     public async Task<IdentityDocuments> AddAsync(IdentityDocuments document)

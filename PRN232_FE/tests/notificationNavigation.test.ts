@@ -13,6 +13,9 @@ describe("notificationPath", () => {
     expect(notificationPath("Viewing", "ADMIN", null)).toBe("/management/viewings")
     expect(notificationPath("Contract", "CUSTOMER")).toBe("/my-contracts")
     expect(notificationPath("Invoice", "MANAGER")).toBe("/management/invoices")
+    expect(notificationPath("Complaint", "CUSTOMER")).toBe("/my-bills")
+    expect(notificationPath("Complaint", "MANAGER")).toBe("/management/invoices")
+    expect(notificationPath("Complaint", "ADMIN")).toBe("/management/invoices")
     expect(notificationPath("unknown", "CUSTOMER")).toBe("/notifications")
   })
 

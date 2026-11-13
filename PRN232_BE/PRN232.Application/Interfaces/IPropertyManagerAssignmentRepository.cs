@@ -18,6 +18,12 @@ public interface IPropertyManagerAssignmentRepository
     Task<List<PropertyManagerAssignmentReadModel>> GetByPropertyIdAsync(
         int propertyId,
         CancellationToken cancellationToken);
+    /// <summary>
+    /// Loads assignments for many properties in one query. A null filter returns every assignment.
+    /// </summary>
+    Task<List<PropertyManagerAssignmentReadModel>> GetByPropertyIdsAsync(
+        IReadOnlyCollection<int>? propertyIds,
+        CancellationToken cancellationToken);
     Task<List<PropertyManagerAssignmentReadModel>> GetByManagerIdAsync(
         int managerId,
         bool requireActiveManager,
@@ -25,6 +31,13 @@ public interface IPropertyManagerAssignmentRepository
     Task<List<PropertySummaryReadModel>> GetManagedPropertiesAsync(
         int managerId,
         bool requireActiveManager,
+        CancellationToken cancellationToken);
+    /// <summary>
+    /// Loads the assigned properties of many managers in one query. A null filter returns the
+    /// properties of every manager.
+    /// </summary>
+    Task<List<ManagedPropertyReadModel>> GetManagedPropertiesForManagersAsync(
+        IReadOnlyCollection<int>? managerIds,
         CancellationToken cancellationToken);
     Task<RevokePropertyManagerAssignmentResult> RevokeActiveAsync(
         int propertyId,

@@ -124,6 +124,27 @@ public sealed class PropertyManagerAssignmentRepository : IPropertyManagerAssign
             .ToListAsync(cancellationToken);
     }
 
+    public Task<List<PropertyManagerAssignmentReadModel>> GetByPropertyIdsAsync(
+        IReadOnlyCollection<int>? propertyIds,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<PropertyManagerAssignment> assignments = _context.PropertyManagerAssignments
+            .AsNoTracking();
+        if (propertyIds is not null)
+        {
+            var ids = propertyIds.Distinct().ToArray();
+            assignments = assignments.Where(assignment => ids.Contains(assignment.PropertyId));
+        }
+
+        var orderedAssignments = assignments
+            .OrderBy(assignment => assignment.PropertyId)
+            .ThenBy(assignment => assignment.Manager!.FullName)
+            .ThenBy(assignment => assignment.ManagerId);
+
+        return ProjectAssignments(orderedAssignments)
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<List<PropertyManagerAssignmentReadModel>> GetByManagerIdAsync(
         int managerId,
         bool requireActiveManager,
@@ -175,6 +196,41 @@ public sealed class PropertyManagerAssignmentRepository : IPropertyManagerAssign
                 property.Rooms.Count,
                 property.PrimaryImageUrl,
                 property.Description))
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<List<ManagedPropertyReadModel>> GetManagedPropertiesForManagersAsync(
+        IReadOnlyCollection<int>? managerIds,
+        CancellationToken cancellationToken)
+    {
+        var assignments = _context.PropertyManagerAssignments
+            .AsNoTracking()
+            .Where(assignment => assignment.Manager!.Role!.RoleName == RoleNames.Manager);
+        if (managerIds is not null)
+        {
+            var ids = managerIds.Distinct().ToArray();
+            assignments = assignments.Where(assignment => ids.Contains(assignment.ManagerId));
+        }
+
+        return assignments
+            .OrderBy(assignment => assignment.ManagerId)
+            .ThenBy(assignment => assignment.PropertyId)
+            .Select(assignment => new ManagedPropertyReadModel(
+                assignment.ManagerId,
+                new PropertySummaryReadModel(
+                    assignment.Property!.PropertyId,
+                    assignment.Property.OwnerId,
+                    assignment.Property.Owner!.FullName,
+                    assignment.Property.PropertyName,
+                    assignment.Property.AddressText,
+                    assignment.Property.Ward,
+                    assignment.Property.District,
+                    assignment.Property.City,
+                    assignment.Property.Latitude,
+                    assignment.Property.Longitude,
+                    assignment.Property.Rooms.Count,
+                    assignment.Property.PrimaryImageUrl,
+                    assignment.Property.Description)))
             .ToListAsync(cancellationToken);
     }
 

@@ -201,6 +201,7 @@ public sealed class RoomImagesApiTests
             var databaseName = $"room-images-{Guid.NewGuid()}";
             builder.ConfigureTestServices(services =>
             {
+                services.UseSharedTestDataProtection();
                 services.RemoveAll<DbContextOptions<AppDbContext>>();
                 services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase(databaseName));
                 services.RemoveAll<IRoomImageStorage>();

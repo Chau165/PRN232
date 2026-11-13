@@ -12,3 +12,11 @@ public sealed record PropertyManagerAssignmentDto(
     string ManagerName,
     string ManagerEmail,
     bool ManagerIsActive);
+
+public sealed record ManagerPropertiesDto(
+    int ManagerId,
+    IReadOnlyList<PropertyDto> Properties);
+
+public sealed record PropertyManagersDto(
+    int PropertyId,
+    IReadOnlyList<PropertyManagerAssignmentDto> Managers);

@@ -1,11 +1,43 @@
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using PRN232.Domain.Entities;
+using PRN232.Infrastructure.Security;
 
 namespace PRN232.Infrastructure.Data;
 
-public class AppDbContext : DbContext
+public class AppDbContext : DbContext, IDataProtectionKeyContext
 {
-    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+    // Contexts created without DI (unit tests, design-time tooling) still encrypt CCCD numbers,
+    // just with a throwaway in-memory key, never falling back to plaintext.
+    private static readonly IDataProtectionProvider FallbackDataProtectionProvider =
+        new EphemeralDataProtectionProvider();
+
+    private readonly IDataProtectionProvider _dataProtectionProvider;
+
+    public AppDbContext(DbContextOptions<AppDbContext> options)
+        : this(options, FallbackDataProtectionProvider) { }
+
+    // DI picks this constructor. EF compiles the model (and with it the CCCD converter's
+    // protector) once per process, which is correct because the app has a single singleton
+    // IDataProtectionProvider whose key ring lives in the DataProtectionKeys table.
+    public AppDbContext(
+        DbContextOptions<AppDbContext> options,
+        IDataProtectionProvider dataProtectionProvider)
+        : base(options)
+    {
+        _dataProtectionProvider = dataProtectionProvider;
+    }
+
+    // Data Protection key ring (A9): persisted in the database so encrypted CCCD numbers stay
+    // readable after each Railway redeploy.
+    public DbSet<DataProtectionKey> DataProtectionKeys
+    {
+        get
+        {
+            return Set<DataProtectionKey>();
+        }
+    }
 
     public DbSet<Roles> Roles
     {
@@ -333,6 +365,12 @@ public class AppDbContext : DbContext
             .Property(notification => notification.Body)
             .HasColumnType("text");
         modelBuilder.Entity<IdentityDocuments>().HasKey(x => x.IdentityDocumentId);
+        modelBuilder.Entity<IdentityDocuments>()
+            .Property(document => document.CCCDNumber)
+            .HasConversion(CccdProtection.CreateConverter(_dataProtectionProvider));
+        modelBuilder.Entity<IdentityDocuments>()
+            .HasIndex(document => document.CCCDNumberHash)
+            .HasDatabaseName("IX_IdentityDocuments_CCCDNumberHash");
         modelBuilder.Entity<PropertyServiceRates>().HasKey(x => x.RateId);
         modelBuilder.Entity<ViewingSchedules>().HasKey(x => x.ViewingId);
         modelBuilder.Entity<InvoiceComplaints>().HasKey(x => x.ComplaintId);

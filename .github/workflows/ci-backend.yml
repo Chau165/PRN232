@@ -187,6 +187,7 @@ jobs:
             -c "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN;"
           docker run --rm --network host -e ConnectionStrings__DefaultConnection="$DB" \
             -e Jwt__Key="ci-only-signing-key-0123456789abcdef0123456789" \
+            -e IdentityDocuments__CccdHashKey="ci-only-cccd-hash-key-0123456789abcdef0123" \
             prn232-api:ci ./efbundle --connection "$DB"
           expected=$(ls PRN232_BE/PRN232.Infrastructure/Migrations/*.cs | grep -vE '\.Designer\.cs$|ModelSnapshot\.cs$' | wc -l)
           applied=$(psql -h localhost -U postgres -d prn232_bundle_check -tAc 'SELECT count(*) FROM "__EFMigrationsHistory"')
@@ -195,6 +196,7 @@ jobs:
           echo "--- chạy lại lần 2 (phải không còn migration nào)"
           docker run --rm --network host -e ConnectionStrings__DefaultConnection="$DB" \
             -e Jwt__Key="ci-only-signing-key-0123456789abcdef0123456789" \
+            -e IdentityDocuments__CccdHashKey="ci-only-cccd-hash-key-0123456789abcdef0123" \
             prn232-api:ci ./efbundle --connection "$DB"
           test "$(psql -h localhost -U postgres -d prn232_bundle_check -tAc 'SELECT count(*) FROM "__EFMigrationsHistory"')" = "$expected"
 
@@ -202,6 +204,7 @@ jobs:
         run: |
           docker run -d --name api -p 8080:8080 \
             -e Jwt__Key="ci-only-signing-key-0123456789abcdef0123456789" \
+            -e IdentityDocuments__CccdHashKey="ci-only-cccd-hash-key-0123456789abcdef0123" \
             prn232-api:ci
           for i in $(seq 1 30); do
             if curl -fsS http://localhost:8080/api/health-checks > /dev/null; then break; fi

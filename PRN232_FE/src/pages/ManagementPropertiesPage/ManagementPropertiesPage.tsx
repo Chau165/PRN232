@@ -9,7 +9,7 @@ import PropertyFormModal from "@/components/management/PropertyFormModal"
 import PropertyThumbnail from "@/components/management/PropertyThumbnail"
 import {
   getMyManagedProperties,
-  getPropertyManagerAssignments,
+  getManagersForProperties,
 } from "@/services/propertyManagerAssignmentService"
 import {
   createProperty,
@@ -63,21 +63,13 @@ export default function ManagementPropertiesPage() {
           return
         }
 
-        const propertyAssignments = await Promise.all(
-          propertyRows.map(
-            async (property) =>
-              [
-                String(property.propertyId),
-                await getPropertyManagerAssignments(
-                  accessToken,
-                  property.propertyId,
-                  signal,
-                ),
-              ] as const,
-          ),
+        const assignments = await getManagersForProperties(
+          accessToken,
+          propertyRows.map((property) => property.propertyId),
+          signal,
         )
         if (signal.aborted) return
-        setAssignmentsByProperty(Object.fromEntries(propertyAssignments))
+        setAssignmentsByProperty(assignments)
       } catch (cause) {
         if (!signal.aborted) setError(getPropertyManagerAssignmentError(cause))
       } finally {

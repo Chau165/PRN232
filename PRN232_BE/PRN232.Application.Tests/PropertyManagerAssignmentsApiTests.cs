@@ -44,6 +44,100 @@ public sealed class PropertyManagerAssignmentsApiTests
         Assert.Equal(9, (await context.Properties.SingleAsync(property => property.PropertyId == 1)).OwnerId);
     }
 
+    [Fact]
+    public async Task Admin_reads_assignments_for_many_properties_grouped_by_property()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            context.Properties.AddRange(
+                new Property { PropertyId = 2, OwnerId = 9, PropertyName = "Second" },
+                new Property { PropertyId = 3, OwnerId = 9, PropertyName = "Third" });
+            context.PropertyManagerAssignments.AddRange(
+                new PropertyManagerAssignment { PropertyId = 1, ManagerId = 8 },
+                new PropertyManagerAssignment { PropertyId = 2, ManagerId = 8 },
+                new PropertyManagerAssignment { PropertyId = 3, ManagerId = 7 });
+            await context.SaveChangesAsync();
+        }
+        await BookingsApiTests.LoginAsync(client, "admin@example.test");
+
+        var filtered = await client.GetFromJsonAsync<PropertyManagersDto[]>(
+            "/api/properties/managers?propertyIds=1,2");
+        Assert.NotNull(filtered);
+        Assert.Equal([1, 2], filtered.Select(group => group.PropertyId));
+        Assert.Equal([7, 8], filtered[0].Managers.Select(manager => manager.ManagerId).Order());
+        Assert.Equal([8], filtered[1].Managers.Select(manager => manager.ManagerId));
+        Assert.All(filtered, group => Assert.All(group.Managers,
+            manager => Assert.Equal(group.PropertyId, manager.PropertyId)));
+
+        var all = await client.GetFromJsonAsync<PropertyManagersDto[]>("/api/properties/managers");
+        Assert.Equal([1, 2, 3], all!.Select(group => group.PropertyId));
+
+        using var invalid = await client.GetAsync("/api/properties/managers?propertyIds=1,abc");
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("manager@example.test")]
+    [InlineData("customer@example.test")]
+    public async Task Non_admin_cannot_read_batch_assignments(string email)
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await BookingsApiTests.LoginAsync(client, email);
+
+        using var response = await client.GetAsync("/api/managers/properties?managerIds=7");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        await Non_admin_cannot_read_batch_property_assignments(client);
+    }
+
+    [Fact]
+    public async Task Admin_reads_properties_for_many_managers_grouped_by_manager()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            context.Properties.AddRange(
+                new Property { PropertyId = 2, OwnerId = 9, PropertyName = "Second" },
+                new Property { PropertyId = 3, OwnerId = 9, PropertyName = "Third" });
+            context.PropertyManagerAssignments.AddRange(
+                new PropertyManagerAssignment { PropertyId = 2, ManagerId = 7 },
+                new PropertyManagerAssignment { PropertyId = 3, ManagerId = 8 });
+            await context.SaveChangesAsync();
+        }
+        await BookingsApiTests.LoginAsync(client, "admin@example.test");
+
+        var filtered = await client.GetFromJsonAsync<ManagerPropertiesDto[]>(
+            "/api/managers/properties?managerIds=7,8");
+        Assert.NotNull(filtered);
+        Assert.Equal([7, 8], filtered.Select(group => group.ManagerId));
+        Assert.Equal([1, 2], filtered[0].Properties.Select(property => property.PropertyId));
+        Assert.Equal([3], filtered[1].Properties.Select(property => property.PropertyId));
+        Assert.Equal(2, filtered[0].Properties[0].RoomCount);
+
+        var onlyEight = await client.GetFromJsonAsync<ManagerPropertiesDto[]>(
+            "/api/managers/properties?managerIds=8");
+        Assert.Equal([8], onlyEight!.Select(group => group.ManagerId));
+
+        var all = await client.GetFromJsonAsync<ManagerPropertiesDto[]>("/api/managers/properties");
+        Assert.Equal([7, 8], all!.Select(group => group.ManagerId));
+
+        using var invalid = await client.GetAsync("/api/managers/properties?managerIds=7,-1");
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+    }
+
+    private static async Task Non_admin_cannot_read_batch_property_assignments(HttpClient client)
+    {
+        using var response = await client.GetAsync("/api/properties/managers?propertyIds=1");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     [Theory]
     [InlineData("manager@example.test")]
     [InlineData("customer@example.test")]

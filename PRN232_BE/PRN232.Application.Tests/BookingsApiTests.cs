@@ -416,6 +416,7 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
         }));
         builder.ConfigureTestServices(services =>
         {
+            services.UseSharedTestDataProtection();
             _connection.Open();
             services.RemoveAll<DbContextOptions<AppDbContext>>();
             services.AddDbContext<AppDbContext>(options => options.UseSqlite(_connection));
