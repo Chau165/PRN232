@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.SignalR;
+﻿using Microsoft.AspNetCore.SignalR;
 using PRN232.Api.Hubs;
 using PRN232.Application.Interfaces;
 using PRN232.Domain.Entities;
@@ -7,7 +7,7 @@ namespace PRN232.Api.Services;
 
 public sealed class NotificationRealtimePublisher(
     IHubContext<NotificationHub> hubContext,
-    IUserRepository users,
+    IUserService users,
     ILogger<NotificationRealtimePublisher> logger) : INotificationRealtimePublisher
 {
     public async Task PublishCreatedAsync(IEnumerable<Notifications> notifications)

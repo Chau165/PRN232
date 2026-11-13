@@ -1,9 +1,11 @@
-using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using PRN232.Api.Controllers;
+using PRN232.Application.Services;
 using PRN232.Infrastructure.Data;
+using PRN232.Infrastructure.Repositories;
 using Xunit;
 
 namespace PRN232.Application.Tests;
@@ -19,7 +21,7 @@ public sealed class HealthChecksControllerTests
         await using var context = new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options);
 
-        var result = await new HealthChecksController(context).GetDb(CancellationToken.None);
+        var result = await CreateController(context).GetDb(CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(result);
     }
@@ -32,9 +34,14 @@ public sealed class HealthChecksControllerTests
             .UseNpgsql("Host=127.0.0.1;Port=1;Database=postgres;Username=postgres;Password=unused;Timeout=2")
             .Options);
 
-        var result = await new HealthChecksController(context).GetDb(CancellationToken.None);
+        var result = await CreateController(context).GetDb(CancellationToken.None);
 
         var status = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status503ServiceUnavailable, status.StatusCode);
+    }
+
+    private static HealthChecksController CreateController(AppDbContext context)
+    {
+        return new HealthChecksController(new HealthCheckService(new HealthCheckRepository(context)));
     }
 }

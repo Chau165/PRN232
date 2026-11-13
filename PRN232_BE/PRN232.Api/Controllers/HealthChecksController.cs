@@ -1,5 +1,5 @@
-using Microsoft.AspNetCore.Mvc;
-using PRN232.Infrastructure.Data;
+﻿using Microsoft.AspNetCore.Mvc;
+using PRN232.Application.Interfaces;
 
 namespace PRN232.Api.Controllers;
 
@@ -7,11 +7,11 @@ namespace PRN232.Api.Controllers;
 [Route("api/[controller]")]
 public class HealthChecksController : ControllerBase
 {
-    private readonly AppDbContext _context;
+    private readonly IHealthCheckService _healthCheckService;
 
-    public HealthChecksController(AppDbContext context)
+    public HealthChecksController(IHealthCheckService healthCheckService)
     {
-        _context = context;
+        _healthCheckService = healthCheckService;
     }
 
     [HttpGet]
@@ -27,16 +27,7 @@ public class HealthChecksController : ControllerBase
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> GetDb(CancellationToken cancellationToken)
     {
-        bool canConnect;
-        try
-        {
-            canConnect = await _context.Database.CanConnectAsync(cancellationToken);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            // Một số provider ném lỗi thay vì trả false (vd. sai connection string, timeout).
-            canConnect = false;
-        }
+        var canConnect = await _healthCheckService.IsDatabaseReachableAsync(cancellationToken);
 
         if (!canConnect)
         {

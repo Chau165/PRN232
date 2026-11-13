@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Security.Claims;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -181,7 +181,8 @@ builder.Services.AddAuthentication(options =>
                 return;
             }
 
-            var users = context.HttpContext.RequestServices.GetRequiredService<IUserRepository>();
+            // Api -> Service: the token check goes through IUserService, not the repository.
+            var users = context.HttpContext.RequestServices.GetRequiredService<IUserService>();
             var user = await users.GetByIdAsync(userId);
             if (user is null || !user.IsActive)
             {
@@ -276,6 +277,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 
 // ---- DI: mỗi module thêm repository + service của mình vào đây theo đúng mẫu Roles ----
 builder.Services.AddScoped<IRoleRepository, RoleRepository>();
+builder.Services.AddScoped<IHealthCheckRepository, HealthCheckRepository>();
+builder.Services.AddScoped<IHealthCheckService, HealthCheckService>();
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IMaintenanceRepository, MaintenanceRepository>();
 builder.Services.AddScoped<IMaintenanceService, MaintenanceService>();
