@@ -1,3 +1,5 @@
+import MeterHandoverModal from "@/components/management/MeterHandoverModal"
+import ContractMeterHandover from "@/components/customer/ContractMeterHandover"
 import { useEffect, useState } from "react"
 import { useLocation } from "react-router"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
@@ -57,6 +59,7 @@ export default function ManagementContractsPage() {
   const [error, setError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
   const [selected, setSelected] = useState<ContractDto | null>(null)
+  const [handover, setHandover] = useState<ContractDto | null>(null)
   const [action, setAction] = useState<ContractAction | null>(null)
   const [timelineState, setTimelineState] = useState<TimelineState | null>(null)
   const [newEndDate, setNewEndDate] = useState("")
@@ -227,6 +230,11 @@ export default function ManagementContractsPage() {
                       >
                         Xem
                       </button>
+                      {canManage && contract.hasUtilityReadings === false && contract.hasInvoices === false && (
+                        <button type="button" onClick={() => setHandover(contract)} className="rounded-lg bg-teal-50 px-3 py-2 text-[12px] font-bold text-[#087775]">
+                          {contract.meterHandoverDate ? "Sửa chỉ số bàn giao" : "Ghi nhận chỉ số bàn giao"}
+                        </button>
+                      )}
                       {canManage && (
                         <>
                           <button
@@ -277,8 +285,16 @@ export default function ManagementContractsPage() {
             <Detail label="Trạng thái" value={statusLabel(selected.displayStatus || selected.status)} />
             {selected.processedByStaffName && <Detail label="Người lập" value={selected.processedByStaffName} />}
           </dl>
+          <ContractMeterHandover contract={selected} />
         </ManagementDetailDrawer>
       )}
+      {handover && <MeterHandoverModal contract={handover} onClose={() => setHandover(null)} onSaved={(updated) => {
+        setContracts((items) => items.map((item) => item.contractId === updated.contractId ? updated : item))
+        setSelected((current) => current?.contractId === updated.contractId ? updated : current)
+        setHandover(null)
+        setToast("Đã lưu chỉ số bàn giao thành công.")
+        setReload((value) => value + 1)
+      }} />}
       {action && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="presentation">
           <section

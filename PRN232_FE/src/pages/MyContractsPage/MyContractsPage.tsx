@@ -1,3 +1,4 @@
+import ContractMeterHandover from "@/components/customer/ContractMeterHandover"
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { Link } from "react-router"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
@@ -272,6 +273,7 @@ function ContractBillingTimeline({
           <DetailValue label="Đã phân bổ vào hóa đơn" value={formatVnd(contract.prepaidRentApplied)} />
           <DetailValue label="Số dư trả trước" value={formatVnd(Math.max(0, contract.remainingPrepaidCredit))} />
         </dl>
+        <ContractMeterHandover contract={contract} />
         <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-xs text-amber-900">
           Chữ ký điện tử/chữ ký xác nhận chưa được lưu trong dữ liệu hợp đồng; trạng thái trên không xác nhận hợp đồng đã ký.
         </p>

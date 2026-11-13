@@ -32,6 +32,7 @@ public class UtilityReadingsApiTests
         using var client = factory.CreateClient();
         var contractId = await CreateContractAsync(client);
         await LoginAsync(client, "manager@example.test");
+        await SaveHandoverAsync(client, contractId);
 
         var created = await PostReadingAsync(client, contractId, ThisMonth, 150m, 14m, 100m, 10m);
         var again = await PostReadingAsync(client, contractId, ThisMonth, 160m, 15m, null, null);
@@ -62,6 +63,7 @@ public class UtilityReadingsApiTests
         using var client = factory.CreateClient();
         var contractId = await CreateContractAsync(client);
 
+        await SaveHandoverAsync(client, contractId);
         await LoginAsync(client, email);
         var response = await PostReadingAsync(client, contractId, ThisMonth, 150m, 14m, 100m, 10m);
 
@@ -82,6 +84,15 @@ public class UtilityReadingsApiTests
 
         Assert.Equal((HttpStatusCode.BadRequest, HttpStatusCode.BadRequest, HttpStatusCode.NotFound),
             (lower.StatusCode, noStart.StatusCode, unknown.StatusCode));
+    }
+
+    private static async Task SaveHandoverAsync(HttpClient client, int contractId)
+    {
+        var response = await client.PutAsJsonAsync($"/api/contracts/{contractId}/meter-handover", new
+        {
+            meterHandoverDate = VietnamToday, initialElectricReading = 100m, initialWaterReading = 10m
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     private static Task<HttpResponseMessage> PostReadingAsync(HttpClient client, int contractId, DateOnly readingMonth,

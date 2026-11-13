@@ -23,6 +23,22 @@ export interface ContractDto {
   lessorName: string | null
   lessorAddress: string | null
   displayStatus: "Upcoming" | "Active" | "ExpiredPendingCheckout" | "Terminated" | "Ended" | string
+  initialElectricReading?: number | null
+  initialWaterReading?: number | null
+  meterHandoverDate?: string | null
+  hasMeterHandover?: boolean
+  hasUtilityReadings?: boolean
+  hasInvoices?: boolean
+}
+
+export interface ContractMeterHandoverValues {
+  meterHandoverDate: string
+  initialElectricReading: number
+  initialWaterReading: number
+}
+
+export interface SaveContractMeterHandoverRequest extends ContractMeterHandoverValues {
+  expectedMeterHandover?: ContractMeterHandoverValues | null
 }
 
 export interface TerminateContractRequestDto {

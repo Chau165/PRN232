@@ -42,49 +42,29 @@ public class UtilityReadingService : IUtilityReadingService
             throw new UtilityReadingConflictException("Readings can only be recorded for active contracts.");
         }
 
-        EnsureValidMonth(dto.ReadingMonth, contract);
-
-        // Chỉ số đầu kỳ nối tiếp chỉ số cuối kỳ của lần ghi gần nhất, để chuỗi chỉ số không bị đứt
-        // và quản lý không thể nhập sai số đầu; chỉ lần ghi đầu tiên của hợp đồng mới cần nhập.
         var latest = await _repository.GetLatestAsync(contract.ContractId);
         if (latest is not null && dto.ReadingMonth <= latest.ReadingMonth)
         {
             throw new UtilityReadingConflictException("A reading for this or a later month already exists.");
         }
-        decimal electricStart;
-        if (latest is not null)
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(_timeProvider.GetUtcNow(), BusinessTimeZone).DateTime);
+        var validationError = UtilityReadingPolicy.ValidateAndResolve(contract, latest, dto.ReadingMonth, today,
+            out var electricStart, out var waterStart);
+        if (validationError is not null)
         {
-            electricStart = latest.ElectricEnd;
+            throw new UtilityReadingBusinessRuleException(validationError);
         }
-        else if (dto.ElectricStart.HasValue)
+        // Legacy start fields cannot replace the first baseline. Later periods always inherit the latest ends.
+        if (latest is null && ((dto.ElectricStart.HasValue && dto.ElectricStart != electricStart) ||
+            (dto.WaterStart.HasValue && dto.WaterStart != waterStart)))
         {
-            electricStart = dto.ElectricStart.Value;
+            throw new UtilityReadingBusinessRuleException("Chỉ số đầu kỳ phải khớp dữ liệu bàn giao đã lưu.");
         }
-        else
+        if (!UtilityReadingPolicy.IsValidMeterValue(electricStart) || !UtilityReadingPolicy.IsValidMeterValue(waterStart) ||
+            !UtilityReadingPolicy.IsValidMeterValue(dto.ElectricEnd) || !UtilityReadingPolicy.IsValidMeterValue(dto.WaterEnd) ||
+            dto.ElectricEnd < electricStart || dto.WaterEnd < waterStart)
         {
-            throw new UtilityReadingBusinessRuleException("The first reading of a contract needs the starting meter values.");
-        }
-
-        decimal waterStart;
-        if (latest is not null)
-        {
-            waterStart = latest.WaterEnd;
-        }
-        else if (dto.WaterStart.HasValue)
-        {
-            waterStart = dto.WaterStart.Value;
-        }
-        else
-        {
-            throw new UtilityReadingBusinessRuleException("The first reading of a contract needs the starting meter values.");
-        }
-        if (electricStart < 0 || waterStart < 0)
-        {
-            throw new UtilityReadingBusinessRuleException("Meter values cannot be negative.");
-        }
-        if (dto.ElectricEnd < electricStart || dto.WaterEnd < waterStart)
-        {
-            throw new UtilityReadingBusinessRuleException("New meter values cannot be lower than the previous ones.");
+            throw new UtilityReadingBusinessRuleException("Chỉ số phải không âm, tối đa 16 chữ số nguyên và 2 chữ số thập phân; số cuối kỳ không được nhỏ hơn đầu kỳ.");
         }
 
         var reading = ConvertToEntity(dto, contract.ContractId, electricStart, waterStart);
@@ -92,7 +72,7 @@ public class UtilityReadingService : IUtilityReadingService
         // phòng khi hai người cùng nhập chỉ số cho một hợp đồng.
         if (!await _repository.AddIfLatestAsync(reading, userId))
         {
-            throw new UtilityReadingConflictException("A reading for this or a later month already exists.");
+            throw new UtilityReadingConflictException("Dữ liệu hợp đồng, phân công, chỉ số hoặc hóa đơn đã thay đổi. Vui lòng tải lại.");
         }
 
         var created = await _repository.GetByIdAsync(reading.ReadingId, null, null);
@@ -123,24 +103,6 @@ public class UtilityReadingService : IUtilityReadingService
             return null;
         }
         return ConvertToDto(reading);
-    }
-
-    private void EnsureValidMonth(DateOnly month, ReadingContractReadModel contract)
-    {
-        if (month.Day != 1)
-        {
-            throw new UtilityReadingBusinessRuleException("Reading month must be the first day of a month.");
-        }
-
-        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(_timeProvider.GetUtcNow(), BusinessTimeZone).DateTime);
-        if (month > new DateOnly(today.Year, today.Month, 1))
-        {
-            throw new UtilityReadingBusinessRuleException("Cannot record readings for a future month.");
-        }
-        if (month < new DateOnly(contract.StartDate.Year, contract.StartDate.Month, 1) || month > contract.EndDate)
-        {
-            throw new UtilityReadingBusinessRuleException("Reading month must be within the contract term.");
-        }
     }
 
     private static UtilityReadings ConvertToEntity(

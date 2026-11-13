@@ -182,8 +182,23 @@ public sealed class Phase31BPostgreSqlMigrationTests
             DepositAmount = 0m,
             Status = "Active"
         };
-        context.Contracts.Add(contract);
-        await context.SaveChangesAsync();
+        // Seed the historical schema explicitly: today's entity includes columns added by later migrations.
+        await using (var legacyConnection = new NpgsqlConnection(connectionString))
+        {
+            await legacyConnection.OpenAsync();
+            await using var insert = new NpgsqlCommand("""
+                INSERT INTO "Contracts" ("RoomId", "CustomerId", "StartDate", "EndDate", "MonthlyRent", "DepositAmount", "Status")
+                VALUES (@roomId, @customerId, @startDate, @endDate, @rent, @deposit, @status) RETURNING "ContractId"
+                """, legacyConnection);
+            insert.Parameters.AddWithValue("roomId", contract.RoomId);
+            insert.Parameters.AddWithValue("customerId", contract.CustomerId);
+            insert.Parameters.AddWithValue("startDate", contract.StartDate);
+            insert.Parameters.AddWithValue("endDate", contract.EndDate);
+            insert.Parameters.AddWithValue("rent", contract.MonthlyRent);
+            insert.Parameters.AddWithValue("deposit", contract.DepositAmount);
+            insert.Parameters.AddWithValue("status", contract.Status);
+            contract.ContractId = (int)(await insert.ExecuteScalarAsync())!;
+        }
         var invoice = new Invoices
         {
             ContractId = contract.ContractId,

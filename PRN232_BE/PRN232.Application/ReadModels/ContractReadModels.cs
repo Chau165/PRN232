@@ -37,4 +37,9 @@ public sealed record ContractReadModel(
     string? PropertyAddress = null,
     int? LessorUserId = null,
     string? LessorName = null,
-    string? LessorAddress = null);
+    string? LessorAddress = null,
+    decimal? InitialElectricReading = null,
+    decimal? InitialWaterReading = null,
+    DateOnly? MeterHandoverDate = null,
+    bool HasUtilityReadings = false,
+    bool HasInvoices = false);

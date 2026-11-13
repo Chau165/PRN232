@@ -61,11 +61,13 @@ const thisMonth = `${today.slice(0, 7)}-01`
 
 const contract = (overrides: Partial<ContractDto> = {}): ContractDto => ({
   contractId: 1, bookingId: 9, roomId: 1, roomCode: "A101", propertyId: 1, propertyName: "Sunrise",
-  customerId: 10, customerName: "Nguyễn An", customerPhone: "0908123456", startDate: "2026-06-01", endDate: "2099-05-31",
+  customerId: 10, customerName: "Nguyễn An", customerPhone: "0908123456", startDate: thisMonth, endDate: "2099-05-31",
   monthlyRent: 3_000_000, depositAmount: 3_000_000, status: "Active", processedByStaffName: "Manager A",
   prepaidRentAmount: 3_000_000, prepaidRentApplied: 0, remainingPrepaidCredit: 3_000_000,
   propertyAddress: "12 Sunrise St", lessorUserId: 2, lessorName: "Owner A", lessorAddress: "12 Sunrise St",
   displayStatus: "Active",
+  initialElectricReading: 100, initialWaterReading: 10, meterHandoverDate: today,
+  hasUtilityReadings: false, hasInvoices: false,
   ...overrides,
 })
 
@@ -112,16 +114,16 @@ describe("CreateInvoiceModal", () => {
     await screen.findByRole("option", { name: /Phòng A101/ })
     expect(screen.queryByRole("option", { name: /Phòng B202/ })).toBeNull()
     fireEvent.change(screen.getByLabelText("Hợp đồng / phòng"), { target: { value: "1" } })
-    await screen.findByText("Đây là lần ghi đầu tiên của hợp đồng, cần nhập cả chỉ số đầu kỳ.")
+    await screen.findByText("Chỉ số đầu kỳ được lấy từ dữ liệu bàn giao phòng.")
 
-    fireEvent.change(screen.getByLabelText("Chỉ số điện đầu kỳ"), { target: { value: "100" } })
-    fireEvent.change(screen.getByLabelText("Chỉ số nước đầu kỳ"), { target: { value: "10" } })
+    expect((screen.getByLabelText("Chỉ số điện đầu kỳ") as HTMLInputElement).readOnly).toBe(true)
+    expect((screen.getByLabelText("Chỉ số nước đầu kỳ") as HTMLInputElement).readOnly).toBe(true)
     fireEvent.change(screen.getByLabelText("Chỉ số điện cuối kỳ"), { target: { value: "150" } })
     fireEvent.change(screen.getByLabelText("Chỉ số nước cuối kỳ"), { target: { value: "14" } })
-    fireEvent.click(screen.getByRole("button", { name: "Lưu chỉ số" }))
+    fireEvent.click(screen.getByRole("button", { name: "Lưu chỉ số cuối kỳ" }))
     await screen.findByText(/Đã ghi: điện 100 → 150 \(50 kWh\)/)
     expect(mocks.createUtilityReading).toHaveBeenCalledWith("token", {
-      contractId: 1, readingMonth: thisMonth, electricEnd: 150, waterEnd: 14, electricStart: 100, waterStart: 10,
+      contractId: 1, readingMonth: thisMonth, electricEnd: 150, waterEnd: 14,
     })
 
     fireEvent.click(screen.getByRole("button", { name: "Xem trước hóa đơn" }))
@@ -137,16 +139,16 @@ describe("CreateInvoiceModal", () => {
   })
 
   it("continues from the previous reading and blocks lower meter values before calling the API", async () => {
-    mocks.getUtilityReadings.mockResolvedValue([reading({ readingMonth: "2000-01-01", electricEnd: 1320, waterEnd: 104 })])
+    mocks.getUtilityReadings.mockResolvedValue([reading({ readingMonth: new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 2, 1)).toISOString().slice(0, 10), electricEnd: 1320, waterEnd: 104 })])
     render(<CreateInvoiceModal onClose={vi.fn()} onCreated={vi.fn()} />)
     await screen.findByRole("option", { name: /Phòng A101/ })
     fireEvent.change(screen.getByLabelText("Hợp đồng / phòng"), { target: { value: "1" } })
 
-    await screen.findByText(/Chỉ số đầu kỳ lấy từ tháng 01\/2000: điện 1320, nước 104/)
-    expect(screen.queryByLabelText("Chỉ số điện đầu kỳ")).toBeNull()
+    await screen.findByText(/Chỉ số đầu kỳ lấy từ tháng .*: điện 1320, nước 104/)
+    expect((screen.getByLabelText("Chỉ số điện đầu kỳ") as HTMLInputElement).readOnly).toBe(true)
     fireEvent.change(screen.getByLabelText("Chỉ số điện cuối kỳ"), { target: { value: "1300" } })
     fireEvent.change(screen.getByLabelText("Chỉ số nước cuối kỳ"), { target: { value: "110" } })
-    fireEvent.click(screen.getByRole("button", { name: "Lưu chỉ số" }))
+    fireEvent.click(screen.getByRole("button", { name: "Lưu chỉ số cuối kỳ" }))
 
     expect(screen.getByRole("alert").textContent).toBe("Chỉ số tháng này không được nhỏ hơn chỉ số đầu kỳ.")
     expect(mocks.createUtilityReading).not.toHaveBeenCalled()

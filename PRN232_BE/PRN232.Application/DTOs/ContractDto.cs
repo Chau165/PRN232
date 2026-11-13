@@ -23,7 +23,27 @@ public record ContractDto(
     int? LessorUserId = null,
     string? LessorName = null,
     string? LessorAddress = null,
-    string DisplayStatus = "Upcoming");
+    string DisplayStatus = "Upcoming",
+    decimal? InitialElectricReading = null,
+    decimal? InitialWaterReading = null,
+    DateOnly? MeterHandoverDate = null,
+    bool HasUtilityReadings = false,
+    bool HasInvoices = false)
+{
+    public bool HasMeterHandover => InitialElectricReading.HasValue &&
+        InitialWaterReading.HasValue && MeterHandoverDate.HasValue;
+}
+
+public record ContractMeterHandoverValues(
+    DateOnly MeterHandoverDate,
+    decimal InitialElectricReading,
+    decimal InitialWaterReading);
+
+public record SaveContractMeterHandoverDto(
+    [System.ComponentModel.DataAnnotations.Required] DateOnly? MeterHandoverDate,
+    [System.ComponentModel.DataAnnotations.Required] decimal? InitialElectricReading,
+    [System.ComponentModel.DataAnnotations.Required] decimal? InitialWaterReading,
+    ContractMeterHandoverValues? ExpectedMeterHandover = null);
 
 public record CreateContractDto(int BookingId, DateOnly StartDate, DateOnly EndDate);
 
