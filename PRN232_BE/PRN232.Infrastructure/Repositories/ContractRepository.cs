@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.ReadModels;
+using PRN232.Application.Policies;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
@@ -42,6 +43,65 @@ public class ContractRepository : IContractRepository
                 booking.Room.Property.AddressText,
                 booking.Room.PropertyId))
             .FirstOrDefaultAsync();
+    }
+
+    public async Task<ContractMutationResult> SaveMeterHandoverAsync(
+        int contractId, int managerId, DateOnly handoverDate,
+        decimal initialElectricReading, decimal initialWaterReading,
+        DateOnly? expectedHandoverDate, decimal? expectedElectricReading, decimal? expectedWaterReading,
+        DateOnly today, CancellationToken cancellationToken)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        if (_context.Database.IsNpgsql())
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"Contracts\" WHERE \"ContractId\" = {contractId} FOR UPDATE", cancellationToken);
+        }
+        var existingContract = await _context.Contracts.SingleOrDefaultAsync(
+            contract => contract.ContractId == contractId, cancellationToken);
+        if (existingContract is null)
+        {
+            return new ContractMutationResult(ContractMutationStatus.NotFound);
+        }
+        // A context can already track an older contract; refresh only after acquiring its row lock.
+        await _context.Entry(existingContract).ReloadAsync(cancellationToken);
+        var propertyId = await GetPropertyIdForRoomAsync(existingContract.RoomId, cancellationToken);
+        if (!propertyId.HasValue)
+        {
+            return new ContractMutationResult(ContractMutationStatus.Conflict);
+        }
+        await LockManagerAssignmentAsync(propertyId.Value, managerId, cancellationToken);
+        if (!await HasActiveManagerAssignmentAsync(propertyId.Value, managerId, cancellationToken))
+        {
+            return new ContractMutationResult(ContractMutationStatus.Forbidden);
+        }
+        if (existingContract.Status != ContractStatuses.Active ||
+            !UtilityReadingPolicy.IsValidMeterValue(initialElectricReading) || !UtilityReadingPolicy.IsValidMeterValue(initialWaterReading) ||
+            handoverDate < existingContract.StartDate || handoverDate > existingContract.EndDate || handoverDate > today)
+        {
+            return new ContractMutationResult(ContractMutationStatus.Conflict);
+        }
+        var unchanged = existingContract.MeterHandoverDate == handoverDate &&
+            existingContract.InitialElectricReading == initialElectricReading &&
+            existingContract.InitialWaterReading == initialWaterReading;
+        if (!unchanged)
+        {
+            if (existingContract.MeterHandoverDate != expectedHandoverDate ||
+                existingContract.InitialElectricReading != expectedElectricReading ||
+                existingContract.InitialWaterReading != expectedWaterReading ||
+                await _context.UtilityReadings.AnyAsync(reading => reading.ContractId == contractId, cancellationToken) ||
+                await _context.Invoices.AnyAsync(invoice => invoice.ContractId == contractId, cancellationToken))
+            {
+                return new ContractMutationResult(ContractMutationStatus.Conflict);
+            }
+            existingContract.MeterHandoverDate = handoverDate;
+            existingContract.InitialElectricReading = initialElectricReading;
+            existingContract.InitialWaterReading = initialWaterReading;
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        var updatedContract = await GetMutationReadModelAsync(contractId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new ContractMutationResult(ContractMutationStatus.Updated, updatedContract);
     }
 
     public Task<bool> HasActiveManagerAssignmentAsync(int propertyId, int managerId)
@@ -620,5 +680,10 @@ public class ContractRepository : IContractRepository
         contract.Room!.Property!.AddressText,
         contract.Room.Property.OwnerId,
         contract.Room.Property.Owner!.FullName,
-        contract.Room.Property.AddressText);
+        contract.Room.Property.AddressText,
+        contract.InitialElectricReading,
+        contract.InitialWaterReading,
+        contract.MeterHandoverDate,
+        contract.UtilityReadings.Any(),
+        contract.Invoices.Any());
 }

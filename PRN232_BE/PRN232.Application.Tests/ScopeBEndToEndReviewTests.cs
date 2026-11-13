@@ -73,6 +73,11 @@ public class ScopeBEndToEndReviewTests
             bookingId, startDate = today, endDate = today.AddYears(1)
         }, HttpStatusCode.Created);
         var contractId = contract.GetProperty("contractId").GetInt32();
+        using var handover = await client.PutAsJsonAsync($"/api/contracts/{contractId}/meter-handover", new
+        {
+            meterHandoverDate = today, initialElectricReading = 100m, initialWaterReading = 10m
+        });
+        Assert.Equal(HttpStatusCode.OK, handover.StatusCode);
         await PostAsync(client, "/api/utility-readings", new
         {
             contractId, readingMonth = month, electricStart = 100m, electricEnd = 150m, waterStart = 10m, waterEnd = 14m

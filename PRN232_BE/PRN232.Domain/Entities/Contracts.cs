@@ -40,6 +40,10 @@ public class Contracts
     }
     public string Status { get; set; } = string.Empty;
 
+    public decimal? InitialElectricReading { get; set; }
+    public decimal? InitialWaterReading { get; set; }
+    public DateOnly? MeterHandoverDate { get; set; }
+
     public Rooms? Room
     {
         get; set;

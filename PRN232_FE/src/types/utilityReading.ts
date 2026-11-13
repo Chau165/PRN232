@@ -19,7 +19,7 @@ export interface CreateUtilityReadingRequest {
   readingMonth: string
   electricEnd: number
   waterEnd: number
-  // Chỉ cần cho lần ghi đầu tiên của hợp đồng; các tháng sau BE tự nối tiếp tháng trước.
-  electricStart: number | null
-  waterStart: number | null
+  // Legacy compatibility only; the server derives starting values.
+  electricStart?: number | null
+  waterStart?: number | null
 }

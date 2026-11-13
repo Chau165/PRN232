@@ -15,7 +15,7 @@ public class UtilityReadingServiceTests
     private static readonly DateOnly October = new(2026, 10, 1);
 
     [Fact]
-    public async Task CreateAsync_takes_the_starting_values_from_the_first_reading_request()
+    public async Task CreateAsync_takes_the_starting_values_from_the_contract_handover()
     {
         var repository = new FakeReadingRepository();
 
@@ -41,9 +41,9 @@ public class UtilityReadingServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_requires_starting_values_for_the_first_reading()
+    public async Task CreateAsync_requires_handover_for_the_first_reading()
     {
-        var repository = new FakeReadingRepository();
+        var repository = new FakeReadingRepository { Contract = SampleContract() with { InitialElectricReading = null, InitialWaterReading = null, MeterHandoverDate = null } };
 
         await Assert.ThrowsAsync<UtilityReadingBusinessRuleException>(() => CreateService(repository)
             .CreateAsync(new CreateUtilityReadingDto(1, October, 150m, 14m, null, null), 7, RoleNames.Manager));
@@ -144,7 +144,7 @@ public class UtilityReadingServiceTests
         new(repository, new FixedTimeProvider(Now));
 
     private static ReadingContractReadModel SampleContract() =>
-        new(1, 7, ContractStatuses.Active, new DateOnly(2026, 6, 1), new DateOnly(2027, 5, 31), 1);
+        new(1, 7, ContractStatuses.Active, new DateOnly(2026, 10, 1), new DateOnly(2027, 5, 31), 1, 100m, 10m, new DateOnly(2026, 10, 2));
 
     private sealed class FakeReadingRepository : IUtilityReadingRepository
     {

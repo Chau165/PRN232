@@ -5,6 +5,7 @@ using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 using System.Globalization;
+using Microsoft.Extensions.Logging;
 
 namespace PRN232.Application.Services;
 
@@ -17,15 +18,57 @@ public class ContractService : IContractService
     private readonly IContractRepository _repository;
     private readonly TimeProvider _timeProvider;
     private readonly INotificationRealtimePublisher? _realtimePublisher;
+    private readonly ILogger<ContractService>? _logger;
 
     public ContractService(
         IContractRepository repository,
         TimeProvider timeProvider,
-        INotificationRealtimePublisher? realtimePublisher = null)
+        INotificationRealtimePublisher? realtimePublisher = null,
+        ILogger<ContractService>? logger = null)
     {
         _repository = repository;
         _timeProvider = timeProvider;
         _realtimePublisher = realtimePublisher;
+        _logger = logger;
+    }
+
+    public async Task<ContractDto> SaveMeterHandoverAsync(
+        int contractId, SaveContractMeterHandoverDto request, int userId, string role,
+        CancellationToken cancellationToken)
+    {
+        var contract = await GetContractForManagerMutationAsync(contractId, userId, role);
+        if (!request.MeterHandoverDate.HasValue || !request.InitialElectricReading.HasValue ||
+            !request.InitialWaterReading.HasValue)
+        {
+            throw new ContractBusinessRuleException("Vui lòng nhập đủ ngày và chỉ số điện nước bàn giao.");
+        }
+        if (contract.Status != ContractStatuses.Active)
+        {
+            throw new ContractConflictException("Chỉ hợp đồng đang hiệu lực mới được ghi nhận bàn giao.");
+        }
+        var today = TodayInBusinessTimeZone();
+        if (!UtilityReadingPolicy.IsValidMeterValue(request.InitialElectricReading.Value) ||
+            !UtilityReadingPolicy.IsValidMeterValue(request.InitialWaterReading.Value) ||
+            request.MeterHandoverDate < contract.StartDate || request.MeterHandoverDate > contract.EndDate ||
+            request.MeterHandoverDate > today)
+        {
+            throw new ContractBusinessRuleException("Chỉ số phải không âm, tối đa 16 chữ số nguyên và 2 chữ số thập phân; ngày bàn giao phải trong thời hạn hợp đồng và không ở tương lai.");
+        }
+
+        var expected = request.ExpectedMeterHandover;
+        var result = await _repository.SaveMeterHandoverAsync(contractId, userId,
+            request.MeterHandoverDate.Value, request.InitialElectricReading.Value, request.InitialWaterReading.Value,
+            expected?.MeterHandoverDate, expected?.InitialElectricReading, expected?.InitialWaterReading,
+            today, cancellationToken);
+        if (result.Status == ContractMutationStatus.Conflict)
+        {
+            throw new ContractConflictException("Dữ liệu bàn giao đã thay đổi hoặc đã chốt chỉ số/hóa đơn. Vui lòng tải lại hợp đồng.");
+        }
+        var updated = GetUpdatedContract(result);
+        _logger?.LogInformation("Manager {ManagerId} saved meter handover for contract {ContractId}; previous {PreviousDate}/{PreviousElectric}/{PreviousWater}, current {Date}/{Electric}/{Water}",
+            userId, contractId, contract.MeterHandoverDate, contract.InitialElectricReading, contract.InitialWaterReading,
+            updated.MeterHandoverDate, updated.InitialElectricReading, updated.InitialWaterReading);
+        return ConvertToDto(updated);
     }
 
     public async Task<ContractDto> CreateFromBookingAsync(CreateContractDto dto, int userId, string role)
@@ -416,7 +459,12 @@ public class ContractService : IContractService
             contract.LessorUserId,
             contract.LessorName,
             contract.LessorAddress,
-            GetDisplayStatus(contract.Status, contract.StartDate, contract.EndDate));
+            GetDisplayStatus(contract.Status, contract.StartDate, contract.EndDate),
+            contract.InitialElectricReading,
+            contract.InitialWaterReading,
+            contract.MeterHandoverDate,
+            contract.HasUtilityReadings,
+            contract.HasInvoices);
     }
 
     private static InvoiceDto ConvertToDto(InvoiceReadModel invoice, DateOnly today)
