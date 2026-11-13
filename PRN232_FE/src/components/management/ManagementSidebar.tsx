@@ -1,3 +1,5 @@
+import { Link } from "react-router"
+
 import Icon, { type IconName } from "@/components/common/Icon"
 
 import { routes } from "@/constants/routes"
@@ -176,10 +178,11 @@ export default function ManagementSidebar({
                   pathname.startsWith(item.href))
 
               return (
-                <a
+                <Link
                   key={item.href}
-                  href={item.href}
+                  to={item.href}
                   onClick={onClose}
+                  aria-current={active ? "page" : undefined}
                   className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-semibold transition ${
                     active
                       ? "bg-teal-50 text-[#087775]"
@@ -188,17 +191,17 @@ export default function ManagementSidebar({
                 >
                   <Icon name={item.icon} size={16} />
                   {item.label}
-                </a>
+                </Link>
               )
             })}
         </nav>
         <div className="border-t border-slate-100 p-4">
-          <a
-            href={routes.home}
+          <Link
+            to={routes.home}
             className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-[13px] font-semibold text-slate-500 hover:bg-slate-50"
           >
             ← Về trang khách thuê
-          </a>
+          </Link>
         </div>
       </aside>
     </>

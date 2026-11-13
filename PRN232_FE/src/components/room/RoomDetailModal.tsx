@@ -11,7 +11,7 @@ import type { PublicPropertyServiceRate } from "@/types/publicBrowsing"
 import { usePublicApiResource } from "@/hooks/usePublicApiResource"
 import { routes } from "@/constants/routes"
 import { publicApiErrorMessage } from "@/utils/publicApiDisplay"
-import { formatVnd, serviceRateUnitLabel } from "@/utils/publicFormatting"
+import { formatAddress, formatVnd, serviceRateUnitLabel } from "@/utils/publicFormatting"
 
 type RoomDetailModalProps = {
   roomId: number
@@ -74,14 +74,7 @@ export default function RoomDetailModal({
 
   const room = resource.status === "success" ? resource.data : null
   const address = room
-    ? [
-        room.property.addressText,
-        room.property.ward,
-        room.property.district,
-        room.property.city,
-      ]
-        .filter((part) => part?.trim())
-        .join(", ")
+    ? formatAddress(room.property.addressText, room.property.ward, room.property.district, room.property.city)
     : ""
 
   return (

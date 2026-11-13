@@ -167,6 +167,8 @@ public sealed class ConverterResponseRegressionTests
             return Task.FromResult(Page);
         }
 
+        public Task<IReadOnlyList<PublicAreaOptionReadModel>> GetAreaOptionsAsync(DateTimeOffset asOfUtc, CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public Task<IReadOnlyList<PublicPropertyAreaCardReadModel>> GetByAreaAsync(PublicPropertyAreaSearchCriteria criteria, DateTimeOffset asOfUtc, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<PublicPropertyDetailReadModel?> GetDetailAsync(int propertyId, DateTimeOffset asOfUtc, CancellationToken cancellationToken)

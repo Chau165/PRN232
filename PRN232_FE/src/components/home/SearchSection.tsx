@@ -16,6 +16,7 @@ import ResultsHeader from "@/components/home/ResultsHeader"
 
 import type { PublicResourceState } from "@/hooks/usePublicApiResource"
 import { usePublicAmenities } from "@/hooks/usePublicAmenities"
+import { usePublicAreas } from "@/hooks/usePublicAreas"
 import { buildPropertyListParams } from "@/utils/publicBrowsingQuery"
 
 import {
@@ -50,6 +51,7 @@ export default function SearchSection({
 }: SearchSectionProps) {
   const [draft, setDraft] = useState(() => propertySearchDraft(query))
   const amenities = usePublicAmenities()
+  const areas = usePublicAreas()
   const [filterError, setFilterError] = useState<string | null>(null)
   const canApplyAmenities = draft.amenityIds.length === 0 || amenities.status === "success"
 
@@ -61,10 +63,21 @@ export default function SearchSection({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    apply(draft)
+  }
 
-    if (!canApplyAmenities) return
+  // Changing the sort order applies at once, together with whatever filters are chosen,
+  // so the list re-orders immediately and nothing the user typed is lost.
+  function changeSort(sortBy: string) {
+    const next = { ...draft, sortBy }
+    setDraft(next)
+    apply(next)
+  }
+
+  function apply(current: PropertySearchDraft) {
+    if (!(current.amenityIds.length === 0 || amenities.status === "success")) return
     const availableIds = new Set(amenities.status === "success" ? amenities.data.map((amenity) => amenity.amenityId) : [])
-    const searchDraft = { ...draft, amenityIds: draft.amenityIds.filter((id) => availableIds.has(id)) }
+    const searchDraft = { ...current, amenityIds: current.amenityIds.filter((id) => availableIds.has(id)) }
     try {
       buildPropertyListParams(searchDraft)
       setFilterError(null)
@@ -91,7 +104,7 @@ export default function SearchSection({
             <h2 className="font-display text-2xl font-bold tracking-tight text-slate-900">Tìm phòng phù hợp với bạn</h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">Chọn khu vực và tiện ích phù hợp với nhu cầu của bạn.</p>
           </div>
-          <FilterChips draft={draft} amenities={amenities} onChange={updateDraft} />
+          <FilterChips draft={draft} amenities={amenities} areas={areas} onChange={updateDraft} />
           {filterError && <p role="alert" className="mt-3 text-sm text-rose-700">{filterError}</p>}
           <div className="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
             <button
@@ -121,7 +134,7 @@ export default function SearchSection({
             <ResultsHeader
               totalCount={resultPage.totalCount}
               sortBy={draft.sortBy}
-              onSortChange={(sortBy) => updateDraft("sortBy", sortBy)}
+              onSortChange={changeSort}
             />
           )}
           {resource.status === "loading" && (

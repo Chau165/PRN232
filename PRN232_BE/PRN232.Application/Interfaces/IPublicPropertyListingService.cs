@@ -6,6 +6,8 @@ public interface IPublicPropertyListingService
 {
     Task<PublicPropertyPageDto> GetAllAsync(PublicPropertyQueryDto query, CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<PublicAreaOptionDto>> GetAreaOptionsAsync(CancellationToken cancellationToken);
+
     Task<IReadOnlyList<PublicPropertyAreaCardDto>> GetByAreaAsync(
         PublicPropertyAreaQueryDto query,
         CancellationToken cancellationToken);

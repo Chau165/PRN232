@@ -38,6 +38,13 @@ public sealed class PublicPropertiesController : ControllerBase
         }
     }
 
+    [HttpGet("areas")]
+    [ProducesResponseType(typeof(IReadOnlyList<PublicAreaOptionDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<PublicAreaOptionDto>>> GetAreaOptions(CancellationToken cancellationToken)
+    {
+        return Ok(await _propertyListingService.GetAreaOptionsAsync(cancellationToken));
+    }
+
     [HttpGet("by-area")]
     [ProducesResponseType(typeof(IReadOnlyList<PublicPropertyAreaCardDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]

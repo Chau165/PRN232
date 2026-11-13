@@ -11,7 +11,7 @@ import {
 } from "@/constants/routes"
 import { usePublicApiResource } from "@/hooks/usePublicApiResource"
 import { publicApiErrorMessage } from "@/utils/publicApiDisplay"
-import { formatVnd, serviceRateUnitLabel } from "@/utils/publicFormatting"
+import { formatAddress, formatVnd, serviceRateUnitLabel } from "@/utils/publicFormatting"
 
 function amenityIcon(name: string): IconName {
   const normalizedName = name.trim().toLowerCase()
@@ -94,9 +94,7 @@ export default function PropertyDetailPage() {
 
   const property = resource.status === "success" ? resource.data : null
   const address = property
-    ? [property.addressText, property.ward, property.district, property.city]
-        .filter((part) => part?.trim())
-        .join(", ")
+    ? formatAddress(property.addressText, property.ward, property.district, property.city)
     : ""
   const roomAmenities = property?.roomAmenities ?? []
   const commonAmenities = property?.commonAmenities ?? []
@@ -184,10 +182,7 @@ export default function PropertyDetailPage() {
           <>
             <div className="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_312px] lg:gap-20">
               <div>
-                <p className="mb-2 text-[12px] font-bold uppercase tracking-[.16em] text-[#087775]">
-                  Khu trọ công khai
-                </p>
-                <h1 className="font-display text-[37px] font-bold tracking-[-.05em] text-slate-900">
+                <h1 className="font-display text-[37px] font-bold tracking-[-.04em] text-slate-900">
                   {property.propertyName}
                 </h1>
                 {address && (
@@ -207,22 +202,13 @@ export default function PropertyDetailPage() {
                     ? "Chưa có giá"
                     : formatVnd(property.startingPrice)}
                 </p>
-                <div className="mt-5 grid grid-cols-2 gap-2">
-                  <Link
-                    to={availableRoomsPath(property.propertyId)}
-                    className="rounded-lg bg-[#087775] px-2 py-3 text-center text-[13px] font-bold text-white shadow-sm hover:bg-[#066a68]"
-                  >
-                    Xem phòng trống
-                  </Link>
-                  <button
-                    type="button"
-                    disabled
-                    title="Đặt lịch xem trực tuyến chưa được hỗ trợ"
-                    className="cursor-not-allowed rounded-lg bg-slate-100 px-2 py-3 text-[13px] font-bold text-slate-400"
-                  >
-                    Đặt lịch chưa hỗ trợ
-                  </button>
-                </div>
+                {/* Viewings are booked per room, from the room detail; this page only leads to the rooms. */}
+                <Link
+                  to={availableRoomsPath(property.propertyId)}
+                  className="mt-5 block rounded-lg bg-[#087775] px-4 py-3 text-center text-[13px] font-bold text-white shadow-sm hover:bg-[#066a68]"
+                >
+                  Xem phòng trống
+                </Link>
               </div>
             </div>
 

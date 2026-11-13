@@ -15,7 +15,7 @@ import "leaflet/dist/leaflet.css"
 
 import type { PublicPropertyAreaCard } from "@/types/publicBrowsing"
 import { propertyDetailPath } from "@/constants/routes"
-import { formatVnd } from "@/utils/publicFormatting"
+import { formatAddress, formatVnd } from "@/utils/publicFormatting"
 import {
   buildGoogleMapsDirectionsUrl,
   type AreaCoordinates,
@@ -209,9 +209,7 @@ export default function AreaPropertyMap({
                 <div className="space-y-2 p-1">
                   <h3 className="font-bold text-slate-900">{property.propertyName}</h3>
                   <p className="text-xs leading-5 text-slate-600">
-                    {[property.addressText, property.ward, property.district, property.city]
-                      .filter(Boolean)
-                      .join(", ")}
+                    {formatAddress(property.addressText, property.ward, property.district, property.city)}
                   </p>
                   <p className="text-xs text-slate-600">
                     Còn {property.availableRoomCount} phòng đang cho thuê

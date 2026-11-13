@@ -3,6 +3,13 @@ export interface PublicAmenitySummary {
   name: string
 }
 
+// One city / district / ward combination that currently has rentable rooms.
+export interface PublicAreaOption {
+  city: string
+  district: string
+  ward: string
+}
+
 export interface PublicPage<TItem> {
   items: TItem[]
   totalCount: number

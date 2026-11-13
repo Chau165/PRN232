@@ -27,6 +27,7 @@ import {
 } from "@/utils/publicQueryState"
 import AmenityMultiSelect from "@/components/common/AmenityMultiSelect"
 import { usePublicAmenities } from "@/hooks/usePublicAmenities"
+import { formatAddress } from "@/utils/publicFormatting"
 
 export default function AvailableRoomsPage() {
   const { propertyId: routePropertyId } = useParams()
@@ -112,9 +113,7 @@ export default function AvailableRoomsPage() {
   const roomPage =
     roomsResource.status === "success" ? roomsResource.data : null
   const address = property
-    ? [property.addressText, property.ward, property.district, property.city]
-        .filter((part) => part?.trim())
-        .join(", ")
+    ? formatAddress(property.addressText, property.ward, property.district, property.city)
     : ""
   const pageCount = roomPage
     ? Math.ceil(roomPage.totalCount / roomPage.pageSize)
@@ -193,9 +192,6 @@ export default function AvailableRoomsPage() {
         {property && (
           <>
             <header className="mt-8 border-b border-slate-100 pb-7">
-              <p className="mb-2 text-[12px] font-bold uppercase tracking-[.16em] text-[#087775]">
-                Khu trọ công khai
-              </p>
               <h1 className="font-display text-[32px] font-bold tracking-[-.04em] text-slate-900">
                 {property.propertyName}
               </h1>

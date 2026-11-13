@@ -155,7 +155,11 @@ public class PropertyService : IPropertyService
         }
         ValidatePropertyText(dto.PropertyName, dto.AddressText);
 
-        var coordinates = await ResolveCoordinatesAsync(dto.AddressText, dto.Ward, dto.District, dto.City);
+        // Re-geocode only when the address changed: renaming a property or replacing its photo
+        // must not move it on the map (geocoders return a different point for the same text).
+        var coordinates = IsSameAddress(entity, dto) && (entity.Latitude != 0m || entity.Longitude != 0m)
+            ? new AddressCoordinates(entity.Latitude, entity.Longitude)
+            : await ResolveCoordinatesAsync(dto.AddressText, dto.Ward, dto.District, dto.City);
         var previousImageUrl = entity.PrimaryImageUrl;
         string? uploadedImageUrl = null;
         try
@@ -200,6 +204,13 @@ public class PropertyService : IPropertyService
         await _repository.SaveChangesAsync();
         return true;
     }
+
+    // Same trimming as ApplyUpdateToEntity, so " 01 Lê Lợi " equals the stored "01 Lê Lợi".
+    private static bool IsSameAddress(PRN232.Domain.Entities.Property entity, UpdatePropertyDto dto) =>
+        string.Equals(entity.AddressText, dto.AddressText?.Trim() ?? string.Empty, StringComparison.Ordinal) &&
+        string.Equals(entity.Ward, dto.Ward?.Trim() ?? string.Empty, StringComparison.Ordinal) &&
+        string.Equals(entity.District, dto.District?.Trim() ?? string.Empty, StringComparison.Ordinal) &&
+        string.Equals(entity.City, dto.City?.Trim() ?? string.Empty, StringComparison.Ordinal);
 
     private static void EnsureAdmin(bool isAdmin)
     {
