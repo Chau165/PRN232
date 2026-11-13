@@ -70,7 +70,9 @@ public class PayOSPayoutChannelTests
     public async Task Invalid_enabled_configuration_fails_host_startup()
     {
         var builder = Host.CreateApplicationBuilder();
-        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["PayOSPayout:Enabled"] = "true" });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> {
+            ["PayOSPayout:Enabled"] = "true", ["PayOSPayout:ClientId"] = "",
+            ["PayOSPayout:ApiKey"] = "", ["PayOSPayout:ChecksumKey"] = "" });
         builder.Services.AddPayOSPayoutConfiguration(builder.Configuration);
         using var host = builder.Build();
         await Assert.ThrowsAsync<OptionsValidationException>(() => host.StartAsync());
