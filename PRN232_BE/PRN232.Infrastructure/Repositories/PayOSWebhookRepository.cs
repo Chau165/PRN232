@@ -12,10 +12,10 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
     public Task RecordAsync(PaymentWebhookReceipts receipt, bool providerSuccess, CancellationToken cancellationToken) =>
         RecordCoreAsync(receipt, providerSuccess, true, cancellationToken);
 
-    public Task RecordReconciliationAsync(PaymentWebhookReceipts receipt, CancellationToken cancellationToken) =>
-        RecordCoreAsync(receipt, true, false, cancellationToken);
+    public Task RecordReconciliationAsync(PaymentWebhookReceipts receipt, CancellationToken cancellationToken, bool recheckBooking = false, bool recheckInvoice = false) =>
+        RecordCoreAsync(receipt, true, false, cancellationToken, recheckBooking, recheckInvoice);
 
-    private async Task RecordCoreAsync(PaymentWebhookReceipts receipt, bool providerSuccess, bool isWebhook, CancellationToken cancellationToken)
+    private async Task RecordCoreAsync(PaymentWebhookReceipts receipt, bool providerSuccess, bool isWebhook, CancellationToken cancellationToken, bool recheckBooking = false, bool recheckInvoice = false)
     {
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         if (context.Database.IsNpgsql())
@@ -36,11 +36,13 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
                 }
                 await context.SaveChangesAsync(cancellationToken);
             }
-            else if (existing.Outcome == "Verified" && providerSuccess)
+            else if (providerSuccess && (existing.Outcome == "Verified" ||
+                (!isWebhook && (recheckBooking || recheckInvoice) && existing.Outcome == "RequiresReview" && existing.ConflictingFingerprint == null)))
             {
-                // Replay a durable B7 event that predates settlement support.
+                // Replay verified evidence, or a matching reviewed receipt after explicit Admin
+                // reconciliation. Re-run all business checks under the request/room locks.
                 var replayRequest = await LockRequestAsync(existing.OrderCode, cancellationToken);
-                if (replayRequest is not null) await SettleAsync(existing, replayRequest, receipt.ReceivedAtUtc, existing.Source == "Webhook", cancellationToken);
+                if (replayRequest is not null) await SettleAsync(existing, replayRequest, receipt.ReceivedAtUtc, existing.Source == "Webhook", cancellationToken, !isWebhook && recheckBooking, !isWebhook && recheckInvoice);
                 else existing.Outcome = "RequiresReview";
                 await context.SaveChangesAsync(cancellationToken);
             }
@@ -68,11 +70,11 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
     }
 
     private async Task SettleAsync(PaymentWebhookReceipts receipt, PaymentRequests request, DateTime confirmedAtUtc, bool isWebhook,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool recheckBooking = false, bool recheckInvoice = false)
     {
         if (!request.InvoiceId.HasValue)
         {
-            await SettleBookingAsync(receipt, request, confirmedAtUtc, isWebhook, cancellationToken);
+            await SettleBookingAsync(receipt, request, confirmedAtUtc, isWebhook, cancellationToken, recheckBooking);
             return;
         }
         var invoice = await context.Invoices.AsNoTracking().Where(item => item.InvoiceId == request.InvoiceId)
@@ -80,13 +82,14 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
                 item.Contract.Room!.RoomCode, item.Contract.Room.Property!.OwnerId,
                 Amounts = item.InvoiceDetails.Select(line => line.Amount).ToList() }).SingleAsync(cancellationToken);
         var validTime = PayOSTransactionTime.TryGetUtc(receipt.TransactionDateTime, out var paidAtUtc) &&
-            paidAtUtc >= request.CreatedAtUtc && request.ExpiresAtUtc.HasValue &&
+            PayOSPaymentTimePolicy.IsAfterCreation(paidAtUtc, request.CreatedAtUtc) && request.ExpiresAtUtc.HasValue &&
             paidAtUtc < request.ExpiresAtUtc && paidAtUtc <= receipt.ReceivedAtUtc;
         var eligible = request.Provider == "PayOS" && request.Currency == "VND" && receipt.Currency == "VND" &&
             receipt.DataCode == "00" && receipt.Amount > 0 && receipt.Amount == request.Amount &&
             receipt.Amount == invoice.Amounts.Sum() && request.CustomerId == invoice.CustomerId &&
             request.PaymentLinkId == receipt.PaymentLinkId && request.PaymentId is null &&
-            (request.Status is PaymentRequestStatuses.Creating or PaymentRequestStatuses.Pending) &&
+            ((request.Status is PaymentRequestStatuses.Creating or PaymentRequestStatuses.Pending) ||
+                recheckInvoice && request.Status == PaymentRequestStatuses.RequiresReview && request.LastErrorCode == PayOSPaymentTimePolicy.InvoiceReviewCode) &&
             (invoice.Status is InvoiceStatuses.Unpaid or InvoiceStatuses.Overdue) &&
             (request.ProviderReference is null || request.ProviderReference == receipt.Reference) && validTime;
         if (isWebhook) request.WebhookReceivedAtUtc ??= receipt.ReceivedAtUtc;
@@ -96,7 +99,7 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
         var authenticTransfer = request.Provider == "PayOS" && request.Currency == "VND" && receipt.Currency == "VND" &&
             receipt.DataCode == "00" && receipt.Amount > 0 && request.PaymentLinkId == receipt.PaymentLinkId &&
             PayOSTransactionTime.TryGetUtc(receipt.TransactionDateTime, out var transferAtUtc) &&
-            transferAtUtc >= request.CreatedAtUtc && transferAtUtc <= receipt.ReceivedAtUtc;
+            PayOSPaymentTimePolicy.IsAfterCreation(transferAtUtc, request.CreatedAtUtc) && transferAtUtc <= receipt.ReceivedAtUtc;
         if (invoice.Status == InvoiceStatuses.Paid && authenticTransfer)
         {
             var originalPaymentId = await context.Payments.AsNoTracking()
@@ -122,7 +125,7 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
         if (!eligible)
         {
             receipt.Outcome = "RequiresReview";
-            MarkReview(request, validTime ? "WEBHOOK_REQUIRES_REVIEW" : "WEBHOOK_TRANSACTION_TIME_INVALID", confirmedAtUtc);
+            MarkReview(request, validTime ? "WEBHOOK_REQUIRES_REVIEW" : PayOSPaymentTimePolicy.InvoiceReviewCode, confirmedAtUtc);
             return;
         }
 
@@ -187,20 +190,21 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
     }
 
     private async Task SettleBookingAsync(PaymentWebhookReceipts receipt, PaymentRequests request, DateTime nowUtc,
-        bool isWebhook, CancellationToken cancellationToken)
+        bool isWebhook, CancellationToken cancellationToken, bool recheckBooking = false)
     {
         var booking = await context.Bookings.AsNoTracking().Where(item => item.BookingId == request.BookingId)
             .Select(item => new { item.BookingId, item.RoomId, item.CustomerId, item.DepositAmount, item.Status, item.ExpiryDate,
                 HasContract = item.Contract != null, item.Room!.RoomCode, item.Room.Property!.OwnerId }).SingleAsync(cancellationToken);
         var validTime = PayOSTransactionTime.TryGetUtc(receipt.TransactionDateTime, out var paidAtUtc) &&
-            paidAtUtc >= request.CreatedAtUtc && request.ExpiresAtUtc.HasValue && paidAtUtc < request.ExpiresAtUtc &&
+            BookingPaymentTimePolicy.IsAfterCreation(paidAtUtc, request.CreatedAtUtc) && request.ExpiresAtUtc.HasValue && paidAtUtc < request.ExpiresAtUtc &&
             paidAtUtc < booking.ExpiryDate && paidAtUtc <= receipt.ReceivedAtUtc;
         var linkMatches = request.PaymentLinkId == receipt.PaymentLinkId ||
             (request.PaymentLinkId is null && request.Status == PaymentRequestStatuses.Creating);
         var eligible = request.Provider == "PayOS" && request.Currency == "VND" && receipt.Currency == "VND" && receipt.DataCode == "00" &&
             !string.IsNullOrWhiteSpace(receipt.PaymentLinkId) && receipt.Amount > 0 && receipt.Amount == request.Amount &&
             request.Amount == booking.DepositAmount && request.CustomerId == booking.CustomerId && linkMatches &&
-            request.PaymentId is null && (request.Status is PaymentRequestStatuses.Creating or PaymentRequestStatuses.Pending) &&
+            request.PaymentId is null && ((request.Status is PaymentRequestStatuses.Creating or PaymentRequestStatuses.Pending) ||
+                recheckBooking && request.Status == PaymentRequestStatuses.RequiresReview && BookingPaymentTimePolicy.IsReviewCode(request.LastErrorCode)) &&
             booking.Status == BookingStatuses.Pending && !booking.HasContract && validTime &&
             (request.ProviderReference is null || request.ProviderReference == receipt.Reference) &&
             !await context.Payments.AnyAsync(item => item.BookingId == booking.BookingId && item.Status == PaymentStatuses.Success, cancellationToken) &&
@@ -210,7 +214,7 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
         if (!eligible)
         {
             receipt.Outcome = "RequiresReview";
-            MarkReview(request, "BOOKING_PAYMENT_REQUIRES_REVIEW", nowUtc);
+            MarkReview(request, validTime ? "BOOKING_PAYMENT_REQUIRES_REVIEW" : BookingPaymentTimePolicy.ReviewCode, nowUtc);
             var admins = await context.Users.AsNoTracking().Where(item => item.IsActive && item.Role!.RoleName == RoleNames.Admin)
                 .Select(item => item.UserId).ToListAsync(cancellationToken);
             foreach (var admin in admins)

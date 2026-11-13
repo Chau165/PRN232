@@ -9,5 +9,5 @@ public interface IPaymentReconciliationRepository
     Task<List<int>> FindDueAsync(DateTime cutoffUtc, int limit, CancellationToken cancellationToken);
     Task<PaymentWebhookReceipts?> GetVerifiedReceiptAsync(int id, CancellationToken cancellationToken);
     Task<string> ApplyAsync(int id, int? ownerId, PayOSRemoteSnapshot? remote, string? errorCode,
-        DateTime nowUtc, CancellationToken cancellationToken);
+        DateTime nowUtc, CancellationToken cancellationToken, bool recheckBooking = false, bool recheckInvoice = false);
 }

@@ -437,4 +437,38 @@ public class PayOSWebhookApiTests
         Assert.Equal("Succeeded", (await verify.PaymentRequests.SingleAsync()).Status);
         Assert.Equal(1, await verify.Payments.CountAsync(payment => payment.InvoiceId != null));
     }
+
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(10, false)]
+    [InlineData(-60, false)]
+    [InlineData(50, false)]
+    public async Task Invoice_minute_timestamp_preserves_expiry_and_duplicate_payment_detection(int seconds, bool accepted)
+    {
+        using var factory = new BookingsApiFactory(); using var app = factory.WithWebHostBuilder(Configure); using var client = app.CreateClient();
+        await SeedAsync(app.Services, client);
+        var minute = DateTime.UtcNow.AddMinutes(-5); minute = new DateTime(minute.Ticks - minute.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>(); var request = await db.PaymentRequests.SingleAsync();
+            request.CreatedAtUtc = minute.AddSeconds(19.548336); request.ExpiresAtUtc = minute.AddSeconds(50); await db.SaveChangesAsync();
+        }
+        var data = Data(); data["transactionDateTime"] = new DateTimeOffset(minute.AddSeconds(seconds)).ToOffset(TimeSpan.FromHours(7)).ToString("yyyy-MM-dd'T'HH:mm:sszzz");
+        var payload = await Signed(data);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Url, payload)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Url, payload)).StatusCode);
+        if (accepted)
+        {
+            var extra = new Dictionary<string, object>(data); extra["reference"] = "MINUTE-EXTRA";
+            var duplicate = await Signed(extra);
+            Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Url, duplicate)).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Url, duplicate)).StatusCode);
+        }
+        using var check = app.Services.CreateScope(); var context = check.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(accepted ? "Paid" : "Unpaid", (await context.Invoices.SingleAsync()).Status);
+        Assert.Equal(accepted ? "Succeeded" : "RequiresReview", (await context.PaymentRequests.SingleAsync()).Status);
+        Assert.Equal(accepted ? 1 : 0, await context.Payments.CountAsync(p => p.InvoiceId != null));
+        Assert.Equal(accepted ? 1 : 0, await context.PaymentReviewCases.CountAsync());
+        if (accepted) Assert.Equal(minute, (await context.Payments.SingleAsync(p => p.InvoiceId != null)).PaidAtUtc);
+    }
 }
