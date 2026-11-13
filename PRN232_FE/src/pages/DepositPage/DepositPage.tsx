@@ -77,6 +77,10 @@ function HoldRoomStep({ roomId }: { roomId: number }) {
         amount={room.baseRent}
       />
       <p className="text-sm text-slate-500">Sau khi giữ phòng, bạn có 15 phút để thanh toán tiền cọc.</p>
+      <p className="text-sm text-slate-500">
+        Tiền cọc được trừ vào tiền phòng tháng đầu tiên khi lập hợp đồng. Sau khi đặt cọc, phòng được giữ 7 ngày để
+        lập hợp đồng; quá hạn mà chưa lập hợp đồng thì phòng có thể được mở lại và tiền cọc không được hoàn.
+      </p>
       {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
       <button
         type="button"

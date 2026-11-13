@@ -108,6 +108,15 @@ describe("DepositPage", () => {
     expect(screen.queryByText("payment success page")).toBeNull()
   })
 
+  it("explains before the hold that the deposit is the first month's rent and holds the room for 7 days", async () => {
+    renderAt("/deposit?roomId=501")
+    await screen.findByText("A101 · Studio")
+
+    const rules = screen.getByText(/được trừ vào tiền phòng tháng đầu tiên/)
+    expect(rules.textContent).toContain("giữ 7 ngày")
+    expect(rules.textContent).toContain("không được hoàn")
+  })
+
   it("tracks Creating without redirecting to a fabricated success page", async () => {
     mocks.createLink.mockResolvedValue({ paymentRequestId: 12, bookingId: 7, amount: 3000000, currency: "VND", status: "Creating", checkoutUrl: null, expiresAtUtc: null })
     renderAt("/deposit?bookingId=7")
