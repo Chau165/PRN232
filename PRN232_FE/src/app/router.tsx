@@ -43,6 +43,7 @@ const RegisterPage = lazy(() => import("@/pages/RegisterPage/RegisterPage"))
 const DepositPage = lazy(() => import("@/pages/DepositPage/DepositPage"))
 const ViewingRequestPage = lazy(() => import("@/pages/ViewingRequestPage/ViewingRequestPage"))
 const PaymentSuccessPage = lazy(() => import("@/pages/PaymentSuccessPage/PaymentSuccessPage"))
+const InvoicePaymentResultPage = lazy(() => import("@/pages/InvoicePaymentResultPage/InvoicePaymentResultPage"))
 
 const managementRoles: readonly AppRole[] = ["ADMIN", "MANAGER"]
 const adminOnly: readonly AppRole[] = ["ADMIN"]
@@ -205,6 +206,11 @@ export const router = createBrowserRouter([
       {
         path: routes.paymentSuccess,
         element: protectedElement(<PaymentSuccessPage />, customerOnly),
+      },
+
+      {
+        path: routes.paymentResult,
+        element: protectedElement(<InvoicePaymentResultPage />, customerOnly),
       },
     ],
   },

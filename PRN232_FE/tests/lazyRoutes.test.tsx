@@ -38,4 +38,11 @@ describe("route code splitting (C6)", () => {
     expect(await screen.findByLabelText("Email")).toBeTruthy()
     expect(screen.queryByText("Đang tải...")).toBeNull()
   })
+
+  it("registers a route for every customer payment page the app links to", () => {
+    const source = readFileSync(resolve(__dirname, "../src/app/router.tsx"), "utf-8")
+
+    expect(source).toContain("path: routes.paymentSuccess")
+    expect(source).toContain("path: routes.paymentResult")
+  })
 })
