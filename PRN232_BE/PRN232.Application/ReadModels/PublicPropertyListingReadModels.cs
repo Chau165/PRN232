@@ -6,6 +6,8 @@ public sealed record PublicPropertyPageReadModel(
     int Page,
     int PageSize);
 
+public sealed record PublicAreaOptionReadModel(string City, string District, string Ward);
+
 public sealed record PublicPropertyAreaCardReadModel(
     int PropertyId,
     string PropertyName,

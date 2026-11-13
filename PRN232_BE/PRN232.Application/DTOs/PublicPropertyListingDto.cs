@@ -89,6 +89,9 @@ public sealed record PublicPropertyAreaSearchCriteria(
     string? District,
     string? Ward);
 
+// One city / district / ward combination that currently has rentable rooms (home search lists).
+public sealed record PublicAreaOptionDto(string City, string District, string Ward);
+
 public sealed record PublicPropertyAreaCardDto(
     int PropertyId,
     string PropertyName,

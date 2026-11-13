@@ -50,6 +50,13 @@ public sealed class PublicPropertyListingService : IPublicPropertyListingService
         return ConvertToDto(page);
     }
 
+    public async Task<IReadOnlyList<PublicAreaOptionDto>> GetAreaOptionsAsync(CancellationToken cancellationToken)
+    {
+        var asOfUtc = _timeProvider.GetUtcNow().ToUniversalTime();
+        var areas = await _repository.GetAreaOptionsAsync(asOfUtc, cancellationToken);
+        return areas.Select(area => new PublicAreaOptionDto(area.City, area.District, area.Ward)).ToArray();
+    }
+
     public async Task<IReadOnlyList<PublicPropertyAreaCardDto>> GetByAreaAsync(
         PublicPropertyAreaQueryDto query,
         CancellationToken cancellationToken)

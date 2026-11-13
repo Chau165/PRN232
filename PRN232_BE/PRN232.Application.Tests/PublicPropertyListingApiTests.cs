@@ -90,6 +90,36 @@ public sealed class PublicPropertyListingApiTests
             .Select(property => property.GetProperty("propertyId").GetInt32()));
     }
 
+    [Fact]
+    public async Task Area_options_list_each_area_with_rentable_rooms_once_in_order()
+    {
+        using var factory = new PublicPropertiesApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            // A second rentable property in the same ward must not produce a duplicate option.
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            context.Properties.Add(new Property
+            {
+                PropertyId = 6, OwnerId = 1, PropertyName = "Second Linh Trung", AddressText = "Sample Road",
+                City = "TP.HCM", District = "Thu Duc", Ward = "Linh Trung"
+            });
+            context.RoomTypes.Add(new RoomTypes { RoomTypeId = 601, TypeName = "Studio", Price = 2_000_000m });
+            context.Rooms.Add(new Rooms { RoomId = 601, PropertyId = 6, RoomTypeId = 601, RoomCode = "LT-601", AreaSqm = 20m, Status = "Available" });
+            await context.SaveChangesAsync();
+        }
+
+        using var response = await client.GetAsync("/api/public/properties/areas");
+
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        // "Unavailable House" (Ha Noi, Ba Dinh) has no rentable room, so it offers no option.
+        Assert.Equal(
+            new[] { "Ha Noi|Cau Giay|Dich Vong", "TP.HCM|Thu Duc|Binh Tho", "TP.HCM|Thu Duc|Linh Trung" },
+            document.RootElement.EnumerateArray().Select(area =>
+                $"{area.GetProperty("city").GetString()}|{area.GetProperty("district").GetString()}|{area.GetProperty("ward").GetString()}"));
+    }
+
     [AmenityPostgreSqlFact]
     public async Task Mixed_amenity_search_executes_on_isolated_postgresql_with_correct_counts_and_pagination()
     {

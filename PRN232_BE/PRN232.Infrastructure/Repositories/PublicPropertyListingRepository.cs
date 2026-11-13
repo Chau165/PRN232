@@ -149,6 +149,22 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
         return new PublicPropertyPageReadModel(items, totalCount, criteria.Page, criteria.PageSize);
     }
 
+    // Same rentable-room rule as the public listing, so every option the home lists offer has results.
+    public async Task<IReadOnlyList<PublicAreaOptionReadModel>> GetAreaOptionsAsync(
+        DateTimeOffset asOfUtc,
+        CancellationToken cancellationToken)
+    {
+        var rentableRooms = RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc);
+        return await _context.Properties
+            .AsNoTracking()
+            .Where(property => rentableRooms.Any(room => room.PropertyId == property.PropertyId))
+            .Select(property => new { property.City, property.District, property.Ward })
+            .Distinct()
+            .OrderBy(area => area.City).ThenBy(area => area.District).ThenBy(area => area.Ward)
+            .Select(area => new PublicAreaOptionReadModel(area.City, area.District, area.Ward))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<PublicPropertyAreaCardReadModel>> GetByAreaAsync(
         PublicPropertyAreaSearchCriteria criteria,
         DateTimeOffset asOfUtc,
