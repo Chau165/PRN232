@@ -42,7 +42,7 @@ export default function Navbar() {
 
   return (
     <header className="border-b border-slate-100 bg-white">
-      <div className="relative mx-auto flex h-[76px] max-w-[1180px] items-center px-6">
+      <div className="public-container public-header relative flex h-[76px] items-center">
         <a href={routes.home} className="flex items-center gap-2.5">
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#087775] text-white">
             <Icon name="building" size={22} />

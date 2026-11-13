@@ -5,6 +5,8 @@ using PRN232.Application.Policies;
 using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace PRN232.Application.Services;
 
@@ -19,16 +21,26 @@ public class InvoiceService : IInvoiceService
     private readonly TimeProvider _timeProvider;
     private readonly INotificationRealtimePublisher? _realtimePublisher;
 
+    private readonly ICashCheckoutCoordinator _cashCheckout;
+
+
+    private readonly ILogger<InvoiceService> _logger;
+
     public InvoiceService(
         IInvoiceRepository repository,
         IPaymentGateway paymentGateway,
         TimeProvider timeProvider,
-        INotificationRealtimePublisher? realtimePublisher = null)
+        ICashCheckoutCoordinator cashCheckout,
+        INotificationRealtimePublisher? realtimePublisher = null,
+        ILogger<InvoiceService>? logger = null)
+
     {
         _repository = repository;
         _paymentGateway = paymentGateway;
         _timeProvider = timeProvider;
+        _cashCheckout = cashCheckout;
         _realtimePublisher = realtimePublisher;
+        _logger = logger ?? NullLogger<InvoiceService>.Instance;
     }
 
     // Xem trước và tạo thật dùng chung BuildAsync, nên số tiền xem trước luôn khớp hoá đơn được lưu.
@@ -118,7 +130,11 @@ public class InvoiceService : IInvoiceService
             customerId,
             dto.PaymentMethod,
             amount => _paymentGateway.ChargeAsync(dto.PaymentMethod, amount),
-            notification);
+            notification,
+            _timeProvider.GetUtcNow().UtcDateTime);
+        var logLevel = result == InvoicePaymentAttemptStatus.Completed ? LogLevel.Information : LogLevel.Warning;
+        _logger.Log(logLevel, "Online payment for invoice {InvoiceId} by customer {CustomerId} via {PaymentMethod}: {Result}.",
+            id, customerId, dto.PaymentMethod, result);
         return result switch
         {
             InvoicePaymentAttemptStatus.Completed => await PublishPaymentAndLoadAsync(id, notification),
@@ -145,12 +161,18 @@ public class InvoiceService : IInvoiceService
         }
         EnsureNotPaid(invoice);
 
+
+        await _cashCheckout.PrepareAsync(id, userId, CancellationToken.None);
+
         var title = invoice.Total <= 0m
             ? $"Hoá đơn tháng {Period(invoice.InvoiceMonth)} - Phòng {invoice.RoomCode} đã được bù trừ bằng tiền trả trước"
             : $"Đã ghi nhận thanh toán tiền mặt hoá đơn tháng {Period(invoice.InvoiceMonth)} - Phòng {invoice.RoomCode}";
-        return await MarkPaidAsync(invoice, PaymentMethods.Cash, invoice.CustomerId,
+        var paid = await MarkPaidAsync(invoice, PaymentMethods.Cash, invoice.CustomerId,
             title,
             userId);
+        _logger.LogInformation("Cash payment of {Amount} recorded for invoice {InvoiceId} by manager {ManagerId}.",
+            invoice.Total, id, userId);
+        return paid;
     }
 
     private async Task<InvoicePaymentReadModel> GetInvoiceForPaymentAsync(int id)
@@ -174,6 +196,7 @@ public class InvoiceService : IInvoiceService
 
     // Người trả luôn là khách thuê; số tiền là tổng các dòng do server tính, client không gửi số tiền.
     private async Task<InvoiceDto> MarkPaidAsync(
+
         InvoicePaymentReadModel invoice,
         string paymentMethod,
         int notifyUserId,
@@ -185,6 +208,7 @@ public class InvoiceService : IInvoiceService
             UserId = invoice.CustomerId,
             InvoiceId = invoice.InvoiceId,
             Amount = invoice.Total,
+            PaidAtUtc = _timeProvider.GetUtcNow().UtcDateTime,
             PaymentMethod = paymentMethod,
             Status = PaymentStatuses.Success
         };
@@ -196,6 +220,7 @@ public class InvoiceService : IInvoiceService
             IsRead = false
         };
         // Repository chỉ chuyển sang Paid khi hoá đơn vẫn chưa thanh toán: hai lần trả cùng lúc thì chỉ một lần được ghi.
+
         if (!await _repository.MarkPaidAsync(invoice.InvoiceId, payment, notification, managerId))
         {
             if (managerId.HasValue &&
@@ -204,6 +229,7 @@ public class InvoiceService : IInvoiceService
                 throw new InvoiceAuthorizationException("You are no longer assigned to manage this property's invoices.");
             }
             throw new InvoiceConflictException("This invoice has already been paid.");
+
         }
         return await PublishPaymentAndLoadAsync(invoice.InvoiceId, notification);
     }

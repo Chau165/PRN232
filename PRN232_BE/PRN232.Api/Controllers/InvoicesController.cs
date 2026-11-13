@@ -97,10 +97,43 @@ public class InvoicesController : ControllerBase
         });
     }
 
+    [HttpPost("{id:int}/payment-link")]
+    [Authorize(Roles = RoleNames.Customer)]
+    [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("BookingPolicy")]
+    [ProducesResponseType(typeof(InvoicePaymentLinkDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(InvoicePaymentLinkDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(InvoicePaymentLinkDto), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<InvoicePaymentLinkDto>> CreatePaymentLink(int id,
+        [FromServices] IInvoicePaymentLinkService service, CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUser(out var userId, out _)) return Unauthorized();
+        try
+        {
+            var result = await service.CreateAsync(id, userId, cancellationToken);
+            if (result.CheckoutUrl is null) return Accepted(result);
+            return StatusCode(result.Reused ? 200 : 201, result);
+        }
+        catch (InvoiceNotFoundException exception) { return NotFound(new ProblemDetails { Title = "Invoice not found", Detail = exception.Message }); }
+        catch (InvoiceAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (InvoiceBusinessRuleException exception) { return BadRequest(new ProblemDetails { Title = "Invalid invoice payment", Detail = exception.Message }); }
+        catch (InvoiceStatusLinkConflictException exception) { return Conflict(new ProblemDetails { Title = "Checkout conflict", Detail = exception.Message }); }
+        catch (InvoiceLinkProviderException exception) { return StatusCode(502, new ProblemDetails { Title = "Checkout creation failed", Detail = exception.Message }); }
+        catch (PRN232.Application.Interfaces.CheckoutUnavailableException exception) { return StatusCode(503, new ProblemDetails { Title = "Checkout unavailable", Detail = exception.Message }); }
+    }
+
     [HttpPost("{id:int}/pay")]
     [Authorize(Roles = RoleNames.Customer)]
-    public async Task<ActionResult<InvoiceDto>> Pay(int id, PayInvoiceDto dto)
+    public async Task<ActionResult<InvoiceDto>> Pay(int id, PayInvoiceDto dto,
+        [FromServices] Microsoft.Extensions.Options.IOptions<PRN232.Application.Settings.PayOSSettings> payOS)
     {
+        if (payOS.Value.Enabled) return Conflict(new ProblemDetails { Title = "Use payOS checkout", Detail = "Create a payment link; simulated invoice payment is disabled." });
         if (!TryGetCurrentUser(out var userId, out _))
         {
             return Unauthorized();

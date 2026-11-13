@@ -2,6 +2,7 @@ import { apiRequest } from "@/api/apiClient"
 import type {
   CreateRoomRequest,
   ManagementRoomDto,
+  RoomImageDto,
   RoomTypeDto,
   UpdateRoomRequest,
 } from "@/types/managementRoom"
@@ -75,6 +76,56 @@ export function updateRoom(
 
 export function deleteRoom(accessToken: string, roomId: number) {
   return apiRequest<void>(`/rooms/${roomId}`, {
+    accessToken,
+    method: "DELETE",
+  })
+}
+
+export function getRoomImages(
+  accessToken: string,
+  roomId: number,
+  signal?: AbortSignal,
+) {
+  return apiRequest<RoomImageDto[]>(`/rooms/${roomId}/images`, {
+    accessToken,
+    signal,
+    cache: "no-store",
+  })
+}
+
+export function uploadRoomImage(
+  accessToken: string,
+  roomId: number,
+  file: File,
+  isPrimary: boolean,
+) {
+  const body = new FormData()
+  body.append("file", file)
+  body.append("isPrimary", String(isPrimary))
+  return apiRequest<RoomImageDto>(`/rooms/${roomId}/images/upload`, {
+    accessToken,
+    method: "POST",
+    body,
+  })
+}
+
+export function setPrimaryRoomImage(
+  accessToken: string,
+  roomId: number,
+  imageId: number,
+) {
+  return apiRequest<void>(`/rooms/${roomId}/images/${imageId}/primary`, {
+    accessToken,
+    method: "PUT",
+  })
+}
+
+export function deleteRoomImage(
+  accessToken: string,
+  roomId: number,
+  imageId: number,
+) {
+  return apiRequest<void>(`/rooms/${roomId}/images/${imageId}`, {
     accessToken,
     method: "DELETE",
   })

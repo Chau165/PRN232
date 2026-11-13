@@ -294,15 +294,46 @@ public class InvoiceRepository : IInvoiceRepository
                  invoice.PropertyId);
     }
 
+
+    //public async Task<bool> MarkPaidAsync(int invoiceId, Payments payment, Notifications notification, int? ownerId = null)
+    //{
+    //    await using var transaction = await _context.Database.BeginTransactionAsync();
+    //    if (_context.Database.IsNpgsql())
+    //        await _context.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"Invoices\" WHERE \"InvoiceId\" = {invoiceId} FOR UPDATE");
+    //    var current = await GetForPaymentAsync(invoiceId);
+    //    if (current is null || (ownerId.HasValue && current.OwnerId != ownerId) ||
+    //        current.CustomerId != payment.UserId || current.Total != payment.Amount || current.Total <= 0 ||
+    //        current.Status is not (InvoiceStatuses.Unpaid or InvoiceStatuses.Overdue)) return false;
+    //    if (await _context.PaymentRequests.AnyAsync(request => request.InvoiceId == invoiceId &&
+    //        (request.Status == PaymentRequestStatuses.Creating || request.Status == PaymentRequestStatuses.Pending ||
+    //         request.Status == PaymentRequestStatuses.RequiresReview))) return false;
+
+    //    // Điều kiện "chưa Paid" nằm ngay trong câu UPDATE: hai lần trả cùng lúc thì lần sau không khớp dòng nào.
+    //    var updated = await _context.Invoices
+    //        .Where(invoice => invoice.InvoiceId == invoiceId && invoice.Status != InvoiceStatuses.Paid)
+    //        .ExecuteUpdateAsync(setters => setters.SetProperty(invoice => invoice.Status, InvoiceStatuses.Paid));
+    //    if (updated == 0)
+    //    {
+    //        return false;
+    //    }
+
+    //    await _context.Payments.AddAsync(payment);
+    //    await _context.Notifications.AddAsync(notification);
+    //    await _context.SaveChangesAsync();
+    //    await transaction.CommitAsync();
+    //    return true;
+    //}
     public async Task<InvoicePaymentAttemptStatus> TryPayOnlineAsync(
         int invoiceId,
         int customerId,
         string paymentMethod,
         Func<decimal, Task<bool>> charge,
-        Notifications notification)
+        Notifications notification,
+        DateTime? paidAtUtc = null)
     {
         var usesSqliteGate = _context.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
         if (usesSqliteGate)
+
         {
             await SqliteInvoiceWriteGate.WaitAsync();
         }
@@ -363,6 +394,7 @@ public class InvoiceRepository : IInvoiceRepository
                 UserId = customerId,
                 InvoiceId = invoiceId,
                 Amount = invoice.Total,
+                PaidAtUtc = paidAtUtc ?? DateTime.UtcNow,
                 PaymentMethod = paymentMethod,
                 Status = PaymentStatuses.Success
             });
@@ -424,6 +456,14 @@ public class InvoiceRepository : IInvoiceRepository
                     return false;
                 }
             }
+
+            var current = await GetForPaymentAsync(invoiceId);
+            if (current is null || current.CustomerId != payment.UserId || payment.InvoiceId != invoiceId ||
+                current.Total != payment.Amount || current.Total < 0m ||
+                current.Status is not (InvoiceStatuses.Unpaid or InvoiceStatuses.Overdue)) return false;
+            if (await _context.PaymentRequests.AnyAsync(request => request.InvoiceId == invoiceId &&
+                (request.Status == PaymentRequestStatuses.Creating || request.Status == PaymentRequestStatuses.Pending ||
+                 request.Status == PaymentRequestStatuses.RequiresReview))) return false;
 
             // The condition lives in UPDATE: only one cash or other status transition can win.
             var updated = await _context.Invoices

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/property_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
@@ -24,13 +25,29 @@ class RoomDetailScreen extends StatefulWidget {
 }
 
 class _RoomDetailScreenState extends State<RoomDetailScreen> {
+  final PropertyService _propertyService = PropertyService();
+  late RoomItem _room;
   int _currentImageIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _room = widget.room;
+    _loadDetail();
+  }
+
+  Future<void> _loadDetail() async {
+    try {
+      final detail = await _propertyService.getRoomDetail(widget.room.roomId);
+      if (mounted) setState(() => _room = detail);
+    } catch (_) {}
+  }
 
   void _openViewing() async {
     final success = await ViewingRequestBottomSheet.show(
       context,
       property: widget.property,
-      room: widget.room,
+      room: _room,
     );
     if (success == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -45,13 +62,13 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
   void _goToDeposit() {
     context.push('/deposit', extra: {
       'property': widget.property,
-      'room': widget.room,
+      'room': _room,
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final room = widget.room;
+    final room = _room;
     final prop = widget.property;
 
     return Scaffold(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/property_service.dart';
 import '../data/customer_mock_data.dart';
 import '../models/customer_models.dart';
 import '../widgets/explore_map_view.dart';
@@ -15,9 +16,12 @@ class CustomerExploreScreen extends StatefulWidget {
 }
 
 class _CustomerExploreScreenState extends State<CustomerExploreScreen> {
+  final PropertyService _propertyService = PropertyService();
   final TextEditingController _searchController = TextEditingController();
   bool _isMapView = false;
   String _selectedDistrict = 'Tất cả';
+  List<PropertyItem> _properties = CustomerMockData.properties;
+  bool _isLoading = false;
 
   final List<String> _districts = [
     'Tất cả',
@@ -29,13 +33,36 @@ class _CustomerExploreScreenState extends State<CustomerExploreScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadProperties();
+  }
+
+  Future<void> _loadProperties() async {
+    setState(() => _isLoading = true);
+    try {
+      final list = await _propertyService.getPublicProperties();
+      if (mounted) {
+        setState(() {
+          _properties = list;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
   List<PropertyItem> get _filteredProperties {
-    return CustomerMockData.properties.where((p) {
+    return _properties.where((p) {
       final matchesQuery = _searchController.text.trim().isEmpty ||
           p.propertyName
               .toLowerCase()
@@ -195,39 +222,47 @@ class _CustomerExploreScreenState extends State<CustomerExploreScreen> {
 
           // Main View (List or Map)
           Expanded(
-            child: _isMapView
-                ? ExploreMapView(
-                    properties: properties,
-                    onPropertySelected: _navigateToDetail,
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary),
                   )
-                : properties.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.search_off_rounded,
-                                size: 56, color: AppColors.textMuted),
-                            const SizedBox(height: 12),
-                            Text('Không tìm thấy khu trọ phù hợp.',
-                                style: AppTypography.headingSmall),
-                            const SizedBox(height: 4),
-                            Text('Thử tìm kiếm với từ khóa hoặc quận khác.',
-                                style: AppTypography.bodySmall),
-                          ],
-                        ),
+                : _isMapView
+                    ? ExploreMapView(
+                        properties: properties,
+                        onPropertySelected: _navigateToDetail,
                       )
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: properties.length,
-                        separatorBuilder: (_, _) =>
-                            const SizedBox(height: 16),
-                        itemBuilder: (context, index) {
-                          final prop = properties[index];
-                          return PropertyCardWidget(
-                            property: prop,
-                            onTap: () => _navigateToDetail(prop),
-                          );
-                        },
+                    : RefreshIndicator(
+                        onRefresh: _loadProperties,
+                        color: AppColors.primary,
+                        child: properties.isEmpty
+                            ? Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.search_off_rounded,
+                                        size: 56, color: AppColors.textMuted),
+                                    const SizedBox(height: 12),
+                                    Text('Không tìm thấy khu trọ phù hợp.',
+                                        style: AppTypography.headingSmall),
+                                    const SizedBox(height: 4),
+                                    Text('Thử tìm kiếm với từ khóa hoặc quận khác.',
+                                        style: AppTypography.bodySmall),
+                                  ],
+                                ),
+                              )
+                            : ListView.separated(
+                                padding: const EdgeInsets.all(16),
+                                itemCount: properties.length,
+                                separatorBuilder: (_, _) =>
+                                    const SizedBox(height: 16),
+                                itemBuilder: (context, index) {
+                                  final prop = properties[index];
+                                  return PropertyCardWidget(
+                                    property: prop,
+                                    onTap: () => _navigateToDetail(prop),
+                                  );
+                                },
+                              ),
                       ),
           ),
         ],

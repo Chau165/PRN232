@@ -219,8 +219,11 @@ public class InvoicesApiTests
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var payment = await context.Payments.SingleAsync(item => item.InvoiceId == invoiceId);
+        Assert.NotNull(payment.PaidAtUtc);
         Assert.Equal((10, 355_000m, "MoMo", "Success"), (payment.UserId, payment.Amount, payment.PaymentMethod, payment.Status));
-        Assert.Equal(1, await context.Notifications.CountAsync(notification => notification.UserId == 9 && notification.Type == "Invoice"));
+        var ownerId = await context.Properties.Where(property => property.PropertyId == 1).Select(property => property.OwnerId).SingleAsync();
+        Assert.Equal(1, await context.Notifications.CountAsync(notification => notification.UserId == ownerId && notification.Type == "Invoice"));
+
     }
 
     [Fact]
@@ -281,7 +284,44 @@ public class InvoicesApiTests
         return (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("invoiceId").GetInt32();
     }
 
-    // Hợp đồng bắt đầu hôm nay; chỉ số tháng này 100 -> 150 kWh và 10 -> 14 m3. Giữ phiên Manager đã phân công.
+    [Fact]
+    public async Task Cash_settlement_persists_time_and_retries_do_not_change_it()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        var invoiceId = await CreateInvoiceAsync(client);
+        var before = DateTime.UtcNow;
+        var response = await client.PostAsync($"/api/invoices/{invoiceId}/record-cash", null);
+        var after = DateTime.UtcNow;
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        DateTime paidAt;
+        int paymentId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var payment = await context.Payments.SingleAsync(item => item.InvoiceId == invoiceId);
+            Assert.NotNull(payment.PaidAtUtc);
+            paidAt = payment.PaidAtUtc.Value;
+            paymentId = payment.PaymentId;
+            Assert.InRange(paidAt, before, after);
+            Assert.Equal("Cash", payment.PaymentMethod);
+            Assert.Equal("Success", payment.Status);
+            Assert.Equal("Paid", (await context.Invoices.SingleAsync(item => item.InvoiceId == invoiceId)).Status);
+        }
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await client.PostAsync($"/api/invoices/{invoiceId}/record-cash", null)).StatusCode);
+        await LoginAsync(client, "customer@example.test");
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await client.PostAsJsonAsync($"/api/invoices/{invoiceId}/pay", new { paymentMethod = "MoMo" })).StatusCode);
+        using var verifyScope = factory.Services.CreateScope();
+        var persisted = await verifyScope.ServiceProvider.GetRequiredService<AppDbContext>()
+            .Payments.SingleAsync(item => item.InvoiceId == invoiceId);
+        Assert.Equal(paymentId, persisted.PaymentId);
+        Assert.Equal(paidAt, persisted.PaidAtUtc);
+    }
+
+    // Hợp đồng bắt đầu hôm nay; chỉ số tháng này 100 -> 150 kWh và 10 -> 14 m3. Kết thúc ở tài khoản chủ khu trọ.
+
     private static async Task<int> CreateContractWithReadingAsync(HttpClient client)
     {
         var bookingId = await CreatePaidBookingAsync(client);

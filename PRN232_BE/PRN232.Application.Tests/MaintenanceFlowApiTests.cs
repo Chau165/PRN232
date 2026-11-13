@@ -49,7 +49,7 @@ public class MaintenanceFlowApiTests
             fullName = "New Customer",
             email = "  NEW@example.test ",
             password = Password,
-            phoneNumber = "123",
+            phoneNumber = "0901234567",
             roleId = 3,
             roleName = "Admin",
             isActive = false,
@@ -100,7 +100,7 @@ public class MaintenanceFlowApiTests
             fullName = "Duplicate",
             email = "customer@example.test",
             password = Password,
-            phoneNumber = "123"
+            phoneNumber = "0901234567"
         })).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/auth/login", new
         {
@@ -846,6 +846,7 @@ internal sealed class MaintenanceApiFactory : WebApplicationFactory<MaintenanceR
         }));
         builder.ConfigureTestServices(services =>
         {
+            services.UseSharedTestDataProtection();
             _connection.Open();
             services.RemoveAll<DbContextOptions<AppDbContext>>();
             services.RemoveAll<IMaintenanceReportImageStorage>();

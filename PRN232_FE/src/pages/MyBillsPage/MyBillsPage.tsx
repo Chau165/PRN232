@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react"
+import { Link } from "react-router"
+import { routes } from "@/constants/routes"
+import { recalledInvoicePayment } from "@/utils/invoicePayment"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
 import InvoiceComplaintModal from "@/components/customer/InvoiceComplaintModal"
 import InvoiceDetailDrawer from "@/components/customer/InvoiceDetailDrawer"
@@ -24,7 +27,8 @@ const tabs: Array<[BillTab, string]> = [
 ]
 
 export default function MyBillsPage() {
-  const { accessToken } = useAuth()
+  const { accessToken, user } = useAuth()
+  const recentPayment = user ? recalledInvoicePayment(user.id) : null
   const today = localToday()
   const [tab, setTab] = useState<BillTab>("unpaid")
   const [invoices, setInvoices] = useState<InvoiceDto[]>([])
@@ -146,6 +150,7 @@ export default function MyBillsPage() {
                       Thanh toán
                     </button>
                   )}
+                  {recentPayment?.invoiceId === invoice.invoiceId && <Link to={`${routes.paymentResult}?requestId=${recentPayment.requestId}`} className="rounded-lg border border-[#087775] px-3 py-2.5 text-xs font-bold text-[#087775]">Kiểm tra thanh toán</Link>}
                 </div>
               </div>
             </article>
@@ -189,12 +194,7 @@ export default function MyBillsPage() {
       {paying && (
         <PayInvoiceModal
           invoice={paying}
-          onClose={() => setPaying(null)}
-          onPaid={(paid) => {
-            setInvoices((items) => items.map((item) => (item.invoiceId === paid.invoiceId ? paid : item)))
-            setPaying(null)
-            setToast(`Đã thanh toán hóa đơn tháng ${formatMonth(paid.invoiceMonth)}.`)
-          }}
+          onClose={() => { setPaying(null); setReload(value => value + 1) }}
         />
       )}
       {toast && <Toast message={toast} onClose={() => setToast("")} />}

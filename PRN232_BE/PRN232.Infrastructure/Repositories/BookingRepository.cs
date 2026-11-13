@@ -100,6 +100,10 @@ public class BookingRepository : IBookingRepository
     {
         var instantUtc = asOfUtc.UtcDateTime;
         await using var transaction = await _context.Database.BeginTransactionAsync();
+        await BookingPaymentLock.LockAsync(_context, bookingId);
+        if (await _context.PaymentRequests.AnyAsync(item => item.BookingId == bookingId &&
+            (item.Status == PaymentRequestStatuses.Creating || item.Status == PaymentRequestStatuses.Pending || item.Status == PaymentRequestStatuses.RequiresReview)))
+            return false;
 
         // Điều kiện Pending + còn hạn nằm ngay trong câu UPDATE: hai lần thanh toán chạy song song thì
         // lần sau không còn khớp dòng nào (0 dòng) nên một booking không thể được ghi nhận cọc hai lần.
@@ -129,6 +133,14 @@ public class BookingRepository : IBookingRepository
         int? managerId = null)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
+        await BookingPaymentLock.LockAsync(_context, bookingId);
+        // P6-P10 will provide the refund workflow. Until then, never bypass a real deposit or an uncertain checkout.
+        //NGHIA
+        if (await _context.PaymentRequests.AnyAsync(item => item.BookingId == bookingId &&
+            (item.Status == PaymentRequestStatuses.Creating || item.Status == PaymentRequestStatuses.Pending || item.Status == PaymentRequestStatuses.RequiresReview)) ||
+            await _context.Payments.AnyAsync(item => item.BookingId == bookingId && item.PaymentMethod == PaymentMethods.PayOS && item.Status == PaymentStatuses.Success))
+        { return false; }
+        //NGHIA
         if (_context.Database.IsNpgsql())
         {
             // Tạo hợp đồng cũng khoá dòng booking này, nên huỷ và lập hợp đồng không thể chạy chen nhau.
@@ -158,6 +170,7 @@ public class BookingRepository : IBookingRepository
                 return false;
             }
         }
+
 
         // Chỉ huỷ khi trạng thái vẫn đúng như lúc service kiểm tra: nếu khách vừa thanh toán xong
         // (Pending -> Deposited) thì câu UPDATE không khớp dòng nào và lần huỷ này bị từ chối.

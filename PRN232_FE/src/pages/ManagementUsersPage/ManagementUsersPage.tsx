@@ -5,12 +5,14 @@ import {
   createUser,
   getRoles,
   getUser,
-  getUsers,
+  getUsersPage,
   updateUserRole,
   updateUserStatus,
 } from "@/services/userService"
 import type { RoleDto } from "@/types/user"
+import { DEFAULT_PAGE_SIZE, totalPages } from "@/types/pagination"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
+import { registrationError } from "@/utils/accountValidation"
 import ManagementPage from "@/components/management/ManagementPage"
 import StatusBadge from "@/components/customer/StatusBadge"
 
@@ -30,32 +32,59 @@ export default function ManagementUsersPage() {
   const [form, setForm] = useState(emptyForm)
   const [creating, setCreating] = useState(false)
   const [selectedUser, setSelectedUser] = useState<BackendUserDto | null>(null)
+  const [page, setPage] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const [reload, setReload] = useState(0)
+  const pageCount = totalPages({ pageSize, totalCount })
 
   useEffect(() => {
-    if (!accessToken) return
     let active = true
-    setLoading(true)
-    setError("")
-    void Promise.all([getUsers(accessToken), getRoles()])
-      .then(([userRows, roleRows]) => {
+    void getRoles()
+      .then((roleRows) => {
         if (!active) return
-        setUsers(userRows)
         setRoles(roleRows)
         setForm((previous) => ({ ...previous, roleId: previous.roleId || String(roleRows[0]?.roleId ?? "") }))
       })
       .catch((cause: unknown) => {
-        if (active) setError(cause instanceof Error ? cause.message : "Không thể tải danh sách người dùng.")
-      })
-      .finally(() => {
-        if (active) setLoading(false)
+        if (active) setError(cause instanceof Error ? cause.message : "Không thể tải danh sách role.")
       })
     return () => { active = false }
-  }, [accessToken])
+  }, [])
+
+  useEffect(() => {
+    if (!accessToken) return
+    const controller = new AbortController()
+    setLoading(true)
+    setError("")
+    void getUsersPage(accessToken, { page, pageSize: DEFAULT_PAGE_SIZE }, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return
+        setUsers(result.items)
+        setTotalCount(result.totalCount)
+        setPageSize(result.pageSize)
+        // Page vanished (e.g. last row of the last page changed) — step back to the last real page.
+        const lastPage = totalPages(result)
+        if (result.items.length === 0 && page > lastPage) setPage(lastPage)
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Không thể tải danh sách người dùng.")
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+    return () => controller.abort()
+  }, [accessToken, page, reload])
 
   async function submitCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!accessToken) return
     setError("")
+    const validationError = registrationError(form)
+    if (validationError) {
+      setError(validationError)
+      return
+    }
     setCreating(true)
     try {
       const created = await createUser(accessToken, {
@@ -65,7 +94,8 @@ export default function ManagementUsersPage() {
         password: form.password,
         roleId: Number(form.roleId),
       })
-      setUsers((rows) => [created, ...rows])
+      setSelectedUser(created)
+      setReload((value) => value + 1)
       setForm({ ...emptyForm, roleId: String(roles[0]?.roleId ?? "") })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Không thể tạo tài khoản.")
@@ -115,7 +145,7 @@ export default function ManagementUsersPage() {
           <input required value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} placeholder="Họ và tên" aria-label="Họ và tên người dùng mới" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
           <input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="Email" aria-label="Email người dùng mới" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
           <input required type="tel" value={form.phoneNumber} onChange={(event) => setForm({ ...form, phoneNumber: event.target.value })} placeholder="Số điện thoại" aria-label="Số điện thoại người dùng mới" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-          <input required type="password" minLength={6} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="Mật khẩu tạm" aria-label="Mật khẩu người dùng mới" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+          <input required type="password" minLength={8} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="Mật khẩu tạm" aria-label="Mật khẩu người dùng mới" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
           <div className="flex gap-2">
             <select required aria-label="Role tài khoản mới" value={form.roleId} onChange={(event) => setForm({ ...form, roleId: event.target.value })} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm">
               {roles.map((role) => <option key={role.roleId} value={role.roleId}>{role.roleName}</option>)}
@@ -168,6 +198,13 @@ export default function ManagementUsersPage() {
           </div>
         )}
       </ManagementDataTable>
+      <nav aria-label="Phân trang người dùng" className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+        <span>Trang {page}/{pageCount} · {totalCount} người dùng</span>
+        <div className="flex gap-2">
+          <button type="button" disabled={loading || page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold disabled:opacity-50">Trang trước</button>
+          <button type="button" disabled={loading || page >= pageCount} onClick={() => setPage((value) => value + 1)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold disabled:opacity-50">Trang sau</button>
+        </div>
+      </nav>
     </ManagementPage>
   )
 }

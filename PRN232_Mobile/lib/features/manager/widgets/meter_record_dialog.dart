@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/utility_reading_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../core/widgets/app_button.dart';
@@ -99,7 +100,7 @@ class _MeterRecordSheetState extends State<MeterRecordSheet> {
     }
   }
 
-  void _save() {
+  void _save() async {
     final newE = num.tryParse(_elecController.text);
     final newW = num.tryParse(_waterController.text);
 
@@ -129,7 +130,18 @@ class _MeterRecordSheetState extends State<MeterRecordSheet> {
       widget.reading.meterImage = _meterImage!.path;
     }
 
+    try {
+      await UtilityReadingService().recordReading(
+        contractId: widget.reading.contractId ?? 1,
+        readingMonth: DateTime.now(),
+        electricEnd: newE,
+        waterEnd: newW,
+        roomId: widget.reading.roomId,
+      );
+    } catch (_) {}
+
     widget.onSaved?.call(widget.reading);
+    if (!mounted) return;
     Navigator.pop(context, widget.reading);
   }
 

@@ -30,23 +30,30 @@ class UserModel {
   }
 
   factory UserModel.fromJson(Map<String, dynamic> json, {String? token}) {
+    final userObj = json['user'] is Map<String, dynamic>
+        ? json['user'] as Map<String, dynamic>
+        : json;
+
     return UserModel(
-      id: json['userId'] ?? json['id'] ?? 0,
-      fullName: json['fullName'] ?? json['name'] ?? '',
-      email: json['email'] ?? '',
-      phoneNumber: json['phoneNumber'] ?? json['phone'] ?? '',
-      role: json['role'] ?? AppConstants.roleCustomer,
-      token: token ?? json['token'] ?? json['accessToken'],
+      id: userObj['userId'] ?? userObj['id'] ?? 0,
+      fullName: userObj['fullName'] ?? userObj['name'] ?? '',
+      email: userObj['email'] ?? '',
+      phoneNumber: userObj['phoneNumber'] ?? userObj['phone'] ?? '',
+      role: userObj['roleName'] ?? userObj['role'] ?? AppConstants.roleCustomer,
+      token: token ?? json['accessToken'] ?? json['token'] ?? userObj['token'],
     );
   }
 
   Map<String, dynamic> toJson() => {
         'id': id,
+        'userId': id,
         'fullName': fullName,
         'email': email,
         'phoneNumber': phoneNumber,
         'role': role,
+        'roleName': role,
         if (token != null) 'token': token,
+        if (token != null) 'accessToken': token,
       };
 
   UserModel copyWith({

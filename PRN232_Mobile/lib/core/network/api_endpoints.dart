@@ -23,12 +23,19 @@ class ApiEndpoints {
   // Contracts
   static const String contracts = '/contracts';
   static String contractDetail(int id) => '/contracts/$id';
+  static String contractBillingTimeline(int id) => '/contracts/$id/billing-timeline';
+  static String extendContract(int id) => '/contracts/$id/extend';
+  static String terminateContract(int id) => '/contracts/$id/terminate';
+  static String contractRoomReady(int id) => '/contracts/$id/room-ready';
 
   // Invoices & Complaints
   static const String invoices = '/invoices';
   static String invoiceDetail(int id) => '/invoices/$id';
+  static const String previewInvoice = '/invoices/preview';
   static String payInvoice(int id) => '/invoices/$id/pay';
+  static String recordCashInvoice(int id) => '/invoices/$id/record-cash';
   static const String invoiceComplaints = '/invoice-complaints';
+  static String updateComplaint(int id) => '/invoice-complaints/$id';
 
   // Viewings
   static const String viewingSchedules = '/viewing-schedules';
@@ -38,17 +45,35 @@ class ApiEndpoints {
   // Maintenance & Issues
   static const String maintenanceRequests = '/maintenance-requests';
   static String maintenanceDetail(int id) => '/maintenance-requests/$id';
-  static String approveMaintenance(int id) => '/maintenance-requests/$id/approve';
-  static String completeMaintenance(int id) => '/maintenance-requests/$id/complete';
+  static String maintenanceReports(int id) => '/maintenance-requests/$id/reports';
+  static String maintenanceLogs(int id) => '/maintenance-requests/$id/logs';
+
+  // Identity Documents (CCCD)
+  static const String identityDocuments = '/identity-documents';
+  static const String identityDocumentsMine = '/identity-documents/mine';
+  static String reviewIdentityDocument(int id) => '/identity-documents/$id/review';
+
+  // Equipments
+  static const String equipments = '/equipments';
+  static String equipmentDetail(int id) => '/equipments/$id';
+
+  // Manager: Properties & Rooms
+  static const String propertiesMyManaged = '/properties/my-managed';
+  static const String rooms = '/rooms';
+  static String roomDetail(int id) => '/rooms/$id';
 
   // Utility Readings
   static const String utilityReadings = '/utility-readings';
 
   // Notifications
   static const String notifications = '/notifications';
-  static String markNotificationRead(int id) => '/notifications/$id/read';
-  static const String markAllNotificationsRead = '/notifications/read-all';
+  static String updateNotification(int id) => '/notifications/$id';
 
   // User Profile
   static const String userMe = '/users/me';
+  static const String passwordMe = '/users/me/password';
+
+  // Reports
+  static const String reportsRevenue = '/reports/revenue';
+  static const String reportsReceivables = '/reports/receivables';
 }

@@ -2,6 +2,11 @@
 
 React 19, TypeScript strict, Vite 8, Tailwind CSS v4 và React Router.
 
+Thanh toán hóa đơn Customer đã tích hợp payOS: tạo checkout, theo dõi trạng thái từ BE và trang `/payment-result`.
+Xem [hướng dẫn cấu hình và kiểm thử B11](docs/payos-invoices.md) để đặt URL quay về/hủy trên BE.
+Chạy `npm run test:payos-e2e` để kiểm tra React → BE → SDK payOS kiểm thử → webhook → DB → màn hình báo cáo.
+Xem [phạm vi và nghiệm thu B12](../PRN232_BE/docs/payos-end-to-end-testing.md); bài tự động không chuyển tiền trên tài khoản thật.
+
 ## Chạy local
 
 ```sh

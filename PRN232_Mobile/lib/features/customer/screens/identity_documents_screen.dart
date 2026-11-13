@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/identity_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
@@ -19,6 +21,7 @@ class IdentityDocumentsScreen extends StatefulWidget {
 }
 
 class _IdentityDocumentsScreenState extends State<IdentityDocumentsScreen> {
+  final IdentityService _identityService = IdentityService();
   final ImagePicker _picker = ImagePicker();
   IdentityDocumentModel? _doc;
 
@@ -31,11 +34,28 @@ class _IdentityDocumentsScreenState extends State<IdentityDocumentsScreen> {
   @override
   void initState() {
     super.initState();
-    _doc = CustomerMockData.myIdentityDocument;
+    _doc = AuthState.isCurrentDemo ? CustomerMockData.myIdentityDocument : null;
     if (_doc != null) {
       _nameController.text = _doc!.fullName;
       _idNumberController.text = _doc!.idNumber;
     }
+    _loadDocument();
+  }
+
+  Future<void> _loadDocument() async {
+    try {
+      final docs = await _identityService.getMyDocuments();
+      if (mounted) {
+        setState(() {
+          if (docs.isNotEmpty) {
+            _doc = docs.first;
+            _idNumberController.text = _doc!.idNumber;
+          } else if (!AuthState.isCurrentDemo) {
+            _doc = null;
+          }
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -79,37 +99,29 @@ class _IdentityDocumentsScreenState extends State<IdentityDocumentsScreen> {
     }
 
     setState(() => _isSubmitting = true);
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (!mounted) return;
 
-    final newDoc = IdentityDocumentModel(
-      id: DateTime.now().millisecondsSinceEpoch,
-      fullName: _nameController.text.trim().toUpperCase(),
-      idNumber: _idNumberController.text.trim(),
-      issueDate: DateTime(2022, 5, 10),
-      frontImageUrl: _frontImage != null
-          ? _frontImage!.path
-          : (_doc?.frontImageUrl ?? ''),
-      backImageUrl: _backImage != null
-          ? _backImage!.path
-          : (_doc?.backImageUrl ?? ''),
-      status: 'Pending',
-      uploadedAt: DateTime.now(),
-    );
+    try {
+      final doc = await _identityService.submitDocument(_idNumberController.text.trim());
+      if (!mounted) return;
+      setState(() {
+        _doc = doc;
+        _isSubmitting = false;
+      });
 
-    CustomerMockData.myIdentityDocument = newDoc;
-    setState(() {
-      _doc = newDoc;
-      _isSubmitting = false;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đã gửi hồ sơ định danh CCCD. Quản lý sẽ xác thực trong 24h.'),
-        backgroundColor: AppColors.primary,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã gửi hồ sơ định danh CCCD. Quản lý sẽ xác thực trong 24h.'),
+          backgroundColor: AppColors.primary,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
   }
 
   @override

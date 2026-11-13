@@ -6,9 +6,10 @@ import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementPage from "@/components/management/ManagementPage"
 import PropertyDetailDrawer from "@/components/management/PropertyDetailDrawer"
 import PropertyFormModal from "@/components/management/PropertyFormModal"
+import PropertyThumbnail from "@/components/management/PropertyThumbnail"
 import {
   getMyManagedProperties,
-  getPropertyManagerAssignments,
+  getManagersForProperties,
 } from "@/services/propertyManagerAssignmentService"
 import {
   createProperty,
@@ -62,21 +63,13 @@ export default function ManagementPropertiesPage() {
           return
         }
 
-        const propertyAssignments = await Promise.all(
-          propertyRows.map(
-            async (property) =>
-              [
-                String(property.propertyId),
-                await getPropertyManagerAssignments(
-                  accessToken,
-                  property.propertyId,
-                  signal,
-                ),
-              ] as const,
-          ),
+        const assignments = await getManagersForProperties(
+          accessToken,
+          propertyRows.map((property) => property.propertyId),
+          signal,
         )
         if (signal.aborted) return
-        setAssignmentsByProperty(Object.fromEntries(propertyAssignments))
+        setAssignmentsByProperty(assignments)
       } catch (cause) {
         if (!signal.aborted) setError(getPropertyManagerAssignmentError(cause))
       } finally {
@@ -280,13 +273,16 @@ export default function ManagementPropertiesPage() {
                   key={property.propertyId}
                   className="grid gap-4 px-5 py-5 lg:grid-cols-6 lg:items-center"
                 >
-                  <div className="min-w-0">
-                    <h2 className="font-semibold text-slate-800">
-                      {property.propertyName}
-                    </h2>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Chủ sở hữu: {property.ownerName}
-                    </p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <PropertyThumbnail name={property.propertyName} imageUrl={property.primaryImageUrl} />
+                    <div className="min-w-0">
+                      <h2 className="break-words font-semibold text-slate-800">
+                        {property.propertyName}
+                      </h2>
+                      <p className="mt-1 break-words text-xs text-slate-500">
+                        Chủ sở hữu: {property.ownerName}
+                      </p>
+                    </div>
                   </div>
                   <p className="min-w-0 text-sm text-slate-600">
                     {[
@@ -313,9 +309,6 @@ export default function ManagementPropertiesPage() {
                               <strong className="text-slate-800">
                                 {assignment.managerName}
                               </strong>
-                              <small className="ml-2 break-all text-slate-500">
-                                {assignment.managerEmail}
-                              </small>
                               {!assignment.managerIsActive && (
                                 <small className="ml-2 font-semibold text-rose-700">
                                   Đã khóa

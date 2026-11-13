@@ -28,6 +28,68 @@ public sealed class AmenityPostgreSqlFactAttribute : FactAttribute
 
 public sealed class PublicPropertyListingApiTests
 {
+    [Theory]
+    [InlineData("/api/public/properties?district=", "Quận 7", "Khu vực Quận 7 cũ")]
+    [InlineData("/api/public/properties/by-area?district=", "Quận 7", "Khu vực Quận 7 cũ")]
+    [InlineData("/api/public/properties?district=", "quan 7", "Khu vực Quận 7 cũ")]
+    [InlineData("/api/public/properties/by-area?district=", "quan 7", "Khu vực Quận 7 cũ")]
+    [InlineData("/api/public/properties?district=", "Gò Vấp", "Khu vực Quận Gò Vấp cũ")]
+    [InlineData("/api/public/properties/by-area?district=", "Go Vap", "Khu vực Quận Gò Vấp cũ")]
+    [InlineData("/api/public/properties?district=", "Quận 7", "Quận 7")]
+    [InlineData("/api/public/properties/by-area?district=", "Quận 7", "Quận 7")]
+    public async Task Home_location_search_finds_legacy_district_names(string endpoint, string district, string storedDistrict)
+    {
+        using var factory = new PublicPropertiesApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var property = await context.Properties.SingleAsync(property => property.PropertyId == 1);
+            property.District = storedDistrict;
+            property.City = "Thành phố Hồ Chí Minh";
+            property.Ward = "Tân Thuận";
+            property.Latitude = 10.738m;
+            property.Longitude = 106.728m;
+            var other = await context.Properties.SingleAsync(property => property.PropertyId == 2);
+            other.District = "Khu vực Quận 70 cũ";
+            await context.SaveChangesAsync();
+        }
+
+        using var response = await client.GetAsync(endpoint + Uri.EscapeDataString(district));
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var items = endpoint.Contains("by-area")
+            ? document.RootElement : document.RootElement.GetProperty("items");
+        Assert.Equal(new[] { 1 }, items.EnumerateArray()
+            .Select(property => property.GetProperty("propertyId").GetInt32()));
+    }
+
+    [Theory]
+    [InlineData("/api/public/properties?")]
+    [InlineData("/api/public/properties/by-area?")]
+    public async Task Home_location_search_combines_normalized_city_district_and_ward(string endpoint)
+    {
+        using var factory = new PublicPropertiesApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var property = await context.Properties.SingleAsync(property => property.PropertyId == 1);
+            property.City = "Thành phố Hồ Chí Minh";
+            property.District = "Khu vực Quận 7 cũ";
+            property.Ward = "Tân Thuận";
+            await context.SaveChangesAsync();
+        }
+
+        using var response = await client.GetAsync(endpoint + "city=TP.HCM&district=quan%207&ward=Phuong%20Tan%20Thuan");
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var items = endpoint.Contains("by-area")
+            ? document.RootElement : document.RootElement.GetProperty("items");
+        Assert.Equal(new[] { 1 }, items.EnumerateArray()
+            .Select(property => property.GetProperty("propertyId").GetInt32()));
+    }
+
     [AmenityPostgreSqlFact]
     public async Task Mixed_amenity_search_executes_on_isolated_postgresql_with_correct_counts_and_pagination()
     {
@@ -1091,6 +1153,7 @@ public sealed class PublicPropertyListingApiTests
             });
             builder.ConfigureTestServices(services =>
             {
+                services.UseSharedTestDataProtection();
                 services.RemoveAll<DbContextOptions<AppDbContext>>();
                 services.RemoveAll<TimeProvider>();
                 services.AddSingleton<TimeProvider>(Clock);

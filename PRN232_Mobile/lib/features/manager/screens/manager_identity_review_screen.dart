@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/identity_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
@@ -18,19 +20,39 @@ class ManagerIdentityReviewScreen extends StatefulWidget {
 
 class _ManagerIdentityReviewScreenState
     extends State<ManagerIdentityReviewScreen> {
-  late List<ManagerIdentityReviewModel> _reviews;
+  final IdentityService _identityService = IdentityService();
+  List<ManagerIdentityReviewModel> _reviews = [];
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _reviews = List.from(ManagerMockData.identityReviews);
+    _reviews = AuthState.isCurrentDemo ? List.from(ManagerMockData.identityReviews) : [];
+    _loadReviews();
   }
 
-  void _approve(ManagerIdentityReviewModel item) {
+  Future<void> _loadReviews() async {
+    setState(() => _isLoading = true);
+    try {
+      final list = await _identityService.getManagerReviews();
+      if (mounted) {
+        setState(() {
+          _reviews = list;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _approve(ManagerIdentityReviewModel item) async {
     setState(() {
       item.status = 'Verified';
       item.rejectReason = null;
     });
+    await _identityService.reviewDocument(item.id, 'Approved');
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Đã phê duyệt hồ sơ CCCD của khách ${item.tenantName}!'),
@@ -70,13 +92,15 @@ class _ManagerIdentityReviewScreenState
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () {
+            onPressed: () async {
               final reason = reasonController.text.trim();
               setState(() {
                 item.status = 'Rejected';
                 item.rejectReason = reason.isNotEmpty ? reason : 'Ảnh không hợp lệ';
               });
               Navigator.pop(ctx);
+              await _identityService.reviewDocument(item.id, 'Rejected');
+              if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('Đã từ chối hồ sơ CCCD của ${item.tenantName}.'),
@@ -159,23 +183,27 @@ class _ManagerIdentityReviewScreenState
         backgroundColor: Colors.white,
         elevation: 0,
       ),
-      body: _reviews.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.verified_user_outlined, size: 48, color: AppColors.textMuted),
-                  const SizedBox(height: 12),
-                  Text('Không có hồ sơ nào cần kiểm duyệt',
-                      style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary)),
-                ],
-              ),
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: _reviews.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 14),
-              itemBuilder: (context, index) {
+      body: Column(
+        children: [
+          if (_isLoading) const LinearProgressIndicator(minHeight: 2),
+          Expanded(
+            child: _reviews.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.verified_user_outlined, size: 48, color: AppColors.textMuted),
+                        const SizedBox(height: 12),
+                        Text('Không có hồ sơ nào cần kiểm duyệt',
+                            style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary)),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _reviews.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 14),
+                    itemBuilder: (context, index) {
                 final item = _reviews[index];
                 StatusTone tone = item.isVerified
                     ? StatusTone.green
@@ -264,6 +292,9 @@ class _ManagerIdentityReviewScreenState
                 );
               },
             ),
+          ),
+        ],
+      ),
     );
   }
 }

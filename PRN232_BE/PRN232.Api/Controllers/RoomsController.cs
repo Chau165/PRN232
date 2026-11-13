@@ -6,6 +6,12 @@ using PRN232.Application.Services;
 
 namespace PRN232.Api.Controllers;
 
+public sealed class RoomImageUploadForm
+{
+    public IFormFile? File { get; set; }
+    public bool IsPrimary { get; set; }
+}
+
 [ApiController]
 [Route("api/[controller]")]
 public class RoomsController : ControllerBase
@@ -158,6 +164,59 @@ public class RoomsController : ControllerBase
         }
     }
 
+    [HttpPost("{id:int}/images/upload")]
+    [Authorize(Roles = "Admin,Manager")]
+    [RequestSizeLimit(6 * 1024 * 1024)]
+    public async Task<ActionResult<RoomImageDto>> UploadImage(
+        int id, [FromForm] RoomImageUploadForm form, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (form.File is null || form.File.Length is 0 or > 5 * 1024 * 1024)
+            {
+                throw new RoomValidationException("Vui lòng chọn ảnh có dung lượng từ 1 byte đến 5 MiB.");
+            }
+            using var memory = new MemoryStream((int)form.File.Length);
+            await form.File.CopyToAsync(memory, cancellationToken);
+            var image = await _roomService.UploadImageAsync(
+                id, new RoomImageInput(form.File.FileName, form.File.ContentType, memory.ToArray()),
+                form.IsPrimary, CurrentUserId(), IsAdmin());
+            if (image is null)
+            {
+                return NotFound();
+            }
+            return Ok(image);
+        }
+        catch (RoomForbiddenException exception)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = exception.Message });
+        }
+        catch (RoomValidationException exception)
+        {
+            return BadRequest(new ProblemDetails { Title = "Invalid image", Detail = exception.Message });
+        }
+        catch (RoomImageStorageException exception)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new ProblemDetails { Title = "Image storage unavailable", Detail = exception.Message });
+        }
+    }
+
+    [HttpPut("{id:int}/images/{imageId:int}/primary")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<IActionResult> SetPrimaryImage(int id, int imageId)
+    {
+        try
+        {
+            return await _roomService.SetPrimaryImageAsync(id, imageId, CurrentUserId(), IsAdmin())
+                ? NoContent()
+                : NotFound();
+        }
+        catch (RoomForbiddenException exception)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Forbidden", Detail = exception.Message });
+        }
+    }
+
     [HttpDelete("{id:int}/images/{imageId:int}")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> RemoveImage(int id, int imageId)
@@ -174,6 +233,10 @@ public class RoomsController : ControllerBase
         catch (RoomForbiddenException exception)
         {
             return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "Not the owner", Detail = exception.Message });
+        }
+        catch (RoomImageStorageException exception)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new ProblemDetails { Title = "Image storage unavailable", Detail = exception.Message });
         }
     }
 

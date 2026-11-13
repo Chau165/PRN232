@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/booking_service.dart';
+import '../../../core/services/viewing_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/status_badge.dart';
@@ -15,15 +18,37 @@ class MyBookingsScreen extends StatefulWidget {
 }
 
 class _MyBookingsScreenState extends State<MyBookingsScreen> {
+  final ViewingService _viewingService = ViewingService();
+  final BookingService _bookingService = BookingService();
+
   int _currentTab = 0; // 0: Lịch hẹn xem phòng, 1: Đơn cọc giữ chỗ
-  late List<CustomerViewingModel> _viewings;
-  late List<CustomerBookingModel> _bookings;
+  List<CustomerViewingModel> _viewings = [];
+  List<CustomerBookingModel> _bookings = [];
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _viewings = List.from(CustomerMockData.myViewings);
-    _bookings = List.from(CustomerMockData.myBookings);
+    _viewings = AuthState.isCurrentDemo ? List.from(CustomerMockData.myViewings) : [];
+    _bookings = AuthState.isCurrentDemo ? List.from(CustomerMockData.myBookings) : [];
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    try {
+      final vList = await _viewingService.getCustomerViewings();
+      final bList = await _bookingService.getBookings();
+      if (mounted) {
+        setState(() {
+          _viewings = vList;
+          _bookings = bList;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void _cancelViewing(CustomerViewingModel viewing) {
@@ -40,18 +65,21 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () {
+            onPressed: () async {
+              Navigator.pop(ctx);
               setState(() {
                 viewing.status = 'Cancelled';
               });
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Đã hủy lịch xem phòng thành công.'),
-                  backgroundColor: AppColors.primary,
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+              await _viewingService.rejectViewing(viewing.id, reason: 'Khách tự hủy lịch hẹn');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Đã hủy lịch xem phòng thành công.'),
+                    backgroundColor: AppColors.primary,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
             },
             child: const Text('Hủy cuộc hẹn', style: TextStyle(color: Colors.white)),
           ),
@@ -74,18 +102,21 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () {
+            onPressed: () async {
+              Navigator.pop(ctx);
               setState(() {
                 booking.status = 'Cancelled';
               });
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Đã gửi yêu cầu hủy cọc tới Quản lý.'),
-                  backgroundColor: AppColors.primary,
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+              await _bookingService.cancelBooking(booking.id);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Đã gửi yêu cầu hủy cọc tới Quản lý.'),
+                    backgroundColor: AppColors.primary,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
             },
             child: const Text('Xác nhận hủy', style: TextStyle(color: Colors.white)),
           ),
@@ -120,9 +151,15 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
           const Divider(height: 1),
 
           Expanded(
-            child: _currentTab == 0
-                ? _buildViewingsTab()
-                : _buildBookingsTab(),
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                : RefreshIndicator(
+                    onRefresh: _loadData,
+                    color: AppColors.primary,
+                    child: _currentTab == 0
+                        ? _buildViewingsList()
+                        : _buildBookingsList(),
+                  ),
           ),
         ],
       ),
@@ -135,17 +172,21 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
       child: GestureDetector(
         onTap: () => setState(() => _currentTab = index),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 9),
+          padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected ? AppColors.primary : AppColors.surfaceVariant,
+            color: isSelected ? AppColors.primaryLight : AppColors.surfaceVariant,
             borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected ? AppColors.primary : Colors.transparent,
+            ),
           ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: AppTypography.labelSmall.copyWith(
-              color: isSelected ? Colors.white : AppColors.textSecondary,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          child: Center(
+            child: Text(
+              label,
+              style: AppTypography.labelMedium.copyWith(
+                color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
             ),
           ),
         ),
@@ -153,17 +194,15 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
     );
   }
 
-  // TAB 1: LỊCH XEM PHÒNG
-  Widget _buildViewingsTab() {
+  Widget _buildViewingsList() {
     if (_viewings.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.event_busy_rounded, size: 48, color: AppColors.textMuted),
+            const Icon(Icons.event_busy_outlined, size: 64, color: AppColors.textMuted),
             const SizedBox(height: 12),
-            Text('Bạn chưa có lịch hẹn xem phòng nào',
-                style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary)),
+            Text('Chưa có lịch hẹn xem phòng nào', style: AppTypography.bodyMedium),
           ],
         ),
       );
@@ -172,98 +211,77 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: _viewings.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      separatorBuilder: (context, index) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
-        final viewing = _viewings[index];
-        StatusTone tone;
-        String statusLabel;
-
-        if (viewing.isConfirmed) {
-          tone = StatusTone.green;
-          statusLabel = 'Đã xác nhận';
-        } else if (viewing.isCancelled) {
-          tone = StatusTone.rose;
-          statusLabel = 'Đã hủy';
-        } else {
-          tone = StatusTone.amber;
-          statusLabel = 'Chờ duyệt';
-        }
+        final item = _viewings[index];
+        final isPending = item.isPending;
+        final isConfirmed = item.isConfirmed;
 
         return AppCard(
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryLight,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          viewing.roomCode,
-                          style: AppTypography.labelSmall.copyWith(color: AppColors.primary),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(viewing.propertyName, style: AppTypography.headingSmall),
-                    ],
+                  Text(item.propertyName, style: AppTypography.headingSmall),
+                  StatusBadge(
+                    label: isConfirmed
+                        ? 'Đã duyệt'
+                        : isPending
+                            ? 'Chờ duyệt'
+                            : 'Đã hủy',
+                    tone: isConfirmed
+                        ? StatusTone.green
+                        : isPending
+                            ? StatusTone.amber
+                            : StatusTone.slate,
                   ),
-                  StatusBadge(label: statusLabel, tone: tone),
                 ],
               ),
               const SizedBox(height: 6),
               Row(
                 children: [
-                  const Icon(Icons.location_on_outlined, size: 14, color: AppColors.textMuted),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(viewing.propertyAddress, style: AppTypography.bodySmall),
+                  const Icon(Icons.meeting_room_outlined, size: 16, color: AppColors.primary),
+                  const SizedBox(width: 6),
+                  Text('Phòng ${item.roomCode}', style: AppTypography.labelLarge),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(Icons.access_time_rounded, size: 16, color: AppColors.textMuted),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${item.slotTime} • ${Formatters.formatDate(item.viewingDate)}',
+                    style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryLight,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.access_time_rounded, size: 16, color: AppColors.primary),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${Formatters.formatDate(viewing.viewingDate)} • ${viewing.slotTime}',
-                      style: AppTypography.labelMedium.copyWith(color: AppColors.primary),
-                    ),
-                  ],
-                ),
-              ),
-              if (viewing.note != null && viewing.note!.isNotEmpty) ...[
+              if (item.note != null && item.note!.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                Text('Ghi chú: ${viewing.note}',
-                    style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary)),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceVariant,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Ghi chú: ${item.note}',
+                    style: AppTypography.bodySmall.copyWith(fontStyle: FontStyle.italic),
+                  ),
+                ),
               ],
-              if (!viewing.isCancelled) ...[
+              if (isPending || isConfirmed) ...[
                 const Divider(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.danger,
-                        side: const BorderSide(color: AppColors.danger),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      onPressed: () => _cancelViewing(viewing),
-                      child: const Text('Hủy lịch hẹn'),
-                    ),
-                  ],
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.cancel_outlined, size: 16, color: AppColors.danger),
+                    label: const Text('Hủy lịch hẹn', style: TextStyle(color: AppColors.danger)),
+                    onPressed: () => _cancelViewing(item),
+                  ),
                 ),
               ],
             ],
@@ -273,17 +291,15 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
     );
   }
 
-  // TAB 2: ĐƠN CỌC PHÒNG
-  Widget _buildBookingsTab() {
+  Widget _buildBookingsList() {
     if (_bookings.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.bookmark_remove_rounded, size: 48, color: AppColors.textMuted),
+            const Icon(Icons.receipt_long_outlined, size: 64, color: AppColors.textMuted),
             const SizedBox(height: 12),
-            Text('Bạn chưa có đơn đặt cọc giữ chỗ nào',
-                style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary)),
+            Text('Chưa có đơn đặt cọc nào', style: AppTypography.bodyMedium),
           ],
         ),
       );
@@ -292,100 +308,58 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: _bookings.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      separatorBuilder: (context, index) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
-        final booking = _bookings[index];
-        StatusTone tone;
-        String statusLabel;
-
-        if (booking.status == 'ContractCreated') {
-          tone = StatusTone.green;
-          statusLabel = 'Đã lập hợp đồng';
-        } else if (booking.isConfirmed) {
-          tone = StatusTone.teal;
-          statusLabel = 'Đã xác nhận cọc';
-        } else if (booking.isCancelled) {
-          tone = StatusTone.rose;
-          statusLabel = 'Đã hủy cọc';
-        } else {
-          tone = StatusTone.amber;
-          statusLabel = 'Chờ xác nhận';
-        }
+        final b = _bookings[index];
+        final isConfirmed = b.isConfirmed;
 
         return AppCard(
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryLight,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          booking.roomCode,
-                          style: AppTypography.labelSmall.copyWith(color: AppColors.primary),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(booking.roomTypeName, style: AppTypography.headingSmall),
-                    ],
-                  ),
-                  StatusBadge(label: statusLabel, tone: tone),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text('${booking.propertyName} • ${booking.bookingCode}',
-                  style: AppTypography.bodySmall),
-              const Divider(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Tiền cọc giữ chỗ', style: AppTypography.bodySmall),
-                      Text(
-                        Formatters.formatCurrency(booking.depositAmount),
-                        style: AppTypography.headingSmall.copyWith(color: AppColors.primary),
-                      ),
-                    ],
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text('Ngày dự kiến dọn vào', style: AppTypography.bodySmall),
-                      Text(Formatters.formatDate(booking.moveInDate),
-                          style: AppTypography.labelLarge),
-                    ],
+                  Text(b.bookingCode, style: AppTypography.labelLarge.copyWith(color: AppColors.primary)),
+                  StatusBadge(
+                    label: isConfirmed ? 'Đã cọc' : (b.isPending ? 'Chờ thanh toán' : 'Đã hủy'),
+                    tone: isConfirmed
+                        ? StatusTone.green
+                        : (b.isPending ? StatusTone.amber : StatusTone.slate),
                   ),
                 ],
               ),
               const SizedBox(height: 6),
-              Text(
-                'Thanh toán qua: ${booking.paymentMethod} • Ngày cọc: ${Formatters.formatDate(booking.bookingDate)}',
-                style: AppTypography.bodySmall.copyWith(color: AppColors.textMuted),
+              Text('${b.roomCode} • ${b.propertyName}', style: AppTypography.headingSmall),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Tiền cọc giữ chỗ:', style: AppTypography.bodySmall),
+                  Text(
+                    Formatters.formatCurrency(b.depositAmount),
+                    style: AppTypography.headingSmall.copyWith(color: AppColors.primary),
+                  ),
+                ],
               ),
-              if (booking.status != 'ContractCreated' && !booking.isCancelled) ...[
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Hạn nhận phòng:', style: AppTypography.bodySmall),
+                  Text(Formatters.formatDate(b.moveInDate), style: AppTypography.labelMedium),
+                ],
+              ),
+              if (isConfirmed) ...[
                 const Divider(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.danger,
-                        side: const BorderSide(color: AppColors.danger),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      onPressed: () => _cancelBooking(booking),
-                      child: const Text('Yêu cầu hủy cọc'),
-                    ),
-                  ],
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.undo_rounded, size: 16, color: AppColors.danger),
+                    label: const Text('Yêu cầu hủy cọc', style: TextStyle(color: AppColors.danger)),
+                    onPressed: () => _cancelBooking(b),
+                  ),
                 ),
               ],
             ],

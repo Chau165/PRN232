@@ -22,10 +22,12 @@ public interface IInvoiceRepository
         int customerId,
         string paymentMethod,
         Func<decimal, Task<bool>> charge,
-        Notifications notification);
+        Notifications notification,
+        DateTime? paidAtUtc = null);
     Task<bool> MarkPaidAsync(
         int invoiceId,
         Payments payment,
         Notifications notification,
         int? managerId = null);
+
 }

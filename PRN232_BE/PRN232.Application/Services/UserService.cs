@@ -1,7 +1,11 @@
+using PRN232.Application.Common;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.ReadModels;
 using DomainUser = PRN232.Domain.Entities.Users;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using PRN232.Application.Validation;
 
 namespace PRN232.Application.Services;
 
@@ -9,17 +13,19 @@ public class UserService : IUserService
 {
     private readonly IUserRepository _repository;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly ILogger<UserService> _logger;
 
-    public UserService(IUserRepository repository, IPasswordHasher passwordHasher)
+    public UserService(IUserRepository repository, IPasswordHasher passwordHasher, ILogger<UserService>? logger = null)
     {
         _repository = repository;
         _passwordHasher = passwordHasher;
+        _logger = logger ?? NullLogger<UserService>.Instance;
     }
 
-    public async Task<List<UserDto>> GetAllAsync(int? roleId)
+    public async Task<PagedResult<UserDto>> GetAllAsync(int? roleId, PageRequest page)
     {
-        var users = await _repository.GetAllAsync(roleId);
-        return users.Select(ConvertToDto).ToList();
+        var users = await _repository.GetPagedAsync(roleId, page);
+        return users.Map(ConvertToDto);
     }
 
     public async Task<UserDto?> GetByIdAsync(int id)
@@ -36,17 +42,10 @@ public class UserService : IUserService
     // /api/auth/register (công khai, luôn gán Customer).
     public async Task<UserDto> CreateAsync(CreateUserDto dto)
     {
-        if (string.IsNullOrWhiteSpace(dto.FullName))
+        var validationError = AccountValidation.FirstError(AccountValidation.CreateUser, dto);
+        if (validationError is not null)
         {
-            throw new UserValidationException("Họ tên không được để trống.");
-        }
-        if (string.IsNullOrWhiteSpace(dto.Email) || !dto.Email.Contains('@'))
-        {
-            throw new UserValidationException("Email không hợp lệ.");
-        }
-        if (string.IsNullOrWhiteSpace(dto.Password) || dto.Password.Length < 6)
-        {
-            throw new UserValidationException("Mật khẩu phải có ít nhất 6 ký tự.");
+            throw new UserValidationException(validationError);
         }
         if (!await _repository.RoleExistsAsync(dto.RoleId))
         {
@@ -65,6 +64,7 @@ public class UserService : IUserService
 
         var created = await _repository.AddAsync(user);
         await _repository.SaveChangesAsync();
+        _logger.LogInformation("Admin created user {UserId} with role {RoleId}.", created.UserId, created.RoleId);
 
         return ConvertToDto(await GetUserResponseAsync(created.UserId));
     }
@@ -85,8 +85,11 @@ public class UserService : IUserService
             throw new UserCannotModifySelfException("đổi role");
         }
 
+        var previousRoleId = entity.RoleId;
         entity.RoleId = dto.RoleId;
         await _repository.SaveChangesAsync();
+        _logger.LogInformation("User {UserId} role changed from {PreviousRoleId} to {RoleId} by admin {AdminId}.",
+            id, previousRoleId, dto.RoleId, requestingUserId);
         var updated = await _repository.GetByIdAsync(id);
         if (updated is null)
         {
@@ -109,6 +112,8 @@ public class UserService : IUserService
 
         entity.IsActive = dto.IsActive;
         await _repository.SaveChangesAsync();
+        _logger.LogInformation("User {UserId} {Action} by admin {AdminId}.",
+            id, dto.IsActive ? "activated" : "deactivated", requestingUserId);
         var updated = await _repository.GetByIdAsync(id);
         if (updated is null)
         {
@@ -131,9 +136,10 @@ public class UserService : IUserService
         {
             return null;
         }
-        if (string.IsNullOrWhiteSpace(dto.FullName))
+        var validationError = AccountValidation.FirstError(AccountValidation.UpdateProfile, dto);
+        if (validationError is not null)
         {
-            throw new UserValidationException("Họ tên không được để trống.");
+            throw new UserValidationException(validationError);
         }
 
         ApplyUpdateToEntity(dto, entity);
@@ -162,9 +168,10 @@ public class UserService : IUserService
         {
             throw new UserInvalidCurrentPasswordException();
         }
-        if (string.IsNullOrWhiteSpace(dto.NewPassword) || dto.NewPassword.Length < 6)
+        var validationError = AccountValidation.FirstError(AccountValidation.ChangePassword, dto);
+        if (validationError is not null)
         {
-            throw new UserValidationException("Mật khẩu mới phải có ít nhất 6 ký tự.");
+            throw new UserValidationException(validationError);
         }
 
         entity.PasswordHash = _passwordHasher.Hash(dto.NewPassword);

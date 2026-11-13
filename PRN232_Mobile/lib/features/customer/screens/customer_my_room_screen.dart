@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/rental_service.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../routes/app_routes.dart';
-import '../data/customer_mock_data.dart';
-import '../models/customer_models.dart';
 import '../widgets/report_damage_bottom_sheet.dart';
 
 class CustomerMyRoomScreen extends StatefulWidget {
@@ -18,7 +18,26 @@ class CustomerMyRoomScreen extends StatefulWidget {
 }
 
 class _CustomerMyRoomScreenState extends State<CustomerMyRoomScreen> {
-  final List<EquipmentItem> _equipments = CustomerMockData.myRoomEquipments;
+  final RentalService _rentalService = RentalService();
+  MyRentalData? _rentalData;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRental();
+  }
+
+  Future<void> _loadRental() async {
+    setState(() => _isLoading = true);
+    final data = await _rentalService.getMyActiveRental();
+    if (mounted) {
+      setState(() {
+        _rentalData = data;
+        _isLoading = false;
+      });
+    }
+  }
 
   IconData _getEquipmentIcon(String name) {
     final lower = name.toLowerCase();
@@ -37,7 +56,11 @@ class _CustomerMyRoomScreenState extends State<CustomerMyRoomScreen> {
   }
 
   Future<void> _handleReportDamage() async {
-    final result = await ReportDamageBottomSheet.show(context);
+    final result = await ReportDamageBottomSheet.show(
+      context,
+      contractId: _rentalData?.contract.id,
+      roomCode: _rentalData?.room.roomCode,
+    );
     if (result == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -51,6 +74,68 @@ class _CustomerMyRoomScreenState extends State<CustomerMyRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text('Phòng Của Tôi'),
+          backgroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
+
+    if (_rentalData == null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text('Phòng Của Tôi'),
+          backgroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: const BoxDecoration(
+                    color: AppColors.primaryLight,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.home_work_outlined, size: 40, color: AppColors.primary),
+                ),
+                const SizedBox(height: 16),
+                Text('Bạn chưa có phòng thuê đang hoạt động',
+                    style: AppTypography.headingMedium, textAlign: TextAlign.center),
+                const SizedBox(height: 8),
+                Text(
+                  'Hãy tìm kiếm và đặt lịch xem hoặc cọc phòng trọ ưng ý để theo dõi phòng, thiết bị và biểu phí dịch vụ tại đây.',
+                  style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                AppButton(
+                  text: 'Khám phá phòng trọ ngay',
+                  width: 220,
+                  icon: const Icon(Icons.search, size: 18, color: Colors.white),
+                  onPressed: () => context.go(AppRoutes.customerExplore),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final room = _rentalData!.room;
+    final contract = _rentalData!.contract;
+    final equipments = _rentalData!.equipments;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -65,238 +150,230 @@ class _CustomerMyRoomScreenState extends State<CustomerMyRoomScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Current Room Card
-            AppCard(
-              padding: const EdgeInsets.all(18),
-              color: AppColors.primaryLight,
-              border: const BorderSide(color: Color(0xFFC7E7E2)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
+      body: RefreshIndicator(
+        onRefresh: _loadRental,
+        color: AppColors.primary,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Current Room Card
+                    AppCard(
+                      padding: const EdgeInsets.all(18),
+                      color: AppColors.primaryLight,
+                      border: const BorderSide(color: Color(0xFFC7E7E2)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(Icons.door_front_door_rounded,
-                                color: Colors.white, size: 22),
-                          ),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('Phòng 204 • Tầng 2',
-                                  style: AppTypography.headingLarge),
-                              Text('Nhà trọ Bình An',
-                                  style: AppTypography.bodySmall
-                                      .copyWith(color: AppColors.textSecondary)),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Icon(Icons.door_front_door_rounded,
+                                        color: Colors.white, size: 22),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('${room.roomCode} • Tầng 2',
+                                          style: AppTypography.headingLarge),
+                                      Text(contract.propertyName,
+                                          style: AppTypography.bodySmall
+                                              .copyWith(color: AppColors.textSecondary)),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              const StatusBadge(label: 'Đang thuê'),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              const Icon(Icons.location_on_outlined,
+                                  size: 16, color: AppColors.textMuted),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  contract.propertyAddress.isNotEmpty
+                                      ? contract.propertyAddress
+                                      : '12 Đường Số 5, Phường 17, Gò Vấp, TP.HCM',
+                                  style: AppTypography.bodySmall,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 24),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Thời hạn hợp đồng',
+                                      style: AppTypography.bodySmall),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Đến ${Formatters.formatDate(contract.endDate)}',
+                                    style: AppTypography.headingSmall,
+                                  ),
+                                ],
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text('Tiền phòng/tháng',
+                                      style: AppTypography.bodySmall),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    Formatters.formatCurrency(contract.monthlyRent),
+                                    style: AppTypography.headingSmall
+                                        .copyWith(color: AppColors.primary),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         ],
                       ),
-                      const StatusBadge(label: 'Đang thuê'),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Icon(Icons.location_on_outlined,
-                          size: 16, color: AppColors.textMuted),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          '12 Đường Số 5, Phường 17, Gò Vấp, TP.HCM',
-                          style: AppTypography.bodySmall,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Quick Action: Báo hỏng thiết bị
+                    AppCard(
+                      child: Row(
                         children: [
-                          Text('Thời hạn hợp đồng',
-                              style: AppTypography.bodySmall),
-                          const SizedBox(height: 2),
-                          Text('Đến 31/12/2026',
-                              style: AppTypography.headingSmall),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.warningBg,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.handyman_outlined,
+                                color: AppColors.warning, size: 26),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Sự cố trong phòng?',
+                                    style: AppTypography.labelLarge),
+                                const SizedBox(height: 2),
+                                Text('Gửi hình ảnh và báo hỏng thợ tới sửa',
+                                    style: AppTypography.bodySmall),
+                              ],
+                            ),
+                          ),
+                          AppButton(
+                            text: 'Báo hỏng',
+                            height: 38,
+                            variant: AppButtonVariant.primary,
+                            icon: const Icon(Icons.add_a_photo_outlined,
+                                size: 18, color: Colors.white),
+                            onPressed: _handleReportDamage,
+                          ),
                         ],
                       ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text('Tiền phòng/tháng',
-                              style: AppTypography.bodySmall),
-                          const SizedBox(height: 2),
-                          Text('3.200.000 ₫',
-                              style: AppTypography.headingSmall
-                                  .copyWith(color: AppColors.primary)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Quick Action: Báo hỏng thiết bị
-            AppCard(
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.warningBg,
-                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.handyman_outlined,
-                        color: AppColors.warning, size: 26),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    const SizedBox(height: 24),
+
+                    // Equipment List
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Sự cố trong phòng?',
-                            style: AppTypography.labelLarge),
-                        const SizedBox(height: 2),
-                        Text('Gửi hình ảnh và báo hỏng thợ tới sửa',
-                            style: AppTypography.bodySmall),
-                      ],
-                    ),
-                  ),
-                  AppButton(
-                    text: 'Báo hỏng',
-                    height: 38,
-                    variant: AppButtonVariant.primary,
-                    icon: const Icon(Icons.add_a_photo_outlined,
-                        size: 18, color: Colors.white),
-                    onPressed: _handleReportDamage,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Equipment List
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Trang thiết bị bàn giao',
-                    style: AppTypography.headingMedium),
-                Text('${_equipments.length} món',
-                    style: AppTypography.bodySmall
-                        .copyWith(color: AppColors.textSecondary)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            AppCard(
-              padding: EdgeInsets.zero,
-              child: ListView.separated(
-                physics: const NeverScrollableScrollPhysics(),
-                shrinkWrap: true,
-                itemCount: _equipments.length,
-                separatorBuilder: (context, index) =>
-                    const Divider(height: 1, indent: 64),
-                itemBuilder: (context, index) {
-                  final eq = _equipments[index];
-                  final isGood = eq.status.toLowerCase().contains('tốt') ||
-                      eq.status.toLowerCase().contains('mới');
-
-                  return ListTile(
-                    leading: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceVariant,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        _getEquipmentIcon(eq.name),
-                        color: AppColors.primary,
-                        size: 22,
-                      ),
-                    ),
-                    title: Text(eq.name, style: AppTypography.labelMedium),
-                    subtitle: Text(
-                      'Mã: ${eq.code} • Ngày lắp: ${eq.installedDate}',
-                      style: AppTypography.bodySmall
-                          .copyWith(color: AppColors.textMuted),
-                    ),
-                    trailing: StatusBadge(
-                      label: eq.status,
-                      tone: isGood ? StatusTone.green : StatusTone.amber,
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Recent Maintenance History
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Lịch sử sửa chữa gần đây',
-                    style: AppTypography.headingMedium),
-                TextButton(
-                  onPressed: () => context.push(AppRoutes.customerMaintenance),
-                  child: Text('Xem tất cả →',
-                      style: AppTypography.labelMedium
-                          .copyWith(color: AppColors.primary)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            AppCard(
-              onTap: () => context.push(AppRoutes.customerMaintenance),
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: const BoxDecoration(
-                      color: AppColors.successBg,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.check_rounded,
-                        color: AppColors.success, size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Vệ sinh máy lạnh & bơm gas',
-                            style: AppTypography.labelLarge),
-                        const SizedBox(height: 2),
-                        Text('Hoàn tất ngày 15/10/2026 • Thợ Nguyễn Văn Nam',
+                        Text('Trang thiết bị bàn giao',
+                            style: AppTypography.headingMedium),
+                        Text('${equipments.length} món',
                             style: AppTypography.bodySmall
                                 .copyWith(color: AppColors.textSecondary)),
                       ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    AppCard(
+                      padding: EdgeInsets.zero,
+                      child: ListView.separated(
+                        physics: const NeverScrollableScrollPhysics(),
+                        shrinkWrap: true,
+                        itemCount: equipments.length,
+                        separatorBuilder: (context, index) =>
+                            const Divider(height: 1, indent: 64),
+                        itemBuilder: (context, index) {
+                          final eq = equipments[index];
+                          final isGood = eq.status.toLowerCase().contains('tốt') ||
+                              eq.status.toLowerCase().contains('mới');
+
+                          return ListTile(
+                            leading: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: AppColors.surfaceVariant,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(_getEquipmentIcon(eq.name),
+                                  color: AppColors.primary, size: 20),
+                            ),
+                            title: Text(eq.name, style: AppTypography.labelLarge),
+                            subtitle: Text('Mã: ${eq.code}',
+                                style: AppTypography.bodySmall
+                                    .copyWith(color: AppColors.textMuted)),
+                            trailing: StatusBadge(
+                              label: eq.status,
+                              tone: isGood ? StatusTone.green : StatusTone.amber,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Living Costs / Services Info
+                    Text('Biểu phí dịch vụ tòa nhà',
+                        style: AppTypography.headingMedium),
+                    const SizedBox(height: 12),
+                    AppCard(
+                      child: Column(
+                        children: [
+                          _buildCostRow('Điện sinh hoạt', '3.800 ₫', 'kWh (theo công tơ riêng)'),
+                          const Divider(height: 16),
+                          _buildCostRow('Nước sinh hoạt', '20.000 ₫', 'm³ (theo đồng hồ)'),
+                          const Divider(height: 16),
+                          _buildCostRow('Phí dịch vụ & Quản lý', '150.000 ₫', 'phòng / tháng (Rác, vệ sinh)'),
+                          const Divider(height: 16),
+                          _buildCostRow('Internet WiFi tốc độ cao', 'Miễn phí', 'toàn tòa nhà'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 20),
+    );
+  }
+
+  Widget _buildCostRow(String title, String price, String unit) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: AppTypography.bodyMedium),
+            Text(unit, style: AppTypography.bodySmall.copyWith(color: AppColors.textMuted)),
           ],
         ),
-      ),
+        Text(price, style: AppTypography.labelLarge.copyWith(color: AppColors.primary)),
+      ],
     );
   }
 }

@@ -22,10 +22,12 @@ export default function CreateContractPage() {
 
   return (
     <ManagementPage title="Tạo hợp đồng" description="Kiểm tra thông tin booking đã đặt cọc và chọn thời hạn hợp đồng.">
-      <Link to={routes.managementBookings} className="mb-5 inline-block text-sm font-semibold text-[#087775] hover:underline">
-        ← Về Đặt phòng & Đặt cọc
-      </Link>
-      {bookingId ? <CreateContractForm bookingId={bookingId} /> : <Warning message="Không tìm thấy booking cần lập hợp đồng." />}
+      <div className="mx-auto w-full max-w-3xl">
+        <Link to={routes.managementBookings} className="mb-5 inline-block text-sm font-semibold text-[#087775] hover:underline">
+          ← Về Đặt phòng & Đặt cọc
+        </Link>
+        {bookingId ? <CreateContractForm bookingId={bookingId} /> : <Warning message="Không tìm thấy booking cần lập hợp đồng." />}
+      </div>
     </ManagementPage>
   )
 }

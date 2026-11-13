@@ -1,14 +1,19 @@
 import ManagementDetailDrawer from "@/components/management/ManagementDetailDrawer"
+import RoomImagesManager from "@/components/management/RoomImagesManager"
 import type { ManagementRoomDto } from "@/types/managementRoom"
 
 type RoomDetailDrawerProps = {
   room: ManagementRoomDto
   onClose: () => void
+  accessToken: string
+  onImagesChanged: () => void
 }
 
 export default function RoomDetailDrawer({
   room,
   onClose,
+  accessToken,
+  onImagesChanged,
 }: RoomDetailDrawerProps) {
   return (
     <ManagementDetailDrawer
@@ -43,6 +48,12 @@ export default function RoomDetailDrawer({
           <strong>{room.status}</strong>
         </p>
       </div>
+      <RoomImagesManager
+        key={room.roomId}
+        accessToken={accessToken}
+        roomId={room.roomId}
+        onImagesChanged={onImagesChanged}
+      />
     </ManagementDetailDrawer>
   )
 }

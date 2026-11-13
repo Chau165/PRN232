@@ -95,6 +95,28 @@ function renderMapSection() {
 }
 
 describe("public area map section", () => {
+  it("shows Quận 7 properties as map markers using local data even while geocoding is unavailable", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input) => {
+      const url = new URL(String(input), window.location.origin)
+      if (url.pathname === "/api/public/properties/by-area" && url.searchParams.get("district") === "Quận 7") {
+        return jsonResponse([property(42, {
+          propertyName: "Tân Thuận Residence", district: "Khu vực Quận 7 cũ",
+          latitude: 10.738, longitude: 106.728,
+        })])
+      }
+      throw new Error("Geocoding unavailable")
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    renderMapSection()
+    fireEvent.change(screen.getByLabelText("Bạn muốn tìm khu trọ ở đâu?"), { target: { value: "Quận 7" } })
+    fireEvent.click(screen.getByRole("button", { name: "Tìm trên bản đồ" }))
+
+    expect(await screen.findByRole("heading", { name: "Khu trọ tại Quận 7" })).toBeTruthy()
+    expect(await screen.findByRole("button", { name: "Bản đồ: Tân Thuận Residence" })).toBeTruthy()
+    expect(screen.getByTestId("area-map").getAttribute("data-property-count")).toBe("1")
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it("searches a typed place without requesting the user's location", async () => {
     const getCurrentPosition = vi.fn()
 

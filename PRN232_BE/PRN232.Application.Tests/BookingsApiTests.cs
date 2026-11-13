@@ -201,6 +201,7 @@ public class BookingsApiTests
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var payment = await context.Payments.SingleAsync();
+        Assert.NotNull(payment.PaidAtUtc);
         Assert.Equal((10, (int?)bookingId, 3_000_000m, "MoMo", "Success"),
             (payment.UserId, payment.BookingId, payment.Amount, payment.PaymentMethod, payment.Status));
         var notifications = await context.Notifications.OrderBy(notification => notification.NotificationId).ToListAsync();
@@ -409,6 +410,7 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
         }));
         builder.ConfigureTestServices(services =>
         {
+            services.UseSharedTestDataProtection();
             _connection.Open();
             services.RemoveAll<DbContextOptions<AppDbContext>>();
             services.AddDbContext<AppDbContext>(options => options.UseSqlite(_connection));

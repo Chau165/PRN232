@@ -4,6 +4,8 @@ namespace PRN232.Application.Interfaces;
 
 public interface IPropertyService
 {
+    Task<PropertyServiceRateDto> CreateServiceRateAsync(int id, CreatePropertyServiceRateDto dto, CancellationToken cancellationToken);
+    Task<List<PropertyServiceRateDto>?> GetServiceRatesAsync(int id, DateOnly? month, int requestingUserId, bool isAdmin, CancellationToken cancellationToken);
     Task<List<PropertyDto>> GetAllAsync(int? ownerId, int? managerId);
     Task<PropertyDto?> GetByIdAsync(int id, int requestingUserId, bool isManager);
     Task<PropertyDto> CreateAsync(

@@ -2,7 +2,10 @@ using System.Net;
 using System.Security.Claims;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpLogging;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
@@ -21,14 +24,47 @@ using PRN232.Api.Swagger;
 using PRN232.Infrastructure.Storage;
 using PRN232.Infrastructure.Geocoding;
 using PRN232.Infrastructure.PaymentGateways;
+using PRN232.Api.Configuration;
 using PRN232.Api.Hubs;
 using PRN232.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddPayOSConfiguration(builder.Configuration, builder.Environment);
+builder.Services.AddPayOSPayoutConfiguration(builder.Configuration);
+
+// ---- Logging (A11) ----
+// Production (Railway) in mỗi log thành một dòng JSON để lọc theo level, category, UserId...
+// Development giữ console dạng chữ cho dễ đọc; môi trường Testing không đổi gì.
+if (builder.Environment.IsProduction())
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.AddJsonConsole(options =>
+    {
+        options.UseUtcTimestamp = true;
+        options.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
+        options.JsonWriterOptions = new JsonWriterOptions { Indented = false };
+    });
+}
+
+// Một dòng log cho mỗi request: method, path, status, thời gian xử lý. Cố ý KHÔNG ghi header
+// (Authorization), query string (access_token của SignalR) hay body (mật khẩu, CCCD).
+builder.Services.AddHttpLogging(options =>
+{
+    options.LoggingFields = HttpLoggingFields.RequestMethod | HttpLoggingFields.RequestPath |
+                            HttpLoggingFields.ResponseStatusCode | HttpLoggingFields.Duration;
+    options.CombineLogs = true;
+});
 
 // ---- Database: Supabase Postgres via Npgsql ----
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// ---- A9: mã hóa số CCCD ----
+// Key ring của Data Protection lưu trong bảng DataProtectionKeys (cùng DB) để không mất key mỗi
+// lần Railway redeploy container — mất key = không giải mã được CCCD đã lưu.
+builder.Services.AddDataProtection()
+    .SetApplicationName("PRN232")
+    .PersistKeysToDbContext<AppDbContext>();
 
 // ---- CORS: chỉ origin của FE ----
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
@@ -77,6 +113,24 @@ var jwtSettings = new JwtSettings
     ExpiryMinutes = builder.Configuration.GetValue<int?>("Jwt:ExpiryMinutes") ?? 120,
 };
 builder.Services.AddSingleton(jwtSettings);
+
+// ---- A9: Khóa HMAC cho "blind index" CCCDNumberHash (kiểm tra trùng CCCD mà không cần giải mã).
+// Production bắt buộc đặt biến môi trường IdentityDocuments__CccdHashKey (>= 32 ký tự ngẫu nhiên)
+// và KHÔNG được đổi sau khi đã có dữ liệu, nếu không kiểm tra trùng sẽ sai.
+var cccdHashKey = builder.Configuration["IdentityDocuments:CccdHashKey"];
+if (string.IsNullOrWhiteSpace(cccdHashKey) ||
+    Encoding.UTF8.GetByteCount(cccdHashKey) < HmacCccdHasher.MinimumKeyBytes)
+{
+    if (builder.Environment.IsProduction())
+    {
+        throw new InvalidOperationException(
+            "IdentityDocuments:CccdHashKey chưa được cấu hình. Đặt biến môi trường " +
+            "IdentityDocuments__CccdHashKey là một chuỗi ngẫu nhiên dài ít nhất 32 ký tự.");
+    }
+    cccdHashKey = "DEV_ONLY_CCCD_HASH_KEY_NEVER_USE_IN_PRODUCTION";
+}
+builder.Services.AddSingleton<ICccdHasher>(new HmacCccdHasher(Encoding.UTF8.GetBytes(cccdHashKey)));
+builder.Services.AddScoped<IdentityDocumentEncryptionBackfill>();
 
 builder.Services.AddAuthentication(options =>
 {
@@ -131,6 +185,9 @@ builder.Services.AddAuthentication(options =>
             var user = await users.GetByIdAsync(userId);
             if (user is null || !user.IsActive)
             {
+                context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("PRN232.Api.Authentication")
+                    .LogWarning("Rejected token for user {UserId}: account does not exist or is inactive.", userId);
                 context.Fail("Tài khoản không tồn tại hoặc đã bị khoá.");
                 return;
             }
@@ -167,6 +224,17 @@ builder.Services.AddRateLimiter(options =>
             httpContext.User.FindFirst("sub")?.Value is { Length: > 0 } userId
                 ? $"user:{userId}"
                 : ClientIpPartitionKey(httpContext),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromMinutes(1),
+                PermitLimit = 10,
+                QueueLimit = 0
+            }));
+    // A10: chặn spam tạo tài khoản. Rộng hơn LoginPolicy vì khi A7 chưa sửa, trên Railway
+    // mọi request đi qua proxy có cùng IP nên hạn mức này đang tính chung cho mọi người.
+    options.AddPolicy("RegisterPolicy", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ClientIpPartitionKey(httpContext),
             _ => new FixedWindowRateLimiterOptions
             {
                 Window = TimeSpan.FromMinutes(1),
@@ -217,6 +285,7 @@ builder.Services.AddScoped<INotificationRealtimePublisher, NotificationRealtimeP
 builder.Services.AddSignalR();
 builder.Services.AddHttpClient<IMaintenanceReportImageStorage, SupabaseMaintenanceReportImageStorage>();
 builder.Services.AddHttpClient<IPropertyImageStorage, SupabasePropertyImageStorage>();
+builder.Services.AddHttpClient<IRoomImageStorage, SupabaseRoomImageStorage>();
 builder.Services.AddHttpClient<IPropertyGeocodingService, NominatimPropertyGeocodingService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -257,6 +326,8 @@ builder.Services.AddScoped<IEquipmentRepository, EquipmentRepository>();
 builder.Services.AddScoped<IEquipmentService, EquipmentService>();
 builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 builder.Services.AddScoped<IBookingService, BookingService>();
+builder.Services.AddScoped<IBookingPaymentLinkRepository, BookingPaymentLinkRepository>();
+builder.Services.AddScoped<IBookingPaymentLinkService, BookingPaymentLinkService>();
 builder.Services.AddScoped<IPaymentGateway, MockPaymentGateway>();
 builder.Services.AddScoped<IViewingScheduleRepository, ViewingScheduleRepository>();
 builder.Services.AddScoped<IViewingScheduleService, ViewingScheduleService>();
@@ -266,6 +337,27 @@ builder.Services.AddScoped<IUtilityReadingRepository, UtilityReadingRepository>(
 builder.Services.AddScoped<IUtilityReadingService, UtilityReadingService>();
 builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
+builder.Services.AddScoped<ICashCheckoutRepository, CashCheckoutRepository>();
+builder.Services.AddScoped<ICashCheckoutCoordinator, CashCheckoutCoordinator>();
+builder.Services.AddScoped<IPaymentReviewRepository, PaymentReviewRepository>();
+builder.Services.AddScoped<IPaymentReviewService, PaymentReviewService>();
+builder.Services.AddScoped<IInvoicePaymentLinkRepository, InvoicePaymentLinkRepository>();
+builder.Services.AddScoped<IPaymentRequestStatusRepository, PaymentRequestStatusRepository>();
+builder.Services.AddScoped<IPaymentRequestStatusService, PaymentRequestStatusService>();
+builder.Services.AddScoped<IPayOSWebhookRepository, PayOSWebhookRepository>();
+builder.Services.AddScoped<IPayOSWebhookService, PayOSWebhookService>();
+builder.Services.AddScoped<IPaymentReconciliationRepository, PaymentReconciliationRepository>();
+builder.Services.AddScoped<IPaymentReconciliationService, PaymentReconciliationService>();
+builder.Services.AddSingleton(provider => provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PayOSSettings>>().Value);
+builder.Services.AddHostedService<PRN232.Api.Workers.PaymentReconciliationWorker>();
+builder.Services.AddScoped<IInvoicePaymentLinkService>(provider => new InvoicePaymentLinkService(
+    provider.GetRequiredService<IInvoicePaymentLinkRepository>(), provider.GetRequiredService<IInvoiceCheckoutGateway>(),
+    provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PayOSSettings>>().Value,
+    provider.GetRequiredService<TimeProvider>()));
+builder.Services.AddScoped<IReceivablesRepository, ReceivablesRepository>();
+builder.Services.AddScoped<IReceivablesService, ReceivablesService>();
+builder.Services.AddScoped<IRevenueRepository, RevenueRepository>();
+builder.Services.AddScoped<IRevenueService, RevenueService>();
 builder.Services.AddScoped<IInvoiceComplaintRepository, InvoiceComplaintRepository>();
 builder.Services.AddScoped<IInvoiceComplaintService, InvoiceComplaintService>();
 
@@ -296,11 +388,17 @@ builder.Services.AddSwaggerGen(options =>
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+app.UseHttpLogging();
 
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.UseHttpsRedirection();
+// Local Vite proxies /api to HTTP port 5102. Redirecting that request to
+// HTTPS would bypass the proxy and require browser certificate/CORS setup.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 app.UseCors("FrontendPolicy");
 // Rate limiter đứng sau UseAuthentication để BookingPolicy đọc được user từ token.
 app.UseAuthentication();
@@ -311,6 +409,28 @@ app.MapHub<NotificationHub>("/hubs/notifications", options =>
 {
     options.CloseOnAuthenticationExpiration = true;
 });
+
+// A9: mã hóa các hồ sơ CCCD cũ còn plaintext (chỉ đụng các dòng chưa có CCCDNumberHash, chạy lại
+// nhiều lần vẫn an toàn). Test tự gọi backfill trực tiếp nên bỏ qua ở môi trường Testing.
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var encrypted = await scope.ServiceProvider
+            .GetRequiredService<IdentityDocumentEncryptionBackfill>()
+            .RunAsync();
+        if (encrypted > 0)
+        {
+            app.Logger.LogInformation("Encrypted {Count} legacy identity document(s).", encrypted);
+        }
+    }
+    catch (Exception exception)
+    {
+        // Không chặn khởi động: các dòng cũ vẫn đọc được, lần khởi động sau sẽ thử lại.
+        app.Logger.LogError(exception, "Identity document encryption backfill failed.");
+    }
+}
 
 app.Run();
 

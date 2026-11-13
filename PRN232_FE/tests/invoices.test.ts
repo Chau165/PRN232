@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
-import { createInvoice, getInvoices, payInvoice, previewInvoice, recordCashPayment } from "@/services/invoiceService"
+import { createInvoice, getInvoices, previewInvoice, recordCashPayment } from "@/services/invoiceService"
+import { createInvoicePaymentLink, getPaymentRequest } from "@/services/invoicePaymentService"
 import { createUtilityReading, getUtilityReadings } from "@/services/utilityReadingService"
 import { defaultDueDate, formatMonth, invoiceLineLabel, invoiceStatusDisplay } from "@/utils/invoiceDisplay"
 
@@ -34,15 +35,18 @@ describe("Invoice and meter reading API clients", () => {
 })
 
 describe("Invoice payment API clients", () => {
-  it("sends only the payment method; the server decides the amount", async () => {
+  it("creates a payOS link without client amounts and reads server status", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => response({}))
-    await payInvoice("token", 5, "MoMo")
+    await createInvoicePaymentLink("token", 5)
     await recordCashPayment("token", 5)
 
     expect(fetchMock.mock.calls.map(([url, init]) => `${init?.method} ${String(url).replace(/^.*\/api/, "/api")}`))
-      .toEqual(["POST /api/invoices/5/pay", "POST /api/invoices/5/record-cash"])
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ paymentMethod: "MoMo" })
+      .toEqual(["POST /api/invoices/5/payment-link", "POST /api/invoices/5/record-cash"])
+    expect(fetchMock.mock.calls[0][1]?.body).toBeUndefined()
     expect(fetchMock.mock.calls[1][1]?.body).toBeUndefined()
+    await getPaymentRequest("token", 12)
+    expect(String(fetchMock.mock.calls[2][0])).toMatch(/\/payment-requests\/12$/)
+    expect(fetchMock.mock.calls[2][1]?.cache).toBe("no-store")
   })
 })
 

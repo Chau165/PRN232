@@ -1,0 +1,22 @@
+# .gitignore chung cho cả repo. Mỗi project (PRN232_BE, PRN232_FE, PRN232_Mobile) vẫn có
+# .gitignore riêng; file này bắt các thư mục build nằm ngoài các project đó (vd. outputs/).
+
+# .NET build output ở mọi cấp thư mục
+bin/
+obj/
+
+# Kết quả test / coverage
+TestResults/
+*.trx
+coverage.cobertura.xml
+
+# IDE / OS
+.vs/
+.idea/
+*.user
+.DS_Store
+Thumbs.db
+
+# Secrets — không bao giờ commit
+.env
+**/secrets.json

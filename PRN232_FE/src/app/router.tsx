@@ -62,6 +62,7 @@ import DepositPage from "@/pages/DepositPage/DepositPage"
 import ViewingRequestPage from "@/pages/ViewingRequestPage/ViewingRequestPage"
 
 import PaymentSuccessPage from "@/pages/PaymentSuccessPage/PaymentSuccessPage"
+import InvoicePaymentResultPage from "@/pages/InvoicePaymentResultPage/InvoicePaymentResultPage"
 
 import { routes } from "@/constants/routes"
 
@@ -87,6 +88,7 @@ function AppLayout() {
 function guestElement(element: ReactNode) {
   return <GuestOnlyRoute>{element}</GuestOnlyRoute>
 }
+
 
 export const router = createBrowserRouter([
   {
@@ -221,3 +223,4 @@ export const router = createBrowserRouter([
     ],
   },
 ])
+

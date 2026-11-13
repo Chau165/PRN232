@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/invoice_service.dart';
+import '../../../core/services/utility_reading_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
@@ -17,9 +20,13 @@ class ManagerBillingScreen extends StatefulWidget {
 }
 
 class _ManagerBillingScreenState extends State<ManagerBillingScreen> {
+  final UtilityReadingService _utilityService = UtilityReadingService();
+  final InvoiceService _invoiceService = InvoiceService();
+
   int _currentTab = 0; // 0: Ghi số điện nước, 1: Hóa đơn & Thu tiền
-  late List<MeterReadingModel> _meterReadings;
-  late List<ManagerInvoiceModel> _invoices;
+  List<MeterReadingModel> _meterReadings = [];
+  List<ManagerInvoiceModel> _invoices = [];
+  bool _isLoading = false;
 
   int _selectedInvoiceFilterIndex = 0; // 0: Tất cả, 1: Chưa thu, 2: Đã thu, 3: Quá hạn
   final List<String> _invoiceFilters = [
@@ -32,8 +39,26 @@ class _ManagerBillingScreenState extends State<ManagerBillingScreen> {
   @override
   void initState() {
     super.initState();
-    _meterReadings = List.from(ManagerMockData.meterReadings);
-    _invoices = List.from(ManagerMockData.invoices);
+    _meterReadings = AuthState.isCurrentDemo ? List.from(ManagerMockData.meterReadings) : [];
+    _invoices = AuthState.isCurrentDemo ? List.from(ManagerMockData.invoices) : [];
+    _loadBillingData();
+  }
+
+  Future<void> _loadBillingData() async {
+    setState(() => _isLoading = true);
+    try {
+      final readings = await _utilityService.getReadings();
+      final invoices = await _invoiceService.getManagerInvoices();
+      if (mounted) {
+        setState(() {
+          _meterReadings = readings;
+          _invoices = invoices;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   int get _recordedCount => _meterReadings.where((r) => r.isRecorded).length;
@@ -66,11 +91,13 @@ class _ManagerBillingScreenState extends State<ManagerBillingScreen> {
     );
   }
 
-  void _collectCash(ManagerInvoiceModel invoice) {
+  void _collectCash(ManagerInvoiceModel invoice) async {
     setState(() {
       invoice.status = 'Paid';
       invoice.paymentMethod = 'Tiền mặt (Đã thu)';
     });
+    await _invoiceService.recordCash(invoice.invoiceId);
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -153,6 +180,7 @@ class _ManagerBillingScreenState extends State<ManagerBillingScreen> {
               ],
             ),
           ),
+          if (_isLoading) const LinearProgressIndicator(minHeight: 2),
           const Divider(height: 1),
 
           Expanded(

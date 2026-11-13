@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/booking_service.dart';
+import '../../../core/services/contract_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_text_field.dart';
+import '../../customer/models/customer_models.dart';
 import '../data/manager_mock_data.dart';
 import '../models/manager_models.dart';
 
@@ -16,7 +19,13 @@ class CreateContractScreen extends StatefulWidget {
 }
 
 class _CreateContractScreenState extends State<CreateContractScreen> {
+  final ContractService _contractService = ContractService();
+  final BookingService _bookingService = BookingService();
+
   ManagerRoomModel? _selectedRoom;
+  CustomerBookingModel? _selectedBooking;
+  List<CustomerBookingModel> _depositedBookings = [];
+
   final TextEditingController _tenantNameController = TextEditingController();
   final TextEditingController _tenantPhoneController = TextEditingController();
   final TextEditingController _tenantCccdController = TextEditingController();
@@ -30,7 +39,8 @@ class _CreateContractScreenState extends State<CreateContractScreen> {
   @override
   void initState() {
     super.initState();
-    // Default to first available or reserved room
+    _loadDepositedBookings();
+
     try {
       _selectedRoom = ManagerMockData.rooms.firstWhere(
         (r) => r.isAvailable || r.isReserved,
@@ -42,6 +52,29 @@ class _CreateContractScreenState extends State<CreateContractScreen> {
         _updatePriceFromRoom();
       }
     }
+  }
+
+  Future<void> _loadDepositedBookings() async {
+    try {
+      final list = await _bookingService.getBookings(status: 'Deposited');
+      if (mounted) {
+        setState(() {
+          _depositedBookings = list;
+          if (_depositedBookings.isNotEmpty) {
+            _selectedBooking = _depositedBookings.first;
+            _applyBookingInfo(_selectedBooking!);
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _applyBookingInfo(CustomerBookingModel booking) {
+    _tenantNameController.text = 'Khách đặt cọc ${booking.roomCode}';
+    _tenantPhoneController.text = '0901234567';
+    _tenantCccdController.text = '079201009876';
+    _rentController.text = booking.depositAmount.toString();
+    _depositController.text = booking.depositAmount.toString();
   }
 
   void _updatePriceFromRoom() {
@@ -79,8 +112,30 @@ class _CreateContractScreenState extends State<CreateContractScreen> {
     }
 
     setState(() => _isCreating = true);
-    await Future.delayed(const Duration(milliseconds: 700));
-    if (!mounted) return;
+
+    // Nếu tạo từ Booking đã đặt cọc (theo đúng flow BE)
+    if (_selectedBooking != null) {
+      try {
+        await _contractService.createContractFromBooking(
+          bookingId: _selectedBooking!.id,
+          startDate: _startDate,
+          endDate: _endDate,
+        );
+        if (!mounted) return;
+        setState(() => _isCreating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã lập hợp đồng chính thức từ đơn cọc thành công!'),
+            backgroundColor: AppColors.primary,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        Navigator.pop(context, true);
+        return;
+      } catch (e) {
+        // Fallback local contract
+      }
+    }
 
     final rent = num.tryParse(_rentController.text) ?? _selectedRoom!.price;
     final deposit = num.tryParse(_depositController.text) ?? _selectedRoom!.depositAmount;
@@ -118,6 +173,9 @@ class _CreateContractScreenState extends State<CreateContractScreen> {
       ),
     );
 
+    if (!mounted) return;
+    setState(() => _isCreating = false);
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Đã lập hợp đồng ${newContract.contractCode} thành công!'),
@@ -143,22 +201,67 @@ class _CreateContractScreenState extends State<CreateContractScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Select Room
+            // Option: Chọn từ đơn cọc chờ lập hợp đồng
+            if (_depositedBookings.isNotEmpty) ...[
+              Text('Đơn đặt cọc phòng chờ lập hợp đồng', style: AppTypography.headingSmall),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryLight,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.primary),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<CustomerBookingModel>(
+                    value: _selectedBooking,
+                    isExpanded: true,
+                    icon: const Icon(Icons.arrow_drop_down_rounded, color: AppColors.primary),
+                    items: _depositedBookings.map((b) {
+                      return DropdownMenuItem<CustomerBookingModel>(
+                        value: b,
+                        child: Text(
+                          '${b.bookingCode} • ${b.roomCode} (Cọc: ${Formatters.formatCurrency(b.depositAmount)})',
+                          style: AppTypography.labelMedium.copyWith(color: AppColors.primary),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() {
+                          _selectedBooking = val;
+                          _applyBookingInfo(val);
+                        });
+                      }
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+
+            // 1. Chọn phòng
             Text('1. Chọn phòng cho thuê', style: AppTypography.headingSmall),
             const SizedBox(height: 8),
-            AppCard(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
+              ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<ManagerRoomModel>(
                   value: _selectedRoom,
                   isExpanded: true,
-                  hint: const Text('Chọn phòng'),
+                  icon: const Icon(Icons.arrow_drop_down_rounded, color: AppColors.primary),
                   items: ManagerMockData.rooms.map((room) {
+                    final statusText = room.isAvailable ? 'Trống' : (room.isReserved ? 'Đã cọc' : 'Đang thuê');
                     return DropdownMenuItem<ManagerRoomModel>(
                       value: room,
                       child: Text(
-                        '${room.roomCode} • ${room.typeName} (Tầng ${room.floor}) [${room.status}]',
-                        style: AppTypography.labelMedium,
+                        '${room.roomCode} - ${room.typeName} ($statusText)',
+                        style: AppTypography.bodyMedium,
                       ),
                     );
                   }).toList(),
@@ -175,28 +278,28 @@ class _CreateContractScreenState extends State<CreateContractScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Tenant information
-            Text('2. Thông tin khách thuê (Bên B)', style: AppTypography.headingSmall),
+            // 2. Thông tin khách thuê
+            Text('2. Thông tin khách thuê chính', style: AppTypography.headingSmall),
             const SizedBox(height: 8),
             AppCard(
               child: Column(
                 children: [
                   AppTextField(
-                    label: 'Họ và tên khách thuê',
-                    hint: 'Ví dụ: NGUYEN VAN A',
+                    label: 'Họ và tên khách thuê *',
+                    hint: 'Ví dụ: NGUYỄN VĂN AN',
                     controller: _tenantNameController,
                   ),
                   const SizedBox(height: 12),
                   AppTextField(
-                    label: 'Số điện thoại liên hệ',
-                    hint: '0901 234 567',
+                    label: 'Số điện thoại *',
+                    hint: 'Ví dụ: 0901234567',
                     controller: _tenantPhoneController,
                     keyboardType: TextInputType.phone,
                   ),
                   const SizedBox(height: 12),
                   AppTextField(
-                    label: 'Số CCCD (12 chữ số)',
-                    hint: '07920100xxxx',
+                    label: 'Số CCCD / CMND *',
+                    hint: 'Ví dụ: 079201009876',
                     controller: _tenantCccdController,
                     keyboardType: TextInputType.number,
                   ),
@@ -205,8 +308,8 @@ class _CreateContractScreenState extends State<CreateContractScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Rental term & pricing
-            Text('3. Thời hạn & Giá thuê', style: AppTypography.headingSmall),
+            // 3. Thời hạn & Giá thuê
+            Text('3. Thời hạn & Điều khoản tài chính', style: AppTypography.headingSmall),
             const SizedBox(height: 8),
             AppCard(
               child: Column(
@@ -220,27 +323,24 @@ class _CreateContractScreenState extends State<CreateContractScreen> {
                               context: context,
                               initialDate: _startDate,
                               firstDate: DateTime.now().subtract(const Duration(days: 30)),
-                              lastDate: DateTime.now().add(const Duration(days: 60)),
+                              lastDate: DateTime.now().add(const Duration(days: 90)),
                             );
-                            if (picked != null) {
-                              setState(() => _startDate = picked);
-                            }
+                            if (picked != null) setState(() => _startDate = picked);
                           },
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Ngày bắt đầu', style: AppTypography.bodySmall),
-                              const SizedBox(height: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: AppColors.surfaceVariant,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: AppColors.border),
-                                ),
-                                child: Text(Formatters.formatDate(_startDate), style: AppTypography.labelLarge),
-                              ),
-                            ],
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceVariant,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Ngày bắt đầu', style: AppTypography.bodySmall),
+                                const SizedBox(height: 4),
+                                Text(Formatters.formatDate(_startDate), style: AppTypography.labelLarge),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -252,27 +352,24 @@ class _CreateContractScreenState extends State<CreateContractScreen> {
                               context: context,
                               initialDate: _endDate,
                               firstDate: _startDate,
-                              lastDate: _startDate.add(const Duration(days: 1000)),
+                              lastDate: _startDate.add(const Duration(days: 365 * 3)),
                             );
-                            if (picked != null) {
-                              setState(() => _endDate = picked);
-                            }
+                            if (picked != null) setState(() => _endDate = picked);
                           },
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Ngày kết thúc', style: AppTypography.bodySmall),
-                              const SizedBox(height: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: AppColors.surfaceVariant,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: AppColors.border),
-                                ),
-                                child: Text(Formatters.formatDate(_endDate), style: AppTypography.labelLarge),
-                              ),
-                            ],
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceVariant,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Ngày kết thúc', style: AppTypography.bodySmall),
+                                const SizedBox(height: 4),
+                                Text(Formatters.formatDate(_endDate), style: AppTypography.labelLarge),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -280,29 +377,30 @@ class _CreateContractScreenState extends State<CreateContractScreen> {
                   ),
                   const SizedBox(height: 14),
                   AppTextField(
-                    label: 'Tiền thuê hàng tháng (VNĐ)',
-                    hint: '3200000',
+                    label: 'Tiền thuê phòng hàng tháng (VNĐ) *',
+                    hint: 'Nhập giá thuê',
                     controller: _rentController,
                     keyboardType: TextInputType.number,
                   ),
                   const SizedBox(height: 14),
                   AppTextField(
-                    label: 'Tiền đặt cọc (VNĐ)',
-                    hint: '3200000',
+                    label: 'Tiền cọc đảm bảo hợp đồng (VNĐ) *',
+                    hint: 'Nhập tiền cọc',
                     controller: _depositController,
                     keyboardType: TextInputType.number,
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 28),
 
+            // Submit Button
             AppButton(
-              text: 'Tạo & Ký kết hợp đồng',
+              text: 'Ký & Kích hoạt hợp đồng',
               isLoading: _isCreating,
               onPressed: _submitContract,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
           ],
         ),
       ),

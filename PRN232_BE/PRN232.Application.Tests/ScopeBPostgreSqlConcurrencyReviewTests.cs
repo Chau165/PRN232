@@ -124,10 +124,10 @@ public class ScopeBPostgreSqlConcurrencyReviewTests
         await using var first = db.Context(gate);
         await using var second = db.Context();
         var request = new CreateInvoiceDto(1, Month, Today.AddDays(7));
-        var winner = Attempt(() => new InvoiceService(new InvoiceRepository(first), new CountingGateway(), TimeProvider.System)
+        var winner = Attempt(() => new InvoiceService(new InvoiceRepository(first), new CountingGateway(), TimeProvider.System, new ScopeBNoCashCheckout())
             .CreateAsync(request, 7, RoleNames.Manager));
         await gate.Entered.WaitAsync(Deadline);
-        var loser = Attempt(() => new InvoiceService(new InvoiceRepository(second), new CountingGateway(), TimeProvider.System)
+        var loser = Attempt(() => new InvoiceService(new InvoiceRepository(second), new CountingGateway(), TimeProvider.System, new ScopeBNoCashCheckout())
             .CreateAsync(request, 7, RoleNames.Manager));
         try { await db.AssertBlockedByAsync(first); }
         finally { gate.Release(); }
@@ -278,7 +278,7 @@ public class ScopeBPostgreSqlConcurrencyReviewTests
 
     private static Task<InvoiceDto> PayAsync(AppDbContext context, CountingGateway gateway, string method)
     {
-        var service = new InvoiceService(new InvoiceRepository(context), gateway, TimeProvider.System);
+        var service = new InvoiceService(new InvoiceRepository(context), gateway, TimeProvider.System, new ScopeBNoCashCheckout());
         return method == "cash" ? service.RecordCashPaymentAsync(1, 7, RoleNames.Manager)
             : service.PayAsync(1, new PayInvoiceDto("MoMo"), 10);
     }
@@ -316,6 +316,12 @@ internal sealed class ScopeBAsyncGate
         await _release.Task.WaitAsync(TimeSpan.FromSeconds(20));
     }
     public void Release() => _release.TrySetResult();
+}
+
+// Cash payments call the checkout coordinator to reconcile pending payOS links; these tests never create one.
+internal sealed class ScopeBNoCashCheckout : ICashCheckoutCoordinator
+{
+    public Task PrepareAsync(int invoiceId, int? ownerId, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 internal sealed class ScopeBSqlPause(string sql) : DbCommandInterceptor

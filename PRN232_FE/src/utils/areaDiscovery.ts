@@ -253,6 +253,25 @@ async function loadProperties(
   }
 }
 
+function enteredAdministrativeArea(location: string): ResolvedArea | null {
+  const area: ResolvedArea = {}
+  for (const part of location.split(",").map((value) => value.trim())) {
+    const normalized = part.normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/gi, "d").toLowerCase()
+      .replace(/\./g, " ").replace(/\s+/g, " ")
+      .replace(/^khu vuc /, "").trim()
+    let level: keyof ResolvedArea
+    if (/^(quan|huyen|district)\s+\S/.test(normalized)) level = "district"
+    else if (/^(phuong|xa|ward|commune)\s+\S/.test(normalized)) level = "ward"
+    else if (/^(thanh pho|tinh|tp|city|province)\s+\S/.test(normalized)) level = "city"
+    else return null // Street addresses and other free text still use geocoding.
+    if (area[level]) return null
+    area[level] = part
+  }
+  return area
+}
+
 export async function discoverEnteredArea(
   location: string,
 
@@ -271,6 +290,34 @@ export async function discoverEnteredArea(
       "geocode",
       "Hãy nhập địa điểm hoặc chọn vị trí hiện tại của bạn.",
     )
+  }
+
+  // Explicit administrative names are authoritative. Photon may resolve an old
+  // district name to an unrelated street in another province.
+  const enteredArea = enteredAdministrativeArea(location.trim())
+  let enteredProperties: PublicPropertyAreaCard[] | undefined
+  if (enteredArea) {
+    onProgress?.("properties")
+    enteredProperties = await loadProperties(
+      enteredArea, listPropertiesByArea, signal,
+    )
+    signal?.throwIfAborted()
+    const locatedProperty = enteredProperties.find((property) =>
+      Number.isFinite(property.latitude) && Number.isFinite(property.longitude) &&
+      Math.abs(property.latitude) <= 90 && Math.abs(property.longitude) <= 180 &&
+      (property.latitude !== 0 || property.longitude !== 0),
+    )
+    if (locatedProperty) {
+      const coordinates = {
+        latitude: locatedProperty.latitude, longitude: locatedProperty.longitude,
+      }
+      onLocation?.(coordinates)
+      return {
+        coordinates, area: enteredArea,
+        matchedLevel: enteredArea.district ? "district" : enteredArea.ward ? "ward" : "city",
+        properties: enteredProperties, locationLabel: location.trim(),
+      }
+    }
   }
 
   onProgress?.("geocode")
@@ -374,7 +421,9 @@ export async function discoverEnteredArea(
 
   // Use the selected point's administrative area, with city-wide search allowed for typed places.
 
-  if (!area.district && !area.ward && !area.city) {
+  if (enteredArea) {
+    area = enteredArea
+  } else if (!area.district && !area.ward && !area.city) {
     area = await reverseGeocode(coordinates, fetchImplementation, signal)
   }
 
@@ -390,7 +439,7 @@ export async function discoverEnteredArea(
 
   onProgress?.("properties")
 
-  const properties = await loadProperties(query, listPropertiesByArea, signal)
+  const properties = enteredProperties ?? await loadProperties(query, listPropertiesByArea, signal)
 
   return { coordinates, area, matchedLevel, properties, locationLabel }
 }

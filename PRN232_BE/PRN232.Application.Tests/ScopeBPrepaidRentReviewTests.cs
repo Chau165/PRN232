@@ -156,7 +156,7 @@ public class ScopeBPrepaidRentReviewTests
             _connection = connection;
             Context = context;
             var clock = new FixedClock();
-            Invoices = new InvoiceService(new InvoiceRepository(context), Gateway, clock);
+            Invoices = new InvoiceService(new InvoiceRepository(context), Gateway, clock, new ScopeBNoCashCheckout());
             Contracts = new ContractService(new ContractRepository(context), clock);
         }
 

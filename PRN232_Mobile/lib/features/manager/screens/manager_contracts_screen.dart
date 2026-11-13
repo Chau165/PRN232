@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/contract_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../core/widgets/app_button.dart';
@@ -20,6 +22,7 @@ class ManagerContractsScreen extends StatefulWidget {
 }
 
 class _ManagerContractsScreenState extends State<ManagerContractsScreen> {
+  final ContractService _contractService = ContractService();
   int _selectedFilterIndex = 0; // 0: Tất cả, 1: Đang hiệu lực, 2: Sắp hết hạn, 3: Đã thanh lý
   final List<String> _filters = [
     'Tất cả',
@@ -28,12 +31,29 @@ class _ManagerContractsScreenState extends State<ManagerContractsScreen> {
     'Đã thanh lý',
   ];
 
-  late List<ManagerContractModel> _contracts;
+  List<ManagerContractModel> _contracts = [];
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _contracts = List.from(ManagerMockData.contracts);
+    _contracts = AuthState.isCurrentDemo ? List.from(ManagerMockData.contracts) : [];
+    _loadContracts();
+  }
+
+  Future<void> _loadContracts() async {
+    setState(() => _isLoading = true);
+    try {
+      final list = await _contractService.getManagerContracts();
+      if (mounted) {
+        setState(() {
+          _contracts = list;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   List<ManagerContractModel> get _filteredContracts {
@@ -242,6 +262,7 @@ class _ManagerContractsScreenState extends State<ManagerContractsScreen> {
       ),
       body: Column(
         children: [
+          if (_isLoading) const LinearProgressIndicator(minHeight: 2),
           // Filter Chips
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),

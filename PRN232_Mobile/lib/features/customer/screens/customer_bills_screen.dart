@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/invoice_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
@@ -18,7 +20,9 @@ class CustomerBillsScreen extends StatefulWidget {
 }
 
 class _CustomerBillsScreenState extends State<CustomerBillsScreen> {
-  late List<InvoiceModel> _invoices;
+  final InvoiceService _invoiceService = InvoiceService();
+  List<InvoiceModel> _invoices = [];
+  bool _isLoading = false;
   int _selectedFilterIndex = 0; // 0: Tất cả, 1: Chưa thanh toán, 2: Đã thanh toán
 
   final List<String> _filters = ['Tất cả', 'Chưa thanh toán', 'Đã thanh toán'];
@@ -26,7 +30,23 @@ class _CustomerBillsScreenState extends State<CustomerBillsScreen> {
   @override
   void initState() {
     super.initState();
-    _invoices = List.from(CustomerMockData.myInvoices);
+    _invoices = AuthState.isCurrentDemo ? List.from(CustomerMockData.myInvoices) : [];
+    _loadInvoices();
+  }
+
+  Future<void> _loadInvoices() async {
+    setState(() => _isLoading = true);
+    try {
+      final list = await _invoiceService.getCustomerInvoices();
+      if (mounted) {
+        setState(() {
+          _invoices = list;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   List<InvoiceModel> get _filteredInvoices {
@@ -65,10 +85,49 @@ class _CustomerBillsScreenState extends State<CustomerBillsScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          : _invoices.isEmpty
+              ? RefreshIndicator(
+                  onRefresh: _loadInvoices,
+                  color: AppColors.primary,
+                  child: Center(
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 80,
+                            height: 80,
+                            decoration: const BoxDecoration(
+                              color: AppColors.primaryLight,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.receipt_long_outlined, size: 40, color: AppColors.primary),
+                          ),
+                          const SizedBox(height: 16),
+                          Text('Bạn chưa có hóa đơn nào',
+                              style: AppTypography.headingMedium, textAlign: TextAlign.center),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Khi bạn thuê phòng và phát sinh kỳ thanh toán tiền phòng hoặc tiền điện nước, các hóa đơn sẽ xuất hiện tại đây.',
+                            style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              : RefreshIndicator(
+              onRefresh: _loadInvoices,
+              color: AppColors.primary,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Highlight Pending Bill
             if (pendingInv != null) ...[
@@ -215,8 +274,9 @@ class _CustomerBillsScreenState extends State<CustomerBillsScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildInvoiceItemCard(InvoiceModel inv) {
     return AppCard(

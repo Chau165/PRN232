@@ -22,6 +22,25 @@ namespace PRN232.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("FriendlyName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Xml")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DataProtectionKeys");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.Amenities", b =>
                 {
                     b.Property<int>("AmenityId")
@@ -37,6 +56,111 @@ namespace PRN232.Infrastructure.Migrations
                     b.HasKey("AmenityId");
 
                     b.ToTable("Amenities");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingRefundRequests", b =>
+                {
+                    b.Property<int>("BookingRefundRequestId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("BookingRefundRequestId"));
+
+                    b.Property<decimal?>("ApprovedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("BookingId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("OriginalPaymentId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("RecipientAccountName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("RecipientAccountNumber")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("RecipientBankBin")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime?>("RefundedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("RequestedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ReviewNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("ReviewedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ReviewedByAdminId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("BookingRefundRequestId");
+
+                    b.HasIndex("BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_BookingRefundRequests_BookingId_Claimed")
+                        .HasFilter("\"Status\" IN ('PendingReview', 'Approved', 'Refunding', 'RequiresReview', 'Refunded')");
+
+                    b.HasIndex("OriginalPaymentId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_BookingRefundRequests_OriginalPaymentId_Claimed")
+                        .HasFilter("\"Status\" IN ('PendingReview', 'Approved', 'Refunding', 'RequiresReview', 'Refunded')");
+
+                    b.HasIndex("ReviewedByAdminId");
+
+                    b.HasIndex("CustomerId", "CreatedAtUtc");
+
+                    b.HasIndex("Status", "CreatedAtUtc");
+
+                    b.ToTable("BookingRefundRequests", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_BookingRefundRequests_Amount", "CAST(\"RequestedAmount\" AS NUMERIC) > 0 AND CAST(\"RequestedAmount\" AS NUMERIC) <= 9007199254740991 AND CAST(\"RequestedAmount\" AS NUMERIC) = round(CAST(\"RequestedAmount\" AS NUMERIC), 0) AND (\"ApprovedAmount\" IS NULL OR (CAST(\"ApprovedAmount\" AS NUMERIC) > 0 AND CAST(\"ApprovedAmount\" AS NUMERIC) <= CAST(\"RequestedAmount\" AS NUMERIC) AND CAST(\"ApprovedAmount\" AS NUMERIC) = round(CAST(\"ApprovedAmount\" AS NUMERIC), 0)))");
+
+                            t.HasCheckConstraint("CK_BookingRefundRequests_Currency", "\"Currency\" = 'VND'");
+
+                            t.HasCheckConstraint("CK_BookingRefundRequests_Destination", "length(trim(\"RecipientBankBin\")) > 0 AND length(trim(\"RecipientAccountNumber\")) > 0 AND length(trim(\"Reason\")) > 0");
+
+                            t.HasCheckConstraint("CK_BookingRefundRequests_State", "(\"Status\" = 'PendingReview' AND \"ApprovedAmount\" IS NULL AND \"ReviewedByAdminId\" IS NULL AND \"ReviewedAtUtc\" IS NULL AND \"RefundedAtUtc\" IS NULL) OR (\"Status\" = 'Rejected' AND \"ApprovedAmount\" IS NULL AND \"ReviewedByAdminId\" IS NOT NULL AND \"ReviewedAtUtc\" IS NOT NULL AND \"RefundedAtUtc\" IS NULL AND \"ReviewNote\" IS NOT NULL AND length(trim(\"ReviewNote\")) > 0) OR (\"Status\" IN ('Approved', 'Refunding', 'RequiresReview') AND \"ApprovedAmount\" IS NOT NULL AND \"ReviewedByAdminId\" IS NOT NULL AND \"ReviewedAtUtc\" IS NOT NULL AND \"RecipientAccountName\" IS NOT NULL AND length(trim(\"RecipientAccountName\")) > 0 AND \"RefundedAtUtc\" IS NULL) OR (\"Status\" = 'Refunded' AND \"ApprovedAmount\" IS NOT NULL AND \"ReviewedByAdminId\" IS NOT NULL AND \"ReviewedAtUtc\" IS NOT NULL AND \"RecipientAccountName\" IS NOT NULL AND length(trim(\"RecipientAccountName\")) > 0 AND \"RefundedAtUtc\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_BookingRefundRequests_Times", "\"UpdatedAtUtc\" >= \"CreatedAtUtc\" AND (\"ReviewedAtUtc\" IS NULL OR (\"ReviewedAtUtc\" >= \"CreatedAtUtc\" AND \"ReviewedAtUtc\" <= \"UpdatedAtUtc\")) AND (\"RefundedAtUtc\" IS NULL OR (\"ReviewedAtUtc\" IS NOT NULL AND \"RefundedAtUtc\" >= \"ReviewedAtUtc\" AND \"RefundedAtUtc\" <= \"UpdatedAtUtc\"))");
+                        });
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Bookings", b =>
@@ -170,6 +294,9 @@ namespace PRN232.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("CCCDNumberHash")
+                        .HasColumnType("text");
+
                     b.Property<int>("CustomerId")
                         .HasColumnType("integer");
 
@@ -181,6 +308,9 @@ namespace PRN232.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("IdentityDocumentId");
+
+                    b.HasIndex("CCCDNumberHash")
+                        .HasDatabaseName("IX_IdentityDocuments_CCCDNumberHash");
 
                     b.HasIndex("CustomerId");
 
@@ -471,6 +601,273 @@ namespace PRN232.Infrastructure.Migrations
                     b.ToTable("Notifications");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.PaymentRequests", b =>
+                {
+                    b.Property<int>("PaymentRequestId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("PaymentRequestId"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("BookingId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CheckoutUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<DateTime?>("ConfirmedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("InvoiceId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("LastErrorMessage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<long>("OrderCode")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("PaymentId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PaymentLinkId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ProviderReference")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("WebhookReceivedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("PaymentRequestId");
+
+                    b.HasIndex("BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PaymentRequests_BookingId_Active")
+                        .HasFilter("\"BookingId\" IS NOT NULL AND \"Status\" IN ('Creating', 'Pending', 'RequiresReview')");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("InvoiceId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PaymentRequests_InvoiceId_Active")
+                        .HasFilter("\"InvoiceId\" IS NOT NULL AND \"Status\" IN ('Creating', 'Pending', 'RequiresReview')");
+
+                    b.HasIndex("OrderCode")
+                        .IsUnique();
+
+                    b.HasIndex("PaymentId")
+                        .IsUnique();
+
+                    b.HasIndex("PaymentLinkId")
+                        .IsUnique()
+                        .HasFilter("\"PaymentLinkId\" IS NOT NULL");
+
+                    b.ToTable("PaymentRequests", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PaymentRequests_Amount_Positive", "\"Amount\" > 0");
+
+                            t.HasCheckConstraint("CK_PaymentRequests_Currency", "\"Currency\" = 'VND'");
+
+                            t.HasCheckConstraint("CK_PaymentRequests_ExactlyOneTarget", "(\"InvoiceId\" IS NOT NULL AND \"BookingId\" IS NULL) OR (\"InvoiceId\" IS NULL AND \"BookingId\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_PaymentRequests_ExpiresAt", "\"ExpiresAtUtc\" IS NULL OR \"ExpiresAtUtc\" > \"CreatedAtUtc\"");
+
+                            t.HasCheckConstraint("CK_PaymentRequests_OrderCode_Positive", "\"OrderCode\" > 0");
+
+                            t.HasCheckConstraint("CK_PaymentRequests_Status", "\"Status\" IN ('Creating', 'Pending', 'Succeeded', 'Cancelled', 'Expired', 'Create-failed', 'RequiresReview')");
+
+                            t.HasCheckConstraint("CK_PaymentRequests_UpdatedAt", "\"UpdatedAtUtc\" >= \"CreatedAtUtc\"");
+                        });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.PaymentReviewCases", b =>
+                {
+                    b.Property<int>("PaymentReviewCaseId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("PaymentReviewCaseId"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EvidenceReference")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int>("ExistingPaymentId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("InvoiceId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PaymentWebhookReceiptId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ResolutionNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ResolvedByAdminId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("PaymentReviewCaseId");
+
+                    b.HasIndex("ExistingPaymentId");
+
+                    b.HasIndex("InvoiceId");
+
+                    b.HasIndex("PaymentWebhookReceiptId")
+                        .IsUnique();
+
+                    b.HasIndex("ResolvedByAdminId");
+
+                    b.HasIndex("Status", "CreatedAtUtc");
+
+                    b.ToTable("PaymentReviewCases", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PaymentReviewCases_State", "(\"Status\" = 'Open' AND \"Resolution\" IS NULL AND \"ResolvedAtUtc\" IS NULL AND \"ResolvedByAdminId\" IS NULL) OR (\"Status\" = 'Resolved' AND \"Resolution\" IN ('RefundedExternally', 'NotDuplicate') AND \"ResolutionNote\" IS NOT NULL AND \"ResolvedAtUtc\" IS NOT NULL AND \"ResolvedByAdminId\" IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.PaymentWebhookReceipts", b =>
+                {
+                    b.Property<int>("PaymentWebhookReceiptId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("PaymentWebhookReceiptId"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ConflictingFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("DataCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("OrderCode")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("PaymentLinkId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int?>("PaymentRequestId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("ReceivedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Webhook");
+
+                    b.Property<string>("TransactionDateTime")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("PaymentWebhookReceiptId");
+
+                    b.HasIndex("PaymentRequestId");
+
+                    b.HasIndex("Provider", "Reference")
+                        .IsUnique();
+
+                    b.ToTable("PaymentWebhookReceipts");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.Payments", b =>
                 {
                     b.Property<int>("PaymentId")
@@ -490,6 +887,9 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.Property<int?>("InvoiceId")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("PaidAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PaymentMethod")
                         .IsRequired()
@@ -518,6 +918,170 @@ namespace PRN232.Infrastructure.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Payments");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.PayoutAttempts", b =>
+                {
+                    b.Property<int>("PayoutAttemptId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("PayoutAttemptId"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("AttemptNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("BankReference")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int>("BookingRefundRequestId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<decimal?>("EstimatedFee")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("FeeAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("InitiatedByAdminId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("LastCheckedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("LastErrorMessage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ProviderApprovalState")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ProviderPayoutId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("ProviderTransactionId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("ProviderTransactionState")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("RecipientAccountName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("RecipientAccountNumber")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("RecipientBankBin")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("ReferenceId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("SubmittedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("TransferredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("PayoutAttemptId");
+
+                    b.HasIndex("BookingRefundRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PayoutAttempts_RefundRequestId_Claimed")
+                        .HasFilter("\"Status\" IN ('Creating', 'Processing', 'RequiresReview', 'Succeeded')");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("InitiatedByAdminId");
+
+                    b.HasIndex("ReferenceId")
+                        .IsUnique();
+
+                    b.HasIndex("BookingRefundRequestId", "AttemptNumber")
+                        .IsUnique();
+
+                    b.HasIndex("Provider", "ProviderPayoutId")
+                        .IsUnique()
+                        .HasFilter("\"ProviderPayoutId\" IS NOT NULL");
+
+                    b.HasIndex("Provider", "ProviderTransactionId")
+                        .IsUnique()
+                        .HasFilter("\"ProviderTransactionId\" IS NOT NULL");
+
+                    b.HasIndex("Status", "UpdatedAtUtc");
+
+                    b.ToTable("PayoutAttempts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PayoutAttempts_Amount", "CAST(\"Amount\" AS NUMERIC) > 0 AND CAST(\"Amount\" AS NUMERIC) <= 9007199254740991 AND CAST(\"Amount\" AS NUMERIC) = round(CAST(\"Amount\" AS NUMERIC), 0) AND (\"EstimatedFee\" IS NULL OR CAST(\"EstimatedFee\" AS NUMERIC) >= 0) AND (\"FeeAmount\" IS NULL OR CAST(\"FeeAmount\" AS NUMERIC) >= 0)");
+
+                            t.HasCheckConstraint("CK_PayoutAttempts_CurrencyProvider", "\"Currency\" = 'VND' AND \"Provider\" = 'PayOS'");
+
+                            t.HasCheckConstraint("CK_PayoutAttempts_Destination", "length(trim(\"RecipientBankBin\")) > 0 AND length(trim(\"RecipientAccountNumber\")) > 0 AND length(trim(\"RecipientAccountName\")) > 0 AND length(trim(\"Description\")) > 0");
+
+                            t.HasCheckConstraint("CK_PayoutAttempts_Identifiers", "\"AttemptNumber\" > 0 AND length(trim(\"ReferenceId\")) > 0 AND length(trim(\"IdempotencyKey\")) > 0 AND (\"ProviderPayoutId\" IS NULL OR length(trim(\"ProviderPayoutId\")) > 0) AND (\"ProviderTransactionId\" IS NULL OR length(trim(\"ProviderTransactionId\")) > 0)");
+
+                            t.HasCheckConstraint("CK_PayoutAttempts_State", "(\"Status\" IN ('Creating', 'RequiresReview') AND \"CompletedAtUtc\" IS NULL) OR (\"Status\" = 'Processing' AND \"ProviderPayoutId\" IS NOT NULL AND \"SubmittedAtUtc\" IS NOT NULL AND \"CompletedAtUtc\" IS NULL) OR (\"Status\" = 'Succeeded' AND \"ProviderPayoutId\" IS NOT NULL AND \"ProviderTransactionId\" IS NOT NULL AND \"SubmittedAtUtc\" IS NOT NULL AND \"CompletedAtUtc\" IS NOT NULL) OR (\"Status\" = 'Create-failed' AND \"ProviderPayoutId\" IS NULL AND \"ProviderTransactionId\" IS NULL AND \"CompletedAtUtc\" IS NOT NULL AND \"LastErrorCode\" IS NOT NULL AND length(trim(\"LastErrorCode\")) > 0) OR (\"Status\" = 'Transfer-failed' AND \"ProviderPayoutId\" IS NOT NULL AND \"SubmittedAtUtc\" IS NOT NULL AND \"CompletedAtUtc\" IS NOT NULL AND \"LastErrorCode\" IS NOT NULL AND length(trim(\"LastErrorCode\")) > 0)");
+
+                            t.HasCheckConstraint("CK_PayoutAttempts_Times", "\"UpdatedAtUtc\" >= \"CreatedAtUtc\" AND (\"SubmittedAtUtc\" IS NULL OR (\"SubmittedAtUtc\" >= \"CreatedAtUtc\" AND \"SubmittedAtUtc\" <= \"UpdatedAtUtc\")) AND (\"LastCheckedAtUtc\" IS NULL OR (\"LastCheckedAtUtc\" >= \"CreatedAtUtc\" AND \"LastCheckedAtUtc\" <= \"UpdatedAtUtc\")) AND (\"CompletedAtUtc\" IS NULL OR (\"CompletedAtUtc\" >= \"CreatedAtUtc\" AND \"CompletedAtUtc\" <= \"UpdatedAtUtc\" AND (\"SubmittedAtUtc\" IS NULL OR \"CompletedAtUtc\" >= \"SubmittedAtUtc\"))) AND (\"TransferredAtUtc\" IS NULL OR (\"Status\" = 'Succeeded' AND \"CompletedAtUtc\" IS NOT NULL AND \"TransferredAtUtc\" >= \"CreatedAtUtc\" AND \"TransferredAtUtc\" <= \"CompletedAtUtc\"))");
+                        });
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Property", b =>
@@ -924,6 +1488,40 @@ namespace PRN232.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingRefundRequests", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Bookings", "Booking")
+                        .WithMany("RefundRequests")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "Customer")
+                        .WithMany("BookingRefundRequests")
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Payments", "OriginalPayment")
+                        .WithMany("BookingRefundRequests")
+                        .HasForeignKey("OriginalPaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "ReviewedByAdmin")
+                        .WithMany("BookingRefundRequestsReviewed")
+                        .HasForeignKey("ReviewedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Booking");
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("OriginalPayment");
+
+                    b.Navigation("ReviewedByAdmin");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.Bookings", b =>
                 {
                     b.HasOne("PRN232.Domain.Entities.Users", "Customer")
@@ -1144,6 +1742,82 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.PaymentRequests", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Bookings", "Booking")
+                        .WithMany("PaymentRequests")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "Customer")
+                        .WithMany("PaymentRequests")
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Invoices", "Invoice")
+                        .WithMany("PaymentRequests")
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PRN232.Domain.Entities.Payments", "Payment")
+                        .WithOne("PaymentRequest")
+                        .HasForeignKey("PRN232.Domain.Entities.PaymentRequests", "PaymentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Booking");
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("Invoice");
+
+                    b.Navigation("Payment");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.PaymentReviewCases", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Payments", "ExistingPayment")
+                        .WithMany()
+                        .HasForeignKey("ExistingPaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Invoices", "Invoice")
+                        .WithMany()
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.PaymentWebhookReceipts", "Receipt")
+                        .WithMany()
+                        .HasForeignKey("PaymentWebhookReceiptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "ResolvedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("ResolvedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ExistingPayment");
+
+                    b.Navigation("Invoice");
+
+                    b.Navigation("Receipt");
+
+                    b.Navigation("ResolvedByAdmin");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.PaymentWebhookReceipts", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.PaymentRequests", "PaymentRequest")
+                        .WithMany()
+                        .HasForeignKey("PaymentRequestId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("PaymentRequest");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.Payments", b =>
                 {
                     b.HasOne("PRN232.Domain.Entities.Bookings", "Booking")
@@ -1181,6 +1855,25 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("Reading");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.PayoutAttempts", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.BookingRefundRequests", "BookingRefundRequest")
+                        .WithMany("PayoutAttempts")
+                        .HasForeignKey("BookingRefundRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "InitiatedByAdmin")
+                        .WithMany("PayoutAttemptsInitiated")
+                        .HasForeignKey("InitiatedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("BookingRefundRequest");
+
+                    b.Navigation("InitiatedByAdmin");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Property", b =>
@@ -1381,11 +2074,20 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("RoomAmenities");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingRefundRequests", b =>
+                {
+                    b.Navigation("PayoutAttempts");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.Bookings", b =>
                 {
                     b.Navigation("Contract");
 
+                    b.Navigation("PaymentRequests");
+
                     b.Navigation("Payments");
+
+                    b.Navigation("RefundRequests");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Contracts", b =>
@@ -1408,6 +2110,8 @@ namespace PRN232.Infrastructure.Migrations
                 {
                     b.Navigation("InvoiceDetails");
 
+                    b.Navigation("PaymentRequests");
+
                     b.Navigation("Payments");
                 });
 
@@ -1421,6 +2125,13 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("MaintenanceLogs");
 
                     b.Navigation("Report");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.Payments", b =>
+                {
+                    b.Navigation("BookingRefundRequests");
+
+                    b.Navigation("PaymentRequest");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Property", b =>
@@ -1475,6 +2186,10 @@ namespace PRN232.Infrastructure.Migrations
 
             modelBuilder.Entity("PRN232.Domain.Entities.Users", b =>
                 {
+                    b.Navigation("BookingRefundRequests");
+
+                    b.Navigation("BookingRefundRequestsReviewed");
+
                     b.Navigation("Bookings");
 
                     b.Navigation("ContractsAsCustomer");
@@ -1497,7 +2212,11 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.Navigation("OwnedProperties");
 
+                    b.Navigation("PaymentRequests");
+
                     b.Navigation("Payments");
+
+                    b.Navigation("PayoutAttemptsInitiated");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.UtilityReadings", b =>

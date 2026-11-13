@@ -67,6 +67,22 @@ class ManagerRoomModel {
 
   String get primaryTenantPhone =>
       tenants.isNotEmpty ? tenants.first.phone : '';
+
+  factory ManagerRoomModel.fromJson(Map<String, dynamic> json) {
+    final rent = json['roomTypePrice'] ?? json['baseRent'] ?? json['price'] ?? 0;
+    return ManagerRoomModel(
+      roomId: json['roomId'] ?? json['id'] ?? 0,
+      roomCode: json['roomCode'] ?? '',
+      typeName: json['roomTypeName'] ?? 'Tiêu chuẩn',
+      floor: 1,
+      area: (json['areaSqm'] ?? 20).toDouble(),
+      price: rent,
+      depositAmount: json['depositAmount'] ?? rent,
+      status: json['status'] ?? 'Available',
+      tenants: const [],
+      contractEnd: null,
+    );
+  }
 }
 
 class TechnicianModel {
@@ -135,6 +151,73 @@ class ManagerTaskModel {
   bool get isRejected => status == TaskStatus.rejected;
   bool get isInProgress => status == TaskStatus.inProgress;
   bool get isCompleted => status == TaskStatus.completed;
+
+  factory ManagerTaskModel.fromViewingJson(Map<String, dynamic> json) {
+    final st = json['status']?.toString();
+    TaskStatus taskSt = TaskStatus.pending;
+    if (st == 'Approved') taskSt = TaskStatus.approved;
+    if (st == 'Rejected') taskSt = TaskStatus.rejected;
+
+    final date = DateTime.tryParse(json['scheduledAt']?.toString() ?? '');
+
+    return ManagerTaskModel(
+      id: json['viewingId'] ?? json['id'] ?? 0,
+      type: TaskType.viewing,
+      status: taskSt,
+      title: 'Hẹn xem phòng ${json['roomCode'] ?? ''}',
+      description: json['managerNote'] ?? 'Khách hẹn xem phòng trực tiếp',
+      customerName: json['customerName'] ?? 'Khách thuê',
+      customerPhone: json['customerPhone'] ?? '',
+      roomCode: json['roomCode'] ?? '',
+      propertyName: 'Khu trọ',
+      createdAt: date ?? DateTime.now(),
+      targetDate: date,
+    );
+  }
+
+  factory ManagerTaskModel.fromBookingJson(Map<String, dynamic> json) {
+    final st = json['status']?.toString();
+    TaskStatus taskSt = TaskStatus.pending;
+    if (st == 'Deposited') taskSt = TaskStatus.approved;
+    if (st == 'Cancelled') taskSt = TaskStatus.rejected;
+
+    return ManagerTaskModel(
+      id: json['bookingId'] ?? json['id'] ?? 0,
+      type: TaskType.deposit,
+      status: taskSt,
+      title: 'Đơn đặt cọc phòng ${json['roomCode'] ?? ''}',
+      description: 'Giữ chỗ phòng ${json['roomCode'] ?? ''}',
+      customerName: json['customerName'] ?? 'Khách thuê',
+      customerPhone: json['customerPhone'] ?? '',
+      roomCode: json['roomCode'] ?? '',
+      propertyName: json['propertyName'] ?? 'Khu trọ',
+      createdAt: DateTime.now(),
+      amount: json['depositAmount'] ?? 0,
+      paymentMethod: 'Cổng trực tuyến',
+    );
+  }
+
+  factory ManagerTaskModel.fromMaintenanceJson(Map<String, dynamic> json) {
+    final st = json['status']?.toString();
+    TaskStatus taskSt = TaskStatus.pending;
+    if (st == 'Approved') taskSt = TaskStatus.inProgress;
+    if (st == 'Completed') taskSt = TaskStatus.completed;
+
+    return ManagerTaskModel(
+      id: json['requestId'] ?? 0,
+      type: TaskType.maintenance,
+      status: taskSt,
+      title: 'Báo hỏng phòng ${json['roomCode'] ?? ''}',
+      description: json['description'] ?? '',
+      customerName: json['customerName'] ?? 'Khách thuê',
+      customerPhone: '',
+      roomCode: json['roomCode'] ?? '',
+      propertyName: 'Khu trọ',
+      createdAt: DateTime.now(),
+      priority: 'Bình thường',
+      technicianName: json['assignedStaffName'],
+    );
+  }
 }
 
 class MeterReadingModel {
@@ -148,6 +231,7 @@ class MeterReadingModel {
   DateTime? recordDate;
   bool isRecorded;
   String? meterImage;
+  int? contractId;
 
   MeterReadingModel({
     required this.roomId,
@@ -160,6 +244,7 @@ class MeterReadingModel {
     this.recordDate,
     this.isRecorded = false,
     this.meterImage,
+    this.contractId,
   });
 
   num get electricityUsage =>
@@ -171,6 +256,21 @@ class MeterReadingModel {
       (newWater != null && newWater! >= oldWater)
           ? (newWater! - oldWater)
           : 0;
+
+  factory MeterReadingModel.fromJson(Map<String, dynamic> json) {
+    return MeterReadingModel(
+      roomId: json['roomId'] ?? 0,
+      roomCode: json['roomCode'] ?? '',
+      floor: 'Tầng 1',
+      oldElectricity: json['electricStart'] ?? 0,
+      newElectricity: json['electricEnd'],
+      oldWater: json['waterStart'] ?? 0,
+      newWater: json['waterEnd'],
+      recordDate: json['readingMonth'] != null ? DateTime.tryParse(json['readingMonth'].toString()) : null,
+      isRecorded: json['electricEnd'] != null,
+      contractId: json['contractId'],
+    );
+  }
 }
 
 class ManagerInvoiceModel {
@@ -199,6 +299,25 @@ class ManagerInvoiceModel {
   bool get isPaid => status == 'Paid';
   bool get isUnpaid => status == 'Unpaid';
   bool get isOverdue => status == 'Overdue';
+
+  factory ManagerInvoiceModel.fromJson(Map<String, dynamic> json) {
+    final monthStr = json['invoiceMonth']?.toString() ?? '';
+    final monthYearFormatted = monthStr.length >= 7
+        ? 'Tháng ${monthStr.substring(5, 7)}/${monthStr.substring(0, 4)}'
+        : 'Tháng hiện tại';
+
+    return ManagerInvoiceModel(
+      invoiceId: json['invoiceId'] ?? 0,
+      invoiceCode: 'HD-${json['invoiceId'] ?? 0}',
+      roomCode: json['roomCode'] ?? '',
+      tenantName: json['customerName'] ?? 'Khách thuê',
+      amount: json['netPayable'] ?? json['total'] ?? 0,
+      status: json['status'] ?? 'Unpaid',
+      dueDate: DateTime.tryParse(json['dueDate']?.toString() ?? '') ?? DateTime.now(),
+      monthYear: monthYearFormatted,
+      paymentMethod: json['paymentMethod']?.toString(),
+    );
+  }
 }
 
 // ==========================================
@@ -245,6 +364,27 @@ class ManagerContractModel {
   bool get isActive => status == 'Active';
   bool get isExpiringSoon => status == 'ExpiringSoon';
   bool get isTerminated => status == 'Terminated';
+
+  factory ManagerContractModel.fromJson(Map<String, dynamic> json) {
+    return ManagerContractModel(
+      id: json['contractId'] ?? 0,
+      contractCode: 'HD-${json['contractId'] ?? 0}',
+      propertyId: json['propertyId'] ?? 0,
+      propertyName: json['propertyName'] ?? 'Nhà trọ',
+      roomId: json['roomId'] ?? 0,
+      roomCode: json['roomCode'] ?? '',
+      roomTypeName: 'Tiêu chuẩn',
+      primaryTenantName: json['customerName'] ?? 'Khách thuê',
+      tenantPhone: json['customerPhone'] ?? '',
+      tenantCccd: '',
+      startDate: DateTime.tryParse(json['startDate']?.toString() ?? '') ?? DateTime.now(),
+      endDate: DateTime.tryParse(json['endDate']?.toString() ?? '') ?? DateTime.now().add(const Duration(days: 365)),
+      monthlyRent: json['monthlyRent'] ?? 0,
+      depositAmount: json['depositAmount'] ?? 0,
+      status: json['status'] ?? 'Active',
+      notes: null,
+    );
+  }
 }
 
 class ManagerEquipmentModel {
@@ -267,6 +407,19 @@ class ManagerEquipmentModel {
     required this.installedDate,
     this.price,
   });
+
+  factory ManagerEquipmentModel.fromJson(Map<String, dynamic> json) {
+    return ManagerEquipmentModel(
+      id: json['equipmentId'] ?? 0,
+      code: 'TB-${json['equipmentId'] ?? 0}',
+      name: json['name'] ?? '',
+      roomCode: json['roomCode'] ?? '',
+      category: 'Gia dụng',
+      status: json['status'] ?? 'Tốt',
+      installedDate: json['installDate']?.toString() ?? '',
+      price: null,
+    );
+  }
 }
 
 class ManagerIdentityReviewModel {
@@ -297,4 +450,22 @@ class ManagerIdentityReviewModel {
   bool get isPending => status == 'Pending';
   bool get isVerified => status == 'Verified';
   bool get isRejected => status == 'Rejected';
+
+  factory ManagerIdentityReviewModel.fromJson(Map<String, dynamic> json) {
+    final st = json['status']?.toString() ?? 'Pending';
+    final mappedStatus = st == 'Approved' ? 'Verified' : st;
+
+    return ManagerIdentityReviewModel(
+      id: json['identityDocumentId'] ?? json['id'] ?? 0,
+      tenantName: json['customerName'] ?? 'Khách thuê',
+      tenantPhone: '',
+      roomCode: '',
+      idNumber: json['cccdNumber'] ?? '',
+      frontImageUrl: '',
+      backImageUrl: '',
+      status: mappedStatus,
+      rejectReason: null,
+      uploadedAt: DateTime.now(),
+    );
+  }
 }

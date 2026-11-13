@@ -88,6 +88,27 @@ public sealed class ApiSecurityTests
         Assert.Contains("Jwt:Key", exception.ToString());
     }
 
+    // A9: thiếu khóa HMAC của CCCD thì kiểm tra trùng CCCD sai, nên Production không được khởi động.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("too-short")]
+    public void Production_refuses_to_start_without_a_cccd_hash_key(string? cccdHashKey)
+    {
+        // UseSetting (not ConfigureAppConfiguration) so Program.cs sees the values before Build().
+        using var factory = new WebApplicationFactory<BookingsController>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Production");
+            builder.UseSetting("Jwt:Key", "a-real-looking-production-jwt-signing-key-0123456789");
+            builder.UseSetting("IdentityDocuments:CccdHashKey", cccdHashKey);
+            builder.UseSetting("ConnectionStrings:DefaultConnection", "Host=localhost;Database=unused");
+        });
+
+        var exception = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
+
+        Assert.Contains("IdentityDocuments:CccdHashKey", exception.ToString());
+        Assert.DoesNotContain("Jwt:Key chưa được cấu hình", exception.ToString());
+    }
+
     private sealed class ProductionFactory(string jwtKey) : WebApplicationFactory<BookingsController>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)

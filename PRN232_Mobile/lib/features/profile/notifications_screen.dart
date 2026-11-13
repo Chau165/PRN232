@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/auth/auth_state.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../core/services/notification_service.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/status_badge.dart';
@@ -32,7 +33,10 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  final List<NotificationItem> _items = [
+  final NotificationService _notificationService = NotificationService();
+  List<NotificationItem> _items = [];
+
+  static final List<NotificationItem> _demoNotifications = [
     NotificationItem(
       id: 1,
       title: 'Hóa đơn tháng 11 đã được phát hành',
@@ -75,6 +79,31 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     ),
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
+  }
+
+  Future<void> _loadNotifications() async {
+    try {
+      final list = await _notificationService.getNotifications();
+      if (mounted) {
+        setState(() {
+          if (AuthState.isCurrentDemo && list.isEmpty) {
+            _items = List.from(_demoNotifications);
+          } else {
+            _items = list;
+          }
+        });
+      }
+    } catch (_) {
+      if (mounted && AuthState.isCurrentDemo) {
+        setState(() => _items = List.from(_demoNotifications));
+      }
+    }
+  }
+
   void _markAllRead() {
     setState(() {
       for (var item in _items) {
@@ -89,6 +118,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (!item.isRead) {
         item.isRead = true;
         authState.markNotificationRead();
+        _notificationService.markAsRead(item.id);
       }
     });
   }

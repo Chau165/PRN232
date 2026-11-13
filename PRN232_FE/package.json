@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "format": "oxfmt",
-    "test": "vitest run && node --test tests/managementContracts.test.cjs",
+    "test": "vitest run --maxWorkers=1 && node --test tests/managementContracts.test.cjs",
+    "test:payos-e2e": "node scripts/test-payos-e2e.mjs",
     "test:coverage": "vitest run --coverage --maxWorkers=1",
     "typecheck": "tsc --noEmit"
   },

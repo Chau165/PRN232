@@ -1,0 +1,153 @@
+using Microsoft.EntityFrameworkCore;
+using PRN232.Application.Interfaces;
+using PRN232.Application.ReadModels;
+using PRN232.Application.Services;
+using PRN232.Application.States;
+using PRN232.Domain.Entities;
+using PRN232.Infrastructure.Data;
+
+namespace PRN232.Infrastructure.Repositories;
+
+public class PaymentReconciliationRepository(AppDbContext context) : IPaymentReconciliationRepository
+{
+    public Task<PaymentReconciliationReadModel?> GetAsync(int id, CancellationToken cancellationToken) =>
+        context.PaymentRequests.AsNoTracking().Where(item => item.PaymentRequestId == id && item.Provider == "PayOS")
+            .Select(item => new PaymentReconciliationReadModel(item.PaymentRequestId, item.OrderCode,
+                item.InvoiceId.HasValue ? item.Invoice!.Contract!.Room!.Property!.OwnerId : item.Booking!.Room!.Property!.OwnerId,
+                item.Status, item.LastErrorCode, item.UpdatedAtUtc,
+                item.InvoiceId.HasValue ? item.Invoice!.Contract!.Room!.PropertyId : item.Booking!.Room!.PropertyId))
+            .SingleOrDefaultAsync(cancellationToken);
+
+    public Task<List<int>> FindDueAsync(DateTime cutoffUtc, int limit, CancellationToken cancellationToken) =>
+        context.PaymentRequests.AsNoTracking().Where(item => item.Provider == "PayOS" && item.UpdatedAtUtc <= cutoffUtc &&
+            (item.Status == PaymentRequestStatuses.Creating || item.Status == PaymentRequestStatuses.Pending ||
+             (item.Status == PaymentRequestStatuses.RequiresReview && item.LastErrorCode == "EXPIRED_CHECKOUT_UNRESOLVED")))
+            .OrderBy(item => item.UpdatedAtUtc).ThenBy(item => item.PaymentRequestId)
+            .Select(item => item.PaymentRequestId).Take(limit).ToListAsync(cancellationToken);
+
+    public Task<PaymentWebhookReceipts?> GetVerifiedReceiptAsync(int id, CancellationToken cancellationToken) =>
+        context.PaymentWebhookReceipts.AsNoTracking().Where(item => item.PaymentRequestId == id && item.Outcome == "Verified" &&
+            item.DataCode == "00").OrderBy(item => item.PaymentWebhookReceiptId).FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<string> ApplyAsync(int id, int? ownerId, PayOSRemoteSnapshot? remote, string? errorCode,
+        DateTime nowUtc, CancellationToken cancellationToken)
+    {
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        var target = await context.PaymentRequests.AsNoTracking().Where(item => item.PaymentRequestId == id)
+            .Select(item => new { item.InvoiceId, item.BookingId }).SingleAsync(cancellationToken);
+        if (target.BookingId.HasValue) await BookingPaymentLock.LockAsync(context, target.BookingId.Value, cancellationToken);
+        else if (context.Database.IsNpgsql())
+            await context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"Invoices\" WHERE \"InvoiceId\" = {target.InvoiceId} FOR UPDATE", cancellationToken);
+        var request = await context.PaymentRequests.SingleAsync(item => item.PaymentRequestId == id, cancellationToken);
+        await context.Entry(request).ReloadAsync(cancellationToken);
+        int customerId, propertyId;
+        decimal amount;
+        bool payable;
+        if (target.InvoiceId.HasValue)
+        {
+            var invoice = await context.Invoices.AsNoTracking().Where(item => item.InvoiceId == target.InvoiceId)
+                .Select(item => new { item.Status, item.Contract!.CustomerId, item.Contract.Room!.PropertyId,
+                    Amounts = item.InvoiceDetails.Select(line => line.Amount).ToList() }).SingleAsync(cancellationToken);
+            customerId = invoice.CustomerId; propertyId = invoice.PropertyId; amount = invoice.Amounts.Sum();
+            payable = invoice.Status is InvoiceStatuses.Unpaid or InvoiceStatuses.Overdue;
+        }
+        else
+        {
+            var booking = await context.Bookings.AsNoTracking().Where(item => item.BookingId == target.BookingId)
+                .Select(item => new { item.Status, item.CustomerId, item.Room!.PropertyId, item.DepositAmount, HasContract = item.Contract != null })
+                .SingleAsync(cancellationToken);
+            customerId = booking.CustomerId; propertyId = booking.PropertyId; amount = booking.DepositAmount;
+            payable = booking.Status == BookingStatuses.Pending && !booking.HasContract;
+        }
+        // The legacy argument name is retained for callers; its value is the assigned Manager ID.
+        if (ownerId.HasValue)
+        {
+            if (context.Database.IsNpgsql())
+                await context.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT 1 FROM \"PropertyManagerAssignments\" WHERE \"PropertyId\" = {propertyId} AND \"ManagerId\" = {ownerId.Value} FOR SHARE", cancellationToken);
+            if (!await context.PropertyManagerAssignments.AnyAsync(assignment => assignment.PropertyId == propertyId &&
+                assignment.ManagerId == ownerId.Value && assignment.Manager!.IsActive &&
+                assignment.Manager.Role!.RoleName == RoleNames.Manager, cancellationToken))
+                throw new PaymentRequestStatusForbiddenException();
+        }
+        if (request.Status == PaymentRequestStatuses.Succeeded) return "AlreadyCompleted";
+        if (!Recoverable(request.Status, request.LastErrorCode)) return "ManualReviewOrClosed";
+
+        request.UpdatedAtUtc = nowUtc;
+        string result;
+        if (remote is null)
+        {
+            if (request.Status != PaymentRequestStatuses.RequiresReview)
+                request.LastErrorCode = errorCode ?? "RECONCILIATION_NOT_FOUND";
+            request.LastErrorMessage = "Provider lookup did not confirm the payment request; retry reconciliation.";
+            result = errorCode is null ? "NotFoundAtProvider" : "ProviderUnavailable";
+            // Absence after the deadline is ambiguous: never release the invoice or create another order blindly.
+            if (errorCode is null && request.ExpiresAtUtc <= nowUtc)
+            {
+                request.Status = PaymentRequestStatuses.RequiresReview;
+                request.LastErrorCode = "RECONCILIATION_NOT_FOUND";
+                result = "RequiresReview";
+            }
+        }
+        else
+        {
+            var consistent = remote.OrderCode == request.OrderCode && remote.Amount == request.Amount &&
+                request.Provider == "PayOS" && request.Currency == "VND" &&
+                !string.IsNullOrWhiteSpace(remote.LinkId) && remote.LinkId.Length <= 128 &&
+                remote.LinkId.All(character => char.IsAsciiLetterOrDigit(character) || character == '-') &&
+                (request.PaymentLinkId is null || request.PaymentLinkId == remote.LinkId) &&
+                remote.AmountPaid >= 0 && remote.AmountRemaining >= 0 && remote.AmountPaid <= remote.Amount &&
+                remote.AmountPaid + remote.AmountRemaining == remote.Amount &&
+                request.CustomerId == customerId && amount == request.Amount && payable && request.PaymentId is null;
+            if (!consistent) result = Review(request, "RECONCILIATION_MISMATCH");
+            else
+            {
+                request.PaymentLinkId = remote.LinkId;
+                request.LastErrorCode = null;
+                request.LastErrorMessage = null;
+                if (remote.Status == "PENDING" && remote.AmountPaid == 0 && remote.Transactions.Count == 0)
+                {
+                    request.Status = PaymentRequestStatuses.Pending;
+                    request.CheckoutUrl ??= "https://pay.payos.vn/web/" + Uri.EscapeDataString(remote.LinkId);
+                    result = request.ExpiresAtUtc > nowUtc ? "RecoveredPending" : "AwaitingProviderClosure";
+                }
+                else if ((remote.Status is "CANCELLED" or "EXPIRED") && remote.AmountPaid == 0 && remote.Transactions.Count == 0)
+                {
+                    request.Status = remote.Status == "CANCELLED" ? PaymentRequestStatuses.Cancelled : PaymentRequestStatuses.Expired;
+                    result = "ClosedUnpaid";
+                }
+                else if (remote.Status == "PROCESSING" && remote.AmountPaid == 0 && remote.Transactions.Count == 0)
+                {
+                    request.Status = PaymentRequestStatuses.Pending;
+                    result = "AwaitingProviderConfirmation";
+                }
+                else if (remote.Status == "PAID" && remote.AmountRemaining == 0 && remote.AmountPaid == request.Amount &&
+                    remote.Transactions.Count == 1 && remote.Transactions[0].Amount == request.Amount &&
+                    !string.IsNullOrWhiteSpace(remote.Transactions[0].Reference) && remote.Transactions[0].Reference.Length <= 256 &&
+                    remote.Transactions[0].TransactionDateTime?.Length <= 64)
+                {
+                    request.Status = PaymentRequestStatuses.Pending;
+                    result = "ReadyToSettle";
+                }
+                else result = Review(request, "RECONCILIATION_TRANSFER_REVIEW");
+            }
+        }
+        await context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        context.Entry(request).State = EntityState.Detached;
+        return result;
+    }
+
+    public static bool Recoverable(string status, string? errorCode) =>
+        status is PaymentRequestStatuses.Creating or PaymentRequestStatuses.Pending ||
+        (status == PaymentRequestStatuses.RequiresReview && errorCode == "EXPIRED_CHECKOUT_UNRESOLVED");
+
+    private static string Review(PaymentRequests request, string code)
+    {
+        request.Status = PaymentRequestStatuses.RequiresReview;
+        request.LastErrorCode = code;
+        request.LastErrorMessage = "Provider information requires manual review; no payment has been recorded.";
+        return "RequiresReview";
+    }
+}

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/invoice_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../core/widgets/app_button.dart';
@@ -13,10 +14,7 @@ import '../models/customer_models.dart';
 class PayInvoiceBottomSheet extends StatefulWidget {
   final InvoiceModel invoice;
 
-  const PayInvoiceBottomSheet({
-    super.key,
-    required this.invoice,
-  });
+  const PayInvoiceBottomSheet({super.key, required this.invoice});
 
   static Future<void> show(BuildContext context, InvoiceModel invoice) {
     return AppBottomSheet.show(
@@ -32,27 +30,41 @@ class PayInvoiceBottomSheet extends StatefulWidget {
 }
 
 class _PayInvoiceBottomSheetState extends State<PayInvoiceBottomSheet> {
+  final InvoiceService _invoiceService = InvoiceService();
   String _selectedMethod = AppConstants.paymentVNPay;
   bool _isProcessing = false;
 
   void _pay() async {
     setState(() => _isProcessing = true);
-    await Future.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
-    setState(() => _isProcessing = false);
 
-    Navigator.pop(context); // close bottom sheet
+    try {
+      final paidInvoice = await _invoiceService.payInvoice(
+        widget.invoice.invoiceId,
+        _selectedMethod,
+      );
 
-    context.push(
-      AppRoutes.paymentSuccess,
-      extra: {
-        'title': 'Thanh toán thành công!',
-        'subtitle': 'Đã hoàn tất thanh toán hóa đơn ${widget.invoice.monthYear}',
-        'amount': widget.invoice.totalAmount,
-        'method': _selectedMethod,
-        'code': 'INV-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
-      },
-    );
+      if (!mounted) return;
+      setState(() => _isProcessing = false);
+
+      Navigator.pop(context); // close bottom sheet
+
+      context.push(
+        AppRoutes.paymentSuccess,
+        extra: {
+          'title': 'Thanh toán thành công!',
+          'subtitle': 'Đã hoàn tất thanh toán hóa đơn ${widget.invoice.monthYear}',
+          'amount': paidInvoice.totalAmount,
+          'method': _selectedMethod,
+          'code': paidInvoice.invoiceCode,
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isProcessing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
   }
 
   @override
@@ -82,95 +94,89 @@ class _PayInvoiceBottomSheetState extends State<PayInvoiceBottomSheet> {
             ],
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 18),
 
-        Text('Chọn phương thức thanh toán', style: AppTypography.headingSmall),
-        const SizedBox(height: 10),
+        // Method selector
+        Text('Chọn phương thức thanh toán', style: AppTypography.labelLarge),
+        const SizedBox(height: 8),
 
-        AppCard(
-          padding: EdgeInsets.zero,
-          child: Column(
-            children: [
-              _buildPaymentOption(
-                method: AppConstants.paymentVNPay,
-                label: 'Cổng VNPAY (Thẻ ATM / QR)',
-                badgeText: 'VNPAY',
-                badgeBg: const Color(0xFFE0F2FE),
-                badgeFg: const Color(0xFF0369A1),
-              ),
-              const Divider(height: 1),
-              _buildPaymentOption(
-                method: AppConstants.paymentMoMo,
-                label: 'Ví Điện Tử MoMo',
-                badgeText: 'MOMO',
-                badgeBg: const Color(0xFFFCE7F3),
-                badgeFg: const Color(0xFFBE185D),
-              ),
-            ],
-          ),
+        _buildMethodOption(
+          method: AppConstants.paymentVNPay,
+          title: 'VNPay QR / Thẻ nội địa ATM',
+          subtitle: 'Quét mã qua ứng dụng ngân hàng hoặc VNPAY',
+          icon: Icons.qr_code_2_rounded,
+          iconColor: const Color(0xFF005BAA),
+        ),
+        const SizedBox(height: 8),
+
+        _buildMethodOption(
+          method: AppConstants.paymentMoMo,
+          title: 'Ví Điện Tử MoMo',
+          subtitle: 'Thanh toán siêu tốc 1 chạm qua ứng dụng MoMo',
+          icon: Icons.account_balance_wallet_rounded,
+          iconColor: const Color(0xFFA50064),
         ),
         const SizedBox(height: 24),
 
+        // Submit
         AppButton(
-          text:
-              'Xác nhận thanh toán • ${Formatters.formatCurrency(widget.invoice.totalAmount)}',
+          text: 'Xác nhận thanh toán ngay',
           isLoading: _isProcessing,
           onPressed: _pay,
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
       ],
     );
   }
 
-  Widget _buildPaymentOption({
+  Widget _buildMethodOption({
     required String method,
-    required String label,
-    required String badgeText,
-    required Color badgeBg,
-    required Color badgeFg,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color iconColor,
   }) {
     final isSelected = _selectedMethod == method;
     return InkWell(
-      onTap: () {
-        setState(() => _selectedMethod = method);
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      onTap: () => setState(() => _selectedMethod = method),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.border,
+            width: isSelected ? 2 : 1,
+          ),
+          color: isSelected ? AppColors.surfaceVariant : Colors.white,
+        ),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: badgeBg,
-                borderRadius: BorderRadius.circular(6),
+                color: iconColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
               ),
-              child: Text(
-                badgeText,
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  color: badgeFg,
-                  fontSize: 12,
-                ),
-              ),
+              child: Icon(icon, color: iconColor, size: 24),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(label, style: AppTypography.labelLarge),
-            ),
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isSelected ? AppColors.primary : AppColors.border,
-                  width: 2,
-                ),
-                color: isSelected ? AppColors.primary : Colors.transparent,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: AppTypography.labelLarge),
+                  Text(subtitle, style: AppTypography.bodySmall),
+                ],
               ),
-              child: isSelected
-                  ? const Icon(Icons.check, size: 14, color: Colors.white)
-                  : null,
+            ),
+            Radio<String>(
+              value: method,
+              groupValue: _selectedMethod,
+              activeColor: AppColors.primary,
+              onChanged: (val) {
+                if (val != null) setState(() => _selectedMethod = val);
+              },
             ),
           ],
         ),

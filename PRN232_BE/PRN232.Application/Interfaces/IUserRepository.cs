@@ -1,3 +1,4 @@
+using PRN232.Application.Common;
 using PRN232.Domain.Entities;
 using PRN232.Application.ReadModels;
 
@@ -11,7 +12,7 @@ public interface IUserRepository
     Task<bool> EmailExistsAsync(string email);
     Task<Users> AddAsync(Users user);
 
-    Task<List<UserReadModel>> GetAllAsync(int? roleId);
+    Task<PagedResult<UserReadModel>> GetPagedAsync(int? roleId, PageRequest page);
     Task<UserReadModel?> GetByIdAsync(int id);
 
     // Update role/status/profile/password đều cần Entity để EF theo dõi thay đổi.

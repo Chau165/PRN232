@@ -4,6 +4,8 @@ using PRN232.Application.Policies;
 using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace PRN232.Application.Services;
 
@@ -12,24 +14,28 @@ public class BookingService : IBookingService
     // Thời gian giữ chỗ để khách hoàn tất thanh toán cọc; quá hạn thì phòng tự được nhả (D3).
     public static readonly TimeSpan PaymentWindow = TimeSpan.FromMinutes(15);
 
-    // Sau khi cọc, phòng được giữ tiếp để quản lý lập hợp đồng; quá hạn mà chưa có hợp đồng thì nhả phòng (D2).
+    // Legacy mock display timestamp only; Deposited holds the room indefinitely in RoomRentabilityPolicy.
+    // payOS settlement keeps the original checkout deadline and never uses this legacy duration.
     public static readonly TimeSpan DepositHoldPeriod = TimeSpan.FromDays(7);
 
     private readonly IBookingRepository _repository;
     private readonly IPaymentGateway _paymentGateway;
     private readonly TimeProvider _timeProvider;
     private readonly INotificationRealtimePublisher? _realtimePublisher;
+    private readonly ILogger<BookingService> _logger;
 
     public BookingService(
         IBookingRepository repository,
         IPaymentGateway paymentGateway,
         TimeProvider timeProvider,
-        INotificationRealtimePublisher? realtimePublisher = null)
+        INotificationRealtimePublisher? realtimePublisher = null,
+        ILogger<BookingService>? logger = null)
     {
         _repository = repository;
         _paymentGateway = paymentGateway;
         _timeProvider = timeProvider;
         _realtimePublisher = realtimePublisher;
+        _logger = logger ?? NullLogger<BookingService>.Instance;
     }
 
     public async Task<BookingDto> CreateAsync(CreateBookingDto dto, int customerId)
@@ -123,6 +129,8 @@ public class BookingService : IBookingService
 
         if (!await _paymentGateway.ChargeAsync(dto.PaymentMethod, booking.DepositAmount))
         {
+            _logger.LogWarning("Deposit payment declined for booking {BookingId} by customer {CustomerId} via {PaymentMethod}.",
+                id, customerId, dto.PaymentMethod);
             throw new BookingPaymentFailedException("The payment was declined.");
         }
 
@@ -131,6 +139,7 @@ public class BookingService : IBookingService
             UserId = customerId,
             BookingId = id,
             Amount = booking.DepositAmount,
+            PaidAtUtc = _timeProvider.GetUtcNow().UtcDateTime,
             PaymentMethod = dto.PaymentMethod,
             Status = PaymentStatuses.Success
         };
@@ -146,8 +155,13 @@ public class BookingService : IBookingService
         // có thể đã có một lần bấm thanh toán khác chạy xong trước.
         if (!await _repository.MarkDepositedAsync(id, now, now.Add(DepositHoldPeriod).UtcDateTime, payment, notification))
         {
+            // Đã trừ tiền nhưng không ghi nhận được (một lần thanh toán khác vừa xong trước): cần đối soát.
+            _logger.LogError("Deposit for booking {BookingId} was charged ({Amount} via {PaymentMethod}) but the booking was no longer pending; reconcile this payment.",
+                id, booking.DepositAmount, dto.PaymentMethod);
             throw new BookingStatusConflictException("Only pending bookings can be paid.");
         }
+        _logger.LogInformation("Booking {BookingId} deposit paid by customer {CustomerId}: {Amount} via {PaymentMethod}.",
+            id, customerId, booking.DepositAmount, dto.PaymentMethod);
         var paid = await _repository.GetByIdAsync(id, customerId, null);
         if (paid is null)
         {
@@ -175,6 +189,7 @@ public class BookingService : IBookingService
         {
             throw new BookingStatusConflictException("This booking already has a contract and cannot be cancelled.");
         }
+
         if (role == RoleNames.Admin &&
             !await _repository.IsPropertyOwnerAsync(booking.PropertyId, userId))
         {
@@ -182,9 +197,10 @@ public class BookingService : IBookingService
         }
         // Khách chỉ tự huỷ được khi chưa trả cọc; booking đã cọc phải do quản lý/admin huỷ
         // (hoàn cọc xử lý ngoài hệ thống vì thanh toán là giả lập).
+
         if (role == RoleNames.Customer && booking.Status != BookingStatuses.Pending)
         {
-            throw new BookingStatusConflictException("Paid bookings can only be cancelled by the property manager.");
+            throw new BookingStatusConflictException("Deposited bookings require a cancellation/refund request.");
         }
 
         Notifications? notification = null;
@@ -249,7 +265,7 @@ public class BookingService : IBookingService
             booking.CustomerName,
             booking.DepositAmount,
             booking.Status,
-            booking.ExpiryDate,
+            UtcTimestamp.ForResponse(booking.ExpiryDate),
             booking.CustomerPhone,
             booking.ContractId);
     }

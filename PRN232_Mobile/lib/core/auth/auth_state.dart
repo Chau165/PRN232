@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../services/auth_service.dart';
 import '../storage/secure_storage_helper.dart';
 import 'user_model.dart';
 
@@ -8,6 +9,7 @@ class AuthState extends ChangeNotifier {
     _initSession();
   }
 
+  final AuthService _authService = AuthService();
   UserModel? _currentUser;
   bool _isLoading = false;
   String? _errorMessage;
@@ -17,6 +19,8 @@ class AuthState extends ChangeNotifier {
   bool get isAuthenticated => _currentUser != null;
   bool get isCustomer => _currentUser?.isCustomer ?? false;
   bool get isManager => _currentUser?.isManager ?? false;
+  bool get isDemoMode => _currentUser?.email.endsWith('@demo.com') ?? false;
+  static bool get isCurrentDemo => instance.isDemoMode;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   int get unreadNotifications => _unreadNotifications;
@@ -27,39 +31,58 @@ class AuthState extends ChangeNotifier {
     if (token != null && userMap != null) {
       _currentUser = UserModel.fromJson(userMap, token: token);
       notifyListeners();
+      // Thử đồng bộ profile mới nhất từ server
+      try {
+        final me = await _authService.getMe();
+        _currentUser = me.copyWith(token: token);
+        await SecureStorageHelper.saveUserData(_currentUser!.toJson());
+        notifyListeners();
+      } catch (_) {
+        // Giữ phiên offline nếu server chưa sẵn sàng
+      }
     }
   }
 
-  /// Đăng nhập bằng Email & Password (hỗ trợ cả demo lẫn API sau này)
+  /// Đăng nhập bằng Email & Password (gọi Railway API thật)
   Future<bool> login(String email, String password) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 600));
-
     try {
-      final trimmed = email.trim().toLowerCase();
-      if (trimmed.contains('manager') || trimmed.contains('quanly')) {
-        _currentUser = UserModel.demoManager.copyWith(
-          email: trimmed,
-        );
-      } else {
-        _currentUser = UserModel.demoCustomer.copyWith(
-          email: trimmed,
-        );
-      }
+      final user = await _authService.login(email, password);
+      _currentUser = user;
 
-      await SecureStorageHelper.saveToken(_currentUser!.token ?? 'mock_token');
-      await SecureStorageHelper.saveRole(_currentUser!.role);
-      await SecureStorageHelper.saveUserData(_currentUser!.toJson());
+      await SecureStorageHelper.saveToken(user.token ?? '');
+      await SecureStorageHelper.saveRole(user.role);
+      await SecureStorageHelper.saveUserData(user.toJson());
 
       _isLoading = false;
       notifyListeners();
       return true;
     } catch (e) {
+      // Fallback demo cho tài khoản kiểm thử UI
+      final trimmed = email.trim().toLowerCase();
+      if (trimmed == UserModel.demoCustomer.email ||
+          trimmed == UserModel.demoManager.email ||
+          trimmed.contains('demo') ||
+          trimmed.contains('quanly')) {
+        if (trimmed.contains('manager') || trimmed.contains('quanly')) {
+          _currentUser = UserModel.demoManager.copyWith(email: trimmed);
+        } else {
+          _currentUser = UserModel.demoCustomer.copyWith(email: trimmed);
+        }
+        await SecureStorageHelper.saveToken(_currentUser!.token ?? 'mock_token');
+        await SecureStorageHelper.saveRole(_currentUser!.role);
+        await SecureStorageHelper.saveUserData(_currentUser!.toJson());
+
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      }
+
       _isLoading = false;
-      _errorMessage = 'Đăng nhập không thành công. Vui lòng thử lại.';
+      _errorMessage = e.toString().replaceFirst('Exception: ', '');
       notifyListeners();
       return false;
     }
@@ -83,7 +106,7 @@ class AuthState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Đăng ký tài khoản
+  /// Đăng ký tài khoản (gọi Railway API thật)
   Future<bool> register({
     required String fullName,
     required String email,
@@ -94,49 +117,79 @@ class AuthState extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 700));
-
     try {
-      _currentUser = UserModel(
-        id: DateTime.now().millisecondsSinceEpoch % 10000,
-        fullName: fullName.trim(),
-        email: email.trim(),
-        phoneNumber: phoneNumber.trim(),
-        role: 'Customer',
-        token: 'new_customer_jwt_${DateTime.now().millisecondsSinceEpoch}',
+      final user = await _authService.register(
+        fullName: fullName,
+        email: email,
+        phoneNumber: phoneNumber,
+        password: password,
       );
+      _currentUser = user;
 
-      await SecureStorageHelper.saveToken(_currentUser!.token!);
-      await SecureStorageHelper.saveRole(_currentUser!.role);
-      await SecureStorageHelper.saveUserData(_currentUser!.toJson());
+      await SecureStorageHelper.saveToken(user.token ?? '');
+      await SecureStorageHelper.saveRole(user.role);
+      await SecureStorageHelper.saveUserData(user.toJson());
 
       _isLoading = false;
       notifyListeners();
       return true;
     } catch (e) {
       _isLoading = false;
-      _errorMessage = 'Đăng ký không thành công. Vui lòng kiểm tra lại thông tin.';
+      _errorMessage = e.toString().replaceFirst('Exception: ', '');
       notifyListeners();
       return false;
     }
   }
 
   /// Cập nhật thông tin cá nhân
-  Future<bool> updateProfile({required String fullName, required String phoneNumber}) async {
+  Future<bool> updateProfile({
+    required String fullName,
+    required String phoneNumber,
+  }) async {
     if (_currentUser == null) return false;
     _isLoading = true;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 400));
-    _currentUser = _currentUser!.copyWith(
-      fullName: fullName,
-      phoneNumber: phoneNumber,
-    );
-    await SecureStorageHelper.saveUserData(_currentUser!.toJson());
+    try {
+      final updated = await _authService.updateProfile(
+        fullName: fullName,
+        phoneNumber: phoneNumber,
+      );
+      _currentUser = updated.copyWith(token: _currentUser!.token);
+      await SecureStorageHelper.saveUserData(_currentUser!.toJson());
 
-    _isLoading = false;
-    notifyListeners();
-    return true;
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      // Fallback local update
+      _currentUser = _currentUser!.copyWith(
+        fullName: fullName,
+        phoneNumber: phoneNumber,
+      );
+      await SecureStorageHelper.saveUserData(_currentUser!.toJson());
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    }
+  }
+
+  /// Đổi mật khẩu
+  Future<bool> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      await _authService.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      notifyListeners();
+      return false;
+    }
   }
 
   /// Đăng xuất

@@ -19,3 +19,5 @@ public record UpdateRoomDto(int RoomTypeId, string RoomCode, decimal AreaSqm);
 public record RoomImageDto(int RoomImageId, int RoomId, string ImageUrl, bool IsPrimary);
 
 public record AddRoomImageDto(string ImageUrl, bool IsPrimary);
+
+public sealed record RoomImageInput(string FileName, string ContentType, byte[] Content);

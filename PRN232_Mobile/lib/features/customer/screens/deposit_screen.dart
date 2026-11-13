@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/booking_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
@@ -24,6 +25,7 @@ class DepositScreen extends StatefulWidget {
 }
 
 class _DepositScreenState extends State<DepositScreen> {
+  final BookingService _bookingService = BookingService();
   String _selectedPaymentMethod = AppConstants.paymentVNPay;
   DateTime _moveInDate = DateTime.now().add(const Duration(days: 7));
   bool _agreedTerms = true;
@@ -38,21 +40,38 @@ class _DepositScreenState extends State<DepositScreen> {
     }
 
     setState(() => _isProcessing = true);
-    await Future.delayed(const Duration(milliseconds: 1000));
-    if (!mounted) return;
-    setState(() => _isProcessing = false);
 
-    // Chuyển sang màn hình thành công
-    context.push(
-      AppRoutes.paymentSuccess,
-      extra: {
-        'title': 'Đặt cọc thành công!',
-        'subtitle': 'Đã nhận tiền cọc cho ${widget.room.roomCode} - ${widget.property.propertyName}',
-        'amount': widget.room.depositAmount,
-        'method': _selectedPaymentMethod,
-        'code': 'DEP-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
-      },
-    );
+    try {
+      // Bước 1: Tạo Booking trên backend
+      final booking = await _bookingService.createBooking(widget.room.roomId);
+      // Bước 2: Thanh toán cọc qua cổng giả lập
+      final paidBooking = await _bookingService.payBooking(
+        booking.id,
+        _selectedPaymentMethod,
+      );
+
+      if (!mounted) return;
+      setState(() => _isProcessing = false);
+
+      // Chuyển sang màn hình thành công
+      context.push(
+        AppRoutes.paymentSuccess,
+        extra: {
+          'title': 'Đặt cọc thành công!',
+          'subtitle':
+              'Đã nhận tiền cọc cho ${widget.room.roomCode} - ${widget.property.propertyName}',
+          'amount': paidBooking.depositAmount,
+          'method': _selectedPaymentMethod,
+          'code': paidBooking.bookingCode,
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isProcessing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
   }
 
   @override

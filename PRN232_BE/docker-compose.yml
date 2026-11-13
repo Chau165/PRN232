@@ -22,3 +22,4 @@ services:
       - Supabase__Url=${Supabase__Url}
       - Supabase__ServiceRoleKey=${Supabase__ServiceRoleKey}
       - Supabase__MaintenanceReportBucket=${Supabase__MaintenanceReportBucket:-maintenance-reports}
+      - Supabase__RoomBucket=${Supabase__RoomBucket:-room-images}

@@ -24,7 +24,7 @@ public class ScopeBEndToEndReviewTests
         await BookingsApiTests.LoginAsync(client, "admin@example.test");
         // This is the directory endpoint used to populate the FE's viewing-manager picker.
         var users = await client.GetFromJsonAsync<JsonElement>("/api/users?roleId=2");
-        Assert.Contains(users.EnumerateArray(), row => row.GetProperty("userId").GetInt32() == 8
+        Assert.Contains(users.GetProperty("items").EnumerateArray(), row => row.GetProperty("userId").GetInt32() == 8
             && row.GetProperty("isActive").GetBoolean());
         using var response = await client.PostAsJsonAsync($"/api/viewing-schedules/{viewingId}/approve", new
         {

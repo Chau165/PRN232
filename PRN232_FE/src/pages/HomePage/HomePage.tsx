@@ -72,7 +72,7 @@ export default function HomePage() {
   }, [location.hash])
 
   return (
-    <main className="min-h-screen bg-[#fcfdfd] text-slate-800">
+    <main className="home-page min-h-screen bg-[#fcfdfd] text-slate-800">
       <Navbar />
       <HeroSearch />
       <SearchSection

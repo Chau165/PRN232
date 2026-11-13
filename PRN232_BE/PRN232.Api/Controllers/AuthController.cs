@@ -18,6 +18,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
+    [EnableRateLimiting("RegisterPolicy")]
     public async Task<ActionResult<AuthResponseDto>> Register(RegisterDto dto)
     {
         try

@@ -21,6 +21,8 @@ public interface IRoomService
 
     Task<List<RoomImageDto>?> GetImagesAsync(int roomId);
     Task<RoomImageDto?> AddImageAsync(int roomId, AddRoomImageDto dto, int requestingUserId, bool isAdmin);
+    Task<RoomImageDto?> UploadImageAsync(int roomId, RoomImageInput image, bool isPrimary, int requestingUserId, bool isAdmin);
+    Task<bool> SetPrimaryImageAsync(int roomId, int imageId, int requestingUserId, bool isAdmin);
     Task<bool> RemoveImageAsync(int roomId, int imageId, int requestingUserId, bool isAdmin);
 
     Task<List<AmenityDto>?> GetAmenitiesAsync(int roomId);
