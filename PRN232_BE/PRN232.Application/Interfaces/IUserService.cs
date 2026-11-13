@@ -1,10 +1,11 @@
+using PRN232.Application.Common;
 using PRN232.Application.DTOs;
 
 namespace PRN232.Application.Interfaces;
 
 public interface IUserService
 {
-    Task<List<UserDto>> GetAllAsync(int? roleId);
+    Task<PagedResult<UserDto>> GetAllAsync(int? roleId, PageRequest page);
     Task<UserDto?> GetByIdAsync(int id);
     Task<UserDto> CreateAsync(CreateUserDto dto);
     Task<UserDto?> UpdateRoleAsync(int id, UpdateUserRoleDto dto, int requestingUserId);

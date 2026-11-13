@@ -1,3 +1,4 @@
+using PRN232.Application.Common;
 using Microsoft.EntityFrameworkCore;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
@@ -34,12 +35,17 @@ public class UserRepository : IUserRepository
         return entry.Entity;
     }
 
-    public Task<List<UserReadModel>> GetAllAsync(int? roleId)
+    public async Task<PagedResult<UserReadModel>> GetPagedAsync(int? roleId, PageRequest page)
     {
-        return _context.Users
+        var users = _context.Users
             .AsNoTracking()
-            .Where(u => roleId == null || u.RoleId == roleId)
+            .Where(u => roleId == null || u.RoleId == roleId);
+
+        var totalCount = await users.CountAsync();
+        var items = await users
             .OrderBy(u => u.UserId)
+            .Skip(page.Skip)
+            .Take(page.PageSize)
             .Select(u => new UserReadModel(
             u.UserId,
             u.FullName,
@@ -49,6 +55,8 @@ public class UserRepository : IUserRepository
             u.Role!.RoleName,
             u.IsActive))
             .ToListAsync();
+
+        return new PagedResult<UserReadModel>(items, page.Page, page.PageSize, totalCount);
     }
 
     public Task<UserReadModel?> GetByIdAsync(int id)

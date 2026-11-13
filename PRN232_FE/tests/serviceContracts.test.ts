@@ -17,6 +17,7 @@ import {
   getRoles,
   getUser,
   getUsers,
+  getUsersPage,
   updateCurrentUser,
   updateUserRole,
   updateUserStatus,
@@ -32,6 +33,27 @@ function response(body: unknown, status = 200): Response {
 afterEach(() => vi.restoreAllMocks())
 
 describe("service API contracts", () => {
+  it("pages through every user of a role and exposes single pages (A15)", async () => {
+    const user = (userId: number) => ({ userId, fullName: `U${userId}`, email: "", phoneNumber: "", roleId: 2, roleName: "Manager", isActive: true })
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(response({ items: Array.from({ length: 100 }, (_, i) => user(i + 1)), page: 1, pageSize: 100, totalCount: 101 }))
+      .mockResolvedValueOnce(response({ items: [user(101)], page: 2, pageSize: 100, totalCount: 101 }))
+      .mockResolvedValueOnce(response({ items: [user(21)], page: 2, pageSize: 20, totalCount: 21 }))
+
+    const all = await getUsers("token", 2)
+    const page = await getUsersPage("token", { page: 2, pageSize: 20 })
+
+    expect(all).toHaveLength(101)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    const urls = fetchMock.mock.calls.map(([url]) => new URL(String(url), "http://localhost"))
+    expect(urls.map((url) => url.search)).toEqual([
+      "?roleId=2&page=1&pageSize=100",
+      "?roleId=2&page=2&pageSize=100",
+      "?page=2&pageSize=20",
+    ])
+    expect(page).toEqual({ items: [user(21)], page: 2, pageSize: 20, totalCount: 21 })
+  })
+
   it("keeps authentication endpoints and payload fields unchanged", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(response({ accessToken: "jwt" }))
@@ -97,6 +119,7 @@ describe("service API contracts", () => {
       "/api/rooms",
     ])
     expect(new URL(String(calls[4][0]), "http://localhost").searchParams.get("roleId")).toBe("2")
+    expect(new URL(String(calls[4][0]), "http://localhost").searchParams.get("pageSize")).toBe("100")
     expect(new URL(String(calls[9][0]), "http://localhost").searchParams.get("ownerId")).toBe("7")
     expect(calls.map(([, init]) => init?.method ?? "GET")).toEqual([
       "GET", "PUT", "PUT", "GET", "GET", "GET", "POST", "PUT", "PUT", "GET", "GET",

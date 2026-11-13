@@ -1,3 +1,4 @@
+using PRN232.Application.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PRN232.Application.DTOs;
@@ -18,13 +19,17 @@ public class UsersController : ControllerBase
         _userService = userService;
     }
 
-    // GET /api/users?roleId= — Admin xem toàn bộ user (hoặc lọc theo role, ví dụ
-    // roleId=2 để xem hết Manager).
+    // GET /api/users?roleId=&page=&pageSize= — Admin xem user theo trang (A15), có thể lọc
+    // theo role (ví dụ roleId=2 để xem Manager). page mặc định 1, pageSize mặc định 20, tối đa 100.
     [HttpGet]
     [Authorize(Roles = "Admin")]
-    public async Task<ActionResult<IEnumerable<UserDto>>> GetAll([FromQuery] int? roleId)
+    [ProducesResponseType(typeof(PagedResult<UserDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedResult<UserDto>>> GetAll(
+        [FromQuery] int? roleId,
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize)
     {
-        return Ok(await _userService.GetAllAsync(roleId));
+        return Ok(await _userService.GetAllAsync(roleId, PageRequest.Create(page, pageSize)));
     }
 
     // GET /api/users/me — user tự xem profile của mình.

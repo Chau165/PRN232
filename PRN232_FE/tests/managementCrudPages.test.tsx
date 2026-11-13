@@ -145,7 +145,7 @@ describe("management property and room CRUD", () => {
         if (url.endsWith("/users/me")) return jsonResponse(admin)
         if (url.endsWith("/roles"))
           return jsonResponse([{ roleId: 2, roleName: "Manager" }])
-        if (url.endsWith("/users?roleId=2")) return jsonResponse([])
+        if (url.includes("/users?roleId=2")) return jsonResponse({ items: [], page: 1, pageSize: 100, totalCount: 0 })
         if (url.includes("/properties/managers?propertyIds=21")) return jsonResponse([])
         if (url.endsWith("/properties") && init?.method === "POST")
           return jsonResponse(property, 201)
@@ -197,8 +197,8 @@ describe("management property and room CRUD", () => {
         if (url.endsWith("/users/me")) return jsonResponse(admin)
         if (url.endsWith("/roles"))
           return jsonResponse([{ roleId: 2, roleName: "Manager" }])
-        if (url.endsWith("/users?roleId=2"))
-          return jsonResponse([
+        if (url.includes("/users?roleId=2"))
+          return jsonResponse({ items: [
             {
               userId: 11,
               fullName: "Nguyễn Hoàng An",
@@ -215,7 +215,7 @@ describe("management property and room CRUD", () => {
               roleName: "Manager",
               isActive: true,
             },
-          ])
+          ], page: 1, pageSize: 100, totalCount: 2 })
         if (url.includes("/properties/managers?propertyIds=21"))
           return jsonResponse([{
             propertyId: 21,
