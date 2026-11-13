@@ -6,6 +6,8 @@ namespace PRN232.Infrastructure.Repositories;
 
 internal static class BookingPaymentLock
 {
+    // SQLite test/local writes share a gate; PostgreSQL correctness uses DB locks and constraints.
+    internal static readonly SemaphoreSlim RefundWriteGate = new(1, 1);
     // Shared with room reservation and contract creation: room first, then booking.
     internal static async Task LockAsync(AppDbContext context, int bookingId, CancellationToken cancellationToken = default)
     {

@@ -10,7 +10,7 @@ namespace PRN232.Infrastructure.Repositories;
 
 public sealed class BookingRefundRepository(AppDbContext context) : IBookingRefundRepository
 {
-    private static readonly SemaphoreSlim SqliteWriteGate = new(1, 1);
+    private static readonly SemaphoreSlim SqliteWriteGate = BookingPaymentLock.RefundWriteGate;
 
     public async Task<IReadOnlyList<BookingRefundRequests>> ListForReviewAsync(string? status, int skip, int take, CancellationToken cancellationToken) =>
         await context.BookingRefundRequests.AsNoTracking().Include(item => item.OriginalPayment)

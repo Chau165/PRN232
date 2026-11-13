@@ -12,6 +12,9 @@ public static class PayOSPayoutConfiguration
     {
         var section = configuration.GetSection(PayOSPayoutSettings.SectionName);
         services.AddOptions<PayOSPayoutSettings>().Bind(section)
+            .Validate(value => value.DispatchIntervalSeconds is >= 5 and <= 3600, "PayOSPayout:DispatchIntervalSeconds must be 5..3600.")
+            .Validate(value => value.DispatchBatchSize is >= 1 and <= 100, "PayOSPayout:DispatchBatchSize must be 1..100.")
+            .Validate(value => !value.DispatchEnabled || value.Enabled, "PayOSPayout:Enabled is required for dispatch.")
             .Validate(value => value.TimeoutMilliseconds is >= 1000 and <= 60000, "PayOSPayout:TimeoutMilliseconds must be 1000..60000.")
             .Validate(value => !value.Enabled || Credential(value.ClientId), "PayOSPayout:ClientId is required when enabled.")
             .Validate(value => !value.Enabled || Credential(value.ApiKey), "PayOSPayout:ApiKey is required when enabled.")
@@ -31,8 +34,13 @@ public static class PayOSPayoutConfiguration
                 }));
             });
             services.AddScoped<IPayOSPayoutGateway, PayOSPayoutGateway>();
+            services.AddScoped<IPayOSPayoutSubmissionGateway, PayOSPayoutSubmissionGateway>();
         }
-        else services.AddScoped<IPayOSPayoutGateway, DisabledPayOSPayoutGateway>();
+        else
+        {
+            services.AddScoped<IPayOSPayoutGateway, DisabledPayOSPayoutGateway>();
+            services.AddScoped<IPayOSPayoutSubmissionGateway, DisabledPayOSPayoutSubmissionGateway>();
+        }
         return services;
     }
 

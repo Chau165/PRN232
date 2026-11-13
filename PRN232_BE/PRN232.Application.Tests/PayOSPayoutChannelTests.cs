@@ -25,6 +25,7 @@ public class PayOSPayoutChannelTests
         var services = Services(new());
         using var provider = services.BuildServiceProvider();
         Assert.False(provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value.Enabled);
+        Assert.False(provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value.DispatchEnabled);
         Assert.IsType<DisabledPayOSPayoutGateway>(provider.GetRequiredService<IPayOSPayoutGateway>());
         Assert.Null(provider.GetService<PayOSPayoutClient>());
     }
@@ -37,6 +38,20 @@ public class PayOSPayoutChannelTests
         var error = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value);
         Assert.DoesNotContain("secret-", error.Message);
         Assert.Equal(3, error.Failures.Count());
+    }
+
+    [Theory]
+    [InlineData(true, 4, 10)]
+    [InlineData(true, 3601, 10)]
+    [InlineData(true, 30, 0)]
+    [InlineData(true, 30, 101)]
+    [InlineData(false, 30, 10)]
+    public void Dispatch_configuration_requires_valid_limits_and_enabled_payout_channel(bool enabled, int interval, int batch)
+    {
+        using var provider = Services(new() { ["PayOSPayout:Enabled"] = enabled.ToString(), ["PayOSPayout:DispatchEnabled"] = "true",
+            ["PayOSPayout:ClientId"] = "payout-client", ["PayOSPayout:ApiKey"] = "payout-api", ["PayOSPayout:ChecksumKey"] = "payout-checksum",
+            ["PayOSPayout:DispatchIntervalSeconds"] = interval.ToString(), ["PayOSPayout:DispatchBatchSize"] = batch.ToString() }).BuildServiceProvider();
+        Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value);
     }
 
     [Theory]

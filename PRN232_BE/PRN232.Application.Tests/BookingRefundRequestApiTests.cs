@@ -267,7 +267,26 @@ public class BookingRefundRequestApiTests
             Assert.Single(duplicates, item => item.StatusCode == HttpStatusCode.Created);
             Assert.Single(duplicates, item => item.StatusCode == HttpStatusCode.Conflict);
 
+            // P8: distinct PostgreSQL contexts/process-equivalent workers race for the same approved claim.
+            using (var query = app.Services.CreateScope())
+            {
+                var pending = await query.ServiceProvider.GetRequiredService<AppDbContext>().BookingRefundRequests.SingleAsync();
+                await LoginAsync(client, "admin@example.test");
+                Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync($"/api/booking-refund-requests/{pending.BookingRefundRequestId}/review",
+                    new ReviewBookingRefundDto(true, 3000000, "PostgreSQL payout race"))).StatusCode);
+            }
+            var payout = new BookingRefundPayoutTests.Gateway();
+            await Task.WhenAll(Enumerable.Range(0, 6).Select(_ => BookingRefundPayoutTests.RunAsync(app.Services, payout)));
+            Assert.Equal(1, payout.Submits);
+            using (var query = app.Services.CreateScope())
+            {
+                var attempt = await query.ServiceProvider.GetRequiredService<AppDbContext>().PayoutAttempts.SingleAsync();
+                Assert.Equal("Processing", attempt.Status);
+                Assert.True(Guid.TryParseExact(attempt.IdempotencyKey, "N", out _));
+            }
+
             var other = await SeedAsync(app, roomId: 2);
+            await LoginAsync(client, "customer@example.test");
             var customerToken = client.DefaultRequestHeaders.Authorization;
             await LoginAsync(client, "manager@example.test");
             var managerToken = client.DefaultRequestHeaders.Authorization;

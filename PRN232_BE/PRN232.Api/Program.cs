@@ -293,6 +293,13 @@ builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<IBookingRefundRepository, BookingRefundRepository>();
 builder.Services.AddScoped<IBookingRefundService, BookingRefundService>();
 builder.Services.AddScoped<IBookingRefundReviewService, BookingRefundReviewService>();
+builder.Services.AddScoped<IBookingRefundPayoutRepository, BookingRefundPayoutRepository>();
+builder.Services.AddScoped<IBookingRefundPayoutService>(provider => new BookingRefundPayoutService(
+    provider.GetRequiredService<IBookingRefundPayoutRepository>(), provider.GetRequiredService<IPayOSPayoutGateway>(),
+    provider.GetRequiredService<IPayOSPayoutSubmissionGateway>(),
+    provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PRN232.Application.Settings.PayOSPayoutSettings>>().Value,
+    provider.GetRequiredService<TimeProvider>()));
+builder.Services.AddHostedService<PRN232.Api.Workers.BookingRefundPayoutWorker>();
 builder.Services.AddScoped<IBookingPaymentLinkRepository, BookingPaymentLinkRepository>();
 builder.Services.AddScoped<IBookingPaymentLinkService, BookingPaymentLinkService>();
 builder.Services.AddScoped<IPaymentGateway, MockPaymentGateway>();

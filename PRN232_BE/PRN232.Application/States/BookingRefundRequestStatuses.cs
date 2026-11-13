@@ -19,7 +19,8 @@ public static class BookingRefundRequestStatuses
     public static bool CanTransition(string? from, string? to) => (from, to) switch
     {
         (PendingReview, Approved or Rejected) => true,
-        (Approved, Refunding) => true,
+        // A changed booking/deposit may invalidate approval before any transfer is attempted.
+        (Approved, Refunding or RequiresReview) => true,
         (Refunding, Refunded or Approved or RequiresReview) => true,
         (RequiresReview, Refunding or Refunded or Approved) => true,
         _ => false
