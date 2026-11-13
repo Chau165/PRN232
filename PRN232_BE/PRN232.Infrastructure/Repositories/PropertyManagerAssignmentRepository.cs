@@ -199,6 +199,41 @@ public sealed class PropertyManagerAssignmentRepository : IPropertyManagerAssign
             .ToListAsync(cancellationToken);
     }
 
+    public Task<List<ManagedPropertyReadModel>> GetManagedPropertiesForManagersAsync(
+        IReadOnlyCollection<int>? managerIds,
+        CancellationToken cancellationToken)
+    {
+        var assignments = _context.PropertyManagerAssignments
+            .AsNoTracking()
+            .Where(assignment => assignment.Manager!.Role!.RoleName == RoleNames.Manager);
+        if (managerIds is not null)
+        {
+            var ids = managerIds.Distinct().ToArray();
+            assignments = assignments.Where(assignment => ids.Contains(assignment.ManagerId));
+        }
+
+        return assignments
+            .OrderBy(assignment => assignment.ManagerId)
+            .ThenBy(assignment => assignment.PropertyId)
+            .Select(assignment => new ManagedPropertyReadModel(
+                assignment.ManagerId,
+                new PropertySummaryReadModel(
+                    assignment.Property!.PropertyId,
+                    assignment.Property.OwnerId,
+                    assignment.Property.Owner!.FullName,
+                    assignment.Property.PropertyName,
+                    assignment.Property.AddressText,
+                    assignment.Property.Ward,
+                    assignment.Property.District,
+                    assignment.Property.City,
+                    assignment.Property.Latitude,
+                    assignment.Property.Longitude,
+                    assignment.Property.Rooms.Count,
+                    assignment.Property.PrimaryImageUrl,
+                    assignment.Property.Description)))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<RevokePropertyManagerAssignmentResult> RevokeActiveAsync(
         int propertyId,
         int managerId,

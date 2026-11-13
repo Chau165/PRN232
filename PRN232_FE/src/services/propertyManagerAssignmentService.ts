@@ -1,6 +1,7 @@
 import { apiRequest } from "@/api/apiClient"
 import type { PropertyDto } from "@/types/user"
 import type {
+  ManagerPropertiesDto,
   PropertyManagerAssignmentDto,
   PropertyManagersDto,
 } from "@/types/propertyManagerAssignment"
@@ -62,6 +63,31 @@ export function revokePropertyManager(
     accessToken,
     method: "DELETE",
   })
+}
+
+/**
+ * Loads the assigned properties of many managers with a single request (C11b).
+ * Omitting `managerIds` returns every manager's properties.
+ * Returns a map keyed by managerId; managers without properties map to [].
+ */
+export async function getPropertiesForManagers(
+  accessToken: string,
+  managerIds?: readonly number[],
+  signal?: AbortSignal,
+): Promise<Record<string, PropertyDto[]>> {
+  const result: Record<string, PropertyDto[]> = {}
+  if (managerIds && managerIds.length === 0) return result
+
+  const query = managerIds
+    ? `?managerIds=${encodeURIComponent(managerIds.join(","))}`
+    : ""
+  const groups = await apiRequest<ManagerPropertiesDto[]>(
+    `/managers/properties${query}`,
+    { accessToken, signal, cache: "no-store" },
+  )
+  for (const id of managerIds ?? []) result[String(id)] = []
+  for (const group of groups ?? []) result[String(group.managerId)] = group.properties
+  return result
 }
 
 export function getPropertiesForManager(

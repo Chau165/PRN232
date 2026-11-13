@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { getManagersForProperties } from "@/services/propertyManagerAssignmentService"
+import {
+  getManagersForProperties,
+  getPropertiesForManagers,
+} from "@/services/propertyManagerAssignmentService"
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -45,6 +48,45 @@ describe("getManagersForProperties (C11)", () => {
     vi.stubGlobal("fetch", fetchMock)
 
     expect(await getManagersForProperties("jwt", [])).toEqual({})
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe("getPropertiesForManagers (C11b)", () => {
+  const property = (propertyId: number) => ({
+    propertyId,
+    ownerId: 1,
+    ownerName: "Admin",
+    propertyName: `Khu ${propertyId}`,
+    addressText: "",
+    ward: "",
+    district: "",
+    city: "",
+    roomCount: 0,
+  })
+
+  it("loads properties for every manager with one request", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse([
+      { managerId: 7, properties: [property(1), property(2)] },
+    ]))
+    vi.stubGlobal("fetch", fetchMock)
+
+    const result = await getPropertiesForManagers("jwt", [7, 8, 9])
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(decodeURIComponent(String(fetchMock.mock.calls[0][0])).endsWith(
+      "/api/managers/properties?managerIds=7,8,9",
+    )).toBe(true)
+    expect(result["7"].map((row) => row.propertyId)).toEqual([1, 2])
+    expect(result["8"]).toEqual([])
+    expect(result["9"]).toEqual([])
+  })
+
+  it("does not call the API when there are no managers", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    vi.stubGlobal("fetch", fetchMock)
+
+    expect(await getPropertiesForManagers("jwt", [])).toEqual({})
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

@@ -12,6 +12,10 @@ public interface IPropertyManagerAssignmentService
         IReadOnlyCollection<int>? propertyIds,
         string role,
         CancellationToken cancellationToken);
+    Task<IReadOnlyList<ManagerPropertiesDto>> GetPropertiesForManagersAsync(
+        IReadOnlyCollection<int>? managerIds,
+        string role,
+        CancellationToken cancellationToken);
     Task<PropertyManagerAssignmentDto> AssignManagerAsync(
         int propertyId,
         int managerId,
