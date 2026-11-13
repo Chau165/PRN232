@@ -144,10 +144,7 @@ export default function MapSection() {
       <div className="public-container pb-20 pt-4 lg:pt-8">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[.16em] text-[#087775]">
-              Khám phá khu vực
-            </p>
-            <h2 className="mt-1 font-display text-[27px] font-bold tracking-[-.04em] text-slate-900">
+            <h2 className="font-display text-[27px] font-bold tracking-[-.04em] text-slate-900">
               Tìm khu trọ theo địa điểm
             </h2>
             <p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-500">

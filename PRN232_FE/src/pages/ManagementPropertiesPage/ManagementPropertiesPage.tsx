@@ -23,6 +23,7 @@ import { managementPropertyRoomsPath } from "@/constants/routes"
 import type { PropertyManagerAssignmentDto } from "@/types/propertyManagerAssignment"
 import type { PropertyDto } from "@/types/user"
 import { getPropertyManagerAssignmentError } from "@/utils/propertyManagerAssignmentErrors"
+import { formatAddress } from "@/utils/publicFormatting"
 
 export default function ManagementPropertiesPage() {
   const { accessToken, user } = useAuth()
@@ -285,14 +286,7 @@ export default function ManagementPropertiesPage() {
                     </div>
                   </div>
                   <p className="min-w-0 text-sm text-slate-600">
-                    {[
-                      property.addressText,
-                      property.ward,
-                      property.district,
-                      property.city,
-                    ]
-                      .filter(Boolean)
-                      .join(", ")}
+                    {formatAddress(property.addressText, property.ward, property.district, property.city)}
                   </p>
                   <p className="text-sm text-slate-600">
                     {property.roomCount} phòng
