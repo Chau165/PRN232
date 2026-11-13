@@ -4,7 +4,7 @@ import '../constants/app_constants.dart';
 
 class SecureStorageHelper {
   static const FlutterSecureStorage _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    aOptions: AndroidOptions(resetOnError: true),
   );
 
   static Future<void> saveToken(String token) async {

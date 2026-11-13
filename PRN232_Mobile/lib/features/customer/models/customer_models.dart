@@ -72,6 +72,14 @@ class RoomItem {
 
   bool get isAvailable => status.toLowerCase() == 'available';
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RoomItem && runtimeType == other.runtimeType && roomId == other.roomId;
+
+  @override
+  int get hashCode => roomId.hashCode;
+
   factory RoomItem.fromJson(Map<String, dynamic> json) {
     final imagesList = (json['images'] as List?)?.map((e) => e.toString()).toList() ??
         (json['primaryImageUrl'] != null ? [json['primaryImageUrl'].toString()] : <String>[]);
@@ -230,6 +238,16 @@ class EquipmentItem {
       installedDate: json['installDate']?.toString() ?? '',
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is EquipmentItem &&
+          runtimeType == other.runtimeType &&
+          id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class InvoiceDetailLine {

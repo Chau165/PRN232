@@ -48,7 +48,7 @@ class ViewingRequestBottomSheet extends StatefulWidget {
 class _ViewingRequestBottomSheetState extends State<ViewingRequestBottomSheet> {
   late DateTime _selectedDate;
   TimeOfDay _selectedTime = const TimeOfDay(hour: 9, minute: 0);
-  RoomItem? _selectedRoom;
+  int? _selectedRoomId;
   final _noteController = TextEditingController();
   final _phoneController = TextEditingController(text: '0901234567');
   bool _isSubmitting = false;
@@ -59,15 +59,14 @@ class _ViewingRequestBottomSheetState extends State<ViewingRequestBottomSheet> {
     // Khởi tạo ngày hẹn: Mặc định ngày mai lúc 09:00 để luôn ở tương lai
     _selectedDate = DateTime.now().add(const Duration(days: 1));
 
-    // Lấy danh sách các phòng khả dụng
     final candidateRooms = widget.availableRooms.isNotEmpty
         ? widget.availableRooms
         : widget.property.rooms;
 
     if (widget.room != null) {
-      _selectedRoom = widget.room;
+      _selectedRoomId = widget.room!.roomId;
     } else if (candidateRooms.isNotEmpty) {
-      _selectedRoom = candidateRooms.first;
+      _selectedRoomId = candidateRooms.first.roomId;
     }
   }
 
@@ -124,15 +123,9 @@ class _ViewingRequestBottomSheetState extends State<ViewingRequestBottomSheet> {
   }
 
   void _submit() async {
-    final candidateRooms = widget.availableRooms.isNotEmpty
-        ? widget.availableRooms
-        : widget.property.rooms;
+    final targetRoomId = _selectedRoomId ?? widget.room?.roomId ?? 0;
 
-    final targetRoom = _selectedRoom ??
-        widget.room ??
-        (candidateRooms.isNotEmpty ? candidateRooms.first : null);
-
-    if (targetRoom == null || targetRoom.roomId <= 0) {
+    if (targetRoomId <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: AppColors.error,
@@ -166,7 +159,7 @@ class _ViewingRequestBottomSheetState extends State<ViewingRequestBottomSheet> {
 
     try {
       await ViewingService().createViewing(
-        roomId: targetRoom.roomId,
+        roomId: targetRoomId,
         scheduledAt: scheduledAt,
         note: _noteController.text.trim().isNotEmpty
             ? _noteController.text.trim()
@@ -191,15 +184,56 @@ class _ViewingRequestBottomSheetState extends State<ViewingRequestBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final candidateRooms = widget.availableRooms.isNotEmpty
+    final rawRooms = widget.availableRooms.isNotEmpty
         ? widget.availableRooms
         : widget.property.rooms;
+    final seen = <int>{};
+    final candidateRooms = rawRooms.where((r) => seen.add(r.roomId)).toList();
+    final effectiveSelectedId = (candidateRooms.any((r) => r.roomId == _selectedRoomId))
+        ? _selectedRoomId
+        : (candidateRooms.isNotEmpty ? candidateRooms.first.roomId : null);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 1. Chọn phòng cần xem
-        if (candidateRooms.isNotEmpty) ...[
+        // 1. Thông tin / Chọn phòng muốn xem
+        if (widget.room != null) ...[
+          Text('1. Phòng muốn xem', style: AppTypography.labelLarge),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.primaryLight),
+              borderRadius: BorderRadius.circular(12),
+              color: AppColors.primaryLight.withOpacity(0.3),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Icon(Icons.meeting_room_rounded, color: AppColors.primary, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '${widget.room!.typeName} (${widget.room!.roomCode})',
+                          style: AppTypography.labelMedium.copyWith(fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  Formatters.formatCurrency(widget.room!.price),
+                  style: AppTypography.labelSmall.copyWith(color: AppColors.primary, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ] else if (candidateRooms.isNotEmpty) ...[
           Text('1. Chọn phòng muốn xem', style: AppTypography.labelLarge),
           const SizedBox(height: 8),
           Container(
@@ -210,13 +244,13 @@ class _ViewingRequestBottomSheetState extends State<ViewingRequestBottomSheet> {
               color: Colors.white,
             ),
             child: DropdownButtonHideUnderline(
-              child: DropdownButton<RoomItem>(
-                value: _selectedRoom ?? (candidateRooms.isNotEmpty ? candidateRooms.first : null),
+              child: DropdownButton<int>(
+                value: effectiveSelectedId,
                 isExpanded: true,
                 icon: const Icon(Icons.arrow_drop_down_rounded, color: AppColors.primary),
                 items: candidateRooms.map((room) {
-                  return DropdownMenuItem<RoomItem>(
-                    value: room,
+                  return DropdownMenuItem<int>(
+                    value: room.roomId,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -235,8 +269,8 @@ class _ViewingRequestBottomSheetState extends State<ViewingRequestBottomSheet> {
                     ),
                   );
                 }).toList(),
-                onChanged: (room) {
-                  if (room != null) setState(() => _selectedRoom = room);
+                onChanged: (id) {
+                  if (id != null) setState(() => _selectedRoomId = id);
                 },
               ),
             ),
