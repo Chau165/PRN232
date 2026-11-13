@@ -9,6 +9,7 @@ import {
 } from "@/services/publicBrowsingError"
 import type {
   PublicAmenitySummary,
+  PublicAreaOption,
   PublicPage,
   PublicPropertyAreaCard,
   PublicPropertyAreaQuery,
@@ -142,6 +143,17 @@ export function createPublicApiClient(
       }
       const amenities = response as PublicAmenitySummary[]
       return [...new Map(amenities.map((amenity) => [amenity.amenityId, amenity])).values()]
+    },
+    async listAreas(signal?: AbortSignal): Promise<PublicAreaOption[]> {
+      const response = await get<unknown>("/public/properties/areas", new URLSearchParams(), signal)
+      if (!Array.isArray(response) || response.some((area: unknown) => {
+        if (typeof area !== "object" || area === null) return true
+        const option = area as Partial<PublicAreaOption>
+        return typeof option.city !== "string" || typeof option.district !== "string" || typeof option.ward !== "string"
+      })) {
+        throw new PublicApiError("unexpected", "Dữ liệu khu vực nhận được không hợp lệ.")
+      }
+      return response as PublicAreaOption[]
     },
     async listProperties(
       query: PublicPropertyListQuery = {},

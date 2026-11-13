@@ -21,7 +21,7 @@ import type {
 
 vi.mock("@/services/publicBrowsingService", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/services/publicBrowsingService")>()
-  return { ...actual, publicApi: { ...actual.publicApi, listAmenities: vi.fn().mockResolvedValue([
+  return { ...actual, publicApi: { ...actual.publicApi, listAreas: vi.fn().mockResolvedValue([]), listAmenities: vi.fn().mockResolvedValue([
     { amenityId: 3, name: "Wi-Fi" }, { amenityId: 9, name: "Máy lạnh" },
   ]) } }
 })
