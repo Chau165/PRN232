@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { MemoryRouter } from "react-router"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import BookingRefundPanel from "@/components/customer/BookingRefundPanel"
@@ -282,7 +282,7 @@ describe("Admin refund review", () => {
     )
     fireEvent.click(approve)
     fireEvent.click(approve)
-    await screen.findByText("Đã duyệt, chờ chuyển tiền")
+    await within(screen.getByRole("region", { name: "Chi tiết đơn hoàn 12" })).findByText("Đã duyệt, chờ chuyển tiền")
     expect(mocks.review).toHaveBeenCalledTimes(1)
     expect(mocks.review).toHaveBeenCalledWith("token", 12, {
       approve: true,
@@ -338,7 +338,7 @@ describe("Admin refund review", () => {
     mocks.detail.mockResolvedValue(review({ status: "Approved" }))
     fireEvent.click(screen.getByRole("button", { name: "Từ chối yêu cầu" }))
     await screen.findByText(/Booking hoặc đơn hoàn đã thay đổi/)
-    await screen.findByText("Đã duyệt, chờ chuyển tiền")
+    await within(screen.getByRole("region", { name: "Chi tiết đơn hoàn 12" })).findByText("Đã duyệt, chờ chuyển tiền")
     expect(screen.queryByRole("button", { name: "Từ chối yêu cầu" })).toBeNull()
     expect(mocks.review).toHaveBeenCalledTimes(1)
   })
