@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Claims;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Text.Json;
@@ -154,7 +155,7 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Key)),
     };
     // Token chỉ hết hạn sau ExpiryMinutes, nên admin khoá tài khoản xong thì token cũ vẫn
-    // dùng được. Mỗi request đều kiểm tra lại user còn tồn tại và còn active trong DB.
+    // dùng được. Mỗi request đều kiểm tra lại user còn tồn tại, còn active và role còn khớp trong DB.
     options.Events = new JwtBearerEvents
     {
         // Browser SignalR transports need the token in the query string. Accept it only
@@ -188,6 +189,15 @@ builder.Services.AddAuthentication(options =>
                     .CreateLogger("PRN232.Api.Authentication")
                     .LogWarning("Rejected token for user {UserId}: account does not exist or is inactive.", userId);
                 context.Fail("Tài khoản không tồn tại hoặc đã bị khoá.");
+                return;
+            }
+
+            // Role nằm sẵn trong token: Admin bị hạ quyền xong mà token cũ còn hạn thì vẫn mang quyền Admin.
+            // Role trong DB mới là sự thật, lệch thì bắt đăng nhập lại.
+            var tokenRole = context.Principal?.FindFirst(ClaimTypes.Role)?.Value;
+            if (!string.Equals(tokenRole, user.RoleName, StringComparison.Ordinal))
+            {
+                context.Fail("Role trong token không còn khớp với tài khoản.");
             }
         }
     };
