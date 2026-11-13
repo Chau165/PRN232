@@ -1,4 +1,5 @@
 import ManagementDetailDrawer from "@/components/management/ManagementDetailDrawer"
+import PropertyServiceRatesPanel from "@/components/management/PropertyServiceRatesPanel"
 import type { PropertyDto } from "@/types/user"
 
 type PropertyDetailDrawerProps = {
@@ -55,6 +56,7 @@ export default function PropertyDetailDrawer({
           />
         )}
       </div>
+      <PropertyServiceRatesPanel propertyId={property.propertyId} />
     </ManagementDetailDrawer>
   )
 }
