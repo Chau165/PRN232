@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 import { MemoryRouter, Route, Routes, useLocation } from "react-router"
 import { AuthProvider } from "@/auth/AuthContext"
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute"
+import { GuestOnlyRoute, ProtectedRoute } from "@/components/auth/ProtectedRoute"
 import { apiRequest } from "@/api/apiClient"
 import LoginPage from "@/pages/LoginPage/LoginPage"
 import ProfilePage from "@/pages/ProfilePage/ProfilePage"
@@ -115,6 +115,52 @@ describe("Phase 4A auth, routing, and profile integration", () => {
     fireEvent.change(screen.getByLabelText("Mật khẩu"), { target: { value: "password-123" } })
     fireEvent.click(screen.getByRole("button", { name: "Đăng nhập" }))
     await waitFor(() => expect(screen.getByTestId("current-path").textContent).toBe(expectedPath))
+  })
+
+  it.each([
+    ["Customer", "/viewing-request", "?roomId=3"],
+    ["Admin", "/management/dashboard", ""],
+  ])("after a protected-page redirect, %s lands on %s", async (roleName, expectedPath, expectedSearch) => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(authResponse(roleName))))
+    function Search() {
+      return <output data-testid="current-search">{useLocation().search}</output>
+    }
+    renderRoutes("/viewing-request?roomId=3", (
+      <Routes>
+        <Route path="/login" element={<GuestOnlyRoute><LoginPage /></GuestOnlyRoute>} />
+        <Route path="/viewing-request" element={<ProtectedRoute roles={["CUSTOMER"]}><Search /></ProtectedRoute>} />
+        <Route path="/" element={<p>Trang khách thuê</p>} />
+        <Route path="/management/dashboard" element={<p>Trang quản trị</p>} />
+      </Routes>
+    ))
+
+    await waitFor(() => expect(screen.getByTestId("current-path").textContent).toBe("/login"))
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "person@example.test" } })
+    fireEvent.change(screen.getByLabelText("Mật khẩu"), { target: { value: "password-123" } })
+    fireEvent.click(screen.getByRole("button", { name: "Đăng nhập" }))
+
+    await waitFor(() => expect(screen.getByTestId("current-path").textContent).toBe(expectedPath))
+    if (expectedSearch) expect(screen.getByTestId("current-search").textContent).toBe(expectedSearch)
+  })
+
+  it("ignores a return path that points outside the site", async () => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(authResponse("Customer"))))
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/login", state: { from: "//evil.example/steal" } }]}>
+        <AuthProvider>
+          <CurrentPath />
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/" element={<p>Trang khách thuê</p>} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "person@example.test" } })
+    fireEvent.change(screen.getByLabelText("Mật khẩu"), { target: { value: "password-123" } })
+    fireEvent.click(screen.getByRole("button", { name: "Đăng nhập" }))
+
+    await waitFor(() => expect(screen.getByTestId("current-path").textContent).toBe("/"))
   })
 
   it("registers using only the public customer fields, with no OTP or role selector", async () => {
