@@ -44,8 +44,8 @@ beforeEach(() => {
 })
 
 describe("ManagementBookingsPage", () => {
-  it("lists scoped bookings and cancels a paid one only after the manager confirms", async () => {
-    mocks.cancelBooking.mockResolvedValue(booking({ status: "Cancelled" }))
+  it("cancels only an unpaid booking and offers refund tracking for a deposit", async () => {
+    mocks.cancelBooking.mockResolvedValue(booking({ bookingId: 8, status: "Cancelled" }))
     const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true)
     renderPage()
 
@@ -56,18 +56,27 @@ describe("ManagementBookingsPage", () => {
     expect(screen.getByText("Đã lập hợp đồng")).toBeTruthy()
     expect(screen.getByRole("link", { name: "Tạo hợp đồng" }).getAttribute("href")).toBe("/management/contracts/new?bookingId=9")
     const cancelButtons = screen.getAllByRole("button", { name: "Huỷ booking" })
-    expect(cancelButtons).toHaveLength(2)
+    expect(cancelButtons).toHaveLength(1)
+    expect(screen.getByRole("button", { name: "Theo dõi hoàn cọc #9" })).toBeTruthy()
 
     fireEvent.click(cancelButtons[0])
-    expect(confirm.mock.calls[0][0]).toContain("đã đặt cọc phòng A101")
+    expect(confirm.mock.calls[0][0]).toContain("booking #8")
     expect(mocks.cancelBooking).not.toHaveBeenCalled()
 
     fireEvent.click(cancelButtons[0])
-    await screen.findByText("Đã huỷ booking #9 và thông báo cho khách.")
-    expect(mocks.cancelBooking).toHaveBeenCalledWith("manager-token", 9)
+    await screen.findByText("Đã huỷ booking #8 và thông báo cho khách.")
+    expect(mocks.cancelBooking).toHaveBeenCalledWith("manager-token", 8)
     expect(screen.getAllByText("Đã huỷ")).toHaveLength(2)
-    expect(screen.getAllByRole("button", { name: "Huỷ booking" })).toHaveLength(1)
+    expect(screen.queryByRole("button", { name: "Huỷ booking" })).toBeNull()
+    expect(screen.getByRole("link", { name: "Tạo hợp đồng" })).toBeTruthy()
+  })
+
+  it("does not offer contract creation when a refund is active", async () => {
+    mocks.getBookings.mockResolvedValue([booking({ refundStatus: "Approved" })])
+    renderPage()
+    await screen.findByText("Đã duyệt, chờ chuyển tiền")
     expect(screen.queryByRole("link", { name: "Tạo hợp đồng" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Huỷ booking" })).toBeNull()
   })
 
   it("explains a conflict when the booking changed before cancelling", async () => {

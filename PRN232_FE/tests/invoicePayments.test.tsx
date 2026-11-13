@@ -7,6 +7,7 @@ import PayInvoiceModal from "@/components/customer/PayInvoiceModal"
 import type { PaymentRequestStatusDto } from "@/types/invoicePayment"
 import type { InvoiceDto } from "@/types/invoice"
 import { recalledInvoicePayment, rememberInvoicePayment, validPayOSCheckout } from "@/utils/invoicePayment"
+import { rememberBookingPayment } from "@/utils/bookingPayment"
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), create: vi.fn(), open: vi.fn() }))
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ accessToken: "token", user: { id: "10", role: "CUSTOMER" } }) }))
@@ -153,4 +154,25 @@ it.each(["javascript:alert(1)", "https://evil.test/web/link", "https://pay.payos
 it("isolates payment context by account", () => {
   rememberInvoicePayment("10", 12, 5)
   expect(recalledInvoicePayment("20")).toBeNull()
+})
+
+describe("booking payment verification", () => {
+  it("does not trust a paid callback flag, and shows success only after BE confirms the deposit", async () => {
+    mocks.get.mockResolvedValue(status({ invoiceId: null, invoiceStatus: null, bookingId: 7, bookingStatus: "Pending" }))
+    result("/payment-result?requestId=12&status=PAID&code=00")
+    await screen.findByRole("heading", { name: "Đang chờ xác nhận tiền cọc" })
+    expect(screen.queryByRole("heading", { name: "Đặt cọc thành công" })).toBeNull()
+    mocks.get.mockResolvedValue(status({ invoiceId: null, invoiceStatus: null, bookingId: 7, bookingStatus: "Deposited", status: "Succeeded", canOpenCheckout: false, checkoutUrl: null }))
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra lại trạng thái" }))
+    await screen.findByRole("heading", { name: "Đặt cọc thành công" })
+    expect(screen.getByRole("link", { name: "Về lịch xem & đặt cọc" }).getAttribute("href")).toBe("/my-bookings")
+  })
+  it("resolves a booking callback by its saved link even if a later invoice context also exists", async () => {
+    rememberBookingPayment("10", 12, 7, "booking-link")
+    rememberInvoicePayment("10", 55, 5, "invoice-link")
+    mocks.get.mockResolvedValue(status({ invoiceId: null, invoiceStatus: null, bookingId: 7, bookingStatus: "Pending" }))
+    result("/payment-result?id=booking-link&status=PAID")
+    await screen.findByRole("heading", { name: "Đang chờ xác nhận tiền cọc" })
+    expect(mocks.get).toHaveBeenCalledWith("token", 12, expect.any(AbortSignal))
+  })
 })

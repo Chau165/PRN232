@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
-import PaymentMethodPicker from "@/components/customer/PaymentMethodPicker"
 import { useAuth } from "@/auth/AuthContext"
-import { createBooking, getBooking, payBooking } from "@/services/bookingService"
-import type { BookingDto, PaymentMethod } from "@/types/booking"
+import { createBooking, getBooking, createBookingPaymentLink } from "@/services/bookingService"
+import type { BookingDto } from "@/types/booking"
+import { bookingPaymentError, rememberBookingPayment, recalledBookingPayment } from "@/utils/bookingPayment"
+import { openPayOSCheckout, positiveId, validPayOSCheckout } from "@/utils/invoicePayment"
 import { publicApi } from "@/services/publicBrowsingService"
 import { usePublicApiResource } from "@/hooks/usePublicApiResource"
 import { parsePositiveRouteId, routes } from "@/constants/routes"
@@ -24,7 +25,7 @@ export default function DepositPage() {
     <CustomerPageShell centerHeader title="Đặt cọc giữ phòng" description="Tiền cọc tương đương 1 tháng tiền thuê.">
       <div className="w-full rounded-2xl bg-white p-5 shadow-[0_5px_24px_rgba(16,65,67,.08)] sm:p-8">
         {bookingId ? (
-          <PayDepositStep bookingId={bookingId} />
+          <PayDepositStep key={bookingId} bookingId={bookingId} />
         ) : roomId ? (
           <HoldRoomStep roomId={roomId} />
         ) : (
@@ -90,19 +91,23 @@ function HoldRoomStep({ roomId }: { roomId: number }) {
 }
 
 function PayDepositStep({ bookingId }: { bookingId: number }) {
-  const { accessToken } = useAuth()
+  const { accessToken, user } = useAuth()
   const navigate = useNavigate()
   const [booking, setBooking] = useState<BookingDto | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [method, setMethod] = useState<PaymentMethod | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const lock = useRef(false)
+  const mounted = useRef(true)
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
+  const recent = user ? recalledBookingPayment(user.id) : null
 
   useEffect(() => {
     if (!accessToken) return
     const controller = new AbortController()
+    setBooking(null); setLoadError(null)
     getBooking(accessToken, bookingId, controller.signal)
-      .then(setBooking)
+      .then(value => { if (!controller.signal.aborted) setBooking(value) })
       .catch((fetchError: unknown) => {
         if (!controller.signal.aborted) {
           setLoadError(fetchError instanceof Error ? fetchError.message : "Không thể tải thông tin đặt cọc.")
@@ -113,6 +118,7 @@ function PayDepositStep({ bookingId }: { bookingId: number }) {
 
   if (loadError) return <Notice message={loadError} />
   if (!booking) return <p role="status" className="text-sm text-slate-500">Đang tải thông tin đặt cọc...</p>
+  if (booking.customerId !== Number(user?.id)) return <Notice message="Bạn không có quyền thanh toán booking này." />
   if (booking.status === "Deposited") return <Notice message="Booking này đã được thanh toán cọc." />
   if (booking.status === "Cancelled") return <Notice message="Booking này đã bị huỷ." />
   if (isBookingExpired(booking)) {
@@ -121,20 +127,22 @@ function PayDepositStep({ bookingId }: { bookingId: number }) {
 
   const pay = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!accessToken || pending) return
-    if (!method) {
-      setError("Vui lòng chọn phương thức thanh toán.")
-      return
-    }
+    if (!accessToken || !user || lock.current) return
+    lock.current = true
     setPending(true)
     setError(null)
     try {
-      await payBooking(accessToken, booking.bookingId, method)
-      navigate(routes.paymentSuccess, { replace: true })
+      const result = await createBookingPaymentLink(accessToken, booking.bookingId)
+      if (!mounted.current) return
+      if (result.bookingId !== booking.bookingId || !positiveId(String(result.paymentRequestId)) || result.currency !== "VND" ||
+        !Number.isSafeInteger(result.amount) || result.amount !== booking.depositAmount) throw new Error("Booking checkout mismatch")
+      const checkout = validPayOSCheckout(result.checkoutUrl)
+      rememberBookingPayment(user.id, result.paymentRequestId, booking.bookingId, checkout ? new URL(checkout).pathname.split("/")[2] : undefined)
+      if (result.status === "Pending" && checkout && result.expiresAtUtc && Date.parse(result.expiresAtUtc) > Date.now()) openPayOSCheckout(checkout)
+      else navigate(`${routes.paymentResult}?requestId=${result.paymentRequestId}`)
     } catch (payError) {
-      setError(bookingErrorMessage(payError, "Booking đã hết thời gian giữ phòng hoặc đã được thanh toán."))
-      setPending(false)
-    }
+      if (mounted.current) setError(bookingPaymentError(payError))
+    } finally { lock.current = false; if (mounted.current) setPending(false) }
   }
 
   return (
@@ -147,14 +155,16 @@ function PayDepositStep({ bookingId }: { bookingId: number }) {
         ]}
         amount={booking.depositAmount}
       />
-      <PaymentMethodPicker value={method} onChange={setMethod} />
+      <div className="rounded-xl border border-teal-100 bg-teal-50/50 p-4 text-sm text-slate-700"><strong>Thanh toán cọc qua payOS</strong>
+        <p className="mt-2">Mở trang thanh toán để quét mã hoặc chuyển khoản. Booking chỉ được xác nhận sau khi hệ thống nhận kết quả thanh toán.</p></div>
+      {recent?.bookingId === bookingId && <Link to={`${routes.paymentResult}?requestId=${recent.requestId}`} className="block text-sm font-semibold text-[#087775]">Kiểm tra giao dịch cọc gần nhất</Link>}
       {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
       <button
         type="submit"
         disabled={pending}
         className="w-full rounded-lg bg-[#087775] py-3.5 text-sm font-bold text-white hover:bg-[#066a68] disabled:opacity-60"
       >
-        {pending ? "Đang thanh toán..." : `Thanh toán ${formatVnd(booking.depositAmount)}`}
+        {pending ? "Đang mở thanh toán..." : `Thanh toán ${formatVnd(booking.depositAmount)} qua payOS`}
       </button>
     </form>
   )

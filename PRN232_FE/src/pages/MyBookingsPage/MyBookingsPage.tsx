@@ -3,6 +3,8 @@ import { Link, useLocation } from "react-router"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
+import BookingRefundPanel from "@/components/customer/BookingRefundPanel"
+import { refundBlocksContract, refundDisplay } from "@/utils/bookingRefund"
 import type { BookingDto } from "@/types/booking"
 import { availableRoomsPath, routes } from "@/constants/routes"
 import { useBookings } from "@/hooks/useBookings"
@@ -14,6 +16,7 @@ import { viewingStatusDisplay, viewingTimeLabel } from "@/utils/viewingDisplay"
 export default function MyBookingsPage() {
   const { bookings, loading, error, retry, cancel: cancelById, cancellingId } = useBookings()
   const [toast, setToast] = useState("")
+  const [openedRefund, setOpenedRefund] = useState<number | null>(null)
 
   const cancel = async (booking: BookingDto) => {
     if (cancellingId !== null) return
@@ -78,16 +81,24 @@ export default function MyBookingsPage() {
                     <p className="text-slate-400">Tiền cọc</p>
                     <p className="mt-1 font-bold text-[#087775]">{formatVnd(booking.depositAmount)}</p>
                   </div>
-                  {booking.status !== "Cancelled" && (
+                  {booking.status === "Pending" && (
                     <div>
-                      <p className="text-slate-400">Giữ phòng đến</p>
+                      <p className="text-slate-400">Hạn thanh toán cọc</p>
                       <p className="mt-1 font-semibold text-slate-700">{formatDateTime(booking.expiryDate)}</p>
                     </div>
                   )}
                 </div>
-                {booking.status === "Deposited" && booking.contractId === null && (
+                {booking.status === "Deposited" && booking.contractId === null && !refundBlocksContract(booking.refundStatus) && (
                   <p className="mt-4 text-[13px] text-slate-500">Chủ trọ sẽ liên hệ để lập hợp đồng thuê.</p>
                 )}
+                {booking.status === "Deposited" && booking.contractId === null && <p className="mt-3 text-[13px] text-slate-500">Phòng được giữ đến khi lập hợp đồng hoặc hoàn tất hoàn cọc.</p>}
+                {booking.refundStatus && <div className="mt-3"><StatusBadge tone={refundDisplay(booking.refundStatus).tone}>{refundDisplay(booking.refundStatus).label}</StatusBadge></div>}
+                {(booking.status === "Deposited" && booking.contractId === null || booking.refundStatus) && <button type="button"
+                  onClick={() => setOpenedRefund(value => value === booking.bookingId ? null : booking.bookingId)}
+                  aria-expanded={openedRefund === booking.bookingId} className="mt-4 rounded-lg border border-[#087775] px-4 py-2.5 text-sm font-semibold text-[#087775]">
+                  {openedRefund === booking.bookingId ? "Đóng hoàn cọc" : booking.canRequestRefund ? "Xin hoàn cọc" : "Theo dõi hoàn cọc"}
+                </button>}
+                {openedRefund === booking.bookingId && <BookingRefundPanel booking={booking} onChanged={retry} />}
                 {booking.contractId !== null && (
                   <Link to={routes.myContracts} className="mt-4 inline-block text-[13px] font-semibold text-[#087775] hover:underline">
                     Đã lập hợp đồng — xem trong Hợp đồng của tôi
@@ -111,6 +122,8 @@ export default function MyBookingsPage() {
                     </button>
                   </div>
                 )}
+                {booking.status === "Pending" && booking.latestPaymentRequestId && <Link to={`${routes.paymentResult}?requestId=${booking.latestPaymentRequestId}`}
+                  className="mt-3 inline-block text-sm font-semibold text-[#087775]">Kiểm tra giao dịch cọc #{booking.latestPaymentRequestId}</Link>}
               </article>
             )
           })}

@@ -25,6 +25,7 @@ type SidebarItem = {
 }
 
 const items: SidebarItem[] = [
+  { label: "Xét duyệt hoàn cọc", href: routes.managementRefunds, icon: "receipt", adminOnly: true },
   { label: "Dashboard", href: routes.managementDashboard, icon: "building" },
 
   { label: "Khu trọ", href: routes.managementProperties, icon: "building" },

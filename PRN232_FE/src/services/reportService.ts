@@ -21,3 +21,21 @@ export function getRevenueReport(token: string, month: string, signal?: AbortSig
 export function getReceivablesReport(token: string, signal?: AbortSignal) {
   return apiRequest<ReceivablesReport>("/reports/receivables", { accessToken: token, signal, cache: "no-store" })
 }
+export interface DepositTotals {
+  collectedAmount: number
+  collectionCount: number
+  refundedAmount: number
+  refundCount: number
+  netCashFlow: number
+}
+export interface DepositReport {
+  fromMonth: string
+  toMonth: string
+  totals: DepositTotals
+  unknownDate: DepositTotals
+  byProperty: { propertyId: number; propertyName: string; totals: DepositTotals; unknownDate: DepositTotals }[]
+}
+export function getDepositReport(token: string, month: string, signal?: AbortSignal) {
+  const query = new URLSearchParams({ fromMonth: `${month}-01`, toMonth: `${month}-01` })
+  return apiRequest<DepositReport>(`/reports/booking-deposits?${query}`, { accessToken: token, signal, cache: "no-store" })
+}

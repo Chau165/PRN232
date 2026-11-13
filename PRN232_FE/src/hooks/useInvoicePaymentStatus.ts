@@ -9,11 +9,13 @@ export const PAYMENT_POLL_LIMIT = 30
 
 export function useInvoicePaymentStatus(accessToken: string | null, requestId: number | null) {
   const [data, setData] = useState<PaymentRequestStatusDto | null>(null)
+  const [dataToken, setDataToken] = useState(accessToken)
   const [error, setError] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
   const [paused, setPaused] = useState(false)
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
+    setDataToken(accessToken)
     setData(null)
     setError(null)
     setPaused(false)
@@ -54,5 +56,5 @@ export function useInvoicePaymentStatus(accessToken: string | null, requestId: n
     void check()
     return () => { controller.abort(); clearTimeout(timer) }
   }, [accessToken, requestId, attempt])
-  return { data: data?.paymentRequestId === requestId ? data : null, error, checking, paused, refresh: () => setAttempt(value => value + 1) }
+  return { data: dataToken === accessToken && data?.paymentRequestId === requestId ? data : null, error, checking, paused, refresh: () => setAttempt(value => value + 1) }
 }

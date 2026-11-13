@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { MemoryRouter, Route, Routes } from "react-router"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import CreateContractPage from "@/pages/CreateContractPage/CreateContractPage"
@@ -176,7 +176,7 @@ describe("ManagementContractsPage", () => {
     expect(await screen.findByText(`Đã gia hạn hợp đồng #12 đến ${formatContractDate(newEndDate)}.`)).toBeTruthy()
     expect(mocks.getContractBillingTimeline).toHaveBeenCalledWith("manager-token", 12, expect.any(AbortSignal))
     expect(mocks.extendContract).toHaveBeenCalledWith("manager-token", 12, { newEndDate })
-    expect(mocks.getContracts).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(mocks.getContracts).toHaveBeenCalledTimes(2))
   })
 
   it("shows outstanding debt and requires checkout and debt acknowledgements before termination", async () => {

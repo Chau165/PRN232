@@ -31,6 +31,7 @@ function api(options: { manager?: boolean; status?: () => number; revenue?: () =
     if (status !== 200) return json({ title: "Unavailable" }, status)
     if (url.pathname === "/api/reports/revenue") return json(options.revenue?.() ?? revenue)
     if (url.pathname === "/api/reports/receivables") return json(debt)
+    if (url.pathname === "/api/reports/booking-deposits") return json({ totals: { collectedAmount: 0, collectionCount: 0, refundedAmount: 0, refundCount: 0, netCashFlow: 0 }, unknownDate: { collectedAmount: 0, collectionCount: 0, refundedAmount: 0, refundCount: 0 }, byProperty: [] })
     return json({ title: "Unexpected endpoint" }, 404)
   })
   vi.stubGlobal("fetch", mock)
@@ -58,7 +59,7 @@ describe("management financial reports", () => {
     expect(value("Chưa xác định thời gian thu")).toBe(formatVnd(revenue.unknownDateAmount))
     expect(screen.getByText("1 giao dịch đã ghi nhận")).toBeTruthy()
     const reports = fetchMock.mock.calls.filter(([url]) => String(url).includes("/reports/"))
-    expect(reports).toHaveLength(2)
+    expect(reports).toHaveLength(3)
     for (const [, init] of reports) {
       expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer test.reports.token")
       expect(init?.signal).toBeInstanceOf(AbortSignal)
@@ -94,7 +95,7 @@ describe("management financial reports", () => {
     let status = 503
     const fetchMock = api({ status: () => status })
     renderReports()
-    await screen.findByRole("alert")
+    await screen.findByText("Không thể tải báo cáo từ máy chủ. Vui lòng thử lại.")
     expect(screen.queryByText("Doanh thu tháng")).toBeNull()
     status = 200
     fireEvent.click(screen.getByRole("button", { name: "Tải lại báo cáo" }))
@@ -104,7 +105,7 @@ describe("management financial reports", () => {
   it("shows forbidden access without financial figures", async () => {
     api({ status: () => 403 })
     renderReports()
-    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Bạn không có quyền xem báo cáo.")
+    expect(await screen.findByText("Bạn không có quyền xem báo cáo.")).toHaveProperty("textContent", "Bạn không có quyền xem báo cáo.")
     expect(screen.queryByText("Doanh thu tháng")).toBeNull()
   })
   it("refreshes server totals instead of keeping the old snapshot", async () => {
@@ -124,7 +125,7 @@ describe("management financial reports", () => {
       return new Promise<Response>(() => {})
     } })
     const view = renderReports()
-    await waitFor(() => expect(signals).toHaveLength(2))
+    await waitFor(() => expect(signals).toHaveLength(3))
     view.unmount()
     expect(signals.every(signal => signal.aborted)).toBe(true)
   })
