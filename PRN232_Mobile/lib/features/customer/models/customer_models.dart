@@ -140,7 +140,18 @@ class PropertyItem {
     required this.rooms,
   });
 
-  String get fullAddress => '$addressText, $ward, $district, $city';
+  String get fullAddress {
+    final cleanAddr = addressText.trim();
+    if (cleanAddr.isEmpty) {
+      return [ward, district, city].where((s) => s.isNotEmpty).join(', ');
+    }
+    // Tránh duplicate nếu addressText trong database đã lưu đầy đủ quận/huyện và thành phố
+    if ((district.isNotEmpty && cleanAddr.contains(district)) ||
+        (city.isNotEmpty && cleanAddr.contains(city))) {
+      return cleanAddr;
+    }
+    return [cleanAddr, ward, district, city].where((s) => s.isNotEmpty).join(', ');
+  }
 
   factory PropertyItem.fromJson(Map<String, dynamic> json) {
     final lat = (json['latitude'] != null ? num.tryParse(json['latitude'].toString()) : null)?.toDouble() ?? 10.7769;
@@ -162,12 +173,18 @@ class PropertyItem {
     final w = json['ward']?.toString() ?? '';
     final d = json['district']?.toString() ?? '';
     final c = json['city']?.toString() ?? '';
-    final fullAddr = [addr, w, d, c].where((s) => s.isNotEmpty).join(', ');
+
+    String computedFullAddress = addr.trim();
+    if (computedFullAddress.isEmpty) {
+      computedFullAddress = [w, d, c].where((s) => s.isNotEmpty).join(', ');
+    } else if (!((d.isNotEmpty && computedFullAddress.contains(d)) || (c.isNotEmpty && computedFullAddress.contains(c)))) {
+      computedFullAddress = [computedFullAddress, w, d, c].where((s) => s.isNotEmpty).join(', ');
+    }
 
     final rawDesc = json['description']?.toString().trim();
-    final dynamicDesc = (rawDesc != null && rawDesc.isNotEmpty)
+    final effectiveDesc = (rawDesc != null && rawDesc.isNotEmpty)
         ? rawDesc
-        : '$propName tọa lạc tại $fullAddr. Tòa nhà có không gian sống văn minh, an ninh 24/7, giờ giấc tự do, gần trường học, bệnh viện và các tiện ích sinh hoạt thuận tiện.';
+        : '$propName tọa lạc tại $computedFullAddress. Tòa nhà có không gian sống văn minh, an ninh 24/7, giờ giấc tự do, gần trường học, bệnh viện và các tiện ích sinh hoạt thuận tiện.';
 
     return PropertyItem(
       propertyId: json['propertyId'] ?? 0,
@@ -181,7 +198,7 @@ class PropertyItem {
       galleryUrls: primaryImg != null ? [primaryImg] : const [],
       availableRoomCount: json['availableRoomCount'] ?? 0,
       startingPrice: json['startingPrice'] ?? 0,
-      description: dynamicDesc,
+      description: effectiveDesc,
       amenities: amenitiesList,
       livingCosts: livingCostsList,
       rooms: roomsList,
@@ -331,7 +348,8 @@ class CustomerViewingModel {
   bool get isCancelled => status == 'Cancelled' || status == 'Rejected';
 
   factory CustomerViewingModel.fromJson(Map<String, dynamic> json) {
-    final date = DateTime.tryParse(json['scheduledAt']?.toString() ?? '') ?? DateTime.now();
+    final rawDate = DateTime.tryParse(json['scheduledAt']?.toString() ?? '');
+    final date = rawDate != null ? rawDate.toLocal() : DateTime.now();
     final timeStr = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
 
     return CustomerViewingModel(
@@ -363,7 +381,8 @@ class CustomerBookingModel {
   final String paymentMethod;
   final DateTime bookingDate;
   final DateTime moveInDate;
-  String status; // Pending, Confirmed, Cancelled, Expired, ContractCreated
+  String status; // Pending, Confirmed, Deposited, Cancelled, Expired
+  final int? contractId;
 
   CustomerBookingModel({
     required this.id,
@@ -380,19 +399,23 @@ class CustomerBookingModel {
     required this.bookingDate,
     required this.moveInDate,
     required this.status,
+    this.contractId,
   });
 
-  bool get isPending => status == 'Pending';
+  bool get isPending => status == 'Pending' && !isExpired;
   bool get isConfirmed => status == 'Confirmed' || status == 'Deposited';
   bool get isCancelled => status == 'Cancelled';
+  bool get isExpired => (status == 'Pending' && moveInDate.isBefore(DateTime.now())) || status == 'Expired';
 
   factory CustomerBookingModel.fromJson(Map<String, dynamic> json) {
-    final expiry = DateTime.tryParse(json['expiryDate']?.toString() ?? '') ??
-        DateTime.now().add(const Duration(days: 7));
+    final rawExpiry = DateTime.tryParse(json['expiryDate']?.toString() ?? '');
+    final expiry = rawExpiry != null ? rawExpiry.toLocal() : DateTime.now().add(const Duration(days: 7));
+
+    final rawId = json['bookingId'] ?? json['id'] ?? 0;
 
     return CustomerBookingModel(
-      id: json['bookingId'] ?? json['id'] ?? 0,
-      bookingCode: 'DC-${json['bookingId'] ?? 0}',
+      id: rawId,
+      bookingCode: 'BOOKING #$rawId',
       propertyId: json['propertyId'] ?? 0,
       propertyName: json['propertyName'] ?? 'Nhà trọ',
       propertyAddress: json['propertyAddress'] ?? 'Phòng ${json['roomCode'] ?? ''}',
@@ -405,6 +428,7 @@ class CustomerBookingModel {
       bookingDate: DateTime.now(),
       moveInDate: expiry,
       status: json['status'] ?? 'Pending',
+      contractId: json['contractId'],
     );
   }
 }

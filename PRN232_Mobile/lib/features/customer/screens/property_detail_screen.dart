@@ -29,6 +29,10 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen> {
   bool _isLoadingRooms = false;
   int _currentImageIndex = 0;
 
+  int _roomPage = 1;
+  int _roomTotalPages = 1;
+  int _roomTotalCount = 0;
+
   @override
   void initState() {
     super.initState();
@@ -41,11 +45,17 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen> {
     setState(() => _isLoadingRooms = true);
     try {
       final detail = await _propertyService.getPropertyDetail(widget.property.propertyId);
-      final rooms = await _propertyService.getPropertyRooms(widget.property.propertyId, pageSize: 100);
+      final roomPage = await _propertyService.getPropertyRoomsPaged(
+        widget.property.propertyId,
+        page: _roomPage,
+        pageSize: 10,
+      );
       if (mounted) {
         setState(() {
           _property = detail;
-          _rooms = rooms.isNotEmpty ? rooms : detail.rooms;
+          _rooms = roomPage.items.isNotEmpty ? roomPage.items : detail.rooms;
+          _roomTotalCount = roomPage.totalCount > 0 ? roomPage.totalCount : _rooms.length;
+          _roomTotalPages = roomPage.totalPages;
           _isLoadingRooms = false;
         });
       }
@@ -54,10 +64,35 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen> {
     }
   }
 
-  void _openViewingRequest() async {
+  Future<void> _changeRoomPage(int page) async {
+    if (page < 1 || page > _roomTotalPages || page == _roomPage) return;
+    setState(() => _isLoadingRooms = true);
+    try {
+      final roomPage = await _propertyService.getPropertyRoomsPaged(
+        widget.property.propertyId,
+        page: page,
+        pageSize: 10,
+      );
+      if (mounted) {
+        setState(() {
+          _roomPage = page;
+          _rooms = roomPage.items;
+          _roomTotalCount = roomPage.totalCount;
+          _roomTotalPages = roomPage.totalPages;
+          _isLoadingRooms = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingRooms = false);
+    }
+  }
+
+  void _openViewingRequest([RoomItem? room]) async {
     final success = await ViewingRequestBottomSheet.show(
       context,
       property: _property,
+      availableRooms: _rooms,
+      room: room,
     );
     if (success == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -286,7 +321,7 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen> {
                         ),
                       ),
                     )
-                  else
+                  else ...[
                     ListView.separated(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -297,6 +332,11 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen> {
                         return _buildRoomTile(context, room, prop);
                       },
                     ),
+                    if (_roomTotalPages > 1) ...[
+                      const SizedBox(height: 16),
+                      _buildRoomPagination(),
+                    ],
+                  ],
                   const SizedBox(height: 80),
                 ],
               ),
@@ -335,11 +375,46 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen> {
                 width: 170,
                 icon: const Icon(Icons.calendar_today_rounded,
                     size: 16, color: Colors.white),
-                onPressed: _openViewingRequest,
+                onPressed: () => _openViewingRequest(),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildRoomPagination() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderLight),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left_rounded),
+            color: _roomPage > 1 ? AppColors.primary : AppColors.textMuted,
+            onPressed: _roomPage > 1 ? () => _changeRoomPage(_roomPage - 1) : null,
+            tooltip: 'Trang trước',
+          ),
+          Text(
+            'Trang $_roomPage / $_roomTotalPages ($_roomTotalCount phòng)',
+            style: AppTypography.labelMedium.copyWith(
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right_rounded),
+            color: _roomPage < _roomTotalPages ? AppColors.primary : AppColors.textMuted,
+            onPressed: _roomPage < _roomTotalPages ? () => _changeRoomPage(_roomPage + 1) : null,
+            tooltip: 'Trang sau',
+          ),
+        ],
       ),
     );
   }
@@ -376,7 +451,15 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(room.roomCode, style: AppTypography.headingSmall),
+                    Expanded(
+                      child: Text(
+                        room.typeName,
+                        style: AppTypography.headingSmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     StatusBadge(
                       label: room.isAvailable ? 'Còn phòng' : 'Đang thuê',
                       tone: room.isAvailable
@@ -387,7 +470,7 @@ class _PropertyDetailScreenState extends State<PropertyDetailScreen> {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  '${Formatters.formatArea(room.area)} • Tối đa ${room.maxOccupancy} người',
+                  '${room.roomCode.isNotEmpty ? '${room.roomCode} • ' : ''}${Formatters.formatArea(room.area)} • Tối đa ${room.maxOccupancy} người',
                   style: AppTypography.bodySmall,
                 ),
                 const SizedBox(height: 6),

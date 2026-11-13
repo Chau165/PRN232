@@ -36,10 +36,13 @@ class AppColors {
   static const Color warningBg = Color(0xFFFFFBEB); // amber-50
   static const Color warningText = Color(0xFFB45309); // amber-700
 
-  // Danger / Cancelled / Rejected / Overdue
+  // Danger / Cancelled / Rejected / Overdue / Error
   static const Color danger = Color(0xFFE11D48); // rose-600
   static const Color dangerBg = Color(0xFFFFF1F2); // rose-50
   static const Color dangerText = Color(0xFFBE123C); // rose-700
+  static const Color error = danger;
+  static const Color errorBg = dangerBg;
+  static const Color errorText = dangerText;
 
   // Info / Blue
   static const Color info = Color(0xFF2563EB); // blue-600
