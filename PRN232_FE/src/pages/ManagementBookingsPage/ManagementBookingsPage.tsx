@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Link } from "react-router"
 import { useAuth } from "@/auth/AuthContext"
+import BookingRefundModal from "@/components/customer/BookingRefundModal"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementPage from "@/components/management/ManagementPage"
 import StatusBadge from "@/components/customer/StatusBadge"
@@ -9,12 +10,14 @@ import type { BookingDto } from "@/types/booking"
 import { routes } from "@/constants/routes"
 import { useBookings } from "@/hooks/useBookings"
 import { bookingErrorMessage, bookingStatusDisplay, formatDateTime } from "@/utils/bookingDisplay"
+import { bookingRefundStatusDisplay } from "@/utils/bookingRefundDisplay"
 import { formatVnd } from "@/utils/publicFormatting"
 
 export default function ManagementBookingsPage() {
   const { user } = useAuth()
   const { bookings, loading, error, retry, cancel: cancelById, cancellingId } = useBookings()
   const [toast, setToast] = useState("")
+  const [refundBooking, setRefundBooking] = useState<BookingDto | null>(null)
 
   const cancel = async (booking: BookingDto) => {
     if (cancellingId !== null) return
@@ -58,6 +61,9 @@ export default function ManagementBookingsPage() {
             <div className="divide-y divide-slate-100">
               {bookings.map((booking) => {
                 const display = bookingStatusDisplay(booking)
+                const refund = booking.refundStatus ? bookingRefundStatusDisplay(booking.refundStatus) : null
+                // Đơn hoàn chưa bị từ chối: BE chặn lập hợp đồng và huỷ trực tiếp, nên ẩn hai thao tác này.
+                const refundActive = Boolean(booking.refundStatus && booking.refundStatus !== "Rejected")
                 return (
                   <div key={booking.bookingId} className="grid gap-3 px-5 py-5 lg:grid-cols-7 lg:items-center">
                     <strong className="text-[13px] text-slate-700">#{booking.bookingId}</strong>
@@ -68,12 +74,29 @@ export default function ManagementBookingsPage() {
                     </span>
                     <span className="font-semibold text-[#087775]">{formatVnd(booking.depositAmount)}</span>
                     <span className="text-[13px] text-slate-600">
-                      {booking.status === "Cancelled" ? "—" : formatDateTime(booking.expiryDate)}
+                      {booking.status === "Pending" ? formatDateTime(booking.expiryDate)
+                        : booking.status === "Deposited" && booking.contractId === null ? "Đến khi lập hợp đồng hoặc hoàn cọc"
+                        : "—"}
                     </span>
-                    <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
+                    <span className="flex flex-col items-start gap-1.5">
+                      <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
+                      {refund && <StatusBadge tone={refund.tone}>{`Hoàn cọc: ${refund.label}`}</StatusBadge>}
+                    </span>
                     {/* Booking đã lên hợp đồng thì không còn thao tác: BE cũng chặn huỷ trường hợp này. */}
                     <div className="flex flex-wrap gap-2">
-                      {user?.role === "MANAGER" && booking.status === "Deposited" && booking.contractId === null && (
+                      {refund && (
+                        <button
+                          type="button"
+                          onClick={() => setRefundBooking(booking)}
+                          className="rounded-lg border border-[#087775] px-3 py-2 text-[12px] font-bold text-[#087775] hover:bg-teal-50"
+                        >
+                          Xem hoàn cọc
+                        </button>
+                      )}
+                      {refundActive && booking.contractId === null && (
+                        <span className="text-[12px] text-slate-500">Đang xử lý hoàn cọc, chưa thể lập hợp đồng.</span>
+                      )}
+                      {!refundActive && user?.role === "MANAGER" && booking.status === "Deposited" && booking.contractId === null && (
                         <Link
                           to={`${routes.managementCreateContract}?bookingId=${booking.bookingId}`}
                           className="rounded-lg bg-[#087775] px-3 py-2 text-[12px] font-bold text-white hover:bg-[#066a68]"
@@ -81,7 +104,7 @@ export default function ManagementBookingsPage() {
                           Tạo hợp đồng
                         </Link>
                       )}
-                      {booking.status !== "Cancelled" && booking.contractId === null && (
+                      {!refundActive && booking.status !== "Cancelled" && booking.contractId === null && (
                         <button
                           type="button"
                           onClick={() => cancel(booking)}
@@ -100,6 +123,9 @@ export default function ManagementBookingsPage() {
         </ManagementDataTable>
       )}
       {toast && <Toast message={toast} onClose={() => setToast("")} />}
+      {refundBooking && (
+        <BookingRefundModal booking={refundBooking} readOnly onClose={() => setRefundBooking(null)} onChanged={retry} />
+      )}
     </ManagementPage>
   )
 }

@@ -8,6 +8,8 @@ import type { BookingDto } from "@/types/booking"
 const mocks = vi.hoisted(() => ({
   getBookings: vi.fn(),
   cancelBooking: vi.fn(),
+  getBookingRefunds: vi.fn(),
+  createBookingRefund: vi.fn(),
 }))
 
 vi.mock("@/auth/AuthContext", () => ({
@@ -19,6 +21,10 @@ vi.mock("@/components/management/ManagementPage", () => ({
 vi.mock("@/services/bookingService", () => ({
   getBookings: mocks.getBookings,
   cancelBooking: mocks.cancelBooking,
+}))
+vi.mock("@/services/bookingRefundService", () => ({
+  getBookingRefunds: mocks.getBookingRefunds,
+  createBookingRefund: mocks.createBookingRefund,
 }))
 
 const inMinutes = (minutes: number) => new Date(Date.now() + minutes * 60_000).toISOString()
@@ -68,6 +74,32 @@ describe("ManagementBookingsPage", () => {
     expect(screen.getAllByText("Đã huỷ")).toHaveLength(2)
     expect(screen.getAllByRole("button", { name: "Huỷ booking" })).toHaveLength(1)
     expect(screen.queryByRole("link", { name: "Tạo hợp đồng" })).toBeNull()
+  })
+
+  it("shows the refund status read-only and hides contract and cancel actions while a refund is active", async () => {
+    mocks.getBookings.mockResolvedValue([
+      booking({ refundStatus: "PendingReview", canRequestRefund: true }),
+      booking({ bookingId: 5, roomCode: "A105", refundStatus: "Rejected" }),
+    ])
+    mocks.getBookingRefunds.mockResolvedValue([{
+      bookingRefundRequestId: 4, bookingId: 9, originalPaymentId: 2, requestedAmount: 3_000_000, currency: "VND",
+      status: "PendingReview", reason: "Đổi kế hoạch", recipientBankBin: "970436", maskedRecipientAccountNumber: "****6789",
+      recipientAccountName: "NGUYEN AN", accountNameVerified: false, createdAtUtc: "2026-11-13T08:00:00Z",
+      updatedAtUtc: "2026-11-13T08:00:00Z", approvedAmount: null, reviewNote: null, reviewedAtUtc: null, refundedAtUtc: null,
+    }])
+    renderPage()
+
+    expect(await screen.findByText("Hoàn cọc: Chờ Admin xét duyệt")).toBeTruthy()
+    expect(screen.getByText("Đang xử lý hoàn cọc, chưa thể lập hợp đồng.")).toBeTruthy()
+    // Chỉ booking có đơn bị từ chối mới còn được lập hợp đồng hoặc huỷ.
+    expect(screen.getAllByRole("link", { name: "Tạo hợp đồng" })).toHaveLength(1)
+    expect(screen.getAllByRole("button", { name: "Huỷ booking" })).toHaveLength(1)
+    expect(screen.getAllByText("Đến khi lập hợp đồng hoặc hoàn cọc")).toHaveLength(2)
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Xem hoàn cọc" })[0])
+    expect(await screen.findByText("Yêu cầu #4")).toBeTruthy()
+    expect(mocks.getBookingRefunds).toHaveBeenCalledWith("manager-token", 9, expect.any(AbortSignal))
+    expect(screen.queryByRole("button", { name: "Gửi yêu cầu" })).toBeNull()
   })
 
   it("explains a conflict when the booking changed before cancelling", async () => {

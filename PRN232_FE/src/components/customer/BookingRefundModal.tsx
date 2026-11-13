@@ -14,6 +14,8 @@ type Props = {
   onClose: () => void
   // Gọi sau khi gửi đơn hoặc cập nhật trạng thái để trang tải lại danh sách booking từ BE.
   onChanged: () => void
+  // Manager chỉ được xem lịch sử hoàn cọc, không gửi đơn (BE chỉ cho Customer tạo yêu cầu).
+  readOnly?: boolean
 }
 
 const OTHER_BANK = "other"
@@ -26,7 +28,7 @@ function isUncertain(error: unknown) {
   return !(error instanceof ApiError) || error.status === undefined
 }
 
-export default function BookingRefundModal({ booking, onClose, onChanged }: Props) {
+export default function BookingRefundModal({ booking, onClose, onChanged, readOnly = false }: Props) {
   const { accessToken } = useAuth()
   const [history, setHistory] = useState<BookingRefundDto[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -69,7 +71,7 @@ export default function BookingRefundModal({ booking, onClose, onChanged }: Prop
 
   // Chỉ cho gửi đơn mới khi BE xác nhận đủ điều kiện và đơn gần nhất (nếu có) đã bị từ chối.
   const latest = history?.[0] ?? null
-  const canSubmit = Boolean(booking.canRequestRefund) && history !== null && (latest === null || latest.status === "Rejected")
+  const canSubmit = !readOnly && Boolean(booking.canRequestRefund) && history !== null && (latest === null || latest.status === "Rejected")
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -167,7 +169,9 @@ export default function BookingRefundModal({ booking, onClose, onChanged }: Prop
           </div>
           {loadError && <p role="alert" className="mt-3 text-sm text-rose-600">{loadError}</p>}
           {!loadError && history?.length === 0 && (
-            <p className="mt-3 text-[13px] text-slate-500">Bạn chưa gửi yêu cầu hoàn cọc nào cho booking này.</p>
+            <p className="mt-3 text-[13px] text-slate-500">
+              {readOnly ? "Booking này chưa có yêu cầu hoàn cọc." : "Bạn chưa gửi yêu cầu hoàn cọc nào cho booking này."}
+            </p>
           )}
           {history && history.length > 0 && (
             <ol className="mt-3 space-y-3">
