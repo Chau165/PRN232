@@ -163,6 +163,72 @@ namespace PRN232.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingRefunds", b =>
+                {
+                    b.Property<int>("BookingRefundId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("BookingRefundId"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("BookingId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("BookingRefundRequestId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("OriginalPaymentId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PayoutAttemptId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("RecordedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("TransferredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("BookingRefundId");
+
+                    b.HasIndex("BookingId")
+                        .IsUnique();
+
+                    b.HasIndex("BookingRefundRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("OriginalPaymentId")
+                        .IsUnique();
+
+                    b.HasIndex("PayoutAttemptId")
+                        .IsUnique();
+
+                    b.HasIndex("RecordedAtUtc");
+
+                    b.ToTable("BookingRefunds", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_BookingRefunds_Amount", "CAST(\"Amount\" AS NUMERIC) > 0 AND CAST(\"Amount\" AS NUMERIC) <= 9007199254740991 AND CAST(\"Amount\" AS NUMERIC) = round(CAST(\"Amount\" AS NUMERIC), 0)");
+
+                            t.HasCheckConstraint("CK_BookingRefunds_Currency", "\"Currency\" = 'VND'");
+
+                            t.HasCheckConstraint("CK_BookingRefunds_Times", "\"TransferredAtUtc\" IS NULL OR \"TransferredAtUtc\" <= \"RecordedAtUtc\"");
+                        });
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.Bookings", b =>
                 {
                     b.Property<int>("BookingId")
@@ -1520,6 +1586,49 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("OriginalPayment");
 
                     b.Navigation("ReviewedByAdmin");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingRefunds", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Bookings", "Booking")
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.BookingRefundRequests", "BookingRefundRequest")
+                        .WithMany()
+                        .HasForeignKey("BookingRefundRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Payments", "OriginalPayment")
+                        .WithMany()
+                        .HasForeignKey("OriginalPaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.PayoutAttempts", "PayoutAttempt")
+                        .WithMany()
+                        .HasForeignKey("PayoutAttemptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+
+                    b.Navigation("BookingRefundRequest");
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("OriginalPayment");
+
+                    b.Navigation("PayoutAttempt");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Bookings", b =>

@@ -23,4 +23,4 @@ public sealed record BookingReadModel(
     string Status,
     DateTime ExpiryDate,
     string CustomerPhone,
-    int? ContractId);
+    int? ContractId, string? RefundStatus = null, bool CanRequestRefund = false, int? LatestPaymentRequestId = null);

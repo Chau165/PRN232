@@ -25,6 +25,10 @@ public class PayOSPayoutChannelTests
         var services = Services(new());
         using var provider = services.BuildServiceProvider();
         Assert.False(provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value.Enabled);
+        Assert.False(provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value.DispatchEnabled);
+        Assert.False(provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value.ReconciliationEnabled);
+        Assert.False(provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value.RetryFailedPayouts);
+        Assert.IsType<DisabledPayOSPayoutReconciliationGateway>(provider.GetRequiredService<IPayOSPayoutReconciliationGateway>());
         Assert.IsType<DisabledPayOSPayoutGateway>(provider.GetRequiredService<IPayOSPayoutGateway>());
         Assert.Null(provider.GetService<PayOSPayoutClient>());
     }
@@ -37,6 +41,37 @@ public class PayOSPayoutChannelTests
         var error = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value);
         Assert.DoesNotContain("secret-", error.Message);
         Assert.Equal(3, error.Failures.Count());
+    }
+
+    [Theory]
+    [InlineData(true, 4, 10)]
+    [InlineData(true, 3601, 10)]
+    [InlineData(true, 30, 0)]
+    [InlineData(true, 30, 101)]
+    [InlineData(false, 30, 10)]
+    public void Dispatch_configuration_requires_valid_limits_and_enabled_payout_channel(bool enabled, int interval, int batch)
+    {
+        using var provider = Services(new() { ["PayOSPayout:Enabled"] = enabled.ToString(), ["PayOSPayout:DispatchEnabled"] = "true",
+            ["PayOSPayout:ClientId"] = "payout-client", ["PayOSPayout:ApiKey"] = "payout-api", ["PayOSPayout:ChecksumKey"] = "payout-checksum",
+            ["PayOSPayout:DispatchIntervalSeconds"] = interval.ToString(), ["PayOSPayout:DispatchBatchSize"] = batch.ToString() }).BuildServiceProvider();
+        Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value);
+    }
+
+    [Theory]
+    [InlineData("ReconciliationIntervalSeconds", "4")]
+    [InlineData("ReconciliationBatchSize", "101")]
+    [InlineData("ReconciliationMinimumAgeSeconds", "30")]
+    [InlineData("ReconciliationStuckAfterSeconds", "60")]
+    [InlineData("MaxPayoutAttempts", "6")]
+    [InlineData("PayoutRetryDelaySeconds", "0")]
+    [InlineData("Enabled", "false")]
+    public void Reconciliation_configuration_rejects_unsafe_limits(string field, string value)
+    {
+        var config = new Dictionary<string, string?> { ["PayOSPayout:Enabled"] = "true", ["PayOSPayout:ReconciliationEnabled"] = "true",
+            ["PayOSPayout:ClientId"] = "payout-client", ["PayOSPayout:ApiKey"] = "payout-api", ["PayOSPayout:ChecksumKey"] = "payout-checksum" };
+        config["PayOSPayout:" + field] = value;
+        using var provider = Services(config).BuildServiceProvider();
+        Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<PayOSPayoutSettings>>().Value);
     }
 
     [Theory]
@@ -70,7 +105,9 @@ public class PayOSPayoutChannelTests
     public async Task Invalid_enabled_configuration_fails_host_startup()
     {
         var builder = Host.CreateApplicationBuilder();
-        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["PayOSPayout:Enabled"] = "true" });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> {
+            ["PayOSPayout:Enabled"] = "true", ["PayOSPayout:ClientId"] = "",
+            ["PayOSPayout:ApiKey"] = "", ["PayOSPayout:ChecksumKey"] = "" });
         builder.Services.AddPayOSPayoutConfiguration(builder.Configuration);
         using var host = builder.Build();
         await Assert.ThrowsAsync<OptionsValidationException>(() => host.StartAsync());

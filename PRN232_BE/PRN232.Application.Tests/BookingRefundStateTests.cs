@@ -118,6 +118,7 @@ public class BookingRefundStateTests
     [Fact]
     public void Submission_requires_approval_and_a_matching_booking_state()
     {
+        Assert.True(BookingRefundRequestStatuses.CanTransition("Approved", "RequiresReview"));
         Assert.True(BookingRefundPolicy.CanRequestRefund("Deposited", false, true, null));
         Assert.False(BookingRefundPolicy.CanStartPayout("Deposited", false, "PendingReview", null));
         Assert.False(BookingRefundPolicy.CanStartPayout("Deposited", true, "Approved", null));

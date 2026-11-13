@@ -92,6 +92,7 @@ public class ContractRepository : IContractRepository
             booking.RoomId == contract.RoomId &&
             booking.CustomerId == contract.CustomerId &&
             booking.Status == BookingStatuses.Deposited &&
+            !booking.RefundRequests.Any(refund => refund.Status != BookingRefundRequestStatuses.Rejected) &&
             booking.Payments.Any(payment =>
                 payment.Status == PaymentStatuses.Success &&
                 payment.UserId == booking.CustomerId &&

@@ -217,5 +217,16 @@ public class BookingRepository : IBookingRepository
         booking.Status,
         booking.ExpiryDate,
         booking.Customer.PhoneNumber,
-        booking.Contract != null ? (int?)booking.Contract.ContractId : null);
+        booking.Contract != null ? (int?)booking.Contract.ContractId : null,
+        booking.RefundRequests.OrderByDescending(refund => refund.CreatedAtUtc).ThenByDescending(refund => refund.BookingRefundRequestId).Select(refund => refund.Status).FirstOrDefault(),
+        booking.Status == BookingStatuses.Deposited && booking.Contract == null &&
+            !booking.RefundRequests.Any(refund => refund.Status != BookingRefundRequestStatuses.Rejected) &&
+            booking.Payments.Count(payment => payment.Status == PaymentStatuses.Success) == 1 &&
+            booking.Payments.Any(payment => payment.Status == PaymentStatuses.Success && payment.PaymentMethod == PaymentMethods.PayOS &&
+                payment.UserId == booking.CustomerId && payment.Amount == booking.DepositAmount && payment.InvoiceId == null && payment.ContractId == null && payment.ReadingId == null &&
+                payment.PaymentRequest != null && payment.PaymentRequest.Provider == "PayOS" && payment.PaymentRequest.Status == PaymentRequestStatuses.Succeeded &&
+                payment.PaymentRequest.Currency == "VND" && payment.PaymentRequest.Amount == payment.Amount && payment.PaymentRequest.CustomerId == booking.CustomerId &&
+                payment.PaymentRequest.BookingId == booking.BookingId && payment.PaymentRequest.InvoiceId == null) &&
+            !booking.PaymentRequests.Any(request => request.Status == PaymentRequestStatuses.Creating || request.Status == PaymentRequestStatuses.Pending || request.Status == PaymentRequestStatuses.RequiresReview),
+        booking.PaymentRequests.OrderByDescending(request => request.CreatedAtUtc).ThenByDescending(request => request.PaymentRequestId).Select(request => (int?)request.PaymentRequestId).FirstOrDefault());
 }

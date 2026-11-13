@@ -9,8 +9,25 @@ namespace PRN232.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Roles = "Admin,Manager")]
-public class ReportsController(IReceivablesService service, IRevenueService revenueService, ICurrentUserService currentUser) : ControllerBase
+public class ReportsController(IReceivablesService service, IRevenueService revenueService, ICurrentUserService currentUser, IDepositReportService depositService) : ControllerBase
 {
+    [HttpGet("booking-deposits")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    [ProducesResponseType(typeof(DepositReportDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<DepositReportDto>> GetDeposits([FromQuery] DateOnly? fromMonth,
+        [FromQuery] DateOnly? toMonth, [FromQuery] int? propertyId, CancellationToken cancellationToken)
+    {
+        if (!currentUser.IsAuthenticated || currentUser.UserId is not > 0) return Unauthorized();
+        try
+        {
+            return Ok(await depositService.GetAsync(fromMonth, toMonth, propertyId, currentUser.UserId.Value,
+                currentUser.Role ?? string.Empty, cancellationToken));
+        }
+        catch (RevenueForbiddenException) { return Forbid(); }
+        catch (RevenueNotFoundException) { return NotFound(); }
+        catch (RevenueValidationException exception) { return BadRequest(new ProblemDetails { Title = "Invalid report filter", Detail = exception.Message }); }
+    }
+
     [HttpGet("revenue")]
     [ProducesResponseType(typeof(RevenueReportDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

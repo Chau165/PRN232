@@ -267,7 +267,7 @@ public class BookingService : IBookingService
             booking.Status,
             UtcTimestamp.ForResponse(booking.ExpiryDate),
             booking.CustomerPhone,
-            booking.ContractId);
+            booking.ContractId, booking.RefundStatus, booking.CanRequestRefund, booking.LatestPaymentRequestId);
     }
 }
 
