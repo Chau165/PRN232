@@ -1,7 +1,7 @@
 # Đặc tả yêu cầu phần mềm
 ## Hệ thống quản lý thuê phòng trọ TrọViệt
 
-Software Requirements Specification • Phiên bản 1.1 • Ngày 13 tháng 11 năm 2026
+Software Requirements Specification • Phiên bản 1.2 • Ngày 14 tháng 11 năm 2026
 
 Tài liệu đặc tả yêu cầu của hệ thống quản lý thuê phòng trọ dành cho khách thuê, người quản lý khu trọ và quản trị viên. Phiên bản 1.1 được đối chiếu trực tiếp với mã nguồn tại thời điểm phát hành: mỗi yêu cầu chức năng ghi rõ mức hiện thực để người đọc phân biệt phần đã chạy được với phần còn là đề xuất.
 
@@ -10,7 +10,7 @@ Tài liệu đặc tả yêu cầu của hệ thống quản lý thuê phòng tr
 | Thuộc tính | Nội dung |
 | --- | --- |
 | Mã tài liệu | SRS RENTAL 01 |
-| Phiên bản | 1.1 (thay thế 1.0 ngày 12/11/2026) |
+| Phiên bản | 1.2 (thay thế 1.1 ngày 13/11/2026) |
 | Môn học | PRN232, FPT University HCM |
 | Đối tượng đọc | Giảng viên hướng dẫn, nhóm phát triển, người kiểm thử |
 | Phạm vi sản phẩm | Ứng dụng web và ứng dụng di động quản lý nhiều khu trọ, nhiều phòng |
@@ -25,6 +25,7 @@ Tài liệu đặc tả yêu cầu của hệ thống quản lý thuê phòng tr
 | Đã làm | Có xử lý ở backend, có giao diện web và có kiểm thử tự động |
 | Một phần | Đã có backend hoặc một phần luồng; còn thiếu giao diện, tích hợp hoặc nhánh nghiệp vụ được nêu rõ |
 | Chưa làm | Yêu cầu đề xuất, chưa có mã nguồn |
+| Ngoài phạm vi | Nhóm đã quyết định không làm, kèm lý do và quyết định nghiệp vụ liên quan |
 
 ### Lịch sử phiên bản
 
@@ -32,6 +33,7 @@ Tài liệu đặc tả yêu cầu của hệ thống quản lý thuê phòng tr
 | --- | --- |
 | 1.0 (12/11/2026) | Đặc tả vòng đời thuê và thanh toán; đề xuất yêu cầu trả phòng, quyết toán và các quyết định còn mở |
 | 1.1 (13/11/2026) | Mở rộng cho toàn bộ hệ thống (3 phạm vi và ứng dụng di động); cập nhật đặt cọc qua payOS, hoàn cọc booking, đối soát thanh toán, bảng giá dịch vụ theo khu trọ, chỉ số điện nước bàn giao, báo cáo tiền cọc thu và hoàn; bổ sung giới hạn và rủi ro hiện tại. Đối chiếu với mã nguồn nhánh main sau khi gộp các thay đổi ngày 13/11/2026 |
+| 1.2 (14/11/2026) | Chốt OD01 (tiền cọc là tiền giữ chỗ và tiền phòng tháng đầu, không hoàn khi trả phòng; FR34 chuyển ra ngoài phạm vi) và OD07 (giữ phòng 7 ngày sau khi đặt cọc, quá hạn thì giải phóng phòng và không hoàn cọc: FR56, BR13, BR14, UC08); cập nhật FR22, BR04, L01, L02, L09 và số ca kiểm thử |
 
 <!-- PAGE -->
 # 1 Giới thiệu
@@ -53,7 +55,8 @@ Ngoài phạm vi: kế toán tổng hợp, hóa đơn điện tử thuế, chữ
 | Khu trọ (Property) | Một địa điểm cho thuê gồm nhiều phòng, có thể có nhiều Manager được phân công |
 | Loại phòng (RoomType) | Nhóm phòng cùng đặc điểm; quyết định danh sách dịch vụ được tính trên hóa đơn |
 | Booking | Lần giữ chỗ một phòng của khách thuê trước khi lập hợp đồng |
-| Tiền cọc | Khoản khách trả để giữ phòng, bằng một tháng tiền thuê; được khấu trừ vào tiền phòng tháng đầu của hợp đồng |
+| Tiền cọc | Khoản khách trả để giữ phòng, bằng một tháng tiền thuê; giữ phòng 7 ngày để lập hợp đồng và được khấu trừ vào tiền phòng tháng đầu của hợp đồng, nên không có khoản cọc nào để hoàn khi trả phòng |
+| Hạn giữ phòng | Thời điểm thanh toán cọc cộng 7 ngày; quá hạn mà chưa lập hợp đồng thì phòng có thể được giải phóng |
 | Yêu cầu thanh toán (PaymentRequest) | Một liên kết checkout payOS cho tiền cọc hoặc hóa đơn, có trạng thái riêng |
 | Webhook | Thông báo payOS gửi về backend khi giao dịch hoàn tất; là căn cứ duy nhất để ghi nhận tiền online |
 | Payout | Lệnh chi tiền từ tài khoản payOS của hệ thống sang tài khoản ngân hàng khách (dùng cho hoàn cọc) |
@@ -110,8 +113,9 @@ Ngoài phạm vi: kế toán tổng hợp, hóa đơn điện tử thuế, chữ
 | 1 Tìm phòng | Khách | Tìm khu trọ theo khu vực, tiện ích và bản đồ; xem chi tiết phòng, giá dịch vụ, thiết bị |
 | 2 Đặt lịch xem | Customer, Admin | Customer gửi lịch xem; Admin duyệt và giao Manager dẫn xem, hoặc từ chối kèm lý do |
 | 3 Giữ chỗ | Customer | Tạo booking Pending; phòng được giữ 15 phút để thanh toán cọc |
-| 4 Đặt cọc | Customer, payOS | Thanh toán cọc qua checkout payOS; webhook xác nhận thì booking chuyển Deposited và phòng được giữ cho đến khi lập hợp đồng hoặc hoàn cọc |
+| 4 Đặt cọc | Customer, payOS | Thanh toán cọc qua checkout payOS; webhook xác nhận thì booking chuyển Deposited và phòng được giữ 7 ngày kể từ lúc thanh toán cọc để lập hợp đồng |
 | 5a Hoàn cọc | Customer, Admin, payOS | Nếu không thuê: Customer xin hoàn, Admin duyệt, hệ thống chi tiền qua payOS, booking chuyển Cancelled |
+| 5c Quá hạn giữ phòng | Manager, Admin | Quá 7 ngày mà chưa lập hợp đồng và không có yêu cầu hoàn cọc đang xử lý: Manager hoặc Admin giải phóng phòng, booking chuyển Cancelled, tiền cọc không được hoàn |
 | 5b Lập hợp đồng | Manager | Lập hợp đồng từ booking đã cọc; giá thuê và tiền cọc được chốt; phòng chuyển Occupied |
 | 6 Hằng tháng | Manager | Ghi chỉ số điện nước, xem trước và phát hành hóa đơn; tiền cọc được khấu trừ vào tiền phòng tháng đầu |
 | 7 Thanh toán | Customer, Manager | Customer trả qua payOS hoặc Manager ghi nhận tiền mặt; khách có thể khiếu nại từng khoản |
@@ -171,7 +175,8 @@ Ngoài phạm vi: kế toán tổng hợp, hóa đơn điện tử thuế, chữ
 | FR19 | Tiền cọc bằng giá thuê một tháng; thời gian giữ chỗ chờ thanh toán là 15 phút | Đã làm |
 | FR20 | Thanh toán cọc qua checkout payOS; dùng lại liên kết còn hạn; chống bấm hai lần; chỉ ghi nhận khi backend xác nhận qua webhook hoặc đối soát, không theo tham số trên URL trả về | Đã làm |
 | FR21 | Trang kết quả thanh toán dùng chung cho tiền cọc và hóa đơn, tự kiểm tra lại trạng thái có giới hạn số lần | Đã làm |
-| FR22 | Chỉ booking chưa thanh toán mới hủy được trên giao diện (Customer, Manager); booking đã cọc qua payOS chỉ được giải phóng qua luồng hoàn cọc | Đã làm |
+| FR22 | Chỉ booking chưa thanh toán mới hủy được trên giao diện (Customer, Manager); booking đã cọc chỉ được giải phóng qua luồng hoàn cọc, khi lập hợp đồng, hoặc khi quá hạn giữ phòng (FR56) | Đã làm |
+| FR56 | Booking đã cọc giữ phòng 7 ngày kể từ lúc thanh toán cọc; Customer và Manager thấy hạn giữ phòng; trang đặt cọc báo trước quy tắc này. Quá hạn mà chưa có hợp đồng và không có yêu cầu hoàn cọc đang xử lý, Manager được phân công hoặc Admin sở hữu khu trọ bấm Giải phóng phòng (có hộp xác nhận): booking chuyển Cancelled, phòng mở lại, tiền cọc không hoàn, khách nhận thông báo. Backend kiểm tra lại hạn và yêu cầu hoàn cọc trong giao dịch có khóa | Đã làm |
 
 ### 4.7 Hoàn cọc booking
 
@@ -193,7 +198,7 @@ Ngoài phạm vi: kế toán tổng hợp, hóa đơn điện tử thuế, chữ
 | FR31 | Gia hạn hợp đồng đang hiệu lực sang ngày kết thúc mới trong tương lai, không xung đột với booking khác | Đã làm |
 | FR32 | Kết thúc hợp đồng khi khách đã bàn giao; nếu còn nợ hóa đơn phải xác nhận đã biết số nợ; chọn mở phòng ngay hoặc chuyển Maintenance rồi mở sau | Đã làm |
 | FR33 | Customer xem hợp đồng, phòng đang thuê và lịch sử thuê; xem dòng thời gian hóa đơn theo kỳ | Đã làm |
-| FR34 | Quy trình trả phòng đầy đủ: biên bản bàn giao, chỉ số cuối, quyết toán và hoàn cọc hợp đồng | Chưa làm |
+| FR34 | Quy trình trả phòng đầy đủ: biên bản bàn giao, chỉ số cuối, quyết toán và hoàn cọc hợp đồng | Ngoài phạm vi: theo OD01, tiền cọc đã dùng làm tiền phòng tháng đầu nên không có cọc để hoàn khi trả phòng; khi kết thúc hợp đồng hệ thống đã cảnh báo công nợ và yêu cầu chốt hóa đơn cuối (FR32) |
 
 ### 4.9 Chỉ số điện nước
 
@@ -318,6 +323,17 @@ Ngoại lệ: dịch vụ chưa có giá trong tháng hoặc chưa ghi chỉ s�
 | 3 | Hệ thống | Hợp đồng chuyển Terminated; phòng chuyển Available hoặc Maintenance theo lựa chọn |
 | 4 | Manager | Sau khi dọn dẹp, đánh dấu phòng sẵn sàng cho thuê |
 
+### UC08 Giải phóng phòng quá hạn giữ cọc
+
+| Bước | Tác nhân | Hành động |
+| --- | --- | --- |
+| 1 | Hệ thống | Sau khi nhận cọc, hiển thị hạn giữ phòng (thời điểm thanh toán cọc cộng 7 ngày) cho Customer và Manager |
+| 2 | Hệ thống | Khi quá hạn mà chưa có hợp đồng và không có yêu cầu hoàn cọc đang xử lý, đánh dấu booking Quá hạn nhận phòng và hiện nút Giải phóng phòng |
+| 3 | Manager, Admin | Bấm Giải phóng phòng, đọc cảnh báo tiền cọc không được hoàn và xác nhận |
+| 4 | Hệ thống | Kiểm tra lại hạn, quyền và yêu cầu hoàn cọc trong giao dịch có khóa; booking chuyển Cancelled, phòng mở lại cho người khác giữ, khoản cọc vẫn ghi nhận là đã thu, thông báo cho Customer |
+
+Ngoại lệ: chưa đến hạn, đang có yêu cầu hoàn cọc, hoặc Manager không còn được phân công khu trọ thì thao tác bị từ chối.
+
 <!-- PAGE -->
 # 6 Quy tắc nghiệp vụ
 
@@ -326,7 +342,7 @@ Ngoại lệ: dịch vụ chưa có giá trong tháng hoặc chưa ghi chỉ s�
 | BR01 | Phòng chỉ được giữ chỗ khi đang Available, không có booking Pending còn hạn, không có booking Deposited chưa kết thúc, không có hợp đồng Active |
 | BR02 | Tiền cọc bằng giá thuê một tháng tại thời điểm giữ chỗ; booking Pending hết hạn sau 15 phút |
 | BR03 | Tiền online chỉ được ghi nhận khi backend xác minh webhook hoặc đối soát với payOS; tham số trên URL trả về không phải bằng chứng thanh toán |
-| BR04 | Booking đã cọc qua payOS không bị hủy trực tiếp; chỉ được giải phóng bằng hoàn cọc thành công hoặc lập hợp đồng |
+| BR04 | Booking đã cọc không bị hủy trực tiếp trong thời gian giữ phòng; chỉ được giải phóng bằng hoàn cọc thành công, lập hợp đồng, hoặc khi quá hạn giữ phòng (BR13) |
 | BR05 | Mỗi booking có tối đa một hợp đồng; mỗi phòng có tối đa một hợp đồng Active |
 | BR06 | Mọi thao tác ghi của Manager kiểm tra lại phân công ngay trong giao dịch; bị thu hồi phân công thì mất quyền ngay |
 | BR07 | Mỗi hợp đồng có tối đa một hóa đơn mỗi tháng; tiền cọc khấu trừ vào tiền phòng tháng đầu, không vượt tiền phòng |
@@ -335,6 +351,8 @@ Ngoại lệ: dịch vụ chưa có giá trong tháng hoặc chưa ghi chỉ s�
 | BR10 | Hóa đơn hiện chỉ tính điện theo kWh, nước theo m³ và phí cố định theo phòng |
 | BR11 | Duyệt hoàn cọc không đồng nghĩa đã chuyển tiền; chỉ khi payout được xác nhận thành công mới là Refunded |
 | BR12 | Số tài khoản ngân hàng chỉ hiển thị đầy đủ cho Admin khi xét duyệt; các nơi khác luôn che, chỉ hiện 4 số cuối |
+| BR13 | Hạn giữ phòng của booking đã cọc là thời điểm thanh toán cọc cộng 7 ngày (khoản cọc cũ không có thời điểm thanh toán được coi là đã quá hạn). Chỉ giải phóng được khi đã đến hạn, chưa có hợp đồng và không có yêu cầu hoàn cọc chưa bị từ chối; khi giải phóng, tiền cọc không được hoàn |
+| BR14 | Tiền cọc là tiền giữ chỗ và là tiền phòng tháng đầu; không có cọc đảm bảo nên không quyết toán hoàn cọc khi trả phòng |
 
 <!-- PAGE -->
 # 7 Mô hình trạng thái
@@ -342,7 +360,7 @@ Ngoại lệ: dịch vụ chưa có giá trong tháng hoặc chưa ghi chỉ s�
 | Đối tượng | Các trạng thái |
 | --- | --- |
 | Phòng | Available, Reserved, Occupied, Maintenance |
-| Booking | Pending (chờ cọc, hạn 15 phút), Deposited (đã cọc), Cancelled |
+| Booking | Pending (chờ cọc, hạn 15 phút), Deposited (đã cọc, giữ phòng 7 ngày; hiển thị thêm Quá hạn nhận phòng khi hết hạn mà chưa có hợp đồng), Cancelled |
 | Hợp đồng | Active (hiển thị thêm Upcoming, Active, ExpiredPendingCheckout theo ngày), Terminated |
 | Hóa đơn | Unpaid, Paid, Overdue (suy ra khi quá hạn chưa trả) |
 | Yêu cầu thanh toán | Creating, Pending, Succeeded, Cancelled, Expired, Create-failed, RequiresReview |
@@ -405,7 +423,7 @@ Ngoại lệ: dịch vụ chưa có giá trong tháng hoặc chưa ghi chỉ s�
 | NFR06 | Bảo mật cơ sở dữ liệu | Frontend không truy cập cơ sở dữ liệu trực tiếp, mọi dữ liệu đi qua backend; bảng khóa bảo vệ dữ liệu (DataProtectionKeys) và các bảng thanh toán, hoàn cọc (PaymentRequests, PaymentReviewCases, PaymentWebhookReceipts, BookingRefundRequests, PayoutAttempts, BookingRefunds) bật RLS và thu hồi quyền các vai trò Supabase |
 | NFR07 | Hiệu năng giao diện | Tải lười từng màn hình; phân trang danh sách lớn; hủy request cũ khi đổi bộ lọc |
 | NFR08 | Khả năng giám sát | Log có cấu trúc cho request, xác thực, thanh toán; endpoint kiểm tra sức khỏe ứng dụng và cơ sở dữ liệu |
-| NFR09 | Kiểm thử | Backend 1.419 ca kiểm thử xUnit đạt (23 ca bỏ qua do cần cơ sở dữ liệu riêng); frontend 340 ca kiểm thử Vitest; CI chạy kiểm thử khi mở pull request |
+| NFR09 | Kiểm thử | Backend 1.468 ca kiểm thử xUnit đạt (23 ca bỏ qua do cần cơ sở dữ liệu riêng); frontend 354 ca kiểm thử Vitest; CI chạy kiểm thử khi mở pull request |
 | NFR10 | Triển khai | Docker; Railway tự deploy từ nhánh main; migration EF chạy trước khi deploy |
 | NFR11 | Khả dụng ngôn ngữ và định dạng | Giao diện tiếng Việt; tiền tệ định dạng vi-VN; ngày giờ theo múi giờ Việt Nam |
 
@@ -414,28 +432,35 @@ Ngoại lệ: dịch vụ chưa có giá trong tháng hoặc chưa ghi chỉ s�
 
 | Mã | Giới hạn | Ảnh hưởng và hướng xử lý |
 | --- | --- | --- |
-| L01 | Chưa có quyết toán khi trả phòng; hợp đồng đã kết thúc không ghi được chỉ số và hóa đơn mới | Hóa đơn tháng cuối phải lập trước khi kết thúc hợp đồng; cần bổ sung FR34 |
-| L02 | Tiền cọc đồng thời là tiền phòng tháng đầu; không có cọc đảm bảo để cấn trừ khi trả phòng | Cần thống nhất chính sách cọc (OD01) trước khi làm FR34 |
+| L01 | Hợp đồng đã kết thúc không ghi được chỉ số và hóa đơn mới | Hóa đơn tháng cuối phải lập trước khi kết thúc hợp đồng; hộp thoại kết thúc hợp đồng nhắc kỳ chưa phát hành và công nợ còn lại |
+| L02 | Tiền cọc đồng thời là tiền phòng tháng đầu (đã chốt ở OD01); không có cọc đảm bảo để cấn trừ hư hỏng khi trả phòng | Hư hỏng khi trả phòng được xử lý ngoài hệ thống; FR34 nằm ngoài phạm vi |
 | L03 | Không tính tiền theo ngày khi vào hoặc ra giữa tháng | Hệ thống tính trọn tháng và hiển thị ghi chú; cần chốt OD02 |
 | L04 | Giá dịch vụ không thời hạn không thể thay bằng giá mới vì kỳ chồng lấn | Khi tạo giá nên đặt tháng kết thúc; cần API đóng kỳ giá cũ |
 | L05 | Giấy tờ tùy thân chưa là điều kiện để đặt cọc hoặc lập hợp đồng; chưa có màn hình web | Cần chốt OD04 và bổ sung màn hình |
 | L06 | Lịch xem và bảo trì phụ thuộc Admin duyệt hoặc giao việc; khách chưa tự hủy được; bảo trì chưa có trạng thái từ chối | Có thể ùn tắc khi Admin vắng mặt |
 | L07 | Kênh chi payOS đang tắt; hoàn cọc dừng ở trạng thái đã duyệt | Bật khi có khóa kênh chi riêng và đã kiểm thử với số tiền nhỏ |
 | L08 | Ứng dụng di động còn dữ liệu mẫu và thiếu một số luồng | Không dùng ứng dụng di động làm căn cứ nghiệm thu luồng thanh toán |
-| L09 | Booking đã cọc qua payOS chỉ được giải phóng khi khách tự xin hoàn cọc hoặc khi Manager lập hợp đồng; Manager không hủy được trên giao diện | Nếu khách không liên lạc thì phòng bị giữ; cần chính sách hết hạn giữ phòng đã cọc (OD07) |
+| L09 | Giải phóng phòng quá hạn giữ cọc (FR56) làm bằng tay, hệ thống không tự hủy | Nếu Manager và Admin không thao tác thì phòng vẫn bị giữ sau hạn; nhãn Quá hạn nhận phòng trên màn hình Đặt phòng và đặt cọc giúp nhắc việc |
 
 <!-- PAGE -->
-# 11 Quyết định còn mở
+# 11 Quyết định nghiệp vụ
+
+### 11.1 Đã chốt
+
+| Mã | Quyết định | Ảnh hưởng |
+| --- | --- | --- |
+| OD01 | Chốt ngày 14/11/2026: tiền cọc là tiền giữ chỗ và là tiền phòng tháng đầu, được khấu trừ vào hóa đơn tháng đầu; không có cọc đảm bảo nên không hoàn cọc khi trả phòng | FR34 (ngoài phạm vi), BR07, BR14, L02 |
+| OD07 | Chốt ngày 14/11/2026: booking đã cọc giữ phòng 7 ngày kể từ lúc thanh toán cọc; quá hạn mà chưa lập hợp đồng thì Manager được phân công hoặc Admin sở hữu khu trọ giải phóng phòng bằng tay và tiền cọc không được hoàn; trong hạn, khách vẫn xin hoàn cọc theo FR23 | FR22, FR56, BR04, BR13, UC08, L09 |
+
+### 11.2 Còn mở
 
 | Mã | Quyết định cần chốt | Ảnh hưởng |
 | --- | --- | --- |
-| OD01 | Tiền cọc là tiền giữ chỗ cộng tiền phòng tháng đầu, hay là cọc đảm bảo được hoàn khi trả phòng | FR34, BR07, L02 |
 | OD02 | Tháng đầu và tháng cuối tính trọn tháng hay theo ngày; cách làm tròn | FR38, L03 |
-| OD03 | Có yêu cầu báo trước khi trả phòng không; bao nhiêu ngày | FR34, FR44 |
+| OD03 | Có yêu cầu báo trước khi trả phòng không; bao nhiêu ngày | FR44 |
 | OD04 | Có bắt buộc giấy tờ đã duyệt trước khi đặt cọc hoặc lập hợp đồng không | FR14, FR29 |
 | OD05 | Mức hoàn cọc booking và ai chịu phí chuyển tiền | FR25, FR27 |
 | OD06 | Manager có được tự duyệt lịch xem và nhận việc bảo trì trực tiếp không | FR17, FR48, L06 |
-| OD07 | Booking đã cọc được giữ phòng tối đa bao lâu nếu chưa lập hợp đồng; ai được giải phóng phòng và hoàn cọc thế nào | FR22, FR27, L09 |
 
 <!-- PAGE -->
 # 12 Truy vết yêu cầu
@@ -443,6 +468,7 @@ Ngoại lệ: dịch vụ chưa có giá trong tháng hoặc chưa ghi chỉ s�
 | Yêu cầu | API | Màn hình web |
 | --- | --- | --- |
 | FR18 đến FR22 | /api/bookings, /api/bookings/{id}/payment-link, /api/payment-requests/{id} | Đặt cọc, Kết quả thanh toán, Lịch xem và đặt cọc |
+| FR56 | /api/bookings (holdUntilUtc, canReleaseRoom), /api/bookings/{id}/cancel | Đặt cọc, Lịch xem và đặt cọc, Đặt phòng và đặt cọc |
 | FR23 đến FR28 | /api/bookings/{id}/refund-requests, /api/booking-refund-requests | Lịch xem và đặt cọc, Xét duyệt hoàn cọc, Đặt phòng và đặt cọc |
 | FR29 đến FR33 | /api/contracts, /api/me/rentals | Lập hợp đồng, Hợp đồng, Hợp đồng của tôi, Phòng của tôi |
 | FR10 | /api/properties/{id}/service-rates, /api/services | Khu trọ (chi tiết, bảng giá dịch vụ) |
