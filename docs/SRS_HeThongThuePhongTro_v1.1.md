@@ -182,7 +182,7 @@ Ngoài phạm vi: kế toán tổng hợp, hóa đơn điện tử thuế, chữ
 | FR25 | Admin xem hàng chờ, đối chiếu khoản cọc gốc và tài khoản, duyệt với số tiền không vượt yêu cầu hoặc từ chối kèm lý do | Đã làm |
 | FR26 | Khi có yêu cầu hoàn chưa bị từ chối, không được lập hợp đồng từ booking đó | Đã làm |
 | FR27 | Worker gửi payout cho yêu cầu đã duyệt; worker đối soát xác nhận kết quả; thành công thì booking chuyển Cancelled; timeout không được coi là thất bại | Một phần: đã có mã nguồn; kênh chi đang tắt trên môi trường triển khai |
-| FR28 | Manager được phân công xem trạng thái hoàn cọc của booking ở chế độ chỉ đọc | Một phần: API đã cho phép; màn hình quản lý booking chưa hiển thị |
+| FR28 | Manager được phân công xem trạng thái và lịch sử hoàn cọc của booking ở chế độ chỉ đọc; khi yêu cầu hoàn đang xử lý thì không hiển thị thao tác lập hợp đồng và hủy booking | Đã làm |
 
 ### 4.8 Hợp đồng
 
