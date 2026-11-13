@@ -83,6 +83,10 @@ public class ViewingSchedulesController : ControllerBase
                 id = created.ViewingId
             }, created);
         }
+        catch (PhoneNumberRequiredException exception)
+        {
+            return BadRequest(new ProblemDetails { Title = "Phone number required", Detail = exception.Message });
+        }
         catch (ViewingBusinessRuleException exception)
         {
             return BadRequest(new ProblemDetails { Title = "Invalid viewing request", Detail = exception.Message });

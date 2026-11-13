@@ -64,6 +64,10 @@ và đăng ký DI trong `PRN232.Api/Program.cs`.
    (Railway) **bắt buộc** đặt `IdentityDocuments__CccdHashKey` (chuỗi ngẫu nhiên >= 32 ký tự, không
    đổi sau khi đã có dữ liệu) — đây là khóa HMAC để kiểm tra trùng số CCCD đã mã hóa (A9).
 
+   "Sign in with Google" (không bắt buộc): đặt `Google:ClientId` (Railway: `Google__ClientId`) là
+   OAuth client id loại Web trong Google Cloud Console, cùng giá trị với `VITE_GOOGLE_CLIENT_ID` của
+   frontend. Thiếu biến này thì `POST /api/auth/google` trả 503, phần còn lại vẫn chạy bình thường.
+
    Connection string lấy trong Supabase Dashboard → Project Settings → Database →
    Connection string (cổng 5432 cho kết nối trực tiếp, hoặc 6543 cho pooler).
 

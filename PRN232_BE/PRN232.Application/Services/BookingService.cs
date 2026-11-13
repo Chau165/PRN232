@@ -23,14 +23,17 @@ public class BookingService : IBookingService
     private readonly TimeProvider _timeProvider;
     private readonly INotificationRealtimePublisher? _realtimePublisher;
     private readonly ILogger<BookingService> _logger;
+    private readonly IUserContactLookup? _contactLookup;
 
     public BookingService(
         IBookingRepository repository,
         IPaymentGateway paymentGateway,
         TimeProvider timeProvider,
         INotificationRealtimePublisher? realtimePublisher = null,
-        ILogger<BookingService>? logger = null)
+        ILogger<BookingService>? logger = null,
+        IUserContactLookup? contactLookup = null)
     {
+        _contactLookup = contactLookup;
         _repository = repository;
         _paymentGateway = paymentGateway;
         _timeProvider = timeProvider;
@@ -40,6 +43,10 @@ public class BookingService : IBookingService
 
     public async Task<BookingDto> CreateAsync(CreateBookingDto dto, int customerId)
     {
+        // The deposit hold starts here; the owner must be able to call the customer.
+        await PhoneNumberRequiredException.EnsureAsync(
+            _contactLookup, customerId, PhoneNumberRequiredException.SelfMessage);
+
         var room = await _repository.GetRoomAsync(dto.RoomId);
         if (room is null)
         {

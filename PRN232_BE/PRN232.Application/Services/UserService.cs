@@ -164,7 +164,10 @@ public class UserService : IUserService
         {
             throw new UserNotFoundException(id);
         }
-        if (!_passwordHasher.Verify(dto.CurrentPassword ?? string.Empty, entity.PasswordHash))
+        // Accounts created through Google have no password yet: they may set one without a
+        // current password. Everyone else must still prove the current password.
+        if (entity.PasswordHash is not null &&
+            !_passwordHasher.Verify(dto.CurrentPassword ?? string.Empty, entity.PasswordHash))
         {
             throw new UserInvalidCurrentPasswordException();
         }
@@ -210,7 +213,9 @@ public class UserService : IUserService
             readModel.PhoneNumber,
             readModel.RoleId,
             readModel.RoleName,
-            readModel.IsActive);
+            readModel.IsActive,
+            readModel.HasPassword,
+            string.IsNullOrWhiteSpace(readModel.PhoneNumber));
     }
 
     private async Task<UserReadModel> GetUserResponseAsync(int userId)

@@ -24,6 +24,13 @@ public class UserRepository : IUserRepository
             .FirstOrDefaultAsync(u => u.Email == email);
     }
 
+    public Task<Users?> GetByGoogleSubjectAsync(string googleSubject)
+    {
+        return _context.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.GoogleSubject == googleSubject);
+    }
+
     public Task<bool> EmailExistsAsync(string email)
     {
         return _context.Users.AnyAsync(u => u.Email == email);
@@ -53,7 +60,8 @@ public class UserRepository : IUserRepository
             u.PhoneNumber,
             u.RoleId,
             u.Role!.RoleName,
-            u.IsActive))
+            u.IsActive,
+            u.PasswordHash != null))
             .ToListAsync();
 
         return new PagedResult<UserReadModel>(items, page.Page, page.PageSize, totalCount);
@@ -71,7 +79,8 @@ public class UserRepository : IUserRepository
             u.PhoneNumber,
             u.RoleId,
             u.Role!.RoleName,
-            u.IsActive))
+            u.IsActive,
+            u.PasswordHash != null))
             .FirstOrDefaultAsync();
     }
 

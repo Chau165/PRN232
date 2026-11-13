@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { useAuth } from "@/auth/AuthContext"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
-import { fullNameError, newPasswordError, phoneError } from "@/utils/accountValidation"
+import { fullNameError, newPasswordError, passwordError, phoneError } from "@/utils/accountValidation"
 
 function initials(name: string) {
   return name
@@ -25,6 +25,8 @@ export default function ProfilePage() {
   const [error, setError] = useState("")
   const [savingProfile, setSavingProfile] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
+  // Google accounts start without a password: they set one instead of changing it.
+  const settingFirstPassword = user?.hasPassword === false
 
   useEffect(() => {
     if (!user) return
@@ -58,7 +60,9 @@ export default function ProfilePage() {
     event.preventDefault()
     setError("")
     setMessage("")
-    const validationError = newPasswordError(currentPassword, newPassword)
+    const validationError = settingFirstPassword
+      ? passwordError(newPassword, "Mật khẩu mới")
+      : newPasswordError(currentPassword, newPassword)
     if (validationError) {
       setError(validationError)
       return
@@ -69,11 +73,11 @@ export default function ProfilePage() {
     }
     setSavingPassword(true)
     try {
-      await changePassword({ currentPassword, newPassword })
+      await changePassword(settingFirstPassword ? { newPassword } : { currentPassword, newPassword })
       setCurrentPassword("")
       setNewPassword("")
       setConfirmPassword("")
-      setMessage("Mật khẩu đã được thay đổi.")
+      setMessage(settingFirstPassword ? "Mật khẩu đã được thiết lập." : "Mật khẩu đã được thay đổi.")
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Không thể thay đổi mật khẩu.")
     } finally {
@@ -119,6 +123,11 @@ export default function ProfilePage() {
               <div className="mb-6">
                 <h2 className="font-display text-xl font-bold text-slate-900">Thông tin cá nhân</h2>
                 <p className="mt-1 text-sm leading-6 text-slate-500">Thông tin liên hệ gắn với tài khoản của bạn.</p>
+                {user.phoneMissing && (
+                  <p role="note" className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
+                    Bạn chưa có số điện thoại. Hãy bổ sung để đặt cọc, đặt lịch xem phòng và ký hợp đồng.
+                  </p>
+                )}
               </div>
               <form onSubmit={saveProfile}>
                 <div className="space-y-4">
@@ -167,15 +176,23 @@ export default function ProfilePage() {
 
             <section className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
               <div className="mb-6">
-                <h2 className="font-display text-xl font-bold text-slate-900">Đổi mật khẩu</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-500">Dùng mật khẩu hiện tại để thiết lập mật khẩu mới.</p>
+                <h2 className="font-display text-xl font-bold text-slate-900">
+                  {settingFirstPassword ? "Đặt mật khẩu" : "Đổi mật khẩu"}
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  {settingFirstPassword
+                    ? "Tài khoản đăng nhập bằng Google chưa có mật khẩu. Đặt mật khẩu để có thể đăng nhập bằng email."
+                    : "Dùng mật khẩu hiện tại để thiết lập mật khẩu mới."}
+                </p>
               </div>
               <form onSubmit={savePassword} className="space-y-4">
-                {[
+                {([
                   ["Mật khẩu hiện tại", currentPassword, setCurrentPassword],
                   ["Mật khẩu mới", newPassword, setNewPassword],
                   ["Xác nhận mật khẩu mới", confirmPassword, setConfirmPassword],
-                ].map(([label, value, setter]) => (
+                ] as const)
+                  .filter(([label]) => !settingFirstPassword || label !== "Mật khẩu hiện tại")
+                  .map(([label, value, setter]) => (
                   <label key={label as string} className="block text-[13px] font-semibold text-slate-700">
                     {label as string}
                     <input
@@ -189,7 +206,7 @@ export default function ProfilePage() {
                   </label>
                 ))}
                 <button type="submit" disabled={savingPassword} className="rounded-lg bg-[#087775] px-5 py-3 text-[13px] font-bold text-white disabled:opacity-60">
-                  {savingPassword ? "Đang cập nhật..." : "Cập nhật mật khẩu"}
+                  {savingPassword ? "Đang cập nhật..." : settingFirstPassword ? "Đặt mật khẩu" : "Cập nhật mật khẩu"}
                 </button>
               </form>
             </section>

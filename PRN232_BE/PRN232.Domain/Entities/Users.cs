@@ -12,7 +12,10 @@ public class Users
     }
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
-    public string PasswordHash { get; set; } = string.Empty;
+    // Null for accounts created through "Sign in with Google" that never set a password.
+    public string? PasswordHash { get; set; }
+    // Google account id ("sub" claim) linked to this user; null when Google sign-in is not linked.
+    public string? GoogleSubject { get; set; }
     public string PhoneNumber { get; set; } = string.Empty;
     public bool IsActive
     {

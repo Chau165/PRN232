@@ -260,6 +260,11 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
 
         // ---- Auth: email là định danh đăng nhập, phải unique ----
         modelBuilder.Entity<Users>().HasIndex(x => x.Email).IsUnique();
+        // One Google account can be linked to at most one user. NULLs do not collide.
+        modelBuilder.Entity<Users>()
+            .HasIndex(x => x.GoogleSubject)
+            .IsUnique()
+            .HasDatabaseName("UX_Users_GoogleSubject");
         modelBuilder.Entity<Property>().HasKey(x => x.PropertyId);
         modelBuilder.Entity<RoomTypes>().HasKey(x => x.RoomTypeId);
         modelBuilder.Entity<Service>().HasKey(x => x.ServiceId);

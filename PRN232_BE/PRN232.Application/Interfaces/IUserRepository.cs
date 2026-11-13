@@ -9,6 +9,7 @@ public interface IUserRepository
     // Dùng cho Auth (Login) — cần PasswordHash + Role.RoleName nên trả Entity,
     // không trả DTO.
     Task<Users?> GetByEmailAsync(string email);
+    Task<Users?> GetByGoogleSubjectAsync(string googleSubject);
     Task<bool> EmailExistsAsync(string email);
     Task<Users> AddAsync(Users user);
 

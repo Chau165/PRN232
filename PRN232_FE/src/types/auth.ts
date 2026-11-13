@@ -14,6 +14,9 @@ export interface BackendUserDto {
   roleId: number
   roleName: string
   isActive?: boolean
+  // False for accounts created with Google that have not set a password yet.
+  hasPassword?: boolean
+  phoneNumberMissing?: boolean
 }
 
 export interface AuthResponseDto {
@@ -25,6 +28,10 @@ export interface AuthResponseDto {
 export interface LoginRequestDto {
   email: string
   password: string
+}
+
+export interface GoogleLoginRequestDto {
+  idToken: string
 }
 
 export interface RegisterRequestDto extends LoginRequestDto {
@@ -49,5 +56,7 @@ export function mapBackendUser(dto: BackendUserDto): CurrentUser {
     role,
     roleId: dto.roleId,
     isActive: dto.isActive,
+    hasPassword: dto.hasPassword ?? true,
+    phoneMissing: dto.phoneNumberMissing ?? !dto.phoneNumber?.trim(),
   }
 }

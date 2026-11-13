@@ -7,4 +7,5 @@ public sealed record UserReadModel(
     string PhoneNumber,
     int RoleId,
     string RoleName,
-    bool IsActive);
+    bool IsActive,
+    bool HasPassword);

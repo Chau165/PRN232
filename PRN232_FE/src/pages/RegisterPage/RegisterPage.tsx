@@ -2,13 +2,14 @@ import { useState, type FormEvent } from "react"
 import { Link, useNavigate } from "react-router"
 import { useAuth } from "@/auth/AuthContext"
 import AuthShell from "@/components/auth/AuthShell"
+import GoogleSignInButton from "@/components/auth/GoogleSignInButton"
 import PasswordInput from "@/components/auth/PasswordInput"
 import { roleLandingPath } from "@/components/auth/ProtectedRoute"
 import { registrationError } from "@/utils/accountValidation"
 
 export default function RegisterPage() {
   const navigate = useNavigate()
-  const { register } = useAuth()
+  const { register, loginWithGoogle } = useAuth()
   const [fullName, setFullName] = useState("")
   const [phoneNumber, setPhoneNumber] = useState("")
   const [email, setEmail] = useState("")
@@ -46,6 +47,21 @@ export default function RegisterPage() {
       navigate(roleLandingPath(user.role), { replace: true })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Đăng ký không thành công.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Google sign-up creates a Customer account on the backend; the phone number is added later
+  // from the Profile page.
+  async function signUpWithGoogle(credential: string) {
+    setError("")
+    setIsSubmitting(true)
+    try {
+      const user = await loginWithGoogle(credential)
+      navigate(roleLandingPath(user.role), { replace: true })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Đăng ký bằng Google không thành công.")
     } finally {
       setIsSubmitting(false)
     }
@@ -130,6 +146,7 @@ export default function RegisterPage() {
             {isSubmitting ? "Đang tạo tài khoản..." : "Đăng ký"}
           </button>
         </form>
+        <GoogleSignInButton text="signup_with" onCredential={signUpWithGoogle} onError={setError} />
         <p className="mt-6 text-center text-[12px] text-slate-500">
           Đã có tài khoản?{" "}
           <Link to="/login" className="font-bold text-[#087775] hover:underline">Đăng nhập</Link>

@@ -51,6 +51,8 @@ public sealed class AuthServiceRegistrationTests
 
         public Task<Users?> GetByEmailAsync(string email) => throw new NotImplementedException();
 
+        public Task<Users?> GetByGoogleSubjectAsync(string googleSubject) => throw new NotImplementedException();
+
         public Task<PRN232.Application.Common.PagedResult<UserReadModel>> GetPagedAsync(int? roleId, PRN232.Application.Common.PageRequest page) => throw new NotImplementedException();
 
         public Task<UserReadModel?> GetByIdAsync(int id) => throw new NotImplementedException();

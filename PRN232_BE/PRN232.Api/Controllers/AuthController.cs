@@ -40,6 +40,51 @@ public class AuthController : ControllerBase
         }
     }
 
+    // POST /api/auth/google: exchange a Google ID token for our own JWT (same response as login).
+    [HttpPost("google")]
+    [EnableRateLimiting("LoginPolicy")]
+    [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<AuthResponseDto>> Google(GoogleLoginDto dto, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _authService.GoogleLoginAsync(dto, cancellationToken));
+        }
+        catch (AuthGoogleNotConfiguredException exception)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new ProblemDetails { Title = "Google sign-in unavailable", Detail = exception.Message });
+        }
+        catch (AuthInvalidGoogleTokenException exception)
+        {
+            return Unauthorized(new ProblemDetails { Title = "Invalid Google token", Detail = exception.Message });
+        }
+        catch (AuthGoogleEmailNotVerifiedException exception)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden,
+                new ProblemDetails { Title = "Google email not verified", Detail = exception.Message });
+        }
+        catch (AuthAccountInactiveException exception)
+        {
+            // Same response as a password login to a locked account.
+            return StatusCode(StatusCodes.Status403Forbidden,
+                new ProblemDetails { Title = "Account inactive", Detail = exception.Message });
+        }
+        catch (AuthGoogleAccountConflictException exception)
+        {
+            return Conflict(new ProblemDetails { Title = "Google account conflict", Detail = exception.Message });
+        }
+        catch (AuthRoleNotSeededException exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new ProblemDetails { Title = "Server not ready", Detail = exception.Message });
+        }
+    }
+
     [HttpPost("login")]
     [EnableRateLimiting("LoginPolicy")]
     public async Task<ActionResult<AuthResponseDto>> Login(LoginDto dto)
