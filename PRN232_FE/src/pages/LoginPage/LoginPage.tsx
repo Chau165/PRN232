@@ -1,13 +1,14 @@
 import { useState, type FormEvent } from "react"
 import { Link, useNavigate } from "react-router"
 import AuthShell from "@/components/auth/AuthShell"
+import GoogleSignInButton from "@/components/auth/GoogleSignInButton"
 import PasswordInput from "@/components/auth/PasswordInput"
 import { useAuth } from "@/auth/AuthContext"
 import { roleLandingPath } from "@/components/auth/ProtectedRoute"
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const { login } = useAuth()
+  const { login, loginWithGoogle } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -22,6 +23,19 @@ export default function LoginPage() {
       navigate(roleLandingPath(user.role), { replace: true })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Đăng nhập không thành công.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function signInWithGoogle(credential: string) {
+    setError("")
+    setIsSubmitting(true)
+    try {
+      const user = await loginWithGoogle(credential)
+      navigate(roleLandingPath(user.role), { replace: true })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Đăng nhập Google không thành công.")
     } finally {
       setIsSubmitting(false)
     }
@@ -72,6 +86,7 @@ export default function LoginPage() {
             {isSubmitting ? "Đang đăng nhập..." : "Đăng nhập"}
           </button>
         </form>
+        <GoogleSignInButton text="signin_with" onCredential={signInWithGoogle} onError={setError} />
         <p className="mt-6 text-center text-[12px] text-slate-500">
           Chưa có tài khoản?{" "}
           <Link to="/register" className="font-bold text-[#087775] hover:underline">

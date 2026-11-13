@@ -38,6 +38,7 @@ interface AuthContextValue {
   accessToken: string | null
   error: string | null
   login(email: string, password: string): Promise<CurrentUser>
+  loginWithGoogle(idToken: string): Promise<CurrentUser>
   register(input: {
     fullName: string
     email: string
@@ -48,7 +49,7 @@ interface AuthContextValue {
   retrySessionCheck(): void
   updateProfile(input: { fullName: string; phoneNumber: string }): Promise<CurrentUser>
   changePassword(input: {
-    currentPassword: string
+    currentPassword?: string
     newPassword: string
   }): Promise<void>
 }
@@ -205,6 +206,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [establishSession],
   )
 
+  const loginWithGoogle = useCallback(
+    async (idToken: string) =>
+      establishSession(await authService.loginWithGoogle({ idToken })),
+    [establishSession],
+  )
+
   const register = useCallback(
     async (input: {
       fullName: string
@@ -245,9 +252,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const changePassword = useCallback(
-    async (input: { currentPassword: string; newPassword: string }) => {
+    async (input: { currentPassword?: string; newPassword: string }) => {
       if (state.status !== "authenticated") throw new ApiError("Bạn cần đăng nhập lại.", { status: 401 })
       await userService.changeCurrentPassword(state.accessToken, input)
+      if (state.user.hasPassword === false) {
+        // A Google account just set its first password.
+        const user = { ...state.user, hasPassword: true }
+        setCurrentUserSnapshot(user)
+        setState({ ...state, user })
+      }
     },
     [state],
   )
@@ -258,12 +271,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     accessToken: state.status === "authenticated" ? state.accessToken : null,
     error: state.status === "error" ? state.error : null,
     login,
+    loginWithGoogle,
     register,
     logout,
     retrySessionCheck,
     updateProfile,
     changePassword,
-  }), [state, login, register, logout, retrySessionCheck, updateProfile, changePassword])
+  }), [state, login, loginWithGoogle, register, logout, retrySessionCheck, updateProfile, changePassword])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

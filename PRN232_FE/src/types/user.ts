@@ -18,6 +18,12 @@ export type CurrentUser = {
   isActive?: boolean
 
   assignedPropertyIds?: string[]
+
+  // False for Google accounts that have not set a password yet.
+  hasPassword?: boolean
+
+  // True when the account has no phone number yet.
+  phoneMissing?: boolean
 }
 
 export interface RoleDto {

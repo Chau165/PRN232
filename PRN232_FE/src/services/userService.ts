@@ -29,7 +29,8 @@ export function updateCurrentUser(
 
 export function changeCurrentPassword(
   accessToken: string,
-  request: { currentPassword: string; newPassword: string },
+  // currentPassword is omitted when a Google account sets its first password.
+  request: { currentPassword?: string; newPassword: string },
 ) {
   return apiRequest<void>("/users/me/password", {
     method: "PUT",

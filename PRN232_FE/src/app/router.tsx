@@ -13,6 +13,8 @@ import { routes } from "@/constants/routes"
 
 import { CustomerNotificationsProvider } from "@/auth/CustomerNotificationsContext"
 
+import PhoneNumberBanner from "@/components/auth/PhoneNumberBanner"
+
 // The landing page stays in the main bundle; every other route is code-split (C6) so that
 // visitors of the home page do not download the management and customer screens.
 import HomePage from "@/pages/HomePage/HomePage"
@@ -66,6 +68,7 @@ function RouteFallback() {
 function AppLayout() {
   return (
     <CustomerNotificationsProvider>
+      <PhoneNumberBanner />
       <Suspense fallback={<RouteFallback />}>
         <Outlet />
       </Suspense>
