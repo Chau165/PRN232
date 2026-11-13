@@ -43,9 +43,15 @@ class BookingService {
       CustomerMockData.bookings.insert(0, booking);
       return booking;
     } on DioException catch (e) {
-      throw Exception(e.error?.toString() ?? 'Không thể khởi tạo đơn cọc.');
-    } catch (_) {
-      // Fallback local nếu server cold-start
+      final msg = e.response?.data is Map && e.response?.data['detail'] != null
+          ? e.response?.data['detail'].toString()
+          : (e.error?.toString() ?? 'Không thể khởi tạo đơn cọc.');
+      throw Exception(msg);
+    } catch (e) {
+      if (!AuthState.isCurrentDemo) {
+        rethrow;
+      }
+      // Fallback local chỉ dành cho chế độ Demo
       final newBooking = CustomerBookingModel(
         id: DateTime.now().millisecondsSinceEpoch % 10000,
         bookingCode: 'DC-${DateTime.now().millisecondsSinceEpoch % 1000}',
@@ -85,8 +91,14 @@ class BookingService {
       }
       return booking;
     } on DioException catch (e) {
-      throw Exception(e.error?.toString() ?? 'Thanh toán cọc thất bại.');
-    } catch (_) {
+      final msg = e.response?.data is Map && e.response?.data['detail'] != null
+          ? e.response?.data['detail'].toString()
+          : (e.error?.toString() ?? 'Thanh toán cọc thất bại.');
+      throw Exception(msg);
+    } catch (e) {
+      if (!AuthState.isCurrentDemo) {
+        rethrow;
+      }
       final idx = CustomerMockData.bookings.indexWhere((b) => b.id == bookingId);
       if (idx != -1) {
         CustomerMockData.bookings[idx].status = 'Deposited';

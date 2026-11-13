@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import '../storage/secure_storage_helper.dart';
 import 'user_model.dart';
 
@@ -13,7 +14,7 @@ class AuthState extends ChangeNotifier {
   UserModel? _currentUser;
   bool _isLoading = false;
   String? _errorMessage;
-  int _unreadNotifications = 3;
+  int _unreadNotifications = 0;
 
   UserModel? get currentUser => _currentUser;
   bool get isAuthenticated => _currentUser != null;
@@ -37,6 +38,7 @@ class AuthState extends ChangeNotifier {
         _currentUser = me.copyWith(token: token);
         await SecureStorageHelper.saveUserData(_currentUser!.toJson());
         notifyListeners();
+        await refreshUnreadNotifications();
       } catch (_) {
         // Giữ phiên offline nếu server chưa sẵn sàng
       }
@@ -59,6 +61,7 @@ class AuthState extends ChangeNotifier {
 
       _isLoading = false;
       notifyListeners();
+      refreshUnreadNotifications();
       return true;
     } catch (e) {
       // Fallback demo cho tài khoản kiểm thử UI
@@ -132,6 +135,7 @@ class AuthState extends ChangeNotifier {
 
       _isLoading = false;
       notifyListeners();
+      refreshUnreadNotifications();
       return true;
     } catch (e) {
       _isLoading = false;
@@ -160,6 +164,7 @@ class AuthState extends ChangeNotifier {
 
       _isLoading = false;
       notifyListeners();
+      refreshUnreadNotifications();
       return true;
     } catch (e) {
       // Fallback local update
@@ -170,6 +175,7 @@ class AuthState extends ChangeNotifier {
       await SecureStorageHelper.saveUserData(_currentUser!.toJson());
       _isLoading = false;
       notifyListeners();
+      refreshUnreadNotifications();
       return true;
     }
   }
@@ -210,6 +216,28 @@ class AuthState extends ChangeNotifier {
   void markAllNotificationsRead() {
     _unreadNotifications = 0;
     notifyListeners();
+  }
+
+  /// Đồng bộ số lượng thông báo chưa đọc từ API
+  Future<void> refreshUnreadNotifications() async {
+    if (_currentUser == null) {
+      _unreadNotifications = 0;
+      notifyListeners();
+      return;
+    }
+    if (isDemoMode) {
+      _unreadNotifications = 3;
+      notifyListeners();
+      return;
+    }
+
+    try {
+      final unread = await NotificationService().getNotifications(isRead: false);
+      _unreadNotifications = unread.length;
+      notifyListeners();
+    } catch (_) {
+      // Giữ nguyên nếu lỗi mạng
+    }
   }
 }
 

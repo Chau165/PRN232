@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/services/maintenance_service.dart';
@@ -13,17 +14,20 @@ import '../models/customer_models.dart';
 class ReportDamageBottomSheet extends StatefulWidget {
   final int? contractId;
   final String? roomCode;
+  final List<EquipmentItem>? equipments;
 
   const ReportDamageBottomSheet({
     super.key,
     this.contractId,
     this.roomCode,
+    this.equipments,
   });
 
   static Future<bool?> show(
     BuildContext context, {
     int? contractId,
     String? roomCode,
+    List<EquipmentItem>? equipments,
   }) {
     return AppBottomSheet.show<bool>(
       context: context,
@@ -32,6 +36,7 @@ class ReportDamageBottomSheet extends StatefulWidget {
       child: ReportDamageBottomSheet(
         contractId: contractId,
         roomCode: roomCode,
+        equipments: equipments,
       ),
     );
   }
@@ -46,14 +51,23 @@ class _ReportDamageBottomSheetState extends State<ReportDamageBottomSheet> {
   final ImagePicker _picker = ImagePicker();
   final List<XFile> _selectedImages = [];
   final _descriptionController = TextEditingController();
+  List<EquipmentItem> _availableEquipments = [];
   EquipmentItem? _selectedEquipment;
   bool _isSubmitting = false;
 
   @override
   void initState() {
     super.initState();
-    if (CustomerMockData.myRoomEquipments.isNotEmpty) {
-      _selectedEquipment = CustomerMockData.myRoomEquipments.first;
+    if (widget.equipments != null && widget.equipments!.isNotEmpty) {
+      _availableEquipments = widget.equipments!;
+    } else if (AuthState.isCurrentDemo) {
+      _availableEquipments = CustomerMockData.myRoomEquipments;
+    } else {
+      _availableEquipments = [];
+    }
+
+    if (_availableEquipments.isNotEmpty) {
+      _selectedEquipment = _availableEquipments.first;
     }
   }
 
@@ -84,10 +98,18 @@ class _ReportDamageBottomSheetState extends State<ReportDamageBottomSheet> {
       return;
     }
 
+    final effectiveContractId = widget.contractId ?? (AuthState.isCurrentDemo ? 1 : null);
+    if (effectiveContractId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không tìm thấy hợp đồng phòng thuê hoạt động.')),
+      );
+      return;
+    }
+
     setState(() => _isSubmitting = true);
     try {
       await _maintenanceService.createRequest(
-        contractId: widget.contractId ?? 1,
+        contractId: effectiveContractId,
         equipmentId: _selectedEquipment?.id,
         description: _descriptionController.text.trim(),
       );
@@ -108,144 +130,136 @@ class _ReportDamageBottomSheetState extends State<ReportDamageBottomSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Equipment dropdown
-        Text('1. Chọn thiết bị gặp sự cố', style: AppTypography.labelLarge),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<EquipmentItem>(
-              value: _selectedEquipment,
-              isExpanded: true,
-              icon: const Icon(Icons.arrow_drop_down_rounded,
-                  color: AppColors.primary),
-              items: CustomerMockData.myRoomEquipments.map((eq) {
-                return DropdownMenuItem<EquipmentItem>(
-                  value: eq,
-                  child: Text(
-                    '${eq.name} (${eq.code})',
-                    style: AppTypography.bodyMedium,
-                  ),
-                );
-              }).toList(),
-              onChanged: (val) {
-                if (val != null) setState(() => _selectedEquipment = val);
-              },
+        // Equipment Selection Dropdown (nếu có thiết bị)
+        if (_availableEquipments.isNotEmpty) ...[
+          Text('Thiết bị gặp sự cố', style: AppTypography.labelLarge),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceVariant,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<EquipmentItem>(
+                value: _selectedEquipment,
+                isExpanded: true,
+                items: _availableEquipments.map((eq) {
+                  return DropdownMenuItem<EquipmentItem>(
+                    value: eq,
+                    child: Text('${eq.name} (${eq.code})',
+                        style: AppTypography.bodyMedium),
+                  );
+                }).toList(),
+                onChanged: (val) => setState(() => _selectedEquipment = val),
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 18),
+          const SizedBox(height: 16),
+        ],
 
-        // Description
+        // Description Input
         AppTextField(
-          label: '2. Mô tả hiện trạng hư hỏng',
+          label: 'Mô tả chi tiết sự cố',
+          hint: 'Ví dụ: Máy lạnh chảy nước, bóng đèn phòng khách bị chập...',
           controller: _descriptionController,
-          hint: 'Ví dụ: Máy lạnh không mát, kêu to và bị chảy nước...',
-          maxLines: 3,
+          maxLines: 4,
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 16),
 
-        // Photos
-        Text('3. Hình ảnh chụp thực tế (tùy chọn)',
-            style: AppTypography.labelLarge),
+        // Photo Upload Picker
+        Text('Ảnh chụp hiện trường sự cố', style: AppTypography.labelLarge),
         const SizedBox(height: 8),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              ..._selectedImages.map((img) {
-                return Stack(
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ..._selectedImages.map((img) {
+              return Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      File(img.path),
+                      width: 72,
+                      height: 72,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  Positioned(
+                    top: 2,
+                    right: 2,
+                    child: GestureDetector(
+                      onTap: () => setState(() => _selectedImages.remove(img)),
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
+                        ),
+                        padding: const EdgeInsets.all(2),
+                        child: const Icon(Icons.close,
+                            size: 14, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }),
+            InkWell(
+              onTap: () => _pickImage(ImageSource.camera),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  border: Border.all(
+                      color: AppColors.primary, style: BorderStyle.solid),
+                  borderRadius: BorderRadius.circular(8),
+                  color: AppColors.primaryLight,
+                ),
+                child: const Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
-                      width: 80,
-                      height: 80,
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        image: DecorationImage(
-                          image: FileImage(File(img.path)),
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      top: 4,
-                      right: 12,
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() => _selectedImages.remove(img));
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: const BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.close_rounded,
-                              size: 14, color: Colors.white),
-                        ),
-                      ),
-                    ),
+                    Icon(Icons.camera_alt_outlined,
+                        color: AppColors.primary, size: 24),
+                    SizedBox(height: 2),
+                    Text('Chụp ảnh',
+                        style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold)),
                   ],
-                );
-              }),
-              InkWell(
-                onTap: () => _pickImage(ImageSource.camera),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  margin: const EdgeInsets.only(right: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceVariant,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: AppColors.border, style: BorderStyle.solid),
-                  ),
-                  child: const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.camera_alt_outlined,
-                          size: 22, color: AppColors.primary),
-                      SizedBox(height: 4),
-                      Text('Chụp ảnh',
-                          style: TextStyle(
-                              fontSize: 10, color: AppColors.textSecondary)),
-                    ],
-                  ),
                 ),
               ),
-              InkWell(
-                onTap: () => _pickImage(ImageSource.gallery),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceVariant,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: AppColors.border, style: BorderStyle.solid),
-                  ),
-                  child: const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.photo_library_outlined,
-                          size: 22, color: AppColors.primary),
-                      SizedBox(height: 4),
-                      Text('Thư viện',
-                          style: TextStyle(
-                              fontSize: 10, color: AppColors.textSecondary)),
-                    ],
-                  ),
+            ),
+            InkWell(
+              onTap: () => _pickImage(ImageSource.gallery),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.border),
+                  borderRadius: BorderRadius.circular(8),
+                  color: AppColors.surfaceVariant,
+                ),
+                child: const Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.photo_library_outlined,
+                        color: AppColors.textSecondary, size: 24),
+                    SizedBox(height: 2),
+                    Text('Thư viện',
+                        style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500)),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
         const SizedBox(height: 24),
 
@@ -255,7 +269,6 @@ class _ReportDamageBottomSheetState extends State<ReportDamageBottomSheet> {
           isLoading: _isSubmitting,
           onPressed: _submit,
         ),
-        const SizedBox(height: 12),
       ],
     );
   }

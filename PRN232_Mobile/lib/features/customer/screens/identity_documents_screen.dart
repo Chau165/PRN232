@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
@@ -29,6 +30,7 @@ class _IdentityDocumentsScreenState extends State<IdentityDocumentsScreen> {
   final TextEditingController _idNumberController = TextEditingController();
   XFile? _frontImage;
   XFile? _backImage;
+  bool _isLoading = false;
   bool _isSubmitting = false;
 
   @override
@@ -38,11 +40,14 @@ class _IdentityDocumentsScreenState extends State<IdentityDocumentsScreen> {
     if (_doc != null) {
       _nameController.text = _doc!.fullName;
       _idNumberController.text = _doc!.idNumber;
+    } else if (authState.currentUser != null) {
+      _nameController.text = authState.currentUser!.fullName;
     }
     _loadDocument();
   }
 
   Future<void> _loadDocument() async {
+    setState(() => _isLoading = true);
     try {
       final docs = await _identityService.getMyDocuments();
       if (mounted) {
@@ -50,12 +55,21 @@ class _IdentityDocumentsScreenState extends State<IdentityDocumentsScreen> {
           if (docs.isNotEmpty) {
             _doc = docs.first;
             _idNumberController.text = _doc!.idNumber;
+            if (_doc!.fullName.isNotEmpty) {
+              _nameController.text = _doc!.fullName;
+            }
           } else if (!AuthState.isCurrentDemo) {
             _doc = null;
+            if (_nameController.text.isEmpty && authState.currentUser != null) {
+              _nameController.text = authState.currentUser!.fullName;
+            }
           }
+          _isLoading = false;
         });
       }
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -66,20 +80,24 @@ class _IdentityDocumentsScreenState extends State<IdentityDocumentsScreen> {
   }
 
   Future<void> _pickImage(bool isFront, ImageSource source) async {
-    final file = await _picker.pickImage(
-      source: source,
-      maxWidth: 1200,
-      maxHeight: 1200,
-      imageQuality: 85,
-    );
-    if (file != null) {
-      setState(() {
-        if (isFront) {
-          _frontImage = file;
-        } else {
-          _backImage = file;
-        }
-      });
+    try {
+      final file = await _picker.pickImage(
+        source: source,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 85,
+      );
+      if (file != null) {
+        setState(() {
+          if (isFront) {
+            _frontImage = file;
+          } else {
+            _backImage = file;
+          }
+        });
+      }
+    } catch (_) {
+      // Bỏ qua lỗi hủy picker
     }
   }
 
@@ -91,9 +109,9 @@ class _IdentityDocumentsScreenState extends State<IdentityDocumentsScreen> {
       return;
     }
 
-    if (_frontImage == null && _doc?.frontImageUrl == null) {
+    if (_idNumberController.text.trim().length != 12) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng chụp ảnh mặt trước thẻ CCCD.')),
+        const SnackBar(content: Text('Số CCCD chuẩn phải bao gồm đúng 12 chữ số.')),
       );
       return;
     }
@@ -110,7 +128,7 @@ class _IdentityDocumentsScreenState extends State<IdentityDocumentsScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Đã gửi hồ sơ định danh CCCD. Quản lý sẽ xác thực trong 24h.'),
+          content: Text('Đã nộp hồ sơ CCCD thành công! Quản lý sẽ phê duyệt trong 24h.'),
           backgroundColor: AppColors.primary,
           behavior: SnackBarBehavior.floating,
         ),
@@ -131,130 +149,173 @@ class _IdentityDocumentsScreenState extends State<IdentityDocumentsScreen> {
       appBar: AppBar(
         title: const Text('Hồ Sơ Định Danh CCCD'),
         backgroundColor: Colors.white,
+        foregroundColor: AppColors.textPrimary,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            } else {
+              context.go('/customer');
+            }
+          },
+        ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Status banner
-            if (_doc != null) ...[
-              AppCard(
-                color: _doc!.isVerified
-                    ? AppColors.successBg
-                    : (_doc!.isPending ? AppColors.warningBg : AppColors.dangerBg),
-                border: BorderSide(
-                  color: _doc!.isVerified
-                      ? const Color(0xFFA7F3D0)
-                      : (_doc!.isPending ? const Color(0xFFFDE68A) : const Color(0xFFFECDD3)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      _doc!.isVerified
-                          ? Icons.verified_user_rounded
-                          : (_doc!.isPending ? Icons.pending_rounded : Icons.gpp_bad_rounded),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Status banner khi đã có hồ sơ
+                  if (_doc != null) ...[
+                    AppCard(
                       color: _doc!.isVerified
-                          ? AppColors.success
-                          : (_doc!.isPending ? AppColors.warning : AppColors.danger),
-                      size: 28,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                          ? AppColors.successBg
+                          : (_doc!.isPending ? AppColors.warningBg : AppColors.dangerBg),
+                      border: BorderSide(
+                        color: _doc!.isVerified
+                            ? const Color(0xFFA7F3D0)
+                            : (_doc!.isPending ? const Color(0xFFFDE68A) : const Color(0xFFFECDD3)),
+                      ),
+                      child: Row(
                         children: [
-                          Text(
+                          Icon(
                             _doc!.isVerified
-                                ? 'Đã xác thực nhân thân thành công'
-                                : (_doc!.isPending
-                                    ? 'Hồ sơ đang chờ Quản lý kiểm duyệt'
-                                    : 'Hồ sơ bị từ chối xác thực'),
-                            style: AppTypography.labelLarge,
+                                ? Icons.verified_user_rounded
+                                : (_doc!.isPending ? Icons.pending_rounded : Icons.gpp_bad_rounded),
+                            color: _doc!.isVerified
+                                ? AppColors.success
+                                : (_doc!.isPending ? AppColors.warning : AppColors.danger),
+                            size: 28,
                           ),
-                          Text(
-                            _doc!.isVerified
-                                ? 'Hồ sơ hợp lệ để làm thủ tục đăng ký tạm trú lưu trú'
-                                : (_doc!.isPending
-                                    ? 'Gửi lúc ${Formatters.formatDateTime(_doc!.uploadedAt)}'
-                                    : 'Lý do: ${_doc!.rejectReason ?? "Ảnh mờ hoặc thông tin không trùng khớp"}'),
-                            style: AppTypography.bodySmall,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _doc!.isVerified
+                                      ? 'Đã xác thực nhân thân thành công'
+                                      : (_doc!.isPending
+                                          ? 'Hồ sơ đang chờ Quản lý kiểm duyệt'
+                                          : 'Hồ sơ bị từ chối xác thực'),
+                                  style: AppTypography.labelLarge,
+                                ),
+                                Text(
+                                  _doc!.isVerified
+                                      ? 'Hồ sơ hợp lệ để làm thủ tục đăng ký tạm trú lưu trú'
+                                      : (_doc!.isPending
+                                          ? 'Gửi lúc ${Formatters.formatDateTime(_doc!.uploadedAt)}'
+                                          : 'Lý do: ${_doc!.rejectReason ?? "Ảnh mờ hoặc thông tin không trùng khớp"}'),
+                                  style: AppTypography.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                          StatusBadge(
+                            label: _doc!.isVerified
+                                ? 'Đã duyệt'
+                                : (_doc!.isPending ? 'Chờ duyệt' : 'Từ chối'),
+                            tone: _doc!.isVerified
+                                ? StatusTone.green
+                                : (_doc!.isPending ? StatusTone.amber : StatusTone.rose),
                           ),
                         ],
                       ),
                     ),
-                    StatusBadge(
-                      label: _doc!.isVerified
-                          ? 'Đã duyệt'
-                          : (_doc!.isPending ? 'Chờ duyệt' : 'Từ chối'),
-                      tone: _doc!.isVerified
-                          ? StatusTone.green
-                          : (_doc!.isPending ? StatusTone.amber : StatusTone.rose),
+                    const SizedBox(height: 20),
+                  ] else ...[
+                    // Thông báo hướng dẫn khi chưa có hồ sơ
+                    AppCard(
+                      color: AppColors.primaryLight,
+                      border: const BorderSide(color: Color(0xFFC7E7E2)),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline_rounded,
+                              color: AppColors.primary, size: 28),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Định danh CCCD bắt buộc',
+                                    style: AppTypography.labelLarge
+                                        .copyWith(color: AppColors.primaryDark)),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Cung cấp số CCCD chính chủ và chụp rõ nét 2 mặt để Quản lý làm thủ tục đăng ký tạm trú với cơ quan Công an.',
+                                  style: AppTypography.bodySmall
+                                      .copyWith(color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(height: 20),
                   ],
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
 
-            // Input Fields
-            Text('Thông tin căn cước công dân', style: AppTypography.headingMedium),
-            const SizedBox(height: 12),
-            AppCard(
-              child: Column(
-                children: [
-                  AppTextField(
-                    label: 'Họ và tên (như trên thẻ)',
-                    hint: 'NGUYEN VAN A',
-                    controller: _nameController,
-                    readOnly: _doc?.isVerified ?? false,
+                  // Input Fields
+                  Text('Thông tin căn cước công dân', style: AppTypography.headingMedium),
+                  const SizedBox(height: 12),
+                  AppCard(
+                    child: Column(
+                      children: [
+                        AppTextField(
+                          label: 'Họ và tên (như trên thẻ)',
+                          hint: 'NGUYEN VAN A',
+                          controller: _nameController,
+                          readOnly: _doc?.isVerified ?? false,
+                        ),
+                        const SizedBox(height: 14),
+                        AppTextField(
+                          label: 'Số CCCD (12 chữ số)',
+                          hint: '07920100xxxx',
+                          controller: _idNumberController,
+                          keyboardType: TextInputType.number,
+                          readOnly: _doc?.isVerified ?? false,
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 14),
-                  AppTextField(
-                    label: 'Số CCCD (12 chữ số)',
-                    hint: '07920100xxxx',
-                    controller: _idNumberController,
-                    keyboardType: TextInputType.number,
-                    readOnly: _doc?.isVerified ?? false,
+                  const SizedBox(height: 20),
+
+                  // Front Image
+                  Text('Ảnh mặt trước thẻ CCCD', style: AppTypography.headingSmall),
+                  const SizedBox(height: 8),
+                  _buildPhotoPicker(
+                    isFront: true,
+                    localFile: _frontImage,
+                    networkUrl: _doc?.frontImageUrl,
+                    canEdit: !(_doc?.isVerified ?? false),
                   ),
+                  const SizedBox(height: 20),
+
+                  // Back Image
+                  Text('Ảnh mặt sau thẻ CCCD (có chip)', style: AppTypography.headingSmall),
+                  const SizedBox(height: 8),
+                  _buildPhotoPicker(
+                    isFront: false,
+                    localFile: _backImage,
+                    networkUrl: _doc?.backImageUrl,
+                    canEdit: !(_doc?.isVerified ?? false),
+                  ),
+                  const SizedBox(height: 24),
+
+                  if (!(_doc?.isVerified ?? false))
+                    AppButton(
+                      text: _doc == null ? 'Gửi hồ sơ định danh' : 'Cập nhật lại hồ sơ',
+                      isLoading: _isSubmitting,
+                      onPressed: _submitDocument,
+                    ),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
-            const SizedBox(height: 20),
-
-            // Front Image
-            Text('Ảnh mặt trước thẻ CCCD', style: AppTypography.headingSmall),
-            const SizedBox(height: 8),
-            _buildPhotoPicker(
-              isFront: true,
-              localFile: _frontImage,
-              networkUrl: _doc?.frontImageUrl,
-              canEdit: !(_doc?.isVerified ?? false),
-            ),
-            const SizedBox(height: 20),
-
-            // Back Image
-            Text('Ảnh mặt sau thẻ CCCD (có chip)', style: AppTypography.headingSmall),
-            const SizedBox(height: 8),
-            _buildPhotoPicker(
-              isFront: false,
-              localFile: _backImage,
-              networkUrl: _doc?.backImageUrl,
-              canEdit: !(_doc?.isVerified ?? false),
-            ),
-            const SizedBox(height: 24),
-
-            if (!(_doc?.isVerified ?? false))
-              AppButton(
-                text: _doc == null ? 'Gửi hồ sơ định danh' : 'Cập nhật lại hồ sơ',
-                isLoading: _isSubmitting,
-                onPressed: _submitDocument,
-              ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
     );
   }
 

@@ -4,8 +4,93 @@ import '../../features/customer/models/customer_models.dart';
 import '../network/api_endpoints.dart';
 import '../network/dio_client.dart';
 
+class PublicPropertyPageResponse {
+  final List<PropertyItem> items;
+  final int totalCount;
+  final int page;
+  final int pageSize;
+
+  int get totalPages => (totalCount / pageSize).ceil() < 1 ? 1 : (totalCount / pageSize).ceil();
+
+  const PublicPropertyPageResponse({
+    required this.items,
+    required this.totalCount,
+    required this.page,
+    required this.pageSize,
+  });
+}
+
 class PropertyService {
   final Dio _dio = DioClient.instance;
+
+  /// Lấy danh sách toà nhà trọ công khai phân trang (hỗ trợ filter, search, paging)
+  Future<PublicPropertyPageResponse> getPublicPropertiesPaged({
+    String? keyword,
+    String? city,
+    String? district,
+    String? ward,
+    num? minPrice,
+    num? maxPrice,
+    String? roomTypeName,
+    List<int>? amenityIds,
+    String? sortBy,
+    int page = 1,
+    int pageSize = 10,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{
+        'Page': page,
+        'PageSize': pageSize,
+      };
+      if (keyword != null && keyword.trim().isNotEmpty) queryParams['Keyword'] = keyword.trim();
+      if (city != null && city.trim().isNotEmpty) queryParams['City'] = city.trim();
+      if (district != null && district.trim().isNotEmpty && district != 'Tất cả') {
+        queryParams['District'] = district.trim();
+      }
+      if (ward != null && ward.trim().isNotEmpty) queryParams['Ward'] = ward.trim();
+      if (minPrice != null) queryParams['MinPrice'] = minPrice;
+      if (maxPrice != null) queryParams['MaxPrice'] = maxPrice;
+      if (roomTypeName != null && roomTypeName.trim().isNotEmpty) queryParams['RoomTypeName'] = roomTypeName.trim();
+      if (amenityIds != null && amenityIds.isNotEmpty) queryParams['AmenityIds'] = amenityIds;
+      if (sortBy != null && sortBy.trim().isNotEmpty) queryParams['SortBy'] = sortBy.trim();
+
+      final response = await _dio.get(
+        ApiEndpoints.publicProperties,
+        queryParameters: queryParams,
+      );
+
+      final data = response.data;
+      if (data is Map && data.containsKey('items') && data['items'] is List) {
+        final itemsList = (data['items'] as List)
+            .map((i) => PropertyItem.fromJson(i as Map<String, dynamic>))
+            .toList();
+        final totalCount = (data['totalCount'] as num?)?.toInt() ?? itemsList.length;
+        final resPage = (data['page'] as num?)?.toInt() ?? page;
+        final resPageSize = (data['pageSize'] as num?)?.toInt() ?? pageSize;
+
+        return PublicPropertyPageResponse(
+          items: itemsList,
+          totalCount: totalCount,
+          page: resPage,
+          pageSize: resPageSize,
+        );
+      }
+
+      return PublicPropertyPageResponse(
+        items: CustomerMockData.properties,
+        totalCount: CustomerMockData.properties.length,
+        page: 1,
+        pageSize: pageSize,
+      );
+    } catch (_) {
+      return PublicPropertyPageResponse(
+        items: CustomerMockData.properties,
+        totalCount: CustomerMockData.properties.length,
+        page: 1,
+        pageSize: pageSize,
+      );
+    }
+  }
 
   /// Lấy danh sách toà nhà trọ công khai (hỗ trợ filter, search, paging)
   Future<List<PropertyItem>> getPublicProperties({
@@ -21,38 +106,20 @@ class PropertyService {
     int page = 1,
     int pageSize = 20,
   }) async {
-    try {
-      final queryParams = <String, dynamic>{
-        'Page': page,
-        'PageSize': pageSize,
-      };
-      if (keyword != null && keyword.isNotEmpty) queryParams['Keyword'] = keyword;
-      if (city != null && city.isNotEmpty) queryParams['City'] = city;
-      if (district != null && district.isNotEmpty) queryParams['District'] = district;
-      if (ward != null && ward.isNotEmpty) queryParams['Ward'] = ward;
-      if (minPrice != null) queryParams['MinPrice'] = minPrice;
-      if (maxPrice != null) queryParams['MaxPrice'] = maxPrice;
-      if (roomTypeName != null && roomTypeName.isNotEmpty) queryParams['RoomTypeName'] = roomTypeName;
-      if (amenityIds != null && amenityIds.isNotEmpty) queryParams['AmenityIds'] = amenityIds;
-      if (sortBy != null && sortBy.isNotEmpty) queryParams['SortBy'] = sortBy;
-
-      final response = await _dio.get(
-        ApiEndpoints.publicProperties,
-        queryParameters: queryParams,
-      );
-
-      final data = response.data;
-      if (data is Map && data.containsKey('items') && data['items'] is List) {
-        final items = data['items'] as List;
-        if (items.isNotEmpty) {
-          return items.map((i) => PropertyItem.fromJson(i as Map<String, dynamic>)).toList();
-        }
-      }
-      return CustomerMockData.properties;
-    } catch (_) {
-      // Graceful fallback: trả về dữ liệu mẫu nếu API cold-start hoặc lỗi mạng
-      return CustomerMockData.properties;
-    }
+    final paged = await getPublicPropertiesPaged(
+      keyword: keyword,
+      city: city,
+      district: district,
+      ward: ward,
+      minPrice: minPrice,
+      maxPrice: maxPrice,
+      roomTypeName: roomTypeName,
+      amenityIds: amenityIds,
+      sortBy: sortBy,
+      page: page,
+      pageSize: pageSize,
+    );
+    return paged.items;
   }
 
   /// Lấy danh sách toà nhà có tọa độ GPS để hiển thị ghim trên bản đồ OSM
@@ -126,9 +193,12 @@ class PropertyService {
     num? minPrice,
     num? maxPrice,
     String? roomTypeName,
+    int pageSize = 100,
   }) async {
     try {
-      final queryParams = <String, dynamic>{};
+      final queryParams = <String, dynamic>{
+        'PageSize': pageSize,
+      };
       if (minPrice != null) queryParams['MinPrice'] = minPrice;
       if (maxPrice != null) queryParams['MaxPrice'] = maxPrice;
       if (roomTypeName != null) queryParams['RoomTypeName'] = roomTypeName;
