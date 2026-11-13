@@ -226,7 +226,9 @@ public class AuthService : IAuthService
             user.Email,
             user.PhoneNumber,
             user.RoleId,
-            roleName);
+            roleName,
+            user.PasswordHash is not null,
+            string.IsNullOrWhiteSpace(user.PhoneNumber));
     }
 }
 

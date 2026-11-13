@@ -92,6 +92,9 @@ public class BookingsController : ControllerBase
         catch (BookingRoomUnavailableException exception)
         {
             return Conflict(new ProblemDetails { Title = "Room unavailable", Detail = exception.Message });
+        }        catch (PhoneNumberRequiredException exception)
+        {
+            return BadRequest(new ProblemDetails { Title = "Phone number required", Detail = exception.Message });
         }
     }
 

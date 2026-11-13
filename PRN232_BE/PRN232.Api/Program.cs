@@ -294,6 +294,7 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IUserContactLookup, UserContactLookup>();
 // "Sign in with Google": Google:ClientId is optional. Without it POST /api/auth/google returns
 // 503 and the rest of the app still starts. Read when resolved so test hosts can set it.
 builder.Services.AddSingleton<IGoogleIdTokenValidator>(provider => new GoogleIdTokenValidator(

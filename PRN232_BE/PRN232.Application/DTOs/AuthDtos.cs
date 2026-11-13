@@ -13,6 +13,10 @@ public record AuthenticatedUserDto(
     string Email,
     string PhoneNumber,
     int RoleId,
-    string RoleName);
+    string RoleName,
+    // False for Google-only accounts: the profile page offers "set password" instead of "change".
+    bool HasPassword,
+    // True when the account has no phone number yet; the web app asks the user to add one.
+    bool PhoneNumberMissing);
 
 public record AuthResponseDto(string AccessToken, DateTime ExpiresAtUtc, AuthenticatedUserDto User);

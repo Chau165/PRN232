@@ -439,8 +439,8 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
             new Roles { RoleId = 2, RoleName = "Manager" },
             new Roles { RoleId = 3, RoleName = "Admin" });
         context.Users.AddRange(
-            User(10, 1, "Customer A", "customer@example.test", hash),
-            User(20, 1, "Customer B", "other@example.test", hash),
+            User(10, 1, "Customer A", "customer@example.test", hash, phoneNumber: "0913000000"),
+            User(20, 1, "Customer B", "other@example.test", hash, phoneNumber: "0914000000"),
             User(7, 2, "Manager A", "manager@example.test", hash, phoneNumber: "0911000000"),
             User(8, 2, "Manager B", "manager-b@example.test", hash, phoneNumber: "0912000000"),
             User(14, 2, "Inactive Manager", "inactive-manager@example.test", hash, isActive: false),

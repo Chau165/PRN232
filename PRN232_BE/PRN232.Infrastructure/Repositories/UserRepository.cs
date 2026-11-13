@@ -60,7 +60,8 @@ public class UserRepository : IUserRepository
             u.PhoneNumber,
             u.RoleId,
             u.Role!.RoleName,
-            u.IsActive))
+            u.IsActive,
+            u.PasswordHash != null))
             .ToListAsync();
 
         return new PagedResult<UserReadModel>(items, page.Page, page.PageSize, totalCount);
@@ -78,7 +79,8 @@ public class UserRepository : IUserRepository
             u.PhoneNumber,
             u.RoleId,
             u.Role!.RoleName,
-            u.IsActive))
+            u.IsActive,
+            u.PasswordHash != null))
             .FirstOrDefaultAsync();
     }
 

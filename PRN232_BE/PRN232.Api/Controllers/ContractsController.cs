@@ -240,6 +240,10 @@ public class ContractsController : ControllerBase
                 id = created.ContractId
             }, created);
         }
+        catch (PhoneNumberRequiredException exception)
+        {
+            return BadRequest(new ProblemDetails { Title = "Phone number required", Detail = exception.Message });
+        }
         catch (ContractBusinessRuleException exception)
         {
             return BadRequest(new ProblemDetails { Title = "Invalid contract", Detail = exception.Message });

@@ -7,7 +7,9 @@ public record UserDto(
     string PhoneNumber,
     int RoleId,
     string RoleName,
-    bool IsActive);
+    bool IsActive,
+    bool HasPassword,
+    bool PhoneNumberMissing);
 
 // Admin tạo account Manager/Admin trực tiếp (role tuỳ chọn) — khác với
 // /api/auth/register (công khai, luôn gán Customer).
@@ -28,4 +30,5 @@ public record UpdateUserStatusDto(bool IsActive);
 // qua đường này.
 public record UpdateProfileDto(string FullName, string PhoneNumber);
 
-public record ChangePasswordDto(string CurrentPassword, string NewPassword);
+// CurrentPassword may be omitted only when the account has no password yet (Google sign-in).
+public record ChangePasswordDto(string? CurrentPassword, string NewPassword);

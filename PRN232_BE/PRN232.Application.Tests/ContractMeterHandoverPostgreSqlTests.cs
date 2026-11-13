@@ -37,8 +37,9 @@ public class ContractMeterHandoverPostgreSqlTests
         Assert.All(migration.DownOperations, operation => Assert.Equal("Contracts", Assert.IsType<DropColumnOperation>(operation).Table));
         using var db = Context("Host=localhost;Database=unused;Username=test");
         Assert.False(db.Database.HasPendingModelChanges());
-        var target = db.Database.GetMigrations().Last();
-        Assert.EndsWith("_AddContractMeterHandoverBaseline", target);
+        // Look the migration up by name: later migrations must not break this test.
+        var target = db.Database.GetMigrations()
+            .Single(migration => migration.EndsWith("_AddContractMeterHandoverBaseline", StringComparison.Ordinal));
         var sql = db.GetService<IMigrator>().GenerateScript(Before, target);
         Assert.Equal(3, sql.Split("ALTER TABLE").Length - 1);
         Assert.DoesNotContain("UPDATE \"Contracts\"", sql);

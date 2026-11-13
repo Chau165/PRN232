@@ -19,13 +19,16 @@ public class ContractService : IContractService
     private readonly TimeProvider _timeProvider;
     private readonly INotificationRealtimePublisher? _realtimePublisher;
     private readonly ILogger<ContractService>? _logger;
+    private readonly IUserContactLookup? _contactLookup;
 
     public ContractService(
         IContractRepository repository,
         TimeProvider timeProvider,
         INotificationRealtimePublisher? realtimePublisher = null,
-        ILogger<ContractService>? logger = null)
+        ILogger<ContractService>? logger = null,
+        IUserContactLookup? contactLookup = null)
     {
+        _contactLookup = contactLookup;
         _repository = repository;
         _timeProvider = timeProvider;
         _realtimePublisher = realtimePublisher;
@@ -100,6 +103,9 @@ public class ContractService : IContractService
             throw new ContractConflictException(
                 "A successful Booking payment is required before creating a contract.");
         }
+        // The contract records the tenant's contact details.
+        await PhoneNumberRequiredException.EnsureAsync(
+            _contactLookup, booking.CustomerId, PhoneNumberRequiredException.CustomerMessage);
 
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(_timeProvider.GetUtcNow(), BusinessTimeZone).DateTime);
         if (dto.StartDate < today)

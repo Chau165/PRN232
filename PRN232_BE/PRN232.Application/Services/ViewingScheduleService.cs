@@ -14,13 +14,16 @@ public class ViewingScheduleService : IViewingScheduleService
     private readonly TimeProvider _timeProvider;
     private readonly INotificationService? _notificationService;
     private readonly INotificationRealtimePublisher? _realtimePublisher;
+    private readonly IUserContactLookup? _contactLookup;
 
     public ViewingScheduleService(
         IViewingScheduleRepository repository,
         TimeProvider timeProvider,
         INotificationService? notificationService = null,
-        INotificationRealtimePublisher? realtimePublisher = null)
+        INotificationRealtimePublisher? realtimePublisher = null,
+        IUserContactLookup? contactLookup = null)
     {
+        _contactLookup = contactLookup;
         _repository = repository;
         _timeProvider = timeProvider;
         _notificationService = notificationService;
@@ -29,6 +32,10 @@ public class ViewingScheduleService : IViewingScheduleService
 
     public async Task<ViewingScheduleDto> CreateAsync(CreateViewingScheduleDto dto, int customerId)
     {
+        // The Manager has to contact the customer to arrange the viewing.
+        await PhoneNumberRequiredException.EnsureAsync(
+            _contactLookup, customerId, PhoneNumberRequiredException.SelfMessage);
+
         var now = _timeProvider.GetUtcNow();
         EnsureFuture(dto.ScheduledAt, now);
 
