@@ -164,7 +164,8 @@ public class UserService : IUserService
         {
             throw new UserNotFoundException(id);
         }
-        if (!_passwordHasher.Verify(dto.CurrentPassword ?? string.Empty, entity.PasswordHash))
+        if (entity.PasswordHash is null ||
+            !_passwordHasher.Verify(dto.CurrentPassword ?? string.Empty, entity.PasswordHash))
         {
             throw new UserInvalidCurrentPasswordException();
         }

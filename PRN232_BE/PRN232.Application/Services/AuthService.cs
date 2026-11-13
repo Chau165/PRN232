@@ -76,6 +76,13 @@ public class AuthService : IAuthService
             _logger.LogWarning("Login failed: unknown account.");
             throw new AuthInvalidCredentialsException();
         }
+        // Accounts created through Google have no password yet: same failure as a wrong
+        // password, so the response does not reveal how the account signs in.
+        if (user.PasswordHash is null)
+        {
+            _logger.LogWarning("Login failed for user {UserId}: account has no password.", user.UserId);
+            throw new AuthInvalidCredentialsException();
+        }
         if (!_passwordHasher.Verify(dto.Password ?? string.Empty, user.PasswordHash))
         {
             _logger.LogWarning("Login failed for user {UserId}: wrong password.", user.UserId);
