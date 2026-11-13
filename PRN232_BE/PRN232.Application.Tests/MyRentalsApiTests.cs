@@ -372,6 +372,7 @@ public sealed class MyRentalsApiTests
             }));
             builder.ConfigureTestServices(services =>
             {
+                services.UseSharedTestDataProtection();
                 _connection.Open();
                 services.RemoveAll<DbContextOptions<AppDbContext>>();
                 services.RemoveAll<TimeProvider>();

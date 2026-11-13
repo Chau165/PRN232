@@ -124,6 +124,27 @@ public sealed class PropertyManagerAssignmentRepository : IPropertyManagerAssign
             .ToListAsync(cancellationToken);
     }
 
+    public Task<List<PropertyManagerAssignmentReadModel>> GetByPropertyIdsAsync(
+        IReadOnlyCollection<int>? propertyIds,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<PropertyManagerAssignment> assignments = _context.PropertyManagerAssignments
+            .AsNoTracking();
+        if (propertyIds is not null)
+        {
+            var ids = propertyIds.Distinct().ToArray();
+            assignments = assignments.Where(assignment => ids.Contains(assignment.PropertyId));
+        }
+
+        var orderedAssignments = assignments
+            .OrderBy(assignment => assignment.PropertyId)
+            .ThenBy(assignment => assignment.Manager!.FullName)
+            .ThenBy(assignment => assignment.ManagerId);
+
+        return ProjectAssignments(orderedAssignments)
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<List<PropertyManagerAssignmentReadModel>> GetByManagerIdAsync(
         int managerId,
         bool requireActiveManager,

@@ -846,6 +846,7 @@ internal sealed class MaintenanceApiFactory : WebApplicationFactory<MaintenanceR
         }));
         builder.ConfigureTestServices(services =>
         {
+            services.UseSharedTestDataProtection();
             _connection.Open();
             services.RemoveAll<DbContextOptions<AppDbContext>>();
             services.RemoveAll<IMaintenanceReportImageStorage>();

@@ -32,6 +32,27 @@ public sealed class PropertyManagerAssignmentService : IPropertyManagerAssignmen
         return assignments.Select(ConvertToDto).ToArray();
     }
 
+    public async Task<IReadOnlyList<PropertyManagersDto>> GetAssignmentsForPropertiesAsync(
+        IReadOnlyCollection<int>? propertyIds,
+        string role,
+        CancellationToken cancellationToken)
+    {
+        EnsureAdmin(role);
+        if (propertyIds is { Count: 0 })
+        {
+            return [];
+        }
+
+        var assignments = await _repository.GetByPropertyIdsAsync(propertyIds, cancellationToken);
+        return assignments
+            .GroupBy(assignment => assignment.PropertyId)
+            .OrderBy(group => group.Key)
+            .Select(group => new PropertyManagersDto(
+                group.Key,
+                group.Select(ConvertToDto).ToArray()))
+            .ToArray();
+    }
+
     public async Task<PropertyManagerAssignmentDto> AssignManagerAsync(
         int propertyId,
         int managerId,

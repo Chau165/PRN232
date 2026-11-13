@@ -18,8 +18,9 @@ public interface IIdentityDocumentRepository
     // Chặn nộp trùng: 1 customer không được có 2 hồ sơ đang Pending/Approved cùng lúc.
     Task<bool> HasPendingOrApprovedAsync(int customerId);
 
-    // Chặn 2 customer khác nhau dùng cùng 1 số CCCD.
-    Task<bool> CccdNumberUsedByOtherAsync(string cccdNumber, int customerId);
+    // Chặn 2 customer khác nhau dùng cùng 1 số CCCD. So theo hash (ICccdHasher) vì cột
+    // CCCDNumber đã mã hóa ngẫu nhiên, không so sánh trực tiếp được (A9).
+    Task<bool> CccdNumberUsedByOtherAsync(string cccdNumberHash, int customerId);
 
     Task<DomainIdentityDocument> AddAsync(DomainIdentityDocument document);
     Task SaveChangesAsync();
