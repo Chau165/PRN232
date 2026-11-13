@@ -55,6 +55,51 @@ public sealed class PropertyGeocodingTests
     }
 
     [Fact]
+    public async Task Property_update_keeps_coordinates_and_skips_geocoding_when_the_address_is_unchanged()
+    {
+        await using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"geocoding-unchanged-{Guid.NewGuid()}").Options);
+        context.Users.Add(new Users
+        {
+            UserId = 10, RoleId = 1, FullName = "Admin", Email = "admin@example.test", IsActive = true
+        });
+        context.Properties.Add(new Property
+        {
+            PropertyId = 7, OwnerId = 10, PropertyName = "Cũ", AddressText = "01 Lê Lợi",
+            Ward = "Bến Thành", District = "Quận 1", City = "Hồ Chí Minh",
+            Latitude = 10.773m, Longitude = 106.700m
+        });
+        await context.SaveChangesAsync();
+        var geocoder = new CountingFailingGeocoder();
+        var service = new PropertyService(new PropertyRepository(context), geocoder);
+
+        // Same address with extra spaces: only the name and description change.
+        await service.UpdateAsync(7,
+            new UpdatePropertyDto("Tên mới", " 01 Lê Lợi ", "Bến Thành", "Quận 1", "Hồ Chí Minh", "Mô tả mới"), 10, true);
+
+        context.ChangeTracker.Clear();
+        var persisted = await context.Properties.AsNoTracking().SingleAsync();
+        Assert.Equal(0, geocoder.Calls);
+        Assert.Equal(("Tên mới", 10.773m, 106.700m), (persisted.PropertyName, persisted.Latitude, persisted.Longitude));
+
+        // A real address change still geocodes (and here reports the unavailable service).
+        await Assert.ThrowsAsync<PropertyGeocodingException>(() => service.UpdateAsync(7,
+            new UpdatePropertyDto("Tên mới", "02 Lê Lợi", "Bến Thành", "Quận 1", "Hồ Chí Minh"), 10, true));
+        Assert.Equal(1, geocoder.Calls);
+    }
+
+    private sealed class CountingFailingGeocoder : PRN232.Application.Interfaces.IPropertyGeocodingService
+    {
+        public int Calls { get; private set; }
+
+        public Task<AddressCoordinates?> GeocodeAsync(string address, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            throw new PropertyGeocodingException();
+        }
+    }
+
+    [Fact]
     public async Task Geocode_uses_photon_when_nominatim_connection_fails()
     {
         var requests = new List<Uri>();
