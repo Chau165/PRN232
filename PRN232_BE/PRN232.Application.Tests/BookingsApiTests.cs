@@ -342,7 +342,7 @@ public class BookingsApiTests
     }
 
     [Fact]
-    public async Task Paid_booking_is_cancelled_by_owner_not_customer_and_customer_is_notified()
+    public async Task Paid_booking_is_released_by_owner_only_after_the_hold_and_customer_is_notified()
     {
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
@@ -357,10 +357,20 @@ public class BookingsApiTests
         await LoginAsync(client, "manager-b@example.test");
         var byOtherManager = await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
         await LoginAsync(client, "manager@example.test");
+        var duringHold = await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
+        using (var timeTravel = factory.Services.CreateScope())
+        {
+            // Move the deposit 8 days into the past: the 7-day hold is over.
+            var db = timeTravel.ServiceProvider.GetRequiredService<AppDbContext>();
+            var payment = await db.Payments.SingleAsync();
+            payment.PaidAtUtc = DateTime.UtcNow.AddDays(-8);
+            await db.SaveChangesAsync();
+        }
         var byOwner = await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
 
         Assert.Equal(HttpStatusCode.Conflict, byCustomer.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, byOtherManager.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, duringHold.StatusCode);
         Assert.Equal(HttpStatusCode.OK, byOwner.StatusCode);
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
