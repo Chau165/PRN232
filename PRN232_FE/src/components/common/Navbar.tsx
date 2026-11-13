@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useLocation, useNavigate } from "react-router"
+import { Link, useLocation, useNavigate } from "react-router"
 import { useOptionalAuth } from "@/auth/AuthContext"
 import Icon from "@/components/common/Icon"
 import { useCustomerNotificationsState } from "@/auth/CustomerNotificationsContext"
@@ -43,14 +43,14 @@ export default function Navbar() {
   return (
     <header className="border-b border-slate-100 bg-white">
       <div className="public-container public-header relative flex h-[76px] items-center">
-        <a href={routes.home} className="flex items-center gap-2.5">
+        <Link to={routes.home} className="flex items-center gap-2.5">
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#087775] text-white">
             <Icon name="building" size={22} />
           </span>
           <span className="font-display text-[22px] font-bold tracking-[-.05em] text-slate-900">
             Trọ<span className="text-[#087775]">Việt</span>
           </span>
-        </a>
+        </Link>
         <nav className="absolute left-1/2 top-0 flex h-full -translate-x-1/2 gap-8 text-[14px] font-semibold">
           <a
             href={`${routes.home}#tim-phong`}
@@ -77,8 +77,8 @@ export default function Navbar() {
             Khu vực
           </a>
           {authenticated && !managementUser && (
-            <a
-              href={routes.myRoom}
+            <Link
+              to={routes.myRoom}
               aria-current={customerRoomActive ? "page" : undefined}
               className={`flex items-center border-b-2 transition-colors ${
                 customerRoomActive
@@ -87,19 +87,19 @@ export default function Navbar() {
               }`}
             >
               Phòng của tôi
-            </a>
+            </Link>
           )}
         </nav>
         <div className="ml-auto flex items-center gap-2">
           {authenticated ? (
             <>
               {managementUser ? (
-                <a
-                  href={routes.managementDashboard}
+                <Link
+                  to={routes.managementDashboard}
                   className="rounded-lg px-3 py-2.5 text-[14px] font-semibold text-[#087775] hover:bg-teal-50"
                 >
                   Quản trị
-                </a>
+                </Link>
               ) : null}
               <button
                 aria-label="Thông báo"
@@ -139,38 +139,43 @@ export default function Navbar() {
               {profileOpen && (
                 <div className="absolute right-6 top-[66px] z-50 w-52 rounded-xl border border-slate-100 bg-white p-2 shadow-[0_10px_30px_rgba(16,65,67,.14)]">
                   {managementUser ? (
-                    <a
-                      href={routes.managementDashboard}
+                    <Link
+                      to={routes.managementDashboard}
+                      onClick={() => setProfileOpen(false)}
                       className="block rounded-lg px-3 py-2.5 text-[13px] text-slate-600 hover:bg-teal-50 hover:text-[#087775]"
                     >
                       Management Portal
-                    </a>
+                    </Link>
                   ) : (
                     <>
-                      <a
-                        href={routes.profile}
+                      <Link
+                        to={routes.profile}
+                        onClick={() => setProfileOpen(false)}
                         className="block rounded-lg px-3 py-2.5 text-[13px] text-slate-600 hover:bg-teal-50 hover:text-[#087775]"
                       >
                         Hồ sơ cá nhân
-                      </a>
-                      <a
-                        href={routes.myContracts}
+                      </Link>
+                      <Link
+                        to={routes.myContracts}
+                        onClick={() => setProfileOpen(false)}
                         className="block rounded-lg px-3 py-2.5 text-[13px] text-slate-600 hover:bg-teal-50 hover:text-[#087775]"
                       >
                         Hợp đồng của tôi
-                      </a>
-                      <a
-                        href={routes.myBills}
+                      </Link>
+                      <Link
+                        to={routes.myBills}
+                        onClick={() => setProfileOpen(false)}
                         className="block rounded-lg px-3 py-2.5 text-[13px] text-slate-600 hover:bg-teal-50 hover:text-[#087775]"
                       >
                         Hóa đơn
-                      </a>
-                      <a
-                        href={routes.myBookings}
+                      </Link>
+                      <Link
+                        to={routes.myBookings}
+                        onClick={() => setProfileOpen(false)}
                         className="block rounded-lg px-3 py-2.5 text-[13px] text-slate-600 hover:bg-teal-50 hover:text-[#087775]"
                       >
                         Lịch sử đặt cọc / đặt phòng
-                      </a>
+                      </Link>
                     </>
                   )}
                   <div className="my-1 border-t border-slate-100" />
@@ -234,12 +239,12 @@ export default function Navbar() {
               )}
             </>
           ) : (
-            <a
-              href={routes.login}
+            <Link
+              to={routes.login}
               className="rounded-lg bg-slate-900 px-5 py-3 text-[14px] font-semibold text-white shadow-sm hover:bg-slate-700"
             >
               Đăng nhập
-            </a>
+            </Link>
           )}
         </div>
       </div>

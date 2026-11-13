@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { Navigate, useLocation } from "react-router"
+import { Link, Navigate, useLocation } from "react-router"
 import { useAuth } from "@/auth/AuthContext"
 import type { AppRole } from "@/types/user"
 import { routes } from "@/constants/routes"
@@ -64,9 +64,9 @@ export function ProtectedRoute({
         <div>
           <h1 className="font-display text-2xl font-bold text-slate-900">Không có quyền truy cập</h1>
           <p className="mt-2 text-sm text-slate-600">Tài khoản của bạn không được phép mở trang này.</p>
-          <a className="mt-4 inline-block font-semibold text-[#087775]" href={roleLandingPath(user.role)}>
+          <Link className="mt-4 inline-block font-semibold text-[#087775]" to={roleLandingPath(user.role)}>
             Quay lại trang phù hợp
-          </a>
+          </Link>
         </div>
       </main>
     )

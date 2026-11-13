@@ -343,12 +343,14 @@ describe("management property and room CRUD", () => {
       role: "ADMIN",
     }
     render(
-      <ManagementSidebar
-        user={user}
-        pathname={routes.managementProperties}
-        open={false}
-        onClose={() => undefined}
-      />,
+      <MemoryRouter>
+        <ManagementSidebar
+          user={user}
+          pathname={routes.managementProperties}
+          open={false}
+          onClose={() => undefined}
+        />
+      </MemoryRouter>,
     )
 
     expect(screen.queryByRole("link", { name: "Phòng" })).toBeNull()

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useNavigate } from "react-router"
+import { Link, useNavigate } from "react-router"
 import { useOptionalAuth } from "@/auth/AuthContext"
 import { useCustomerNotificationsState } from "@/auth/CustomerNotificationsContext"
 import Icon from "@/components/common/Icon"
@@ -124,13 +124,14 @@ export default function ManagementHeader({
               role="menu"
               className="absolute right-0 top-12 z-50 w-56 rounded-2xl border border-slate-100 bg-white p-2 shadow-[0_12px_32px_rgba(16,65,67,.14)]"
             >
-              <a
-                href={routes.profile}
+              <Link
+                to={routes.profile}
                 role="menuitem"
+                onClick={() => setProfileOpen(false)}
                 className="block rounded-xl px-4 py-3 text-[14px] text-slate-700 hover:bg-teal-50 hover:text-[#087775]"
               >
                 Hồ sơ cá nhân
-              </a>
+              </Link>
               <div className="my-1 border-t border-slate-100" />
               <button
                 role="menuitem"
