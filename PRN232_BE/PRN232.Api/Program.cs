@@ -292,6 +292,7 @@ builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<IBookingRefundRepository, BookingRefundRepository>();
 builder.Services.AddScoped<IBookingRefundService, BookingRefundService>();
+builder.Services.AddScoped<IBookingRefundReviewService, BookingRefundReviewService>();
 builder.Services.AddScoped<IBookingPaymentLinkRepository, BookingPaymentLinkRepository>();
 builder.Services.AddScoped<IBookingPaymentLinkService, BookingPaymentLinkService>();
 builder.Services.AddScoped<IPaymentGateway, MockPaymentGateway>();

@@ -20,7 +20,7 @@ public class BookingRefundRequestApiTests
     private static readonly CreateBookingRefundDto Input = new("Không còn nhu cầu thuê", "970422", "001234567890", "TEST CUSTOMER");
     private static string Url(int bookingId) => $"/api/bookings/{bookingId}/refund-requests";
 
-    private static async Task<int> SeedAsync(Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<PRN232.Api.Controllers.BookingsController> factory,
+    internal static async Task<int> SeedAsync(Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<PRN232.Api.Controllers.BookingsController> factory,
         string status = "Deposited", string method = "PayOS", bool evidence = true, int roomId = 1)
     {
         using var scope = factory.Services.CreateScope();

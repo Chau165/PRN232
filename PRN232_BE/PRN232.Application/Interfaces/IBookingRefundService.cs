@@ -11,6 +11,9 @@ public interface IBookingRefundService
 
 public interface IBookingRefundRepository
 {
+    Task<IReadOnlyList<BookingRefundRequests>> ListForReviewAsync(string? status, int skip, int take, CancellationToken cancellationToken);
+    Task<BookingRefundRequests?> GetForReviewAsync(int requestId, CancellationToken cancellationToken);
+    Task<BookingRefundRequests> ReviewAsync(int requestId, int adminId, bool approve, decimal? amount, string note, DateTime now, CancellationToken cancellationToken);
     // Checks facts again under the same room/booking locks used by contract creation.
     Task<BookingRefundRequests> CreateAsync(BookingRefundRequests request, CancellationToken cancellationToken);
     Task<BookingRefundRequests?> GetAsync(int bookingId, int requestId, int customerId, CancellationToken cancellationToken);

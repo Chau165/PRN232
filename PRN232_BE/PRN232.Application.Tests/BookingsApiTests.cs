@@ -406,6 +406,9 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
             ["Jwt:Key"] = "integration-test-only-signing-key-32-bytes",
             ["Jwt:Issuer"] = "test-issuer",
             ["Jwt:Audience"] = "test-audience",
+            ["PayOS:Enabled"] = "false",
+            ["PayOS:BookingPaymentsEnabled"] = "false",
+            ["PayOSPayout:Enabled"] = "false",
             ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=unused"
         }));
         builder.ConfigureTestServices(services =>

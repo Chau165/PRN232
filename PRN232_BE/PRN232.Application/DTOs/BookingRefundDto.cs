@@ -7,4 +7,5 @@ public sealed record CreateBookingRefundDto(string Reason, string RecipientBankB
 public sealed record BookingRefundDto(int BookingRefundRequestId, int BookingId, int OriginalPaymentId,
     decimal RequestedAmount, string Currency, string Status, string Reason, string RecipientBankBin,
     string MaskedRecipientAccountNumber, string? RecipientAccountName, bool AccountNameVerified,
-    DateTime CreatedAtUtc, DateTime UpdatedAtUtc);
+    DateTime CreatedAtUtc, DateTime UpdatedAtUtc, decimal? ApprovedAmount = null, string? ReviewNote = null,
+    DateTime? ReviewedAtUtc = null);

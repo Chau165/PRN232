@@ -43,5 +43,6 @@ public sealed class BookingRefundService(IBookingRefundRepository repository, Ti
     private static BookingRefundDto ConvertToDto(BookingRefundRequests item) => new(item.BookingRefundRequestId,
         item.BookingId, item.OriginalPaymentId, item.RequestedAmount, item.Currency, item.Status, item.Reason,
         item.RecipientBankBin, "****" + item.RecipientAccountNumber[^Math.Min(4, item.RecipientAccountNumber.Length)..],
-        item.RecipientAccountName, false, UtcTimestamp.ForResponse(item.CreatedAtUtc), UtcTimestamp.ForResponse(item.UpdatedAtUtc));
+        item.RecipientAccountName, false, UtcTimestamp.ForResponse(item.CreatedAtUtc), UtcTimestamp.ForResponse(item.UpdatedAtUtc),
+        item.ApprovedAmount, item.ReviewNote, item.ReviewedAtUtc is { } reviewed ? UtcTimestamp.ForResponse(reviewed) : null);
 }
