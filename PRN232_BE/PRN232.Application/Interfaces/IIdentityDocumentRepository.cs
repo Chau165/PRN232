@@ -5,15 +5,16 @@ namespace PRN232.Application.Interfaces;
 
 public interface IIdentityDocumentRepository
 {
-    // ownerId = null: tất cả hồ sơ (Admin). Có ownerId: chỉ hồ sơ của khách đang có booking
-    // (chưa huỷ) hoặc hợp đồng ở khu trọ của chủ đó (Manager).
-    Task<List<IdentityDocumentReadModel>> GetAllAsync(string? status, int? ownerId);
+    // managerId = null: every document (Admin). With managerId: only documents of customers who
+    // have a non-cancelled booking or a contract on a property assigned to that Manager (A3).
+    Task<List<IdentityDocumentReadModel>> GetAllAsync(string? status, int? managerId);
     Task<List<IdentityDocumentReadModel>> GetByCustomerIdAsync(int customerId);
     Task<IdentityDocumentReadModel?> GetByIdAsync(int id);
     Task<DomainIdentityDocument?> GetTrackedByIdAsync(int id);
 
-    // Khách có booking (chưa huỷ) hoặc hợp đồng ở khu trọ của chủ này không.
-    Task<bool> IsCustomerOfOwnerAsync(int customerId, int ownerId);
+    // Whether the customer has a non-cancelled booking or a contract on a property assigned to
+    // this Manager through PropertyManagerAssignments (A3).
+    Task<bool> IsCustomerOfManagerAsync(int customerId, int managerId);
 
     // Chặn nộp trùng: 1 customer không được có 2 hồ sơ đang Pending/Approved cùng lúc.
     Task<bool> HasPendingOrApprovedAsync(int customerId);
