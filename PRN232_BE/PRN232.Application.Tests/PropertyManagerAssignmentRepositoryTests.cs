@@ -205,6 +205,56 @@ public sealed class PropertyManagerAssignmentRepositoryTests
         Assert.Equal(4, all.Count);
     }
 
+    [Fact]
+    public async Task Batch_manager_lookup_loads_properties_for_many_managers_in_a_single_query()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var counter = new CommandCounter();
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite(connection)
+            .AddInterceptors(counter)
+            .Options;
+        await using var context = new AppDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        context.Roles.AddRange(
+            new Roles { RoleId = 1, RoleName = RoleNames.Customer },
+            new Roles { RoleId = 2, RoleName = RoleNames.Manager },
+            new Roles { RoleId = 3, RoleName = RoleNames.Admin });
+        context.Users.AddRange(
+            User(7, 2, "Manager One", true),
+            User(8, 2, "Manager Two", false),
+            User(9, 3, "Admin Owner", true),
+            User(10, 1, "Not a Manager", true));
+        context.Properties.AddRange(
+            Property(1, "Property One"),
+            Property(2, "Property Two"),
+            Property(3, "Property Three"));
+        context.PropertyManagerAssignments.AddRange(
+            Assignment(2, 7),
+            Assignment(1, 7),
+            Assignment(3, 8),
+            Assignment(1, 10));
+        await context.SaveChangesAsync();
+        var repository = new PropertyManagerAssignmentRepository(context);
+
+        counter.Count = 0;
+        var filtered = await repository.GetManagedPropertiesForManagersAsync([7, 8, 10], CancellationToken.None);
+
+        Assert.Equal(1, counter.Count);
+        // Inactive managers are still listed for Admin; non-Manager accounts are not.
+        Assert.Equal(
+            [(7, 1), (7, 2), (8, 3)],
+            filtered.Select(row => (row.ManagerId, row.Property.PropertyId)));
+        Assert.Equal("Admin Owner", filtered[0].Property.OwnerName);
+
+        counter.Count = 0;
+        var all = await repository.GetManagedPropertiesForManagersAsync(null, CancellationToken.None);
+
+        Assert.Equal(1, counter.Count);
+        Assert.Equal(3, all.Count);
+    }
+
     private sealed class CommandCounter : DbCommandInterceptor
     {
         public int Count { get; set; }

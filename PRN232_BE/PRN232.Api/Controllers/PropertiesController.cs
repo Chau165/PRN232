@@ -178,6 +178,40 @@ public class PropertiesController : ControllerBase
         }
     }
 
+    // C11b: one request (and one SQL query) for the whole Managers page instead of one
+    // GET /api/managers/{managerId}/properties per manager. Admin only.
+    [HttpGet("/api/managers/properties")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(IEnumerable<ManagerPropertiesDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IEnumerable<ManagerPropertiesDto>>> GetPropertiesForManagers(
+        [FromQuery] string? managerIds,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParseIds(managerIds, out var ids))
+        {
+            return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                ["managerIds"] = [$"managerIds must be a comma-separated list of positive IDs (at most {MaxBatchIds})."]
+            }));
+        }
+
+        try
+        {
+            var groups = await _assignmentService.GetPropertiesForManagersAsync(
+                ids,
+                CurrentRole(),
+                cancellationToken);
+            return Ok(groups);
+        }
+        catch (PropertyManagerAssignmentAuthorizationException exception)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden,
+                new ProblemDetails { Title = "Forbidden", Detail = exception.Message });
+        }
+    }
+
     // C11: one request (and one SQL query) for the whole "Khu trọ" page instead of one
     // GET /{propertyId}/managers per property, which exhausted the Supabase session pool.
     [HttpGet("managers")]
@@ -189,11 +223,11 @@ public class PropertiesController : ControllerBase
         [FromQuery] string? propertyIds,
         CancellationToken cancellationToken)
     {
-        if (!TryParsePropertyIds(propertyIds, out var ids))
+        if (!TryParseIds(propertyIds, out var ids))
         {
             return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
             {
-                ["propertyIds"] = [$"propertyIds phải là danh sách ID dương, cách nhau bởi dấu phẩy (tối đa {MaxBatchPropertyIds})."]
+                ["propertyIds"] = [$"propertyIds phải là danh sách ID dương, cách nhau bởi dấu phẩy (tối đa {MaxBatchIds})."]
             }));
         }
 
@@ -454,9 +488,9 @@ public class PropertiesController : ControllerBase
         return new PropertyImageInput(file.FileName, file.ContentType, memory.ToArray());
     }
 
-    private const int MaxBatchPropertyIds = 500;
+    private const int MaxBatchIds = 500;
 
-    private static bool TryParsePropertyIds(string? raw, out IReadOnlyCollection<int>? ids)
+    private static bool TryParseIds(string? raw, out IReadOnlyCollection<int>? ids)
     {
         ids = null;
         if (string.IsNullOrWhiteSpace(raw))
@@ -474,7 +508,7 @@ public class PropertiesController : ControllerBase
             parsed.Add(id);
         }
 
-        if (parsed.Count > MaxBatchPropertyIds)
+        if (parsed.Count > MaxBatchIds)
         {
             return false;
         }

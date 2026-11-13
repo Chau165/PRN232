@@ -33,7 +33,7 @@ public sealed class IdentityDocumentServiceTests
         Assert.Equal(FullNumber, (await service.GetByIdAsync(4, 1, "Admin"))!.CCCDNumber);
         Assert.Equal(FullNumber, (await service.GetByIdAsync(4, 30, "Manager"))!.CCCDNumber);
 
-        repository.CustomerBelongsToOwner = false;
+        repository.CustomerBelongsToManager = false;
         await Assert.ThrowsAsync<IdentityDocumentAuthorizationException>(
             () => service.GetByIdAsync(4, 30, "Manager"));
     }
@@ -66,25 +66,25 @@ public sealed class IdentityDocumentServiceTests
     }
 
     [Fact]
-    public async Task List_is_unscoped_for_admin_scoped_to_owner_for_manager_and_denied_for_customer()
+    public async Task List_is_unscoped_for_admin_scoped_to_manager_and_denied_for_customer()
     {
         var repository = new IdentityDocumentRepositoryStub();
         var service = new IdentityDocumentService(repository, new FakeCccdHasher());
 
         await service.GetAllAsync("Pending", 1, "Admin");
-        Assert.Null(repository.LastOwnerId);
+        Assert.Null(repository.LastManagerId);
 
         await service.GetAllAsync("Pending", 30, "Manager");
-        Assert.Equal(30, repository.LastOwnerId);
+        Assert.Equal(30, repository.LastManagerId);
 
         await Assert.ThrowsAsync<IdentityDocumentAuthorizationException>(
             () => service.GetAllAsync(null, 7, "Customer"));
     }
 
     [Fact]
-    public async Task Get_by_id_allows_owner_manager_and_the_customer_only()
+    public async Task Get_by_id_allows_assigned_manager_and_the_customer_only()
     {
-        var repository = new IdentityDocumentRepositoryStub { CustomerBelongsToOwner = false };
+        var repository = new IdentityDocumentRepositoryStub { CustomerBelongsToManager = false };
         var service = new IdentityDocumentService(repository, new FakeCccdHasher());
 
         await Assert.ThrowsAsync<IdentityDocumentAuthorizationException>(
@@ -93,7 +93,7 @@ public sealed class IdentityDocumentServiceTests
             () => service.GetByIdAsync(4, 99, "Customer"));
         Assert.NotNull(await service.GetByIdAsync(4, 7, "Customer"));
 
-        repository.CustomerBelongsToOwner = true;
+        repository.CustomerBelongsToManager = true;
         Assert.NotNull(await service.GetByIdAsync(4, 30, "Manager"));
     }
 
@@ -102,7 +102,7 @@ public sealed class IdentityDocumentServiceTests
     {
         var repository = new IdentityDocumentRepositoryStub
         {
-            CustomerBelongsToOwner = false,
+            CustomerBelongsToManager = false,
             TrackedDocument = new IdentityDocuments { IdentityDocumentId = 4, CustomerId = 7, CCCDNumber = "012345678901", Status = "Pending" }
         };
         var service = new IdentityDocumentService(repository, new FakeCccdHasher());
@@ -173,12 +173,12 @@ public sealed class IdentityDocumentServiceTests
             get; private set;
         }
 
-        public int? LastOwnerId
+        public int? LastManagerId
         {
             get; private set;
         }
 
-        public bool CustomerBelongsToOwner
+        public bool CustomerBelongsToManager
         {
             get; set;
         } = true;
@@ -188,14 +188,14 @@ public sealed class IdentityDocumentServiceTests
             get; set;
         }
 
-        public Task<List<IdentityDocumentReadModel>> GetAllAsync(string? status, int? ownerId)
+        public Task<List<IdentityDocumentReadModel>> GetAllAsync(string? status, int? managerId)
         {
-            LastOwnerId = ownerId;
+            LastManagerId = managerId;
             return Task.FromResult(new List<IdentityDocumentReadModel> { ReadModel });
         }
 
-        public Task<bool> IsCustomerOfOwnerAsync(int customerId, int ownerId) =>
-            Task.FromResult(CustomerBelongsToOwner);
+        public Task<bool> IsCustomerOfManagerAsync(int customerId, int managerId) =>
+            Task.FromResult(CustomerBelongsToManager);
 
         public Task<List<IdentityDocumentReadModel>> GetByCustomerIdAsync(int customerId) =>
             Task.FromResult(new List<IdentityDocumentReadModel> { ReadModel });

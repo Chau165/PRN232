@@ -1,3 +1,5 @@
+import type { PropertyDto } from "@/types/user"
+
 export interface PropertyManagerAssignmentDto {
   propertyId: number
   propertyName: string
@@ -10,4 +12,9 @@ export interface PropertyManagerAssignmentDto {
 export interface PropertyManagersDto {
   propertyId: number
   managers: PropertyManagerAssignmentDto[]
+}
+
+export interface ManagerPropertiesDto {
+  managerId: number
+  properties: PropertyDto[]
 }

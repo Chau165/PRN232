@@ -173,6 +173,7 @@ describe("Phase 4A Admin user APIs", () => {
       if (url.endsWith("/users/me")) return jsonResponse(admin)
       if (url.endsWith("/roles")) return jsonResponse(roles)
       if (url.includes("/users?roleId=2")) return jsonResponse({ items: [manager], page: 1, pageSize: 100, totalCount: 1 })
+      if (url.includes("/managers/properties?managerIds=9")) return jsonResponse([{ managerId: 9, properties: managerHasProperty ? [property] : [] }])
       if (url.endsWith("/managers/9/properties")) return jsonResponse(managerHasProperty ? [property] : [])
       if (url.endsWith("/properties")) return jsonResponse([property])
       if (url.endsWith("/properties/21/managers") && init?.method === "POST") {
@@ -244,6 +245,7 @@ describe("Phase 4A Admin user APIs", () => {
       if (url.endsWith("/roles")) return jsonResponse(roles)
       if (url.includes("/users?roleId=2")) return jsonResponse({ items: [manager], page: 1, pageSize: 100, totalCount: 1 })
       if (url.endsWith("/properties")) return jsonResponse([legacyProperty])
+      if (url.includes("/managers/properties?managerIds=9")) return jsonResponse([{ managerId: 9, properties: [legacyProperty] }])
       if (url.endsWith("/managers/9/properties")) return jsonResponse([legacyProperty])
       return jsonResponse({ title: "Not Found" }, 404)
     }))
@@ -260,6 +262,9 @@ describe("Phase 4A Admin user APIs", () => {
     expect(within(dialog).getByText(/OwnerId=9.*Manager/)).toBeTruthy()
     expect(within(dialog).getByRole("button", { name: "Lưu phân công" }).hasAttribute("disabled")).toBe(true)
     expect(calls.some((call) => call.init?.method === "POST")).toBe(false)
+    // C11b: the page loads every manager's properties with one batch request.
+    expect(calls.filter((call) => call.url.includes("/managers/properties")).length).toBe(1)
+    expect(calls.some((call) => /\/managers\/\d+\/properties/.test(call.url))).toBe(false)
   })
 
   it("refreshes persisted assignments and reports a partial save with the failed property", async () => {
@@ -288,6 +293,9 @@ describe("Phase 4A Admin user APIs", () => {
       if (url.endsWith("/users/me")) return jsonResponse(admin)
       if (url.endsWith("/roles")) return jsonResponse(roles)
       if (url.includes("/users?roleId=2")) return jsonResponse({ items: [manager], page: 1, pageSize: 100, totalCount: 1 })
+      if (url.includes("/managers/properties?managerIds=9")) {
+        return jsonResponse([{ managerId: 9, properties: propertyTwoAssigned ? [propertyOne, propertyTwo] : [propertyOne] }])
+      }
       if (url.endsWith("/managers/9/properties")) {
         return jsonResponse(propertyTwoAssigned ? [propertyOne, propertyTwo] : [propertyOne])
       }

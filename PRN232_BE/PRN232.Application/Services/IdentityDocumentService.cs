@@ -18,16 +18,17 @@ public class IdentityDocumentService : IIdentityDocumentService
         _cccdHasher = cccdHasher;
     }
 
-    // Admin xem tất cả; Manager chỉ xem hồ sơ của khách đang thuê hoặc đặt phòng ở khu trọ của mình.
+    // Admin sees everything; a Manager only sees customers with a booking or contract on a property
+    // assigned to them (A3).
     public async Task<List<IdentityDocumentDto>> GetAllAsync(string? status, int userId, string role)
     {
-        int? ownerId = role switch
+        int? managerId = role switch
         {
             RoleNames.Admin => null,
             RoleNames.Manager => userId,
             _ => throw new IdentityDocumentAuthorizationException("Bạn không có quyền xem danh sách hồ sơ.")
         };
-        var documents = await _repository.GetAllAsync(status, ownerId);
+        var documents = await _repository.GetAllAsync(status, managerId);
         return documents.Select(document => ConvertToDto(document, revealCccd: false)).ToList();
     }
 
@@ -114,7 +115,7 @@ public class IdentityDocumentService : IIdentityDocumentService
         var allowed = role switch
         {
             RoleNames.Admin => true,
-            RoleNames.Manager => await _repository.IsCustomerOfOwnerAsync(customerId, userId),
+            RoleNames.Manager => await _repository.IsCustomerOfManagerAsync(customerId, userId),
             RoleNames.Customer => customerId == userId,
             _ => false
         };
