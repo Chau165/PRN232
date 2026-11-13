@@ -44,6 +44,8 @@ export const routes = {
 
   managementManagers: "/management/managers",
 
+  managementPaymentReviews: "/management/payment-reviews",
+
   managementUsers: "/management/users",
 
   login: "/login",
