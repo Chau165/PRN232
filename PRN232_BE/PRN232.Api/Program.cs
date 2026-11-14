@@ -28,6 +28,9 @@ using PRN232.Infrastructure.PaymentGateways;
 using PRN232.Api.Configuration;
 using PRN232.Api.Hubs;
 using PRN232.Api.Services;
+using PRN232.Api.Validation;
+using PRN232.Application.Validation;
+using FluentValidation;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddPayOSConfiguration(builder.Configuration, builder.Environment);
@@ -398,10 +401,15 @@ builder.Services.AddScoped<IDepositReportService, DepositReportService>();
 builder.Services.AddScoped<IInvoiceComplaintRepository, InvoiceComplaintRepository>();
 builder.Services.AddScoped<IInvoiceComplaintService, InvoiceComplaintService>();
 
+// Rebuild 1.1: mọi AbstractValidator<T> trong Application được đăng ký và tự chạy qua
+// FluentValidationFilter cho các action nhận T.
+builder.Services.AddValidatorsFromAssemblyContaining<RegisterDtoValidator>();
+
 builder.Services.AddControllers(options =>
 {
     options.Conventions.Add(new RouteTokenTransformerConvention(
         new SlugifyParameterTransformer()));
+    options.Filters.Add<FluentValidationFilter>();
 });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
