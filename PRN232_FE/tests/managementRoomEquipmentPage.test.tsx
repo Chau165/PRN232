@@ -117,20 +117,22 @@ describe("room-scoped equipment management", () => {
       31,
       expect.any(AbortSignal),
     )
-    expect(mocks.getEquipments).toHaveBeenCalledWith(
-      "admin-token",
-      {
-        roomId: 31,
-        status: undefined,
-        search: "",
-        page: 1,
-        pageSize: 50,
-      },
-      expect.any(AbortSignal),
-    )
-    expect(mocks.getManagementRoom.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.getEquipments.mock.invocationCallOrder[0],
-    )
+    await waitFor(() => {
+      expect(mocks.getEquipments).toHaveBeenCalledWith(
+        "admin-token",
+        {
+          roomId: 31,
+          status: undefined,
+          search: "",
+          page: 1,
+          pageSize: 50,
+        },
+        expect.any(AbortSignal),
+      )
+      expect(mocks.getManagementRoom.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.getEquipments.mock.invocationCallOrder[0],
+      )
+    })
   })
 
   it("does not load equipment when the URL property and room do not match", async () => {
