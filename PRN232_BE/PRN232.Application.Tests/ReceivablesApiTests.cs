@@ -103,6 +103,7 @@ public class ReceivablesApiTests
         var today = Today();
         context.Properties.Add(new Property { PropertyId = 2, OwnerId = 8, PropertyName = "Other" });
         context.PropertyManagerAssignments.Add(new PropertyManagerAssignment { PropertyId = 2, ManagerId = 8 });
+        context.PropertyRoomTypes.Add(new PropertyRoomTypes { PropertyId = 2, RoomTypeId = 1, MonthlyRent = 3_000_000m, IsActive = true });
         context.Rooms.Add(new Rooms { RoomId = 3, PropertyId = 2, RoomTypeId = 1, RoomCode = "B101", Status = "Occupied" });
         context.Contracts.AddRange(
             new Contracts { ContractId = 1, RoomId = 1, CustomerId = 10, ProcessedByStaffId = 7,

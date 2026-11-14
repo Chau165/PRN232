@@ -1,3 +1,4 @@
+using System.Text;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Domain.Entities;
@@ -33,9 +34,16 @@ public class RoomTypeService : IRoomTypeService
 
     public async Task<RoomTypeDto> CreateAsync(CreateRoomTypeDto dto)
     {
-        Validate(dto.TypeName, dto.Price);
+        var normalizedTypeName = NormalizeTypeName(dto.TypeName);
+        Validate(normalizedTypeName, dto.Price);
 
-        var entity = ConvertToEntity(dto);
+        if (await _repository.ExistsByNameAsync(normalizedTypeName))
+        {
+            throw new RoomTypeConflictException(
+                $"Loại phòng \"{normalizedTypeName}\" đã tồn tại trong danh mục.");
+        }
+
+        var entity = ConvertToEntity(normalizedTypeName, dto.Price);
         await _repository.AddAsync(entity);
         await _repository.SaveChangesAsync();
         return ConvertToDto(entity);
@@ -114,6 +122,18 @@ public class RoomTypeService : IRoomTypeService
         return true;
     }
 
+    private static string NormalizeTypeName(string typeName)
+    {
+        if (string.IsNullOrWhiteSpace(typeName))
+        {
+            return string.Empty;
+        }
+
+        var normalized = typeName.Normalize(NormalizationForm.FormC);
+        var parts = normalized.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        return string.Join(" ", parts);
+    }
+
     private static void Validate(string typeName, decimal price)
     {
         if (string.IsNullOrWhiteSpace(typeName))
@@ -126,12 +146,12 @@ public class RoomTypeService : IRoomTypeService
         }
     }
 
-    private static RoomTypes ConvertToEntity(CreateRoomTypeDto dto)
+    private static RoomTypes ConvertToEntity(string typeName, decimal price)
     {
         return new RoomTypes
         {
-            TypeName = dto.TypeName.Trim(),
-            Price = dto.Price
+            TypeName = typeName,
+            Price = price
         };
     }
 
@@ -155,6 +175,8 @@ public class RoomTypeService : IRoomTypeService
 public class RoomTypeBusinessRuleException(string message) : Exception(message);
 
 public sealed class RoomTypeValidationException(string message) : RoomTypeBusinessRuleException(message);
+
+public sealed class RoomTypeConflictException(string message) : RoomTypeBusinessRuleException(message);
 
 public sealed class RoomTypeHasRoomsException()
     : RoomTypeBusinessRuleException("Không thể xoá loại phòng còn phòng đang dùng.");

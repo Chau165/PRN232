@@ -20,9 +20,8 @@ public record PropertyDto(
 public record CreatePropertyDto(
     string PropertyName,
     string AddressText,
-    string Ward,
-    string District,
-    string City,
+    string? ProvinceCode,
+    string? WardCode,
     string? Description = null);
 
 public record UpdatePropertyDto(
@@ -31,7 +30,9 @@ public record UpdatePropertyDto(
     string Ward,
     string District,
     string City,
-    string? Description = null);
+    string? Description = null,
+    string? ProvinceCode = null,
+    string? WardCode = null);
 
 public sealed record AddressCoordinates(decimal Latitude, decimal Longitude);
 

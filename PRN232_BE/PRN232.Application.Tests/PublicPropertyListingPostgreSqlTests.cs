@@ -104,6 +104,41 @@ public sealed class PublicPropertyListingPostgreSqlTests
     }
 
     [PostgreSqlFact]
+    public async Task Public_room_type_query_uses_property_rents_and_database_availability_counts()
+    {
+        await using var connection = await OpenReadOnlyConnectionAsync();
+        var sqlCapture = new SqlCaptureInterceptor();
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(connection)
+            .AddInterceptors(sqlCapture)
+            .Options;
+        await using var context = new AppDbContext(options);
+        var repository = new PublicPropertyListingRepository(context);
+        var asOfUtc = DateTimeOffset.UtcNow;
+        var property = await repository.GetPageAsync(
+            new PublicPropertySearchCriteria(null, null, null, null, null, null, null, [], "propertyid", 1, 1, 0),
+            asOfUtc,
+            CancellationToken.None);
+        Assert.NotEmpty(property.Items);
+
+        var rows = await repository.GetRoomTypesAsync(
+            property.Items[0].PropertyId,
+            new PublicPropertySearchCriteria(null, null, null, null, null, null, null, [], "price_asc", 1, 100, 0),
+            asOfUtc,
+            CancellationToken.None);
+
+        Assert.NotNull(rows);
+        Assert.NotEmpty(rows);
+        Assert.Equal(rows.Select(row => row.MonthlyRent).Order().ToArray(), rows.Select(row => row.MonthlyRent).ToArray());
+        Assert.Equal(rows.Count, rows.Select(row => row.RoomTypeId).Distinct().Count());
+        Assert.All(rows, row => Assert.InRange(row.AvailableRoomCount, 0, row.TotalRoomCount));
+        var generatedSql = string.Join(Environment.NewLine, sqlCapture.Commands);
+        Assert.Contains("MonthlyRent", generatedSql, StringComparison.Ordinal);
+        Assert.Contains("PropertyRoomTypes", generatedSql, StringComparison.Ordinal);
+        Assert.DoesNotContain("RoomTypes\".\"Price", generatedSql, StringComparison.Ordinal);
+    }
+
+    [PostgreSqlFact]
     public async Task Property_detail_and_room_queries_execute_on_postgresql_read_only_with_bounded_selects()
     {
         await using var connection = await OpenReadOnlyConnectionAsync();

@@ -72,14 +72,6 @@ const items: SidebarItem[] = [
   },
 
   {
-    label: "Thiết bị",
-
-    href: routes.managementEquipment,
-
-    icon: "tool" as IconName,
-  },
-
-  {
     label: "Bảo trì / Sửa chữa",
 
     href: routes.managementMaintenance,

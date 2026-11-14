@@ -12,12 +12,14 @@ public interface IPropertyService
         CreatePropertyDto dto,
         int ownerId,
         bool isAdmin,
-        PropertyImageInput? image = null);
+        PropertyImageInput? image = null,
+        CancellationToken cancellationToken = default);
     Task<PropertyDto?> UpdateAsync(
         int id,
         UpdatePropertyDto dto,
         int requestingUserId,
         bool isAdmin,
-        PropertyImageInput? image = null);
+        PropertyImageInput? image = null,
+        CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(int id, int requestingUserId, bool isAdmin);
 }

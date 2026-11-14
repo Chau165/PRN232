@@ -4,7 +4,11 @@ namespace PRN232.Application.Interfaces;
 
 public interface IPropertyGeocodingService
 {
-    Task<AddressCoordinates?> GeocodeAsync(
-        string address,
+    Task<IReadOnlyList<AddressGeocodingCandidate>> FindNominatimCandidatesAsync(
+        PropertyGeocodingQuery query,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<AddressGeocodingCandidate>> FindPhotonCandidatesAsync(
+        PropertyGeocodingQuery query,
         CancellationToken cancellationToken = default);
 }

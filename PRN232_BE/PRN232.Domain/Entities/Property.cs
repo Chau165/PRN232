@@ -37,6 +37,7 @@ public class Property
         get; set;
     }
     public ICollection<Rooms> Rooms { get; set; } = new List<Rooms>();
+    public ICollection<PropertyRoomTypes> PropertyRoomTypes { get; set; } = new List<PropertyRoomTypes>();
     public ICollection<PropertyAmenities> PropertyAmenities { get; set; } = new List<PropertyAmenities>();
     public ICollection<PropertyServiceRates> PropertyServiceRates { get; set; } = new List<PropertyServiceRates>();
     public ICollection<PropertyManagerAssignment> ManagerAssignments { get; set; } = new List<PropertyManagerAssignment>();

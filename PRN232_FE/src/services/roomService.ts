@@ -1,6 +1,7 @@
 import { apiRequest } from "@/api/apiClient"
 import type {
   CreateRoomRequest,
+  CreateRoomTypeRequest,
   ManagementRoomDto,
   RoomImageDto,
   RoomTypeDto,
@@ -51,6 +52,19 @@ export function getRoomTypes(accessToken: string, signal?: AbortSignal) {
     accessToken,
     signal,
     cache: "no-store",
+  })
+}
+
+// RoomTypes.Price is a legacy catalog field. The monthly rent that applies to a
+// property is stored in PropertyRoomTypes.MonthlyRent and submitted separately.
+export function createRoomType(
+  accessToken: string,
+  request: CreateRoomTypeRequest,
+): Promise<RoomTypeDto> {
+  return apiRequest<RoomTypeDto>("/room-types", {
+    accessToken,
+    method: "POST",
+    json: request,
   })
 }
 

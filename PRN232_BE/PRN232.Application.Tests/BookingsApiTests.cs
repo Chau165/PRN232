@@ -459,6 +459,13 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
             User(12, 3, "Inactive Admin", "inactive-admin@example.test", hash, isActive: false));
         context.Properties.Add(new Property { PropertyId = 1, OwnerId = 9, PropertyName = "Sunrise" });
         context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio", Price = 3_000_000m });
+        context.PropertyRoomTypes.Add(new PropertyRoomTypes
+        {
+            PropertyId = 1,
+            RoomTypeId = 1,
+            MonthlyRent = 3_000_000m,
+            IsActive = true
+        });
         context.Rooms.AddRange(
             new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A101", Status = "Available" },
             new Rooms { RoomId = 2, PropertyId = 1, RoomTypeId = 1, RoomCode = "A102", Status = "Occupied" });

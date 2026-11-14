@@ -29,6 +29,8 @@ public class Rooms
     {
         get; set;
     }
+    public PropertyRoomTypes? PropertyRoomType { get; set; }
+    public ICollection<ViewingSchedules> ViewingSchedules { get; set; } = new List<ViewingSchedules>();
     public ICollection<RoomImages> RoomImages { get; set; } = new List<RoomImages>();
     public ICollection<RoomAmenities> RoomAmenities { get; set; } = new List<RoomAmenities>();
     public ICollection<Equipments> Equipments { get; set; } = new List<Equipments>();

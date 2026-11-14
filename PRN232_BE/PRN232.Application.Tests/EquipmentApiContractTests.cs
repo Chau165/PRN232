@@ -79,6 +79,75 @@ public sealed class EquipmentApiContractTests
     }
 
     [Fact]
+    public async Task Manager_cannot_update_or_delete_equipment_outside_assignment_scope()
+    {
+        await using var api = await CreateApiAsync();
+        using var client = api.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", "Manager");
+        client.DefaultRequestHeaders.Add("X-Test-User", "7");
+
+        using var assignedUpdate = await client.PutAsJsonAsync(
+            "/api/equipments/101",
+            UpdateRequest());
+        using var outsideUpdate = await client.PutAsJsonAsync(
+            "/api/equipments/102",
+            UpdateRequest());
+        using var outsideDelete = await client.DeleteAsync("/api/equipments/102");
+
+        Assert.Equal(HttpStatusCode.OK, assignedUpdate.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, outsideUpdate.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, outsideDelete.StatusCode);
+    }
+
+    [Fact]
+    public async Task Manager_loses_equipment_access_after_assignment_is_revoked()
+    {
+        await using var api = await CreateApiAsync();
+        using var client = api.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", "Manager");
+        client.DefaultRequestHeaders.Add("X-Test-User", "7");
+        await api.RemoveAssignmentAsync(propertyId: 1, managerId: 7);
+
+        using var list = await client.GetAsync("/api/equipments?roomId=1");
+        using var detail = await client.GetAsync("/api/equipments/101");
+        using var update = await client.PutAsJsonAsync(
+            "/api/equipments/101",
+            UpdateRequest());
+        using var delete = await client.DeleteAsync("/api/equipments/101");
+
+        Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+        var items = await list.Content.ReadFromJsonAsync<List<JsonElement>>();
+        Assert.NotNull(items);
+        Assert.Empty(items);
+        Assert.Equal(HttpStatusCode.NotFound, detail.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, update.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, delete.StatusCode);
+    }
+
+    [Fact]
+    public async Task Customer_cannot_access_equipment_management_endpoints()
+    {
+        await using var api = await CreateApiAsync();
+        using var client = api.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", "Customer");
+        client.DefaultRequestHeaders.Add("X-Test-User", "10");
+
+        using var list = await client.GetAsync("/api/equipments");
+        using var create = await client.PostAsJsonAsync(
+            "/api/equipments",
+            CreateRequest(1));
+        using var update = await client.PutAsJsonAsync(
+            "/api/equipments/101",
+            UpdateRequest());
+        using var delete = await client.DeleteAsync("/api/equipments/101");
+
+        Assert.Equal(HttpStatusCode.Forbidden, list.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, update.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, delete.StatusCode);
+    }
+
+    [Fact]
     public async Task Assigned_manager_can_create_but_cannot_use_an_unassigned_room()
     {
         await using var api = await CreateApiAsync();
@@ -87,10 +156,16 @@ public sealed class EquipmentApiContractTests
         client.DefaultRequestHeaders.Add("X-Test-User", "7");
 
         using var assigned = await client.PostAsJsonAsync("/api/equipments", CreateRequest(1));
-        using var outside = await client.PostAsJsonAsync("/api/equipments", CreateRequest(3));
+        using var otherManagerProperty = await client.PostAsJsonAsync(
+            "/api/equipments",
+            CreateRequest(2));
+        using var ownerOnlyProperty = await client.PostAsJsonAsync(
+            "/api/equipments",
+            CreateRequest(3));
 
         Assert.Equal(HttpStatusCode.Created, assigned.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, outside.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, otherManagerProperty.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, ownerOnlyProperty.StatusCode);
     }
 
     [Fact]
@@ -137,6 +212,15 @@ public sealed class EquipmentApiContractTests
             supplier = "Nhà cung cấp kiểm thử",
             status
         };
+
+    private static object UpdateRequest() => new
+    {
+        name = "Máy lạnh cập nhật",
+        installDate = "2026-01-15",
+        warrantyExpiry = "2028-01-15",
+        supplier = "Nhà cung cấp cập nhật",
+        status = "Operational"
+    };
 
     private static async Task<TestApi> CreateApiAsync(bool includeMaintenanceRequest = false)
     {
@@ -186,6 +270,10 @@ public sealed class EquipmentApiContractTests
             Property(2, 9, "Sunset"),
             Property(3, 7, "Legacy owner property"));
         context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio", Price = 3_000_000m });
+        context.PropertyRoomTypes.AddRange(
+            new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 1, MonthlyRent = 3_000_000m, IsActive = true },
+            new PropertyRoomTypes { PropertyId = 2, RoomTypeId = 1, MonthlyRent = 3_000_000m, IsActive = true },
+            new PropertyRoomTypes { PropertyId = 3, RoomTypeId = 1, MonthlyRent = 3_000_000m, IsActive = true });
         context.Rooms.AddRange(
             Room(1, 1, "A101"),
             Room(2, 2, "B101"),
@@ -268,6 +356,17 @@ public sealed class EquipmentApiContractTests
     private sealed class TestApi(WebApplication application, SqliteConnection connection) : IAsyncDisposable
     {
         public HttpClient CreateClient() => application.GetTestClient();
+
+        public async Task RemoveAssignmentAsync(int propertyId, int managerId)
+        {
+            await using var scope = application.Services.CreateAsyncScope();
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var assignment = await context.PropertyManagerAssignments.FirstOrDefaultAsync(
+                item => item.PropertyId == propertyId && item.ManagerId == managerId);
+            if (assignment is null) return;
+            context.PropertyManagerAssignments.Remove(assignment);
+            await context.SaveChangesAsync();
+        }
 
         public async ValueTask DisposeAsync()
         {

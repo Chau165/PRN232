@@ -41,21 +41,61 @@ public class ViewingScheduleService : IViewingScheduleService
         var now = _timeProvider.GetUtcNow();
         EnsureFuture(dto.ScheduledAt, now);
 
-        var room = await _repository.GetRoomAsync(dto.RoomId);
-        if (room is null)
+        int propertyId;
+        int roomTypeId;
+        int? selectedRoomId = null;
+        string? selectedRoomCode = null;
+        string propertyName;
+        string roomTypeName;
+
+        if (dto.RoomId is int roomId)
         {
-            throw new ViewingNotFoundException("Room does not exist.");
+            var room = await _repository.GetRoomAsync(roomId);
+            if (room is null)
+            {
+                throw new ViewingNotFoundException("Room does not exist.");
+            }
+            if ((dto.PropertyId.HasValue && dto.PropertyId != room.PropertyId) ||
+                (dto.RoomTypeId.HasValue && dto.RoomTypeId != room.RoomTypeId))
+            {
+                throw new ViewingBusinessRuleException("The supplied room does not match the requested property and room type.");
+            }
+            if (!await _repository.IsRoomRentableAsync(room.RoomId, now))
+            {
+                throw new ViewingConflictException("Room is not available for viewing.");
+            }
+
+            propertyId = room.PropertyId;
+            roomTypeId = room.RoomTypeId;
+            selectedRoomId = room.RoomId;
+            selectedRoomCode = room.RoomCode;
+            propertyName = string.Empty;
+            roomTypeName = string.Empty;
         }
-        if (!await _repository.IsRoomRentableAsync(room.RoomId, now))
+        else
         {
-            throw new ViewingConflictException("Room is not available for viewing.");
-        }
-        if (await _repository.HasOpenRequestAsync(customerId, room.RoomId, now))
-        {
-            throw new ViewingConflictException("You already have an open viewing request for this room.");
+            if (dto.PropertyId is not > 0 || dto.RoomTypeId is not > 0)
+            {
+                throw new ViewingBusinessRuleException("PropertyId and RoomTypeId are required when RoomId is not supplied.");
+            }
+
+            var propertyRoomType = await _repository.GetActivePropertyRoomTypeAsync(dto.PropertyId.Value, dto.RoomTypeId.Value);
+            if (propertyRoomType is null)
+            {
+                throw new ViewingConflictException("This room type is not active for the selected property.");
+            }
+            propertyId = propertyRoomType.PropertyId;
+            roomTypeId = propertyRoomType.RoomTypeId;
+            propertyName = propertyRoomType.PropertyName;
+            roomTypeName = propertyRoomType.RoomTypeName;
         }
 
-        var viewing = ConvertToEntity(dto, room.RoomId, customerId);
+        if (await _repository.HasOpenRequestForRoomTypeAsync(customerId, propertyId, roomTypeId, now))
+        {
+            throw new ViewingConflictException("You already have an open viewing request for this room type at this property.");
+        }
+
+        var viewing = ConvertToEntity(propertyId, roomTypeId, selectedRoomId, dto, customerId);
         IReadOnlyCollection<int> adminIds = _notificationService is null
             ? Array.Empty<int>()
             : await _notificationService.GetActiveAdminUserIdsAsync();
@@ -65,8 +105,10 @@ public class ViewingScheduleService : IViewingScheduleService
             notifications = adminIds.Distinct().Select(adminId => CreateNotification(
                 adminId,
                 viewingId,
-                $"Có yêu cầu xem phòng {room.RoomCode} mới",
-                $"{room.RoomCode} · khách hàng #{customerId} đã gửi yêu cầu xem phòng.")).ToArray();
+                selectedRoomCode is null ? "Có yêu cầu xem loại phòng mới" : $"Có yêu cầu xem phòng {selectedRoomCode}",
+                selectedRoomCode is null
+                    ? $"{propertyName} · {roomTypeName} · khách hàng #{customerId} đã gửi yêu cầu xem phòng."
+                    : $"Khách hàng #{customerId} đã gửi yêu cầu xem {selectedRoomCode}.")).ToArray();
             return notifications;
         });
 
@@ -80,6 +122,93 @@ public class ViewingScheduleService : IViewingScheduleService
             throw new InvalidOperationException("Created viewing request was not found.");
         }
         return ConvertToDto(created);
+    }
+
+    public async Task<List<ViewingAvailableRoomDto>> GetAvailableRoomsAsync(int viewingId, int userId, string role)
+    {
+        if (role != RoleNames.Manager)
+        {
+            throw new ViewingAuthorizationException("Only the assigned Manager can select a room for this viewing.");
+        }
+
+        var viewing = await _repository.GetByIdAsync(viewingId, null, userId);
+        if (viewing is null)
+        {
+            if (await _repository.ExistsAsync(viewingId))
+            {
+                throw new ViewingAuthorizationException("You are no longer assigned to this viewing or property.");
+            }
+            throw new ViewingNotFoundException("Viewing request does not exist.");
+        }
+        if (viewing.Status != ViewingStatuses.Approved || viewing.RoomId.HasValue)
+        {
+            return [];
+        }
+
+        var rooms = await _repository.GetAvailableRoomsAsync(
+            viewing.PropertyId,
+            viewing.RoomTypeId,
+            _timeProvider.GetUtcNow());
+        return rooms.Select(room => new ViewingAvailableRoomDto(
+            room.RoomId,
+            room.RoomCode,
+            room.AreaSqm,
+            room.Status)).ToList();
+    }
+
+    public async Task<ViewingScheduleDto> SelectRoomAsync(
+        int viewingId,
+        SelectViewingRoomDto dto,
+        int userId,
+        string role)
+    {
+        if (role != RoleNames.Manager)
+        {
+            throw new ViewingAuthorizationException("Only the assigned Manager can select a room for this viewing.");
+        }
+
+        var viewing = await _repository.GetByIdAsync(viewingId, null, userId);
+        if (viewing is null)
+        {
+            if (await _repository.ExistsAsync(viewingId))
+            {
+                throw new ViewingAuthorizationException("You are no longer assigned to this viewing or property.");
+            }
+            throw new ViewingNotFoundException("Viewing request does not exist.");
+        }
+        if (viewing.Status != ViewingStatuses.Approved)
+        {
+            throw new ViewingConflictException("Only approved viewing requests can have a selected room.");
+        }
+        if (viewing.RoomId.HasValue)
+        {
+            if (viewing.RoomId.Value == dto.RoomId)
+            {
+                return ConvertToDto(viewing);
+            }
+            throw new ViewingConflictException("A physical room has already been selected for this viewing.");
+        }
+
+        var notification = CreateNotification(
+            viewing.CustomerId,
+            viewing.ViewingId,
+            "Phòng dẫn khách xem đã được xác nhận",
+            $"Manager đã chọn phòng cho {viewing.PropertyName} · {viewing.RoomTypeName}. Vui lòng xem chi tiết lịch hẹn.");
+        if (!await _repository.SelectRoomAsync(viewingId, userId, dto.RoomId, _timeProvider.GetUtcNow(), notification))
+        {
+            throw new ViewingConflictException("The room is unavailable or this viewing changed. Reload and try again.");
+        }
+
+        if (_realtimePublisher is not null)
+        {
+            await _realtimePublisher.PublishCreatedAsync([notification]);
+        }
+        var updated = await _repository.GetByIdAsync(viewingId, null, userId);
+        if (updated is null)
+        {
+            throw new ViewingAuthorizationException("You are no longer assigned to this viewing or property.");
+        }
+        return ConvertToDto(updated);
     }
 
     public async Task<List<ViewingScheduleDto>> GetAllAsync(int userId, string role, string? status)
@@ -134,7 +263,8 @@ public class ViewingScheduleService : IViewingScheduleService
         }
 
         var scheduledAtText = FormatVietnamTime(scheduledAtUtc.Value);
-        var customerBody = $"Lịch xem phòng {viewing.RoomCode} đã được xác nhận lúc {scheduledAtText}.";
+        var viewingDescription = $"{viewing.PropertyName} · {viewing.RoomTypeName}";
+        var customerBody = $"Lịch xem {viewingDescription} đã được xác nhận lúc {scheduledAtText}.";
         if (managerNote is not null)
         {
             customerBody += $" Ghi chú: {managerNote}";
@@ -144,12 +274,12 @@ public class ViewingScheduleService : IViewingScheduleService
             CreateNotification(
                 viewing.CustomerId,
                 viewing.ViewingId,
-                $"Lịch xem phòng {viewing.RoomCode} đã được chấp thuận",
+                $"Lịch xem {viewingDescription} đã được chấp thuận",
                 customerBody),
             CreateNotification(
                 manager.UserId,
                 viewing.ViewingId,
-                $"Bạn được giao lịch xem phòng {viewing.RoomCode}",
+                $"Bạn được giao lịch xem {viewingDescription}",
                 managerNote ?? $"Thời gian đã xác nhận: {scheduledAtText}.")
         };
 
@@ -174,7 +304,7 @@ public class ViewingScheduleService : IViewingScheduleService
         var notification = CreateNotification(
             viewing.CustomerId,
             viewing.ViewingId,
-            $"Lịch xem phòng {viewing.RoomCode} đã bị từ chối",
+            $"Lịch xem {viewing.PropertyName} · {viewing.RoomTypeName} đã bị từ chối",
             reason);
         return await DecideAsync(
             viewing,
@@ -298,8 +428,15 @@ public class ViewingScheduleService : IViewingScheduleService
         }
     }
 
-    private static ViewingSchedules ConvertToEntity(CreateViewingScheduleDto dto, int roomId, int customerId) => new()
+    private static ViewingSchedules ConvertToEntity(
+        int propertyId,
+        int roomTypeId,
+        int? roomId,
+        CreateViewingScheduleDto dto,
+        int customerId) => new()
     {
+        PropertyId = propertyId,
+        RoomTypeId = roomTypeId,
         RoomId = roomId,
         CustomerId = customerId,
         ScheduledAt = dto.ScheduledAt?.UtcDateTime,
@@ -320,6 +457,9 @@ public class ViewingScheduleService : IViewingScheduleService
         viewing.RoomCode,
         viewing.PropertyId,
         viewing.PropertyName,
+        viewing.RoomTypeId,
+        viewing.RoomTypeName,
+        viewing.CurrentMonthlyRent,
         viewing.CustomerId,
         viewing.CustomerName,
         viewing.CustomerPhone,

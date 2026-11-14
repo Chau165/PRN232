@@ -15,11 +15,15 @@ export function getBooking(accessToken: string, bookingId: number, signal?: Abor
   return apiRequest<BookingDto>(`/bookings/${bookingId}`, { accessToken, signal, cache: "no-store" })
 }
 
-export function createBooking(accessToken: string, roomId: number) {
+export function createBooking(
+  accessToken: string,
+  request: number | { roomId: number; viewingId?: number },
+) {
+  const body = typeof request === "number" ? { roomId: request } : request
   return apiRequest<BookingDto>("/bookings", {
     accessToken,
     method: "POST",
-    body: JSON.stringify({ roomId }),
+    body: JSON.stringify(body),
   })
 }
 

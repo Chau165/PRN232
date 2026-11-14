@@ -6,6 +6,7 @@ namespace PRN232.Application.Interfaces;
 public interface IBookingRepository
 {
     Task<BookingRoomReadModel?> GetRoomAsync(int roomId);
+    Task<ViewingBookingReadModel?> GetViewingForBookingAsync(int viewingId, int customerId);
     Task<bool> AddIfRoomRentableAsync(Bookings booking, Func<int, Notifications> notificationFactory, DateTimeOffset asOfUtc);
     Task<List<BookingReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status);
     Task<BookingReadModel?> GetByIdAsync(int bookingId, int? customerId, int? ownerId);

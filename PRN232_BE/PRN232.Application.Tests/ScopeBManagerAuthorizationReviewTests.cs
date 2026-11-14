@@ -350,6 +350,7 @@ public class ScopeBManagerAuthorizationReviewTests
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         context.Properties.Add(new Property { PropertyId = 2, OwnerId = 9, PropertyName = "Permitted property" });
+        context.PropertyRoomTypes.Add(new PropertyRoomTypes { PropertyId = 2, RoomTypeId = 1, MonthlyRent = 3_000_000m, IsActive = true });
         context.Rooms.Add(new Rooms { RoomId = 3, PropertyId = 2, RoomTypeId = 1, RoomCode = "B101", Status = "Occupied" });
         context.PropertyManagerAssignments.AddRange(
             new PropertyManagerAssignment { PropertyId = 2, ManagerId = 7 },
@@ -363,7 +364,7 @@ public class ScopeBManagerAuthorizationReviewTests
             context.Contracts.Add(new Contracts { ContractId = id, RoomId = roomId, CustomerId = 10, BookingId = id,
                 StartDate = Month.AddMonths(-1), EndDate = Today.AddYears(1), MonthlyRent = 3_000_000m,
                 DepositAmount = 3_000_000m, Status = "Active" });
-            context.ViewingSchedules.Add(new ViewingSchedules { ViewingId = id, RoomId = roomId, CustomerId = 10,
+            context.ViewingSchedules.Add(new ViewingSchedules { ViewingId = id, PropertyId = id == 1 ? 1 : 2, RoomTypeId = 1, RoomId = roomId, CustomerId = 10,
                 AssignedTo = id == 1 ? 7 : 8, ScheduledAt = DateTime.UtcNow.AddDays(-1), Status = id == 1 ? "Pending" : "Approved" });
             context.UtilityReadings.Add(new UtilityReadings { ReadingId = id, ContractId = id,
                 ReadingMonth = Month.AddMonths(-1), ElectricStart = 0, ElectricEnd = 100, WaterStart = 0, WaterEnd = 10 });
@@ -375,6 +376,7 @@ public class ScopeBManagerAuthorizationReviewTests
                 FeeType = "Khác", Content = "Review authorization", Status = "New", CreatedAt = DateTime.UtcNow });
         }
         context.Bookings.Add(new Bookings { BookingId = 3, RoomId = 2, CustomerId = 10, DepositAmount = 3_000_000m,
+            AgreedMonthlyRent = 3_000_000m,
             Status = "Deposited", ExpiryDate = DateTime.UtcNow.AddDays(7) });
         context.Payments.Add(new Payments { BookingId = 3, UserId = 10, Amount = 3_000_000m, PaymentMethod = "MoMo", Status = "Success" });
         await context.SaveChangesAsync();

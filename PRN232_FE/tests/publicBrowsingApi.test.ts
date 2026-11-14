@@ -6,6 +6,7 @@ import {
 import {
   buildPropertyListParams,
   buildRoomListParams,
+  buildRoomTypeListParams,
 } from "@/utils/publicBrowsingQuery"
 import type {
   PublicPage,
@@ -89,6 +90,18 @@ describe("public browsing query contracts", () => {
     expect(query.getAll("amenityIds")).toEqual(["2", "4"])
     expect(query.has("city")).toBe(false)
     expect(query.get("sortBy")).toBe("price_asc")
+  })
+
+  it("defaults room type listing to the sort the backend supports", () => {
+    const query = buildRoomTypeListParams()
+
+    expect(query.get("sortBy")).toBe("roomTypeId")
+    expect(query.has("roomId")).toBe(false)
+    expect(query.get("page")).toBe("1")
+    expect(query.get("pageSize")).toBe("10")
+    expect(() =>
+      buildRoomTypeListParams({ sortBy: "roomId" as never }),
+    ).toThrow(PublicApiError)
   })
 })
 
@@ -222,6 +235,33 @@ describe("public browsing API client", () => {
     const url = new URL(String(fetchMock.mock.calls[0][0]), "http://localhost")
     expect(url.pathname).toBe("/api/public/properties/42/rooms")
     expect(url.searchParams.getAll("amenityIds")).toEqual(["1", "5"])
+  })
+
+  it("requests room types with the backend-supported roomTypeId sort", async () => {
+    const fetchMock = createFetchMock([
+      {
+        propertyId: 42,
+        propertyName: "Residence",
+        roomTypeId: 3,
+        roomTypeName: "Studio",
+        monthlyRent: 3000000,
+        availableRoomCount: 2,
+        totalRoomCount: 4,
+        minimumAreaSqm: 18,
+        maximumAreaSqm: 22,
+        referenceImageUrl: null,
+      },
+    ])
+    const client = createPublicApiClient("/api", fetchMock)
+
+    await client.listRoomTypes(42)
+
+    const url = new URL(String(fetchMock.mock.calls[0][0]), "http://localhost")
+    expect(url.pathname).toBe("/api/public/properties/42/room-types")
+    expect(url.searchParams.get("sortBy")).toBe("roomTypeId")
+    expect(url.searchParams.get("page")).toBe("1")
+    expect(url.searchParams.get("pageSize")).toBe("10")
+    expect(url.searchParams.has("roomId")).toBe(false)
   })
 
   it("preserves decimal DTO values and empty image, amenity, service, and equipment arrays", async () => {

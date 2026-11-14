@@ -77,6 +77,18 @@ public sealed record PublicPropertyRoomPageReadModel(
     int Page,
     int PageSize);
 
+public sealed record PublicPropertyRoomTypeReadModel(
+    int PropertyId,
+    string PropertyName,
+    int RoomTypeId,
+    string RoomTypeName,
+    decimal MonthlyRent,
+    int AvailableRoomCount,
+    int TotalRoomCount,
+    decimal? MinimumAreaSqm,
+    decimal? MaximumAreaSqm,
+    string? ReferenceImageUrl);
+
 public sealed record PublicRoomDetailReadModel(
     int RoomId,
     string RoomCode,

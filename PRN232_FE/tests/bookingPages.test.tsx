@@ -197,12 +197,13 @@ describe("MyBookingsPage", () => {
 
   it("shows the customer's viewing requests above the deposit holds", async () => {
     mocks.getViewingSchedules.mockResolvedValue([
-      { viewingId: 3, roomId: 501, roomCode: "A101", propertyId: 1, propertyName: "Sunrise", customerId: 10,
+      { viewingId: 3, roomId: 501, roomCode: "A101", propertyId: 1, propertyName: "Sunrise", roomTypeId: 2, roomTypeName: "Studio", currentMonthlyRent: 3_000_000, customerId: 10,
         customerName: "Customer A", customerPhone: "0900", scheduledAt: null, status: "Pending" },
     ])
     renderAt("/my-bookings")
 
-    expect(await screen.findByText("Sunrise · Phòng A101")).toBeTruthy()
+    expect(await screen.findByText("Sunrise · Studio")).toBeTruthy()
+    expect(screen.getByText(/Giá tham khảo hiện tại: 3\.000\.000/)).toBeTruthy()
     expect(screen.getByText("Thời gian: Chờ Admin phân lịch")).toBeTruthy()
     expect(screen.getByText("Chờ xác nhận")).toBeTruthy()
   })

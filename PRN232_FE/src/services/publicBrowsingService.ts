@@ -17,17 +17,24 @@ import type {
   PublicPropertyDetail,
   PublicPropertyListQuery,
   PublicPropertyRoomCard,
+  PublicPropertyRoomType,
   PublicRoomDetail,
   PublicRoomListQuery,
+  PublicRoomTypeListQuery,
 } from "@/types/publicBrowsing"
 import {
   buildPropertyListParams,
   buildRoomListParams,
+  buildRoomTypeListParams,
 } from "@/utils/publicBrowsingQuery"
 
 export { PublicApiError }
 export type { PublicApiErrorKind }
-export { buildPropertyListParams, buildRoomListParams }
+export {
+  buildPropertyListParams,
+  buildRoomListParams,
+  buildRoomTypeListParams,
+}
 export type {
   PublicPage,
   PublicPropertyAreaCard,
@@ -36,8 +43,10 @@ export type {
   PublicPropertyDetail,
   PublicPropertyListQuery,
   PublicPropertyRoomCard,
+  PublicPropertyRoomType,
   PublicRoomDetail,
   PublicRoomListQuery,
+  PublicRoomTypeListQuery,
 }
 
 function isAbortError(error: unknown): boolean {
@@ -217,6 +226,22 @@ export function createPublicApiClient(
       return get(
         `/public/properties/${propertyId}/rooms`,
         buildRoomListParams(query),
+        signal,
+      )
+    },
+    async listRoomTypes(
+      propertyId: number,
+      query: PublicRoomTypeListQuery = {},
+      signal?: AbortSignal,
+    ): Promise<PublicPropertyRoomType[]> {
+      if (!Number.isSafeInteger(propertyId) || propertyId < 1) {
+        throw new PublicApiError("validation", "Hãy kiểm tra lại điều kiện tìm kiếm.", {
+          validationErrors: { propertyId: ["Mã khu trọ không hợp lệ."] },
+        })
+      }
+      return get(
+        `/public/properties/${propertyId}/room-types`,
+        buildRoomTypeListParams(query),
         signal,
       )
     },

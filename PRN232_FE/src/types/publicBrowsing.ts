@@ -92,6 +92,19 @@ export interface PublicPropertyRoomCard {
   amenitiesSummary: PublicAmenitySummary[]
 }
 
+export interface PublicPropertyRoomType {
+  propertyId: number
+  propertyName: string
+  roomTypeId: number
+  roomTypeName: string
+  monthlyRent: number
+  availableRoomCount: number
+  totalRoomCount: number
+  minimumAreaSqm: number | null
+  maximumAreaSqm: number | null
+  referenceImageUrl: string | null
+}
+
 export interface PublicRoomDetail {
   roomId: number
   roomCode: string
@@ -124,6 +137,7 @@ export interface PublicRoomDetail {
 
 export type PublicPropertySort = "propertyId" | "price_asc" | "price_desc"
 export type PublicRoomSort = "roomId" | "price_asc" | "price_desc"
+export type PublicRoomTypeSort = "roomTypeId" | "price_asc" | "price_desc"
 type PriceInput = string | number
 type PageInput = string | number
 
@@ -145,3 +159,7 @@ export interface PublicPropertyListQuery extends PublicListQuery {
 }
 
 export type PublicRoomListQuery = PublicListQuery
+
+export type PublicRoomTypeListQuery = Omit<PublicListQuery, "sortBy"> & {
+  sortBy?: PublicRoomTypeSort
+}

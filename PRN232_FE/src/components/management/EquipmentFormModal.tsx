@@ -1,21 +1,19 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react"
-import type { PropertyDto } from "@/types/user"
+import { useEffect, useState, type FormEvent } from "react"
 import type { ManagementRoomDto } from "@/types/managementRoom"
 import type { EquipmentDto, EquipmentWriteRequest } from "@/types/equipment"
 
 type EquipmentFormModalProps = {
   mode: "create" | "edit"
   initialEquipment?: EquipmentDto | null
-  properties: PropertyDto[]
-  rooms: ManagementRoomDto[]
+  room: ManagementRoomDto
   saving: boolean
   onClose: () => void
-  onSubmit: (request: EquipmentWriteRequest & { roomId?: number }) => Promise<boolean>
+  onSubmit: (
+    request: Omit<EquipmentWriteRequest, "roomId">,
+  ) => Promise<boolean>
 }
 
 type FormValues = {
-  propertyId: string
-  roomId: string
   name: string
   installDate: string
   warrantyExpiry: string
@@ -25,16 +23,8 @@ type FormValues = {
 
 function valuesFromEquipment(
   equipment: EquipmentDto | null | undefined,
-  properties: PropertyDto[],
-  rooms: ManagementRoomDto[],
 ): FormValues {
-  const firstProperty = properties[0]
-  const firstRoom = rooms[0]
-  const propertyId = equipment?.propertyId ?? firstProperty?.propertyId
-  const roomId = equipment?.roomId ?? firstRoom?.roomId
   return {
-    propertyId: propertyId ? String(propertyId) : "",
-    roomId: roomId ? String(roomId) : "",
     name: equipment?.name ?? "",
     installDate: equipment?.installDate ?? "",
     warrantyExpiry: equipment?.warrantyExpiry ?? "",
@@ -46,26 +36,20 @@ function valuesFromEquipment(
 export default function EquipmentFormModal({
   mode,
   initialEquipment,
-  properties,
-  rooms,
+  room,
   saving,
   onClose,
   onSubmit,
 }: EquipmentFormModalProps) {
   const [values, setValues] = useState<FormValues>(() =>
-    valuesFromEquipment(initialEquipment, properties, rooms),
+    valuesFromEquipment(initialEquipment),
   )
   const [formError, setFormError] = useState("")
 
   useEffect(() => {
-    setValues(valuesFromEquipment(initialEquipment, properties, rooms))
+    setValues(valuesFromEquipment(initialEquipment))
     setFormError("")
-  }, [initialEquipment, mode, properties, rooms])
-
-  const availableRooms = useMemo(() => {
-    if (!values.propertyId) return rooms
-    return rooms.filter((room) => String(room.propertyId) === values.propertyId)
-  }, [rooms, values.propertyId])
+  }, [initialEquipment, mode])
 
   function updateValue(field: keyof FormValues, value: string) {
     setValues((current) => ({ ...current, [field]: value }))
@@ -73,14 +57,9 @@ export default function EquipmentFormModal({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const roomId = Number(values.roomId)
     const name = values.name.trim()
     const supplier = values.supplier.trim()
 
-    if (!Number.isInteger(roomId) || roomId < 1) {
-      setFormError("Vui lòng chọn phòng.")
-      return
-    }
     if (!name) {
       setFormError("Tên thiết bị không được để trống.")
       return
@@ -99,8 +78,7 @@ export default function EquipmentFormModal({
     }
 
     setFormError("")
-    const request: EquipmentWriteRequest & { roomId?: number } = {
-      ...(mode === "create" ? { roomId } : {}),
+    const request: Omit<EquipmentWriteRequest, "roomId"> = {
       name,
       installDate: values.installDate,
       warrantyExpiry: values.warrantyExpiry,
@@ -110,8 +88,10 @@ export default function EquipmentFormModal({
     await onSubmit(request)
   }
 
-  const isMissingDependency = mode === "create" && (properties.length === 0 || rooms.length === 0)
-  const title = mode === "create" ? "Thêm thiết bị" : "Sửa thiết bị"
+  const title =
+    mode === "create"
+      ? "Thêm thiết bị cho phòng " + room.roomCode
+      : "Sửa thiết bị"
 
   return (
     <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/40 p-4">
@@ -143,52 +123,23 @@ export default function EquipmentFormModal({
           </button>
         </div>
 
-        {isMissingDependency ? (
-          <div role="status" className="mt-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
-            {properties.length === 0
-              ? "Vui lòng tạo khu trọ trước khi thêm thiết bị."
-              : "Vui lòng tạo phòng trước khi thêm thiết bị."}
-          </div>
-        ) : (
-          <form onSubmit={submit} className="mt-6 space-y-4">
+        <form onSubmit={submit} className="mt-6 space-y-4">
             {formError && (
               <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
                 {formError}
               </p>
             )}
             <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
-              Khu trọ
-              <select
-                aria-label="Khu trọ"
-                value={values.propertyId}
-                disabled={mode === "edit"}
-                onChange={(event) => updateValue("propertyId", event.target.value)}
-                className="rounded-lg border border-slate-200 px-3 py-2 font-normal disabled:bg-slate-50"
-              >
-                <option value="">Chọn khu trọ</option>
-                {properties.map((property) => (
-                  <option key={property.propertyId} value={property.propertyId}>
-                    {property.propertyName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
               Phòng
-              <select
+              <input
                 aria-label="Phòng"
-                value={values.roomId}
-                disabled={mode === "edit"}
-                onChange={(event) => updateValue("roomId", event.target.value)}
-                className="rounded-lg border border-slate-200 px-3 py-2 font-normal disabled:bg-slate-50"
-              >
-                <option value="">Chọn phòng</option>
-                {availableRooms.map((room) => (
-                  <option key={room.roomId} value={room.roomId}>
-                    {room.roomCode} - {room.propertyName}
-                  </option>
-                ))}
-              </select>
+                value={room.roomCode}
+                readOnly
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-normal"
+              />
+              <span className="text-xs font-normal text-slate-500">
+                {room.propertyName}
+              </span>
             </label>
             <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
               Tên thiết bị
@@ -257,8 +208,7 @@ export default function EquipmentFormModal({
                 {saving ? "Đang lưu..." : "Lưu thiết bị"}
               </button>
             </div>
-          </form>
-        )}
+        </form>
       </section>
     </div>
   )

@@ -21,7 +21,7 @@ import type {
 
 vi.mock("@/services/publicBrowsingService", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/services/publicBrowsingService")>()
-  return { ...actual, publicApi: { ...actual.publicApi, listAreas: vi.fn().mockResolvedValue([]), listAmenities: vi.fn().mockResolvedValue([
+  return { ...actual, publicApi: { ...actual.publicApi, listAreas: vi.fn().mockResolvedValue([]), listRoomTypes: vi.fn().mockResolvedValue([]), listAmenities: vi.fn().mockResolvedValue([
     { amenityId: 3, name: "Wi-Fi" }, { amenityId: 9, name: "Máy lạnh" },
   ]) } }
 })
@@ -144,6 +144,9 @@ describe("public property detail and room listing", () => {
     expect(
       await screen.findByRole("heading", { name: "Property 7" }),
     ).toBeTruthy()
+    expect(
+      screen.queryByRole("heading", { name: "Loại phòng và giá thuê" }),
+    ).toBeNull()
     expect(
       screen
         .getByRole("link", { name: "Xem phòng trống" })
@@ -489,6 +492,9 @@ describe("public property detail and room listing", () => {
     )
 
     expect(await screen.findByText(/12 phòng phù hợp/)).toBeTruthy()
+    expect(
+      screen.queryByRole("heading", { name: "Đặt lịch xem theo loại phòng" }),
+    ).toBeNull()
     expect(screen.getAllByText("Studio")).toHaveLength(2)
     expect(screen.getByText(/1\.250\.000,5/)).toBeTruthy()
     expect(screen.getByText(/1\.800\.000/)).toBeTruthy()
@@ -546,14 +552,12 @@ describe("public property detail and room listing", () => {
 
     renderAt("/property/17/rooms?page=3&pageSize=10")
     expect(await screen.findByText("Studio")).toBeTruthy()
+    expect(screen.queryByLabelText("Loại phòng")).toBeNull()
     fireEvent.change(screen.getByLabelText("Giá tối thiểu"), {
       target: { value: "800000.25" },
     })
     fireEvent.change(screen.getByLabelText("Giá tối đa"), {
       target: { value: "2000000" },
-    })
-    fireEvent.change(screen.getByLabelText("Loại phòng"), {
-      target: { value: "Studio" },
     })
     fireEvent.click(screen.getByRole("combobox", { name: "Tiện ích mong muốn" }))
     fireEvent.click(await screen.findByRole("checkbox", { name: "Máy lạnh" }))
@@ -567,7 +571,7 @@ describe("public property detail and room listing", () => {
     const filteredRequest = requestUrl(fetchMock, 2)
     expect(filteredRequest.searchParams.get("minPrice")).toBe("800000.25")
     expect(filteredRequest.searchParams.get("maxPrice")).toBe("2000000")
-    expect(filteredRequest.searchParams.get("roomTypeName")).toBe("Studio")
+    expect(filteredRequest.searchParams.has("roomTypeName")).toBe(false)
     expect(filteredRequest.searchParams.getAll("amenityIds")).toEqual([
       "3",
       "9",
@@ -660,7 +664,7 @@ describe("public property detail and room listing", () => {
       within(dialog)
         .getByRole("link", { name: "Đặt lịch xem phòng" })
         .getAttribute("href"),
-    ).toBe("/viewing-request?roomId=501")
+    ).toBe("/viewing-request?propertyId=17&roomTypeId=2")
     expect(dialog.querySelector("img")).toBeNull()
     expect(requestUrl(fetchMock, 2).pathname).toBe("/api/public/rooms/501")
 

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { useAuth } from "@/auth/AuthContext"
+import { getPropertyRoomTypes } from "@/services/propertyRoomTypeService"
+import type { PropertyRoomTypeDto } from "@/types/propertyRoomType"
 import type { PropertyDto } from "@/types/user"
 import type {
   CreateRoomRequest,
   ManagementRoomDto,
-  RoomTypeDto,
   UpdateRoomRequest,
 } from "@/types/managementRoom"
 
@@ -11,7 +13,6 @@ type RoomFormModalProps = {
   mode: "create" | "edit"
   initialRoom?: ManagementRoomDto | null
   properties: PropertyDto[]
-  roomTypes: RoomTypeDto[]
   lockedPropertyId?: number
   saving: boolean
   onClose: () => void
@@ -45,21 +46,59 @@ export default function RoomFormModal({
   mode,
   initialRoom,
   properties,
-  roomTypes,
   lockedPropertyId,
   saving,
   onClose,
   onSubmit,
 }: RoomFormModalProps) {
+  const { accessToken } = useAuth()
   const [values, setValues] = useState<FormValues>(() =>
     valuesFromRoom(initialRoom, lockedPropertyId),
   )
+  const [propertyRoomTypes, setPropertyRoomTypes] = useState<PropertyRoomTypeDto[]>([])
+  const [loadingRoomTypes, setLoadingRoomTypes] = useState(false)
+  const [roomTypesError, setRoomTypesError] = useState("")
   const [formError, setFormError] = useState("")
 
   useEffect(() => {
     setValues(valuesFromRoom(initialRoom, lockedPropertyId))
     setFormError("")
   }, [initialRoom, lockedPropertyId, mode])
+
+  useEffect(() => {
+    const propertyId = Number(values.propertyId)
+    if (!accessToken || !Number.isSafeInteger(propertyId) || propertyId < 1) {
+      setPropertyRoomTypes([])
+      setRoomTypesError("")
+      setLoadingRoomTypes(false)
+      return
+    }
+
+    const controller = new AbortController()
+    setLoadingRoomTypes(true)
+    setRoomTypesError("")
+    void getPropertyRoomTypes(accessToken, propertyId, controller.signal)
+      .then((roomTypes) => {
+        if (!controller.signal.aborted) setPropertyRoomTypes(roomTypes)
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setPropertyRoomTypes([])
+          setRoomTypesError(cause instanceof Error ? cause.message : "Không thể tải loại phòng của khu trọ.")
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingRoomTypes(false)
+      })
+
+    return () => controller.abort()
+  }, [accessToken, values.propertyId])
+
+  const roomTypes = useMemo(
+    () => propertyRoomTypes.filter((roomType) =>
+      roomType.isActive || roomType.roomTypeId === initialRoom?.roomTypeId),
+    [initialRoom?.roomTypeId, propertyRoomTypes],
+  )
 
   const selectedRoomType = useMemo(
     () =>
@@ -70,7 +109,11 @@ export default function RoomFormModal({
   )
 
   function updateValue(field: keyof FormValues, value: string) {
-    setValues((current) => ({ ...current, [field]: value }))
+    setValues((current) => ({
+      ...current,
+      [field]: value,
+      ...(field === "propertyId" ? { roomTypeId: "" } : {}),
+    }))
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -86,6 +129,12 @@ export default function RoomFormModal({
     }
     if (!Number.isInteger(roomTypeId) || roomTypeId < 1) {
       setFormError("Vui lòng chọn loại phòng.")
+      return
+    }
+    const selectedConfiguration = propertyRoomTypes.find((item) => item.roomTypeId === roomTypeId)
+    if (!selectedConfiguration ||
+      (!selectedConfiguration.isActive && roomTypeId !== initialRoom?.roomTypeId)) {
+      setFormError("Loại phòng chưa được kích hoạt tại khu trọ đã chọn.")
       return
     }
     if (!roomCode) {
@@ -106,7 +155,7 @@ export default function RoomFormModal({
     if (!saved) return
   }
 
-  const isMissingDependency = properties.length === 0 || roomTypes.length === 0
+  const isMissingDependency = properties.length === 0
   const title = mode === "create" ? "Thêm phòng" : "Sửa phòng"
   const submitLabel = mode === "create" ? "Tạo phòng" : "Lưu phòng"
 
@@ -147,12 +196,6 @@ export default function RoomFormModal({
             {properties.length === 0 && (
               <p>Vui lòng tạo khu trọ trước khi thêm phòng.</p>
             )}
-            {roomTypes.length === 0 && (
-              <p>
-                Chưa có loại phòng. Vui lòng cấu hình dữ liệu loại phòng trước
-                khi tạo phòng.
-              </p>
-            )}
           </div>
         ) : (
           <form onSubmit={submit} className="mt-6 space-y-4">
@@ -191,24 +234,34 @@ export default function RoomFormModal({
                 onChange={(event) =>
                   updateValue("roomTypeId", event.target.value)
                 }
-                className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                disabled={!values.propertyId || loadingRoomTypes || !!roomTypesError}
+                className="rounded-lg border border-slate-200 px-3 py-2 font-normal disabled:bg-slate-50"
               >
                 <option value="">Chọn loại phòng</option>
                 {roomTypes.map((roomType) => (
-                  <option key={roomType.roomTypeId} value={roomType.roomTypeId}>
-                    {roomType.typeName}
+                  <option
+                    key={roomType.roomTypeId}
+                    value={roomType.roomTypeId}
+                    disabled={!roomType.isActive && roomType.roomTypeId !== initialRoom?.roomTypeId}
+                  >
+                    {roomType.roomTypeName}{roomType.isActive ? "" : " (ngừng dùng)"}
                   </option>
                 ))}
               </select>
             </label>
+            {loadingRoomTypes && <p role="status" className="text-xs text-slate-500">Đang tải loại phòng của khu trọ...</p>}
+            {roomTypesError && <p role="alert" className="text-xs text-rose-600">{roomTypesError}</p>}
+            {!loadingRoomTypes && !roomTypesError && values.propertyId && roomTypes.length === 0 && (
+              <p role="status" className="text-xs text-amber-700">Khu trọ chưa có loại phòng đang hoạt động. Hãy cấu hình loại phòng trước.</p>
+            )}
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
-              Giá theo loại phòng:{" "}
+              Giá thuê tại khu trọ:{" "}
               <strong>
                 {selectedRoomType
                   ? new Intl.NumberFormat("vi-VN", {
                       style: "currency",
                       currency: "VND",
-                    }).format(selectedRoomType.price)
+                    }).format(selectedRoomType.monthlyRent)
                   : "Chưa chọn"}
               </strong>
             </p>

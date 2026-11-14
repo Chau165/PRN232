@@ -1,6 +1,6 @@
 import { lazy, Suspense, type ReactNode } from "react"
 
-import { createBrowserRouter, Outlet } from "react-router"
+import { createBrowserRouter, Navigate, Outlet } from "react-router"
 
 import {
   ProtectedRoute,
@@ -30,12 +30,13 @@ const ManagementBookingsPage = lazy(() => import("@/pages/ManagementBookingsPage
 const ManagementContractsPage = lazy(() => import("@/pages/ManagementContractsPage/ManagementContractsPage"))
 const CreateContractPage = lazy(() => import("@/pages/CreateContractPage/CreateContractPage"))
 const ManagementDashboardPage = lazy(() => import("@/pages/ManagementDashboardPage/ManagementDashboardPage"))
-const ManagementEquipmentPage = lazy(() => import("@/pages/ManagementEquipmentPage/ManagementEquipmentPage"))
+const ManagementRoomEquipmentPage = lazy(() => import("@/pages/ManagementRoomEquipmentPage/ManagementRoomEquipmentPage"))
 const ManagementInvoicesPage = lazy(() => import("@/pages/ManagementInvoicesPage/ManagementInvoicesPage"))
 const ManagementMaintenancePage = lazy(() => import("@/pages/ManagementMaintenancePage/ManagementMaintenancePage"))
 const ManagementManagersPage = lazy(() => import("@/pages/ManagementManagersPage/ManagementManagersPage"))
 const ManagementPaymentReviewsPage = lazy(() => import("@/pages/ManagementPaymentReviewsPage/ManagementPaymentReviewsPage"))
 const ManagementPropertiesPage = lazy(() => import("@/pages/ManagementPropertiesPage/ManagementPropertiesPage"))
+const ManagementPropertyRoomTypesPage = lazy(() => import("@/pages/ManagementPropertyRoomTypesPage/ManagementPropertyRoomTypesPage"))
 const ManagementReportsPage = lazy(() => import("@/pages/ManagementReportsPage/ManagementReportsPage"))
 const ManagementRefundsPage = lazy(() => import("@/pages/ManagementRefundsPage/ManagementRefundsPage"))
 const ManagementRoomsPage = lazy(() => import("@/pages/ManagementRoomsPage/ManagementRoomsPage"))
@@ -138,6 +139,19 @@ export const router = createBrowserRouter([
       },
 
       {
+        path: routes.managementPropertyRoomTypes,
+        element: protectedElement(<ManagementPropertyRoomTypesPage />, adminOnly),
+      },
+
+      {
+        path: routes.managementRoomEquipment,
+        element: protectedElement(
+          <ManagementRoomEquipmentPage />,
+          managementRoles,
+        ),
+      },
+
+      {
         path: routes.managementRooms,
         element: protectedElement(<ManagementRoomsPage />, managementRoles),
       },
@@ -168,7 +182,10 @@ export const router = createBrowserRouter([
 
       {
         path: routes.managementEquipment,
-        element: protectedElement(<ManagementEquipmentPage />, managementRoles),
+        element: protectedElement(
+          <Navigate to={routes.managementProperties} replace />,
+          managementRoles,
+        ),
       },
 
       {

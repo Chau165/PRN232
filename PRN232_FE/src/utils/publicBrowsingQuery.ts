@@ -2,6 +2,7 @@ import { PublicApiError } from "@/services/publicBrowsingError"
 import type {
   PublicPropertyListQuery,
   PublicRoomListQuery,
+  PublicRoomTypeListQuery,
 } from "@/types/publicBrowsing"
 
 type PriceInput = string | number
@@ -126,7 +127,10 @@ function appendPageAndSort(
 
 function appendPricesAndRoomType(
   params: URLSearchParams,
-  query: PublicPropertyListQuery | PublicRoomListQuery,
+  query:
+    | PublicPropertyListQuery
+    | PublicRoomListQuery
+    | PublicRoomTypeListQuery,
 ): void {
   const minPrice = normalizePrice(query.minPrice, "minPrice")
   const maxPrice = normalizePrice(query.maxPrice, "maxPrice")
@@ -219,6 +223,24 @@ export function buildRoomListParams(
     query.sortBy,
     "roomId",
     ["roomId", "price_asc", "price_desc"],
+  )
+
+  return params
+}
+
+export function buildRoomTypeListParams(
+  query: PublicRoomTypeListQuery = {},
+): URLSearchParams {
+  const params = new URLSearchParams()
+  appendPricesAndRoomType(params, query)
+  appendAmenityIds(params, query.amenityIds)
+  appendPageAndSort(
+    params,
+    query.page,
+    query.pageSize,
+    query.sortBy,
+    "roomTypeId",
+    ["roomTypeId", "price_asc", "price_desc"],
   )
 
   return params

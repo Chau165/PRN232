@@ -22,6 +22,9 @@ export const routes = {
   managementProperties: "/management/properties",
 
   managementPropertyRooms: "/management/properties/:propertyId/rooms",
+  managementPropertyRoomTypes: "/management/properties/:propertyId/room-types",
+  managementRoomEquipment:
+    "/management/properties/:propertyId/rooms/:roomId/equipment",
 
   managementRooms: "/management/rooms",
 
@@ -76,8 +79,33 @@ export function availableRoomsPath(propertyId: number): string {
   return propertyDetailPath(propertyId) + "/rooms"
 }
 
+export function viewingRequestPath(propertyId: number, roomTypeId: number): string {
+  const validPropertyId = requirePositiveRouteId(propertyId)
+  const validRoomTypeId = requirePositiveRouteId(roomTypeId)
+  return `${routes.viewingRequest}?${new URLSearchParams({
+    propertyId: String(validPropertyId),
+    roomTypeId: String(validRoomTypeId),
+  })}`
+}
+
 export function managementPropertyRoomsPath(propertyId: number): string {
   return "/management/properties/" + requirePositiveRouteId(propertyId) + "/rooms"
+}
+
+export function managementPropertyRoomTypesPath(propertyId: number): string {
+  return "/management/properties/" + requirePositiveRouteId(propertyId) + "/room-types"
+}
+
+export function managementRoomEquipmentPath(
+  propertyId: number,
+  roomId: number,
+): string {
+  return (
+    managementPropertyRoomsPath(propertyId) +
+    "/" +
+    requirePositiveRouteId(roomId) +
+    "/equipment"
+  )
 }
 
 export function parsePositiveRouteId(value: string | undefined): number | null {

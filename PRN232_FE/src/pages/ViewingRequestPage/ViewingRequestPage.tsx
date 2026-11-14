@@ -15,13 +15,90 @@ import { localInputToIso, toLocalInput, viewingTimeLabel } from "@/utils/viewing
 export default function ViewingRequestPage() {
   const [params] = useSearchParams()
   const roomId = parsePositiveRouteId(params.get("roomId") ?? undefined)
+  const propertyId = parsePositiveRouteId(params.get("propertyId") ?? undefined)
+  const roomTypeId = parsePositiveRouteId(params.get("roomTypeId") ?? undefined)
 
   return (
     <CustomerPageShell centerHeader title="Đặt lịch xem phòng" description="Chọn giờ bạn muốn đến xem, hoặc để Admin phân công Manager và xác nhận lịch.">
       <div className="w-full rounded-2xl bg-white p-5 shadow-[0_5px_24px_rgba(16,65,67,.08)] sm:p-8">
-        {roomId ? <ViewingRequestForm roomId={roomId} /> : <Notice message="Không tìm thấy phòng cần xem." />}
+        {propertyId && roomTypeId ? (
+          <PropertyRoomTypeViewingRequestForm propertyId={propertyId} roomTypeId={roomTypeId} />
+        ) : roomId ? (
+          <ViewingRequestForm roomId={roomId} />
+        ) : (
+          <Notice message="Không tìm thấy loại phòng cần xem." />
+        )}
       </div>
     </CustomerPageShell>
+  )
+}
+
+function PropertyRoomTypeViewingRequestForm({ propertyId, roomTypeId }: { propertyId: number; roomTypeId: number }) {
+  const { accessToken } = useAuth()
+  const resource = usePublicApiResource(
+    `${propertyId}-${roomTypeId}`,
+    (signal) => publicApi.listRoomTypes(propertyId, {}, signal),
+  )
+  const [ownerDecides, setOwnerDecides] = useState(false)
+  const [localTime, setLocalTime] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
+  const [created, setCreated] = useState<ViewingScheduleDto | null>(null)
+
+  if (resource.status === "loading") return <p role="status" className="text-sm text-slate-500">Đang tải loại phòng...</p>
+  if (resource.status === "error") return <Notice message={publicApiErrorMessage(resource.error)} />
+  const roomType = resource.data.find((item) => item.roomTypeId === roomTypeId)
+  if (!roomType) return <Notice message="Loại phòng này hiện không được cung cấp tại khu trọ." />
+  if (created) {
+    return <Notice message={`Đã gửi yêu cầu xem ${roomType.roomTypeName} tại khu trọ (${viewingTimeLabel(created)}). Chưa có phòng cụ thể được giữ; Admin sẽ phân công Manager.`} />
+  }
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!accessToken || pending) return
+    if (!ownerDecides && (!localTime || Date.parse(localTime) <= Date.now())) {
+      setError("Vui lòng chọn thời điểm xem trong tương lai.")
+      return
+    }
+    setPending(true)
+    setError(null)
+    try {
+      setCreated(await createViewingSchedule(accessToken, {
+        propertyId,
+        roomTypeId,
+        scheduledAt: ownerDecides ? null : localInputToIso(localTime),
+      }))
+    } catch (createError) {
+      setError(bookingErrorMessage(createError, "Bạn đã có yêu cầu xem loại phòng này hoặc cấu hình vừa thay đổi."))
+      setPending(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-6">
+      <dl className="grid gap-3 text-sm sm:grid-cols-2">
+        <div><dt className="text-slate-400">Khu trọ</dt><dd className="mt-1 font-semibold text-slate-700">{roomType.propertyName}</dd></div>
+        <div><dt className="text-slate-400">Loại phòng</dt><dd className="mt-1 font-semibold text-slate-700">{roomType.roomTypeName}</dd></div>
+        <div><dt className="text-slate-400">Giá tham khảo hiện tại</dt><dd className="mt-1 font-semibold text-slate-700">{formatVnd(roomType.monthlyRent)}/tháng</dd></div>
+        <div><dt className="text-slate-400">Khả dụng tại thời điểm kiểm tra</dt><dd className="mt-1 font-semibold text-slate-700">{roomType.availableRoomCount} phòng</dd></div>
+      </dl>
+      <fieldset className="space-y-3">
+        <legend className="font-display text-lg font-bold text-slate-900">Thời gian xem phòng</legend>
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input type="radio" name="timeChoice" checked={!ownerDecides} onChange={() => setOwnerDecides(false)} />
+          Tự chọn ngày giờ
+        </label>
+        {!ownerDecides && <input type="datetime-local" aria-label="Ngày giờ xem phòng" min={toLocalInput()} value={localTime} onChange={(event) => setLocalTime(event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm" />}
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input type="radio" name="timeChoice" checked={ownerDecides} onChange={() => setOwnerDecides(true)} />
+          Để Admin phân công lịch
+        </label>
+      </fieldset>
+      {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+      <button type="submit" disabled={pending} className="w-full rounded-lg bg-[#087775] py-3.5 text-sm font-bold text-white hover:bg-[#066a68] disabled:opacity-60">
+        {pending ? "Đang gửi..." : "Gửi yêu cầu xem loại phòng"}
+      </button>
+    </form>
   )
 }
 

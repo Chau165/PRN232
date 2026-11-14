@@ -106,4 +106,27 @@ public sealed class PublicPropertiesController : ControllerBase
             }));
         }
     }
+
+    [HttpGet("{id:int}/room-types")]
+    [ProducesResponseType(typeof(IReadOnlyList<PublicPropertyRoomTypeDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<PublicPropertyRoomTypeDto>>> GetRoomTypes(
+        int id,
+        [FromQuery] PublicPropertyRoomsQueryDto query,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var roomTypes = await _propertyListingService.GetRoomTypesAsync(id, query, cancellationToken);
+            return roomTypes is null ? NotFound() : Ok(roomTypes);
+        }
+        catch (PublicPropertyQueryValidationException exception)
+        {
+            return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                [exception.Field] = [exception.Message]
+            }));
+        }
+    }
 }

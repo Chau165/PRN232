@@ -434,6 +434,13 @@ public sealed class MyRentalsApiTests
                 PrimaryImageUrl = "https://images.test/property.jpg"
             });
             context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio", Price = 500_000m });
+            context.PropertyRoomTypes.Add(new PropertyRoomTypes
+            {
+                PropertyId = 1,
+                RoomTypeId = 1,
+                MonthlyRent = 500_000m,
+                IsActive = true
+            });
             context.Rooms.AddRange(
                 Room(101, "A203", "Maintenance"),
                 Room(102, "B204", "Occupied"),

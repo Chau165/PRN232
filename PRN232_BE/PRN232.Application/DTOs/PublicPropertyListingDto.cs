@@ -211,6 +211,18 @@ public sealed record PublicPropertyRoomPageDto(
     int Page,
     int PageSize);
 
+public sealed record PublicPropertyRoomTypeDto(
+    int PropertyId,
+    string PropertyName,
+    int RoomTypeId,
+    string RoomTypeName,
+    decimal MonthlyRent,
+    int AvailableRoomCount,
+    int TotalRoomCount,
+    decimal? MinimumAreaSqm,
+    decimal? MaximumAreaSqm,
+    string? ReferenceImageUrl);
+
 public sealed record PublicRoomDetailDto(
     int RoomId,
     string RoomCode,

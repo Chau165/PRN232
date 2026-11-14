@@ -9,7 +9,7 @@ import {
 } from "@/services/publicBrowsingService"
 import type { PublicPropertyServiceRate } from "@/types/publicBrowsing"
 import { usePublicApiResource } from "@/hooks/usePublicApiResource"
-import { routes } from "@/constants/routes"
+import { routes, viewingRequestPath } from "@/constants/routes"
 import { publicApiErrorMessage } from "@/utils/publicApiDisplay"
 import { formatAddress, formatVnd, serviceRateUnitLabel } from "@/utils/publicFormatting"
 
@@ -290,7 +290,7 @@ export default function RoomDetailModal({
 
               <div className="mt-9 grid gap-3 sm:grid-cols-2">
                 <Link
-                  to={`${routes.viewingRequest}?roomId=${room.roomId}`}
+                  to={viewingRequestPath(room.property.propertyId, room.roomType.roomTypeId)}
                   className="rounded-lg bg-teal-50 py-3.5 text-center text-[13px] font-bold text-[#087775] hover:bg-teal-100"
                 >
                   Đặt lịch xem phòng

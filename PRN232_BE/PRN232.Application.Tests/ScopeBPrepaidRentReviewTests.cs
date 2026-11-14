@@ -174,6 +174,7 @@ public class ScopeBPrepaidRentReviewTests
                 context.Users.AddRange(User(7, 2), User(9, 3), User(10, 1), User(20, 1));
                 context.Properties.Add(new Property { PropertyId = 1, OwnerId = 9, PropertyName = "Credit review" });
                 context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Review", Price = rent });
+                context.PropertyRoomTypes.Add(new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 1, MonthlyRent = rent, IsActive = true });
                 context.Rooms.Add(new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "R1", Status = "Occupied" });
                 context.PropertyManagerAssignments.Add(new PropertyManagerAssignment { PropertyId = 1, ManagerId = 7 });
                 context.Bookings.Add(new Bookings { BookingId = 1, RoomId = 1, CustomerId = 10, DepositAmount = deposit,

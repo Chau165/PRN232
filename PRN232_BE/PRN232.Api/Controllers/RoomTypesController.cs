@@ -50,6 +50,10 @@ public class RoomTypesController : ControllerBase
         {
             return BadRequest(new ProblemDetails { Title = "Invalid room type", Detail = exception.Message });
         }
+        catch (RoomTypeConflictException exception)
+        {
+            return Conflict(new ProblemDetails { Title = "Room type already exists", Detail = exception.Message });
+        }
     }
 
     [HttpPut("{id:int}")]

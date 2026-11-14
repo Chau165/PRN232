@@ -31,6 +31,9 @@ public sealed class ViewingScheduleRepositoryTests
             new Property { PropertyId = 1, OwnerId = 9, PropertyName = "Assigned property" },
             new Property { PropertyId = 2, OwnerId = 9, PropertyName = "Previously assigned property" });
         context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio", Price = 100m });
+        context.PropertyRoomTypes.AddRange(
+            new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 1, MonthlyRent = 100m, IsActive = true },
+            new PropertyRoomTypes { PropertyId = 2, RoomTypeId = 1, MonthlyRent = 100m, IsActive = true });
         context.Rooms.AddRange(
             new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A101", Status = "Available" },
             new Rooms { RoomId = 2, PropertyId = 2, RoomTypeId = 1, RoomCode = "B101", Status = "Available" });
@@ -46,8 +49,8 @@ public sealed class ViewingScheduleRepositoryTests
                 ManagerId = 8
             });
         context.ViewingSchedules.AddRange(
-            new ViewingSchedules { ViewingId = 1, RoomId = 1, CustomerId = 10, AssignedTo = 7, Status = ViewingStatuses.Pending },
-            new ViewingSchedules { ViewingId = 2, RoomId = 2, CustomerId = 10, Status = ViewingStatuses.Pending });
+            new ViewingSchedules { ViewingId = 1, PropertyId = 1, RoomTypeId = 1, RoomId = 1, CustomerId = 10, AssignedTo = 7, Status = ViewingStatuses.Pending },
+            new ViewingSchedules { ViewingId = 2, PropertyId = 2, RoomTypeId = 1, RoomId = 2, CustomerId = 10, Status = ViewingStatuses.Pending });
         await context.SaveChangesAsync();
 
         var repository = new ViewingScheduleRepository(context);
@@ -96,6 +99,7 @@ public sealed class ViewingScheduleRepositoryTests
             User(10, 1, "Customer"));
         context.Properties.Add(new Property { PropertyId = 1, OwnerId = 9, PropertyName = "Sunrise" });
         context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio", Price = 100m });
+        context.PropertyRoomTypes.Add(new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 1, MonthlyRent = 100m, IsActive = true });
         context.Rooms.Add(new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A101", Status = "Available" });
         context.PropertyManagerAssignments.Add(new PropertyManagerAssignment
         {
@@ -105,6 +109,8 @@ public sealed class ViewingScheduleRepositoryTests
         context.ViewingSchedules.Add(new ViewingSchedules
         {
             ViewingId = 1,
+            PropertyId = 1,
+            RoomTypeId = 1,
             RoomId = 1,
             CustomerId = 10,
             Status = ViewingStatuses.Pending

@@ -185,6 +185,9 @@ public sealed class ConverterResponseRegressionTests
             return Task.FromResult(Rooms);
         }
 
+        public Task<List<PublicPropertyRoomTypeReadModel>?> GetRoomTypesAsync(int propertyId, PublicPropertySearchCriteria criteria, DateTimeOffset asOfUtc, CancellationToken cancellationToken) =>
+            Task.FromResult<List<PublicPropertyRoomTypeReadModel>?>(null);
+
         public Task<PublicRoomDetailReadModel?> GetRoomDetailAsync(int roomId, DateTimeOffset asOfUtc, CancellationToken cancellationToken)
         {
             ReadCount++;

@@ -9,11 +9,16 @@ namespace PRN232.Application.Services;
 public class RoomService : IRoomService
 {
     private readonly IRoomRepository _repository;
+    private readonly IPropertyRoomTypeRepository? _propertyRoomTypeRepository;
     private readonly IRoomImageStorage? _imageStorage;
 
-    public RoomService(IRoomRepository repository, IRoomImageStorage? imageStorage = null)
+    public RoomService(
+        IRoomRepository repository,
+        IPropertyRoomTypeRepository? propertyRoomTypeRepository = null,
+        IRoomImageStorage? imageStorage = null)
     {
         _repository = repository;
+        _propertyRoomTypeRepository = propertyRoomTypeRepository;
         _imageStorage = imageStorage;
     }
 
@@ -73,6 +78,11 @@ public class RoomService : IRoomService
         {
             throw new RoomTypeNotFoundException();
         }
+        if (_propertyRoomTypeRepository is null ||
+            !await _propertyRoomTypeRepository.IsActiveAsync(dto.PropertyId, dto.RoomTypeId))
+        {
+            throw new RoomValidationException("Loại phòng chưa được kích hoạt tại khu trọ đã chọn.");
+        }
         if (string.IsNullOrWhiteSpace(dto.RoomCode))
         {
             throw new RoomValidationException("Mã phòng không được để trống.");
@@ -109,6 +119,18 @@ public class RoomService : IRoomService
         if (!await _repository.RoomTypeExistsAsync(dto.RoomTypeId))
         {
             throw new RoomTypeNotFoundException();
+        }
+        if (dto.RoomTypeId != entity.RoomTypeId)
+        {
+            if (await _repository.HasBookingsOrContractsAsync(id))
+            {
+                throw new RoomValidationException("Không thể đổi loại phòng sau khi đã có booking hoặc hợp đồng.");
+            }
+            if (_propertyRoomTypeRepository is null ||
+                !await _propertyRoomTypeRepository.IsActiveAsync(entity.PropertyId, dto.RoomTypeId))
+            {
+                throw new RoomValidationException("Loại phòng chưa được kích hoạt tại khu trọ đã chọn.");
+            }
         }
         if (string.IsNullOrWhiteSpace(dto.RoomCode))
         {

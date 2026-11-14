@@ -33,7 +33,7 @@ public class ContractRepository : IContractRepository
                 booking.Room.Property!.OwnerId,
                 booking.Status,
                 booking.DepositAmount,
-                booking.Room.RoomType!.Price,
+                booking.AgreedMonthlyRent,
                 booking.Contract != null,
                 booking.Payments.Any(payment =>
                     payment.Status == PaymentStatuses.Success &&

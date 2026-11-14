@@ -240,6 +240,14 @@ public sealed class Phase31CPropertyDetailPostgreSqlTests
             CreateRoomType(5, "Studio", 3_000_000m),
             CreateRoomType(6, "Studio", 3_500_000m),
             CreateRoomType(7, "Studio", 4_000_000m));
+        context.PropertyRoomTypes.AddRange(
+            new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 1, MonthlyRent = 1_500_000m, IsActive = true },
+            new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 2, MonthlyRent = 2_500_000m, IsActive = true },
+            new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 3, MonthlyRent = 1_200_000m, IsActive = true },
+            new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 4, MonthlyRent = 1_000_000m, IsActive = true },
+            new PropertyRoomTypes { PropertyId = 2, RoomTypeId = 5, MonthlyRent = 3_000_000m, IsActive = true },
+            new PropertyRoomTypes { PropertyId = 3, RoomTypeId = 6, MonthlyRent = 3_500_000m, IsActive = true },
+            new PropertyRoomTypes { PropertyId = 4, RoomTypeId = 7, MonthlyRent = 4_000_000m, IsActive = true });
         context.Amenities.AddRange(
             new Amenities { AmenityId = 1, Name = "Common Alpha" },
             new Amenities { AmenityId = 2, Name = "Common Beta" },

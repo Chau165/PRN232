@@ -202,7 +202,6 @@ export default function PropertyDetailPage() {
                     ? "Chưa có giá"
                     : formatVnd(property.startingPrice)}
                 </p>
-                {/* Viewings are booked per room, from the room detail; this page only leads to the rooms. */}
                 <Link
                   to={availableRoomsPath(property.propertyId)}
                   className="mt-5 block rounded-lg bg-[#087775] px-4 py-3 text-center text-[13px] font-bold text-white shadow-sm hover:bg-[#066a68]"
