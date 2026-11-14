@@ -200,6 +200,9 @@ describe("management property and room CRUD", () => {
     expect(body.get("ownerId")).toBeNull()
     expect(body.get("provinceCode")).toBe("01")
     expect(body.get("wardCode")).toBe("00004")
+    expect(body.get("ward")).toBeNull()
+    expect(body.get("district")).toBeNull()
+    expect(body.get("city")).toBeNull()
     expect(body.get("confirmedLatitude")).toBeNull()
     expect(body.get("confirmedLongitude")).toBeNull()
     expect(body.get("addressText")).toBe("12 đường Lê Lợi")
@@ -474,5 +477,99 @@ describe("management property and room CRUD", () => {
   it("does not keep removed management area or tenant routes", () => {
     expect("managementAreas" in routes).toBe(false)
     expect("managementTenants" in routes).toBe(false)
+  })
+
+  it("validates room boundaries (8 passes, 7.9 fails) and displays server field errors under the matching inputs", async () => {
+    adminSession()
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    let postAttempt = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async (input, init) => {
+        const url = String(input)
+        calls.push({ url, init })
+        if (url.endsWith("/users/me")) return jsonResponse(admin)
+        if (url.endsWith("/rooms") && init?.method === "POST") {
+          postAttempt += 1
+          if (postAttempt === 1) {
+            return jsonResponse(
+              {
+                status: 400,
+                title: "Dữ liệu không hợp lệ.",
+                detail: "Mã phòng tối đa 20 ký tự.",
+                errors: {
+                  roomCode: ["Mã phòng tối đa 20 ký tự."],
+                },
+              },
+              400,
+            )
+          }
+          return jsonResponse({ ...room, areaSqm: 8 }, 201)
+        }
+        if (url.includes("/rooms?propertyId=21")) return jsonResponse([room])
+        if (url.endsWith("/properties")) return jsonResponse([property])
+        if (url.includes("/properties/21/room-types"))
+          return jsonResponse([
+            {
+              propertyId: 21,
+              roomTypeId: 4,
+              roomTypeName: "Studio",
+              monthlyRent: 3_000_000,
+              isActive: true,
+              totalRoomCount: 1,
+              availableRoomCount: 1,
+            },
+          ])
+        if (url.endsWith("/room-types"))
+          return jsonResponse([
+            { roomTypeId: 4, typeName: "Studio", price: 3_000_000 },
+          ])
+        return jsonResponse({ title: "Not Found" }, 404)
+      }),
+    )
+
+    renderScopedRoomsPage()
+    fireEvent.click(await screen.findByRole("button", { name: "+ Thêm phòng" }))
+    await screen.findByRole("option", { name: "Studio" })
+
+    const areaInput = screen.getByLabelText("Diện tích (m²)") as HTMLInputElement
+    expect(areaInput.getAttribute("min")).toBe("8")
+    expect(areaInput.getAttribute("max")).toBe("100")
+    expect(areaInput.getAttribute("step")).toBe("0.1")
+
+    fireEvent.change(screen.getByLabelText("Loại phòng"), {
+      target: { value: "4" },
+    })
+    fireEvent.change(screen.getByLabelText("Mã phòng"), {
+      target: { value: "A-101" },
+    })
+    fireEvent.change(areaInput, { target: { value: "7.9" } })
+    fireEvent.click(screen.getByRole("button", { name: "Tạo phòng" }))
+
+    expect(
+      screen.getByText("Diện tích phòng phải từ 8 đến 100 m²."),
+    ).toBeTruthy()
+    expect(
+      calls.some(
+        (call) => call.init?.method === "POST" && call.url.endsWith("/rooms"),
+      ),
+    ).toBe(false)
+
+    // Boundary 8 passes client validation; first server response returns 400 field error
+    fireEvent.change(areaInput, { target: { value: "8" } })
+    fireEvent.click(screen.getByRole("button", { name: "Tạo phòng" }))
+
+    expect(await screen.findByText("Mã phòng tối đa 20 ký tự.")).toBeTruthy()
+    expect(
+      screen.getByLabelText("Mã phòng").getAttribute("aria-invalid"),
+    ).toBe("true")
+
+    // Second submit succeeds
+    fireEvent.change(screen.getByLabelText("Mã phòng"), {
+      target: { value: "A-102" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Tạo phòng" }))
+
+    await waitFor(() => expect(postAttempt).toBe(2))
   })
 })

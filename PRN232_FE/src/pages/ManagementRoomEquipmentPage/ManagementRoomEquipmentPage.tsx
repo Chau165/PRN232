@@ -37,10 +37,6 @@ function errorMessage(cause: unknown, fallback: string): string {
     return "Bạn không có quyền thực hiện thao tác này."
   }
   if (cause.status === 404) return fallback
-  if (cause.status === 400) {
-    const messages = Object.values(cause.validationErrors ?? {}).flat()
-    return messages.length > 0 ? messages.join(" ") : cause.message
-  }
   return cause.message || fallback
 }
 
@@ -100,6 +96,8 @@ export default function ManagementRoomEquipmentPage() {
     null,
   )
   const [saving, setSaving] = useState(false)
+  const [equipmentSubmitError, setEquipmentSubmitError] =
+    useState<unknown>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const detailController = useRef<AbortController | null>(null)
 
@@ -273,6 +271,7 @@ export default function ManagementRoomEquipmentPage() {
     if (!accessToken || !currentRoom) return false
     setSaving(true)
     setError("")
+    setEquipmentSubmitError(null)
     try {
       if (dialog === "edit" && editingEquipment) {
         if (editingEquipment.roomId !== currentRoom.roomId) {
@@ -299,7 +298,7 @@ export default function ManagementRoomEquipmentPage() {
       setReload((value) => value + 1)
       return true
     } catch (cause) {
-      setError(errorMessage(cause, "Không thể lưu thiết bị."))
+      setEquipmentSubmitError(cause)
       return false
     } finally {
       setSaving(false)
@@ -630,8 +629,10 @@ export default function ManagementRoomEquipmentPage() {
               initialEquipment={editingEquipment}
               room={currentRoom}
               saving={saving}
+              serverError={equipmentSubmitError}
               onClose={() => {
                 if (!saving) {
+                  setEquipmentSubmitError(null)
                   setDialog(null)
                   setEditingEquipment(null)
                 }

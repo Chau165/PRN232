@@ -520,4 +520,56 @@ describe("management property room types", () => {
     expect(catalogCreateCalls).toHaveLength(1)
     expect(configurationAttempts).toBe(2)
   })
+
+  it("validates monthlyRent boundaries (500.000 passes, 499.000 fails) and displays field-level validationErrors", async () => {
+    adminSession()
+    let createCalls = 0
+    stubApi({
+      createConfiguration: () => {
+        createCalls += 1
+        return jsonResponse(
+          {
+            status: 400,
+            title: "Dữ liệu không hợp lệ.",
+            detail: "Giá thuê phải là bội số của 1.000đ.",
+            errors: {
+              monthlyRent: ["Giá thuê phải là bội số của 1.000đ."],
+            },
+          },
+          400,
+        )
+      },
+    })
+
+    renderPage()
+
+    await screen.findByRole("option", { name: "Deluxe" })
+    const rentInput = screen.getByLabelText("Giá thuê mới") as HTMLInputElement
+    expect(rentInput.getAttribute("min")).toBe("500000")
+    expect(rentInput.getAttribute("max")).toBe("50000000")
+    expect(rentInput.getAttribute("step")).toBe("1000")
+
+    fireEvent.change(screen.getByLabelText("Danh mục loại phòng"), {
+      target: { value: "5" },
+    })
+    fireEvent.change(rentInput, { target: { value: "499000" } })
+    fireEvent.click(screen.getByRole("button", { name: "Thêm cấu hình" }))
+
+    expect(
+      screen.getByText(
+        "Giá thuê phải từ 500.000đ đến 50.000.000đ mỗi tháng.",
+      ),
+    ).toBeTruthy()
+    expect(createCalls).toBe(0)
+
+    // 500.000 passes client validation and sends request; server field error renders under input
+    fireEvent.change(rentInput, { target: { value: "500000" } })
+    fireEvent.click(screen.getByRole("button", { name: "Thêm cấu hình" }))
+
+    expect(
+      await screen.findByText("Giá thuê phải là bội số của 1.000đ."),
+    ).toBeTruthy()
+    expect(createCalls).toBe(1)
+    expect(rentInput.getAttribute("aria-invalid")).toBe("true")
+  })
 })

@@ -29,7 +29,7 @@ export default function PropertyDetailDrawer({
         <p>
           <span className="text-slate-400">Khu vực:</span>{" "}
           <strong>
-            {[property.ward, property.district, property.city]
+            {[property.ward, property.city]
               .filter(Boolean)
               .join(", ") || "Chưa có"}
           </strong>

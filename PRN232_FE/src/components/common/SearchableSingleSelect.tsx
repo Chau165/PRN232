@@ -12,6 +12,7 @@ type SearchableSingleSelectProps = {
   value: string
   onChange: (value: string) => void
   disabled?: boolean
+  invalid?: boolean
   hint?: string
   placeholder?: string
 }
@@ -32,6 +33,7 @@ export default function SearchableSingleSelect({
   value,
   onChange,
   disabled = false,
+  invalid = false,
   hint,
   placeholder = "Tìm hoặc chọn...",
 }: SearchableSingleSelectProps) {
@@ -127,6 +129,7 @@ export default function SearchableSingleSelect({
         aria-controls={isOpen ? listboxId : undefined}
         aria-activedescendant={isOpen && activeOption ? `${listboxId}-${activeOption.value}` : undefined}
         aria-describedby={hintId}
+        aria-invalid={invalid || undefined}
         autoComplete="off"
         disabled={disabled}
         placeholder={placeholder}

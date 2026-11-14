@@ -355,4 +355,60 @@ describe("room-scoped equipment management", () => {
       expect.any(AbortSignal),
     )
   })
+
+  it("enforces installDate max today and displays field-level validation errors", async () => {
+    mocks.getEquipments.mockResolvedValue([])
+    mocks.createEquipment.mockRejectedValueOnce(
+      new ApiError("Dữ liệu không hợp lệ.", {
+        status: 400,
+        validationErrors: {
+          supplier: ["Nhà cung cấp là bắt buộc và không quá 200 ký tự."],
+        },
+      }),
+    )
+    renderPage()
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "+ Thêm thiết bị" }),
+    )
+
+    const installDateInput = screen.getByLabelText(
+      "Ngày lắp đặt",
+    ) as HTMLInputElement
+    expect(installDateInput.getAttribute("max")).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+
+    fireEvent.change(screen.getByLabelText("Tên thiết bị"), {
+      target: { value: "Máy nước nóng" },
+    })
+    fireEvent.change(installDateInput, {
+      target: { value: "2099-01-01" },
+    })
+    fireEvent.change(screen.getByLabelText("Hạn bảo hành"), {
+      target: { value: "2099-12-31" },
+    })
+    fireEvent.change(screen.getByLabelText("Nhà cung cấp"), {
+      target: { value: "Panasonic" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thiết bị" }))
+
+    expect(
+      screen.getByText("Ngày lắp đặt không được ở tương lai."),
+    ).toBeTruthy()
+    expect(mocks.createEquipment).not.toHaveBeenCalled()
+
+    // Valid dates pass client check; server validationErrors.supplier shows under supplier input
+    fireEvent.change(installDateInput, {
+      target: { value: "2026-01-10" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thiết bị" }))
+
+    expect(
+      await screen.findByText(
+        "Nhà cung cấp là bắt buộc và không quá 200 ký tự.",
+      ),
+    ).toBeTruthy()
+    expect(
+      screen.getByLabelText("Nhà cung cấp").getAttribute("aria-invalid"),
+    ).toBe("true")
+  })
 })

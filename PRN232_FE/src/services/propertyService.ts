@@ -8,11 +8,8 @@ import type { PropertyDto } from "@/types/user"
 export type PropertyWriteRequest = {
   propertyName: string
   addressText: string
-  ward: string
-  district: string
-  city: string
-  provinceCode?: string
-  wardCode?: string
+  provinceCode: string
+  wardCode: string
   primaryImage?: File
   description?: string
 }
@@ -21,11 +18,8 @@ function toPropertyFormData(request: PropertyWriteRequest) {
   const formData = new FormData()
   formData.append("propertyName", request.propertyName)
   formData.append("addressText", request.addressText)
-  formData.append("ward", request.ward)
-  formData.append("district", request.district)
-  formData.append("city", request.city)
-  if (request.provinceCode) formData.append("provinceCode", request.provinceCode)
-  if (request.wardCode) formData.append("wardCode", request.wardCode)
+  formData.append("provinceCode", request.provinceCode)
+  formData.append("wardCode", request.wardCode)
   if (request.description) formData.append("description", request.description)
   if (request.primaryImage) {
     formData.append("primaryImage", request.primaryImage, request.primaryImage.name)
@@ -34,24 +28,24 @@ function toPropertyFormData(request: PropertyWriteRequest) {
 }
 
 export function getAdministrativeProvinces(
-  accessToken: string,
+  accessToken?: string | null,
   signal?: AbortSignal,
 ) {
   return apiRequest<AdministrativeProvinceOption[]>("/locations/provinces", {
-    accessToken,
+    accessToken: accessToken ?? undefined,
     signal,
     cache: "no-store",
   })
 }
 
 export function getAdministrativeWards(
-  accessToken: string,
+  accessToken: string | null | undefined,
   provinceCode: string,
   signal?: AbortSignal,
 ) {
   return apiRequest<AdministrativeWardOption[]>(
     `/locations/wards?provinceCode=${encodeURIComponent(provinceCode)}`,
-    { accessToken, signal, cache: "no-store" },
+    { accessToken: accessToken ?? undefined, signal, cache: "no-store" },
   )
 }
 

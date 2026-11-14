@@ -73,4 +73,39 @@ describe("PropertyServiceRatesPanel", () => {
       "Kỳ áp dụng bị trùng với một mức giá đã có của dịch vụ này. Giá cũ không bị thay đổi.",
     )
   })
+
+  it("blocks zero or decimal prices client-side and renders backend price ceiling errors under the price input", async () => {
+    mocks.create.mockRejectedValueOnce(
+      new ApiError("Giá điện vượt trần", {
+        status: 400,
+        validationErrors: {
+          price: [
+            "Giá điện tối đa 4.152đ/kWh (bậc cao nhất của EVN đã gồm VAT). Chủ trọ thu cao hơn hóa đơn điện có thể bị phạt.",
+          ],
+        },
+      }),
+    )
+    render(<PropertyServiceRatesPanel propertyId={5} />)
+    await screen.findByRole("option", { name: "Nước" })
+
+    fireEvent.change(screen.getByLabelText("Dịch vụ"), { target: { value: "2" } })
+    fireEvent.change(screen.getByLabelText("Cách tính tiền"), { target: { value: "kwh" } })
+    fireEvent.change(screen.getByLabelText("Đơn giá (VND)"), { target: { value: "0" } })
+    fireEvent.click(screen.getByRole("button", { name: "Thêm mức giá" }))
+    expect(screen.getByRole("alert").textContent).toBe("Đơn giá phải lớn hơn 0.")
+    expect(mocks.create).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText("Đơn giá (VND)"), { target: { value: "10.5" } })
+    fireEvent.click(screen.getByRole("button", { name: "Thêm mức giá" }))
+    expect(screen.getByRole("alert").textContent).toBe("Đơn giá phải là số đồng nguyên.")
+    expect(mocks.create).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText("Đơn giá (VND)"), { target: { value: "5000" } })
+    fireEvent.click(screen.getByRole("button", { name: "Thêm mức giá" }))
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Giá điện tối đa 4.152đ/kWh (bậc cao nhất của EVN đã gồm VAT). Chủ trọ thu cao hơn hóa đơn điện có thể bị phạt.",
+    )
+    expect(screen.getByLabelText("Đơn giá (VND)").getAttribute("aria-invalid")).toBe("true")
+  })
 })

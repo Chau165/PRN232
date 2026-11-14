@@ -42,6 +42,7 @@ export default function ManagementPropertiesPage() {
   )
   const [detailProperty, setDetailProperty] = useState<PropertyDto | null>(null)
   const [savingProperty, setSavingProperty] = useState(false)
+  const [propertySubmitError, setPropertySubmitError] = useState<unknown>(null)
   const [deletingPropertyId, setDeletingPropertyId] = useState<number | null>(
     null,
   )
@@ -101,10 +102,6 @@ export default function ManagementPropertiesPage() {
     if (cause.status === 403) {
       return cause.message || "Bạn không có quyền thực hiện thao tác này."
     }
-    if (cause.status === 400) {
-      const messages = Object.values(cause.validationErrors ?? {}).flat()
-      return messages.length > 0 ? messages.join(" ") : cause.message
-    }
     return cause.message
   }
 
@@ -115,6 +112,7 @@ export default function ManagementPropertiesPage() {
     setSavingProperty(true)
     setError("")
     setSuccess("")
+    setPropertySubmitError(null)
     try {
       if (propertyDialog === "edit" && editingProperty) {
         await updateProperty(accessToken, editingProperty.propertyId, request)
@@ -128,7 +126,7 @@ export default function ManagementPropertiesPage() {
       setReload((value) => value + 1)
       return true
     } catch (cause) {
-      setError(getCrudError(cause))
+      setPropertySubmitError(cause)
       return false
     } finally {
       setSavingProperty(false)
@@ -286,7 +284,7 @@ export default function ManagementPropertiesPage() {
                     </div>
                   </div>
                   <p className="min-w-0 text-sm text-slate-600">
-                    {formatAddress(property.addressText, property.ward, property.district, property.city)}
+                    {formatAddress(property.addressText, property.ward, property.city)}
                   </p>
                   <p className="text-sm text-slate-600">
                     {property.roomCount} phòng
@@ -386,8 +384,10 @@ export default function ManagementPropertiesPage() {
           accessToken={accessToken ?? ""}
           initialProperty={editingProperty}
           saving={savingProperty}
+          serverError={propertySubmitError}
           onClose={() => {
             if (!savingProperty) {
+              setPropertySubmitError(null)
               setPropertyDialog(null)
               setEditingProperty(null)
             }

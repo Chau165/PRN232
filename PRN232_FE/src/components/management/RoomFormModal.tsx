@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
+import { ApiError } from "@/api/apiClient"
 import { useAuth } from "@/auth/AuthContext"
 import { getPropertyRoomTypes } from "@/services/propertyRoomTypeService"
 import type { PropertyRoomTypeDto } from "@/types/propertyRoomType"
@@ -8,6 +9,21 @@ import type {
   ManagementRoomDto,
   UpdateRoomRequest,
 } from "@/types/managementRoom"
+import {
+  ROOM_AREA_MAX,
+  ROOM_AREA_MIN,
+  ROOM_AREA_STEP,
+  splitValidationErrors,
+  validateRoomForm,
+  type RoomFormField,
+} from "@/utils/roomValidation"
+
+const ROOM_FORM_FIELDS: readonly RoomFormField[] = [
+  "propertyId",
+  "roomTypeId",
+  "roomCode",
+  "areaSqm",
+]
 
 type RoomFormModalProps = {
   mode: "create" | "edit"
@@ -15,6 +31,7 @@ type RoomFormModalProps = {
   properties: PropertyDto[]
   lockedPropertyId?: number
   saving: boolean
+  serverError?: unknown
   onClose: () => void
   onSubmit: (request: CreateRoomRequest | UpdateRoomRequest) => Promise<boolean>
 }
@@ -48,6 +65,7 @@ export default function RoomFormModal({
   properties,
   lockedPropertyId,
   saving,
+  serverError,
   onClose,
   onSubmit,
 }: RoomFormModalProps) {
@@ -58,12 +76,57 @@ export default function RoomFormModal({
   const [propertyRoomTypes, setPropertyRoomTypes] = useState<PropertyRoomTypeDto[]>([])
   const [loadingRoomTypes, setLoadingRoomTypes] = useState(false)
   const [roomTypesError, setRoomTypesError] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<RoomFormField, string>>
+  >({})
   const [formError, setFormError] = useState("")
+
+  const applyServerError = useCallback((cause: unknown) => {
+    if (!cause) return
+    if (cause instanceof ApiError && cause.status === 400) {
+      const { fieldErrors: mapped, generalError } = splitValidationErrors(
+        cause.validationErrors,
+        ROOM_FORM_FIELDS,
+        cause.message,
+      )
+      setFieldErrors(mapped)
+      setFormError(generalError)
+      return
+    }
+    setFieldErrors({})
+    if (cause instanceof ApiError) {
+      if (cause.status === 409) {
+        setFormError(
+          cause.message ||
+            "Thao tác bị từ chối vì phòng còn dữ liệu nghiệp vụ cần bảo toàn.",
+        )
+        return
+      }
+      if (cause.status === 403) {
+        setFormError(
+          cause.message || "Bạn không có quyền thực hiện thao tác này.",
+        )
+        return
+      }
+      setFormError(cause.message)
+      return
+    }
+    setFormError(
+      cause instanceof Error ? cause.message : "Không thể lưu dữ liệu phòng.",
+    )
+  }, [])
 
   useEffect(() => {
     setValues(valuesFromRoom(initialRoom, lockedPropertyId))
+    setFieldErrors({})
     setFormError("")
   }, [initialRoom, lockedPropertyId, mode])
+
+  useEffect(() => {
+    if (serverError) {
+      applyServerError(serverError)
+    }
+  }, [applyServerError, serverError])
 
   useEffect(() => {
     const propertyId = Number(values.propertyId)
@@ -114,45 +177,65 @@ export default function RoomFormModal({
       [field]: value,
       ...(field === "propertyId" ? { roomTypeId: "" } : {}),
     }))
+    setFieldErrors((current) => {
+      if (!current[field] && !(field === "propertyId" && current.roomTypeId)) {
+        return current
+      }
+      const next = { ...current }
+      delete next[field]
+      if (field === "propertyId") delete next.roomTypeId
+      return next
+    })
+    setFormError("")
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const propertyId = Number(values.propertyId)
+    const nextFieldErrors = validateRoomForm({
+      mode,
+      propertyId: values.propertyId,
+      roomTypeId: values.roomTypeId,
+      roomCode: values.roomCode,
+      areaSqm: values.areaSqm,
+    })
+
     const roomTypeId = Number(values.roomTypeId)
+    if (!nextFieldErrors.roomTypeId) {
+      const selectedConfiguration = propertyRoomTypes.find(
+        (item) => item.roomTypeId === roomTypeId,
+      )
+      if (
+        !selectedConfiguration ||
+        (!selectedConfiguration.isActive &&
+          roomTypeId !== initialRoom?.roomTypeId)
+      ) {
+        nextFieldErrors.roomTypeId =
+          "Loại phòng chưa được kích hoạt tại khu trọ đã chọn."
+      }
+    }
+
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      setFormError("")
+      return
+    }
+
+    const propertyId = Number(values.propertyId)
     const areaSqm = Number(values.areaSqm)
     const roomCode = values.roomCode.trim()
 
-    if (mode === "create" && (!Number.isInteger(propertyId) || propertyId < 1)) {
-      setFormError("Vui lòng chọn khu trọ.")
-      return
-    }
-    if (!Number.isInteger(roomTypeId) || roomTypeId < 1) {
-      setFormError("Vui lòng chọn loại phòng.")
-      return
-    }
-    const selectedConfiguration = propertyRoomTypes.find((item) => item.roomTypeId === roomTypeId)
-    if (!selectedConfiguration ||
-      (!selectedConfiguration.isActive && roomTypeId !== initialRoom?.roomTypeId)) {
-      setFormError("Loại phòng chưa được kích hoạt tại khu trọ đã chọn.")
-      return
-    }
-    if (!roomCode) {
-      setFormError("Mã phòng không được để trống.")
-      return
-    }
-    if (!Number.isFinite(areaSqm) || areaSqm <= 0) {
-      setFormError("Diện tích phòng phải lớn hơn 0.")
-      return
-    }
-
+    setFieldErrors({})
     setFormError("")
     const request =
       mode === "create"
         ? { propertyId, roomTypeId, roomCode, areaSqm }
         : { roomTypeId, roomCode, areaSqm }
-    const saved = await onSubmit(request)
-    if (!saved) return
+    try {
+      const saved = await onSubmit(request)
+      if (!saved) return
+    } catch (cause) {
+      applyServerError(cause)
+    }
   }
 
   const isMissingDependency = properties.length === 0
@@ -198,7 +281,7 @@ export default function RoomFormModal({
             )}
           </div>
         ) : (
-          <form onSubmit={submit} className="mt-6 space-y-4">
+          <form onSubmit={submit} noValidate className="mt-6 space-y-4">
             {formError && (
               <p
                 role="alert"
@@ -207,48 +290,64 @@ export default function RoomFormModal({
                 {formError}
               </p>
             )}
-            <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
-              Khu trọ
-              <select
-                aria-label="Khu trọ"
-                value={values.propertyId}
-                onChange={(event) =>
-                  updateValue("propertyId", event.target.value)
-                }
-                disabled={mode === "edit" || lockedPropertyId !== undefined}
-                className="rounded-lg border border-slate-200 px-3 py-2 font-normal disabled:bg-slate-50"
-              >
-                <option value="">Chọn khu trọ</option>
-                {properties.map((property) => (
-                  <option key={property.propertyId} value={property.propertyId}>
-                    {property.propertyName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
-              Loại phòng
-              <select
-                aria-label="Loại phòng"
-                value={values.roomTypeId}
-                onChange={(event) =>
-                  updateValue("roomTypeId", event.target.value)
-                }
-                disabled={!values.propertyId || loadingRoomTypes || !!roomTypesError}
-                className="rounded-lg border border-slate-200 px-3 py-2 font-normal disabled:bg-slate-50"
-              >
-                <option value="">Chọn loại phòng</option>
-                {roomTypes.map((roomType) => (
-                  <option
-                    key={roomType.roomTypeId}
-                    value={roomType.roomTypeId}
-                    disabled={!roomType.isActive && roomType.roomTypeId !== initialRoom?.roomTypeId}
-                  >
-                    {roomType.roomTypeName}{roomType.isActive ? "" : " (ngừng dùng)"}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div>
+              <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                Khu trọ
+                <select
+                  aria-label="Khu trọ"
+                  aria-invalid={Boolean(fieldErrors.propertyId)}
+                  value={values.propertyId}
+                  onChange={(event) =>
+                    updateValue("propertyId", event.target.value)
+                  }
+                  disabled={mode === "edit" || lockedPropertyId !== undefined}
+                  className="rounded-lg border border-slate-200 px-3 py-2 font-normal disabled:bg-slate-50"
+                >
+                  <option value="">Chọn khu trọ</option>
+                  {properties.map((property) => (
+                    <option key={property.propertyId} value={property.propertyId}>
+                      {property.propertyName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {fieldErrors.propertyId && (
+                <p role="alert" className="mt-1 text-xs text-rose-600">
+                  {fieldErrors.propertyId}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                Loại phòng
+                <select
+                  aria-label="Loại phòng"
+                  aria-invalid={Boolean(fieldErrors.roomTypeId)}
+                  value={values.roomTypeId}
+                  onChange={(event) =>
+                    updateValue("roomTypeId", event.target.value)
+                  }
+                  disabled={!values.propertyId || loadingRoomTypes || !!roomTypesError}
+                  className="rounded-lg border border-slate-200 px-3 py-2 font-normal disabled:bg-slate-50"
+                >
+                  <option value="">Chọn loại phòng</option>
+                  {roomTypes.map((roomType) => (
+                    <option
+                      key={roomType.roomTypeId}
+                      value={roomType.roomTypeId}
+                      disabled={!roomType.isActive && roomType.roomTypeId !== initialRoom?.roomTypeId}
+                    >
+                      {roomType.roomTypeName}{roomType.isActive ? "" : " (ngừng dùng)"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {fieldErrors.roomTypeId && (
+                <p role="alert" className="mt-1 text-xs text-rose-600">
+                  {fieldErrors.roomTypeId}
+                </p>
+              )}
+            </div>
             {loadingRoomTypes && <p role="status" className="text-xs text-slate-500">Đang tải loại phòng của khu trọ...</p>}
             {roomTypesError && <p role="alert" className="text-xs text-rose-600">{roomTypesError}</p>}
             {!loadingRoomTypes && !roomTypesError && values.propertyId && roomTypes.length === 0 && (
@@ -265,29 +364,46 @@ export default function RoomFormModal({
                   : "Chưa chọn"}
               </strong>
             </p>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
-              Mã phòng
-              <input
-                aria-label="Mã phòng"
-                value={values.roomCode}
-                onChange={(event) =>
-                  updateValue("roomCode", event.target.value)
-                }
-                className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
-              Diện tích (m²)
-              <input
-                aria-label="Diện tích (m²)"
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={values.areaSqm}
-                onChange={(event) => updateValue("areaSqm", event.target.value)}
-                className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
-              />
-            </label>
+            <div>
+              <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                Mã phòng
+                <input
+                  aria-label="Mã phòng"
+                  aria-invalid={Boolean(fieldErrors.roomCode)}
+                  value={values.roomCode}
+                  onChange={(event) =>
+                    updateValue("roomCode", event.target.value)
+                  }
+                  className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                />
+              </label>
+              {fieldErrors.roomCode && (
+                <p role="alert" className="mt-1 text-xs text-rose-600">
+                  {fieldErrors.roomCode}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                Diện tích (m²)
+                <input
+                  aria-label="Diện tích (m²)"
+                  aria-invalid={Boolean(fieldErrors.areaSqm)}
+                  type="number"
+                  min={ROOM_AREA_MIN}
+                  max={ROOM_AREA_MAX}
+                  step={ROOM_AREA_STEP}
+                  value={values.areaSqm}
+                  onChange={(event) => updateValue("areaSqm", event.target.value)}
+                  className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                />
+              </label>
+              {fieldErrors.areaSqm && (
+                <p role="alert" className="mt-1 text-xs text-rose-600">
+                  {fieldErrors.areaSqm}
+                </p>
+              )}
+            </div>
             <p className="text-xs text-slate-500">
               Trạng thái ban đầu do Backend xác định là Trống. Form này không
               thay đổi trạng thái vận hành.
