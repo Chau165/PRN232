@@ -52,6 +52,7 @@ public sealed class Phase31BPostgreSqlMigrationTests
         var amenitiesMigration = FindMigration(migrations, "AddPropertyDescriptionAndAmenities");
         var ratesMigration = FindMigration(migrations, "AddPropertyServiceRates");
         var snapshotMigration = FindMigration(migrations, "AddInvoiceDetailBillingSnapshot");
+        var propertyRoomTypesMigration = FindMigration(migrations, "PropertyScopedRoomTypesAndViewingFlow");
         var migrator = context.GetService<IMigrator>();
 
         await migrator.MigrateAsync(ratesMigration);
@@ -158,30 +159,15 @@ public sealed class Phase31BPostgreSqlMigrationTests
             firstProperty.PropertyId,
             services[6].ServiceId);
 
-        var roomType = new RoomTypes { TypeName = "Phase 3.1B isolated room type", Price = 1m };
-        context.RoomTypes.Add(roomType);
-        await context.SaveChangesAsync();
-        context.PropertyRoomTypes.Add(new PropertyRoomTypes
-        {
-            PropertyId = firstProperty.PropertyId,
-            RoomTypeId = roomType.RoomTypeId,
-            MonthlyRent = 1m,
-            IsActive = true
-        });
-        await context.SaveChangesAsync();
-        var room = new Rooms
-        {
-            PropertyId = firstProperty.PropertyId,
-            RoomTypeId = roomType.RoomTypeId,
-            RoomCode = "TEST-31B",
-            AreaSqm = 1m,
-            Status = "Available"
-        };
-        context.Rooms.Add(room);
-        await context.SaveChangesAsync();
+        // PropertyRoomTypes and the Rooms composite foreign key do not exist until the
+        // property-scoped room type migration. Seed only columns present in this schema.
+        var legacyRooms = await SeedLegacyRoomTypesAndRoomsAsync(
+            connectionString,
+            firstProperty.PropertyId,
+            secondProperty.PropertyId);
         var contract = new Contracts
         {
-            RoomId = room.RoomId,
+            RoomId = legacyRooms.RoomIds[0],
             CustomerId = owner.UserId,
             StartDate = january,
             EndDate = new DateOnly(2041, 1, 1),
@@ -271,6 +257,13 @@ public sealed class Phase31BPostgreSqlMigrationTests
             () => InsertSnapshotWithMismatchedServiceAsync(context, invoice.InvoiceId, services[1].ServiceId, secondPropertyElectricRate.RateId),
             "23503");
 
+        await migrator.MigrateAsync(propertyRoomTypesMigration);
+        await VerifyPropertyRoomTypeBackfillAsync(
+            connectionString,
+            firstProperty.PropertyId,
+            secondProperty.PropertyId,
+            legacyRooms);
+
         Assert.True(await IsRowLevelSecurityEnabledAsync(context, "PropertyAmenities"));
         Assert.True(await IsRowLevelSecurityEnabledAsync(context, "PropertyServiceRates"));
         Assert.Equal(0, await ReadPolicyCountAsync(connectionString, "PropertyAmenities"));
@@ -351,6 +344,134 @@ public sealed class Phase31BPostgreSqlMigrationTests
             EffectiveFrom = effectiveFrom,
             EffectiveTo = effectiveTo
         };
+
+    private static async Task<LegacyRoomFixture> SeedLegacyRoomTypesAndRoomsAsync(
+        string connectionString,
+        int firstPropertyId,
+        int secondPropertyId)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+
+        var roomTypeIds = new Dictionary<string, int>(StringComparer.Ordinal);
+        await using (var insertRoomTypes = new NpgsqlCommand("""
+            INSERT INTO "RoomTypes" ("TypeName", "Price")
+            VALUES
+                ('Phase 3.1B backfill room type', 2500000),
+                ('Phase 3.1B inactive room type', 9999),
+                ('Phase 3.1B unused room type', 3000000)
+            RETURNING "RoomTypeId", "TypeName"
+            """, connection))
+        {
+            await using var reader = await insertRoomTypes.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                roomTypeIds.Add(reader.GetString(1), reader.GetInt32(0));
+            }
+        }
+
+        var roomSeeds = new[]
+        {
+            (firstPropertyId, roomTypeIds["Phase 3.1B backfill room type"], "TEST-31B-A1"),
+            (firstPropertyId, roomTypeIds["Phase 3.1B backfill room type"], "TEST-31B-A2"),
+            (secondPropertyId, roomTypeIds["Phase 3.1B backfill room type"], "TEST-31B-B1"),
+            (firstPropertyId, roomTypeIds["Phase 3.1B inactive room type"], "TEST-31B-A3")
+        };
+        var roomIds = new List<int>(roomSeeds.Length);
+        foreach (var (propertyId, roomTypeId, roomCode) in roomSeeds)
+        {
+            await using var insertRoom = new NpgsqlCommand("""
+                INSERT INTO "Rooms" ("PropertyId", "RoomTypeId", "RoomCode", "AreaSqm", "Status")
+                VALUES (@propertyId, @roomTypeId, @roomCode, 1, 'Available')
+                RETURNING "RoomId"
+                """, connection);
+            insertRoom.Parameters.AddWithValue("propertyId", propertyId);
+            insertRoom.Parameters.AddWithValue("roomTypeId", roomTypeId);
+            insertRoom.Parameters.AddWithValue("roomCode", roomCode);
+            roomIds.Add((int)(await insertRoom.ExecuteScalarAsync())!);
+        }
+
+        return new LegacyRoomFixture(
+            roomTypeIds["Phase 3.1B backfill room type"],
+            roomTypeIds["Phase 3.1B inactive room type"],
+            roomTypeIds["Phase 3.1B unused room type"],
+            roomIds);
+    }
+
+    private static async Task VerifyPropertyRoomTypeBackfillAsync(
+        string connectionString,
+        int firstPropertyId,
+        int secondPropertyId,
+        LegacyRoomFixture legacyRooms)
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(connectionString)
+            .Options;
+        await using var context = new AppDbContext(options);
+
+        var rooms = await context.Rooms
+            .AsNoTracking()
+            .Include(room => room.PropertyRoomType)
+            .ToListAsync();
+        Assert.Equal(legacyRooms.RoomIds.Order(), rooms.Select(room => room.RoomId).Order());
+        Assert.All(rooms, room => Assert.NotNull(room.PropertyRoomType));
+
+        var configurations = await context.PropertyRoomTypes
+            .AsNoTracking()
+            .OrderBy(item => item.PropertyId)
+            .ThenBy(item => item.RoomTypeId)
+            .ToListAsync();
+        Assert.Equal(3, configurations.Count);
+        Assert.Equal(3, configurations
+            .Select(item => (item.PropertyId, item.RoomTypeId))
+            .Distinct()
+            .Count());
+
+        var firstPropertyConfiguration = Assert.Single(configurations, item =>
+            item.PropertyId == firstPropertyId && item.RoomTypeId == legacyRooms.BackfilledRoomTypeId);
+        Assert.Equal(2_500_000m, firstPropertyConfiguration.MonthlyRent);
+        Assert.True(firstPropertyConfiguration.IsActive);
+
+        var secondPropertyConfiguration = Assert.Single(configurations, item =>
+            item.PropertyId == secondPropertyId && item.RoomTypeId == legacyRooms.BackfilledRoomTypeId);
+        Assert.Equal(2_500_000m, secondPropertyConfiguration.MonthlyRent);
+        Assert.True(secondPropertyConfiguration.IsActive);
+
+        var inactiveConfiguration = Assert.Single(configurations, item =>
+            item.PropertyId == firstPropertyId && item.RoomTypeId == legacyRooms.InactiveRoomTypeId);
+        Assert.Equal(9_999m, inactiveConfiguration.MonthlyRent);
+        Assert.False(inactiveConfiguration.IsActive);
+        Assert.DoesNotContain(configurations, item => item.RoomTypeId == legacyRooms.UnusedRoomTypeId);
+
+        await AssertSqlStateAsync(
+            () => InsertDuplicatePropertyRoomTypeAsync(
+                context,
+                firstPropertyId,
+                legacyRooms.BackfilledRoomTypeId),
+            "23505");
+        await AssertSqlStateAsync(
+            () => InsertRoomWithoutPropertyConfigurationAsync(
+                context,
+                firstPropertyId,
+                legacyRooms.UnusedRoomTypeId),
+            "23503");
+    }
+
+    private static Task<int> InsertDuplicatePropertyRoomTypeAsync(
+        AppDbContext context,
+        int propertyId,
+        int roomTypeId) => context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "PropertyRoomTypes" ("PropertyId", "RoomTypeId", "MonthlyRent", "IsActive")
+            VALUES ({propertyId}, {roomTypeId}, {2_500_000m}, TRUE)
+            """);
+
+    private static Task<int> InsertRoomWithoutPropertyConfigurationAsync(
+        AppDbContext context,
+        int propertyId,
+        int roomTypeId) => context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Rooms" ("PropertyId", "RoomTypeId", "RoomCode", "AreaSqm", "Status")
+            VALUES ({propertyId}, {roomTypeId}, 'TEST-31B-INVALID-FK', 1, 'Available')
+            """);
 
     private static Task<int> InsertRateAsync(
         AppDbContext context,
@@ -669,6 +790,12 @@ public sealed class Phase31BPostgreSqlMigrationTests
 
         return null;
     }
+
+    private sealed record LegacyRoomFixture(
+        int BackfilledRoomTypeId,
+        int InactiveRoomTypeId,
+        int UnusedRoomTypeId,
+        List<int> RoomIds);
 
     private sealed record LegacyInvoiceLine(int Id, string ItemType, string Description, decimal Amount);
 }
