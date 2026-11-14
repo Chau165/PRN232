@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import '../auth/auth_state.dart';
 import '../constants/app_constants.dart';
 import '../storage/secure_storage_helper.dart';
 
@@ -8,6 +9,10 @@ class DioClient {
   static Dio get instance {
     _instance ??= _createDio();
     return _instance!;
+  }
+
+  static void reset() {
+    _instance = null;
   }
 
   static Dio _createDio() {
@@ -27,7 +32,14 @@ class DioClient {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          final token = await SecureStorageHelper.getToken();
+          // Chuẩn hóa path luôn có tiền tố /api khi gọi lên backend
+          if (!options.path.startsWith('/api') && !options.path.startsWith('http')) {
+            final cleanPath = options.path.startsWith('/') ? options.path : '/${options.path}';
+            options.path = '/api$cleanPath';
+          }
+
+          // Lấy token ưu tiên từ bộ nhớ authState trước, sau đó từ SecureStorage
+          final token = AuthState.instance.currentUser?.token ?? await SecureStorageHelper.getToken();
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }
@@ -39,7 +51,11 @@ class DioClient {
         onError: (DioException error, handler) {
           // Xử lý thông điệp lỗi ProblemDetails từ ASP.NET Core
           String message = 'Đã có lỗi xảy ra. Vui lòng thử lại.';
-          if (error.response?.data is Map) {
+          final statusCode = error.response?.statusCode;
+
+          if (statusCode == 401) {
+            message = 'Phiên đăng nhập đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.';
+          } else if (error.response?.data is Map) {
             final data = error.response!.data as Map;
             if (data.containsKey('detail') && data['detail'] != null) {
               message = data['detail'].toString();
@@ -49,6 +65,18 @@ class DioClient {
               message = data['message'].toString();
             }
           }
+
+          // Dịch các thông báo phổ biến sang tiếng Việt
+          if (message.contains('already have an open viewing request')) {
+            message = 'Bạn đã có một lịch hẹn xem đang chờ xử lý cho phòng này. Vui lòng chọn phòng khác hoặc đợi xác nhận.';
+          } else if (message.contains('not available for viewing')) {
+            message = 'Phòng hiện không khả dụng để hẹn xem.';
+          } else if (message.contains('must be in the future')) {
+            message = 'Thời gian hẹn xem phòng phải ở tương lai.';
+          } else if (message.contains('Room does not exist')) {
+            message = 'Phòng không tồn tại.';
+          }
+
           return handler.next(
             DioException(
               requestOptions: error.requestOptions,

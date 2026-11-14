@@ -26,8 +26,11 @@ class ViewingService {
         return list.map((v) => CustomerViewingModel.fromJson(v as Map<String, dynamic>)).toList();
       }
       return AuthState.isCurrentDemo ? CustomerMockData.viewings : [];
-    } catch (_) {
-      return AuthState.isCurrentDemo ? CustomerMockData.viewings : [];
+    } catch (e) {
+      if (!AuthState.isCurrentDemo) {
+        rethrow;
+      }
+      return CustomerMockData.viewings;
     }
   }
 
@@ -47,8 +50,11 @@ class ViewingService {
         return list.map((v) => ManagerTaskModel.fromViewingJson(v as Map<String, dynamic>)).toList();
       }
       return AuthState.isCurrentDemo ? ManagerMockData.tasks.where((t) => t.type == TaskType.viewing).toList() : [];
-    } catch (_) {
-      return AuthState.isCurrentDemo ? ManagerMockData.tasks.where((t) => t.type == TaskType.viewing).toList() : [];
+    } catch (e) {
+      if (!AuthState.isCurrentDemo) {
+        rethrow;
+      }
+      return ManagerMockData.tasks.where((t) => t.type == TaskType.viewing).toList();
     }
   }
 
@@ -64,7 +70,6 @@ class ViewingService {
         data: {
           'roomId': roomId,
           'scheduledAt': scheduledAt.toUtc().toIso8601String(),
-          'managerNote': note,
         },
       );
 
@@ -73,8 +78,15 @@ class ViewingService {
       CustomerMockData.viewings.insert(0, viewing);
       return viewing;
     } on DioException catch (e) {
-      throw Exception(e.error?.toString() ?? 'Đặt lịch xem phòng không thành công.');
-    } catch (_) {
+      final msg = e.error?.toString() ??
+          (e.response?.data is Map && e.response?.data['detail'] != null
+              ? e.response?.data['detail'].toString()
+              : 'Đặt lịch xem phòng không thành công.');
+      throw Exception(msg);
+    } catch (e) {
+      if (!AuthState.isCurrentDemo) {
+        rethrow;
+      }
       final newViewing = CustomerViewingModel(
         id: DateTime.now().millisecondsSinceEpoch % 10000,
         propertyId: 1,

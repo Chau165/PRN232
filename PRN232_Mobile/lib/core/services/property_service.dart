@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import '../../features/customer/data/customer_mock_data.dart';
 import '../../features/customer/models/customer_models.dart';
+import '../auth/auth_state.dart';
 import '../network/api_endpoints.dart';
 import '../network/dio_client.dart';
 
@@ -13,6 +14,22 @@ class PublicPropertyPageResponse {
   int get totalPages => (totalCount / pageSize).ceil() < 1 ? 1 : (totalCount / pageSize).ceil();
 
   const PublicPropertyPageResponse({
+    required this.items,
+    required this.totalCount,
+    required this.page,
+    required this.pageSize,
+  });
+}
+
+class PublicPropertyRoomPageResponse {
+  final List<RoomItem> items;
+  final int totalCount;
+  final int page;
+  final int pageSize;
+
+  int get totalPages => (totalCount / pageSize).ceil() < 1 ? 1 : (totalCount / pageSize).ceil();
+
+  const PublicPropertyRoomPageResponse({
     required this.items,
     required this.totalCount,
     required this.page,
@@ -159,7 +176,7 @@ class PropertyService {
         final detail = PropertyItem.fromJson(response.data as Map<String, dynamic>);
         // Lấy thêm danh sách phòng của toà nhà này
         try {
-          final rooms = await getPropertyRooms(propertyId);
+          final rooms = await getPropertyRooms(propertyId, pageSize: 50);
           return PropertyItem(
             propertyId: detail.propertyId,
             propertyName: detail.propertyName,
@@ -170,7 +187,7 @@ class PropertyService {
             location: detail.location,
             primaryImageUrl: detail.primaryImageUrl,
             galleryUrls: detail.galleryUrls,
-            availableRoomCount: detail.availableRoomCount,
+            availableRoomCount: rooms.isNotEmpty ? rooms.length : detail.availableRoomCount,
             startingPrice: detail.startingPrice,
             description: detail.description,
             amenities: detail.amenities,
@@ -187,13 +204,68 @@ class PropertyService {
     }
   }
 
+  /// Lấy danh sách phòng thuộc tòa nhà trọ có phân trang (10 phòng / 1 trang)
+  Future<PublicPropertyRoomPageResponse> getPropertyRoomsPaged(
+    int propertyId, {
+    int page = 1,
+    int pageSize = 10,
+    num? minPrice,
+    num? maxPrice,
+    String? roomTypeName,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{
+        'Page': page,
+        'PageSize': pageSize,
+      };
+      if (minPrice != null) queryParams['MinPrice'] = minPrice;
+      if (maxPrice != null) queryParams['MaxPrice'] = maxPrice;
+      if (roomTypeName != null) queryParams['RoomTypeName'] = roomTypeName;
+
+      final response = await _dio.get(
+        ApiEndpoints.publicPropertyRooms(propertyId),
+        queryParameters: queryParams,
+      );
+
+      if (response.data is Map && response.data.containsKey('items') && response.data['items'] is List) {
+        final list = (response.data['items'] as List)
+            .map((r) => RoomItem.fromJson(r as Map<String, dynamic>))
+            .toList();
+        final totalCount = (response.data['totalCount'] as num?)?.toInt() ?? list.length;
+        final resPage = (response.data['page'] as num?)?.toInt() ?? page;
+        final resPageSize = (response.data['pageSize'] as num?)?.toInt() ?? pageSize;
+        return PublicPropertyRoomPageResponse(
+          items: list,
+          totalCount: totalCount,
+          page: resPage,
+          pageSize: resPageSize,
+        );
+      }
+      final mockRooms = CustomerMockData.getPropertyById(propertyId).rooms;
+      return PublicPropertyRoomPageResponse(
+        items: mockRooms,
+        totalCount: mockRooms.length,
+        page: 1,
+        pageSize: pageSize,
+      );
+    } catch (_) {
+      final mockRooms = CustomerMockData.getPropertyById(propertyId).rooms;
+      return PublicPropertyRoomPageResponse(
+        items: AuthState.isCurrentDemo ? mockRooms : [],
+        totalCount: AuthState.isCurrentDemo ? mockRooms.length : 0,
+        page: 1,
+        pageSize: pageSize,
+      );
+    }
+  }
+
   /// Lấy danh sách phòng thuộc tòa nhà trọ
   Future<List<RoomItem>> getPropertyRooms(
     int propertyId, {
     num? minPrice,
     num? maxPrice,
     String? roomTypeName,
-    int pageSize = 100,
+    int pageSize = 50,
   }) async {
     try {
       final queryParams = <String, dynamic>{
@@ -210,13 +282,11 @@ class PropertyService {
 
       if (response.data is Map && response.data.containsKey('items') && response.data['items'] is List) {
         final list = response.data['items'] as List;
-        if (list.isNotEmpty) {
-          return list.map((r) => RoomItem.fromJson(r as Map<String, dynamic>)).toList();
-        }
+        return list.map((r) => RoomItem.fromJson(r as Map<String, dynamic>)).toList();
       }
-      return CustomerMockData.getPropertyById(propertyId).rooms;
+      return AuthState.isCurrentDemo ? CustomerMockData.getPropertyById(propertyId).rooms : [];
     } catch (_) {
-      return CustomerMockData.getPropertyById(propertyId).rooms;
+      return AuthState.isCurrentDemo ? CustomerMockData.getPropertyById(propertyId).rooms : [];
     }
   }
 

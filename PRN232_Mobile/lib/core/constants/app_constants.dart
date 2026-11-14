@@ -4,7 +4,7 @@ class AppConstants {
 
   // Network & Deployment
   static const String appName = 'TrọViệt';
-  static const String railwayApiUrl = 'https://prn232-production.up.railway.app/api';
+  static const String railwayApiUrl = 'https://prn232-production.up.railway.app';
   
   // Storage Keys
   static const String tokenKey = 'troviet_access_token';

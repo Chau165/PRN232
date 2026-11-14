@@ -61,22 +61,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _loginAsDemoCustomer() async {
-    setState(() => _isLoading = true);
-    await authState.loginAsCustomer();
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-    context.go(AppRoutes.customerInitial);
-  }
-
-  Future<void> _loginAsDemoManager() async {
-    setState(() => _isLoading = true);
-    await authState.loginAsManager();
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-    context.go(AppRoutes.managerInitial);
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -199,58 +183,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     text: 'Đăng nhập',
                     isLoading: _isLoading,
                     onPressed: _handleLogin,
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Quick Demo Switcher (Phục vụ Test UI 2 Role tức thì)
-                  AppCard(
-                    color: AppColors.surfaceVariant,
-                    border: const BorderSide(color: AppColors.border),
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.touch_app_outlined,
-                                size: 16, color: AppColors.primary),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Đăng nhập nhanh để test UI:',
-                              style: AppTypography.labelSmall
-                                  .copyWith(color: AppColors.textPrimary),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: AppButton(
-                                text: 'Khách Thuê',
-                                height: 38,
-                                variant: AppButtonVariant.secondary,
-                                icon: const Icon(Icons.person_outline,
-                                    size: 16, color: AppColors.primary),
-                                onPressed: _loginAsDemoCustomer,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: AppButton(
-                                text: 'Quản Lý',
-                                height: 38,
-                                variant: AppButtonVariant.outline,
-                                icon: const Icon(Icons.apartment_outlined,
-                                    size: 16, color: AppColors.primary),
-                                onPressed: _loginAsDemoManager,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
                   ),
                   const SizedBox(height: 24),
 

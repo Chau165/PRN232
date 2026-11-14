@@ -121,7 +121,7 @@ class _CustomerMyRoomScreenState extends State<CustomerMyRoomScreen> {
                 const SizedBox(height: 24),
                 AppButton(
                   text: 'Khám phá phòng trọ ngay',
-                  width: 220,
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
                   icon: const Icon(Icons.search, size: 18, color: Colors.white),
                   onPressed: () => context.go(AppRoutes.customerExplore),
                 ),

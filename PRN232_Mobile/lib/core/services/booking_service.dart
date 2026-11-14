@@ -24,8 +24,11 @@ class BookingService {
         return list.map((b) => CustomerBookingModel.fromJson(b as Map<String, dynamic>)).toList();
       }
       return AuthState.isCurrentDemo ? CustomerMockData.bookings : [];
-    } catch (_) {
-      return AuthState.isCurrentDemo ? CustomerMockData.bookings : [];
+    } catch (e) {
+      if (!AuthState.isCurrentDemo) {
+        rethrow;
+      }
+      return CustomerMockData.bookings;
     }
   }
 
