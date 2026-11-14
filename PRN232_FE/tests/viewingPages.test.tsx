@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import ViewingRequestPage from "@/pages/ViewingRequestPage/ViewingRequestPage"
 import ManagementViewingsPage from "@/pages/ManagementViewingsPage/ManagementViewingsPage"
+import PublicRoomTypeCards from "@/components/property/PublicRoomTypeCards"
 import { ApiError } from "@/api/apiClient"
 import type { ViewingScheduleDto } from "@/types/viewingSchedule"
 import type { PublicRoomDetail } from "@/types/publicBrowsing"
@@ -107,6 +108,30 @@ beforeEach(() => {
 })
 
 describe("ViewingRequestPage", () => {
+  it("opens from a room type card and submits the selected property and room type", async () => {
+    mocks.createViewingSchedule.mockResolvedValue(viewing({ roomId: null, roomCode: null }))
+    render(
+      <MemoryRouter initialEntries={["/property/1/rooms"]}>
+        <Routes>
+          <Route path="/property/:propertyId/rooms" element={<PublicRoomTypeCards propertyId={1} />} />
+          <Route path="/viewing-request" element={<ViewingRequestPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(await screen.findByRole("link", { name: "Đặt lịch xem" }))
+    expect(await screen.findByLabelText("Ngày giờ xem phòng")).toBeTruthy()
+    fireEvent.click(screen.getByLabelText("Để Admin phân công lịch"))
+    fireEvent.click(screen.getByRole("button", { name: "Gửi yêu cầu xem loại phòng" }))
+
+    expect(await screen.findByText(/Chưa có phòng cụ thể được giữ/)).toBeTruthy()
+    expect(mocks.createViewingSchedule).toHaveBeenCalledWith("token", {
+      propertyId: 1,
+      roomTypeId: 3,
+      scheduledAt: null,
+    })
+  })
+
   it("creates a viewing by property and room type without sending a RoomId", async () => {
     mocks.createViewingSchedule.mockResolvedValue(viewing({ roomId: null, roomCode: null }))
     render(

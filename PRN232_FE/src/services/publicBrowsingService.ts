@@ -20,15 +20,21 @@ import type {
   PublicPropertyRoomType,
   PublicRoomDetail,
   PublicRoomListQuery,
+  PublicRoomTypeListQuery,
 } from "@/types/publicBrowsing"
 import {
   buildPropertyListParams,
   buildRoomListParams,
+  buildRoomTypeListParams,
 } from "@/utils/publicBrowsingQuery"
 
 export { PublicApiError }
 export type { PublicApiErrorKind }
-export { buildPropertyListParams, buildRoomListParams }
+export {
+  buildPropertyListParams,
+  buildRoomListParams,
+  buildRoomTypeListParams,
+}
 export type {
   PublicPage,
   PublicPropertyAreaCard,
@@ -40,6 +46,7 @@ export type {
   PublicPropertyRoomType,
   PublicRoomDetail,
   PublicRoomListQuery,
+  PublicRoomTypeListQuery,
 }
 
 function isAbortError(error: unknown): boolean {
@@ -224,7 +231,7 @@ export function createPublicApiClient(
     },
     async listRoomTypes(
       propertyId: number,
-      query: PublicRoomListQuery = {},
+      query: PublicRoomTypeListQuery = {},
       signal?: AbortSignal,
     ): Promise<PublicPropertyRoomType[]> {
       if (!Number.isSafeInteger(propertyId) || propertyId < 1) {
@@ -234,7 +241,7 @@ export function createPublicApiClient(
       }
       return get(
         `/public/properties/${propertyId}/room-types`,
-        buildRoomListParams(query),
+        buildRoomTypeListParams(query),
         signal,
       )
     },

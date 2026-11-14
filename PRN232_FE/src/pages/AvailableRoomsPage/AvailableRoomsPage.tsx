@@ -26,7 +26,6 @@ import {
   type RoomSearchDraft,
 } from "@/utils/publicQueryState"
 import AmenityMultiSelect from "@/components/common/AmenityMultiSelect"
-import PublicRoomTypeCards from "@/components/property/PublicRoomTypeCards"
 import { usePublicAmenities } from "@/hooks/usePublicAmenities"
 import { formatAddress } from "@/utils/publicFormatting"
 
@@ -201,16 +200,6 @@ export default function AvailableRoomsPage() {
               )}
             </header>
 
-            <section className="mt-8" aria-labelledby="available-room-types-title">
-              <h2 id="available-room-types-title" className="font-display text-2xl font-bold text-slate-900">
-                Đặt lịch xem theo loại phòng
-              </h2>
-              <p className="mt-2 text-sm text-slate-500">
-                Bạn chọn loại phòng mong muốn; Manager sẽ xác nhận phòng cụ thể trước khi đặt cọc.
-              </p>
-              <PublicRoomTypeCards propertyId={property.propertyId} />
-            </section>
-
             <form
               onSubmit={submitFilters}
               className="mt-8 rounded-2xl bg-white p-4 shadow-sm"
@@ -218,7 +207,7 @@ export default function AvailableRoomsPage() {
               <h2 className="mb-3 text-[15px] font-semibold text-slate-800">
                 Lọc phòng
               </h2>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <label className="text-[12px] font-medium text-slate-500">
                   Giá tối thiểu
                   <input
@@ -239,17 +228,6 @@ export default function AvailableRoomsPage() {
                     value={draft.maxPrice}
                     onChange={(event) =>
                       updateDraft("maxPrice", event.target.value)
-                    }
-                    className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[13px] text-slate-700"
-                  />
-                </label>
-                <label className="text-[12px] font-medium text-slate-500">
-                  Loại phòng
-                  <input
-                    aria-label="Loại phòng"
-                    value={draft.roomTypeName}
-                    onChange={(event) =>
-                      updateDraft("roomTypeName", event.target.value)
                     }
                     className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-[13px] text-slate-700"
                   />
