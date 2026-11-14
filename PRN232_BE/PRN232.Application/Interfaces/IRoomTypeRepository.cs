@@ -7,6 +7,7 @@ public interface IRoomTypeRepository
     Task<List<RoomTypes>> GetAllAsync();
     Task<RoomTypes?> GetByIdAsync(int id);
     Task<RoomTypes?> GetTrackedByIdAsync(int id);
+    Task<bool> ExistsByNameAsync(string typeName);
     Task<RoomTypes> AddAsync(RoomTypes roomType);
     void Remove(RoomTypes roomType);
     Task<bool> HasRoomsAsync(int roomTypeId);

@@ -19,6 +19,11 @@ export type RoomTypeDto = {
   price: number
 }
 
+export type CreateRoomTypeRequest = {
+  typeName: string
+  price: number
+}
+
 export type RoomImageDto = {
   roomImageId: number
   roomId: number

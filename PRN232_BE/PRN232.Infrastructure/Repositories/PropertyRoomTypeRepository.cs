@@ -18,18 +18,12 @@ public sealed class PropertyRoomTypeRepository : IPropertyRoomTypeRepository
 
     public Task<List<PropertyRoomTypeReadModel>> GetAllByPropertyIdAsync(int propertyId, DateTimeOffset asOfUtc)
     {
-        return GetReadQuery(asOfUtc)
-            .Where(item => item.PropertyId == propertyId)
-            .OrderBy(item => item.RoomTypeName)
-            .ThenBy(item => item.RoomTypeId)
-            .ToListAsync();
+        return GetReadQuery(propertyId, roomTypeId: null, asOfUtc).ToListAsync();
     }
 
     public Task<PropertyRoomTypeReadModel?> GetByIdAsync(int propertyId, int roomTypeId, DateTimeOffset asOfUtc)
     {
-        return GetReadQuery(asOfUtc)
-            .Where(item => item.PropertyId == propertyId && item.RoomTypeId == roomTypeId)
-            .FirstOrDefaultAsync();
+        return GetReadQuery(propertyId, roomTypeId, asOfUtc).FirstOrDefaultAsync();
     }
 
     public Task<PropertyRoomTypes?> GetTrackedByIdAsync(int propertyId, int roomTypeId)
@@ -63,12 +57,25 @@ public sealed class PropertyRoomTypeRepository : IPropertyRoomTypeRepository
 
     public Task SaveChangesAsync() => _context.SaveChangesAsync();
 
-    private IQueryable<PropertyRoomTypeReadModel> GetReadQuery(DateTimeOffset asOfUtc)
+    private IQueryable<PropertyRoomTypeReadModel> GetReadQuery(
+        int propertyId,
+        int? roomTypeId,
+        DateTimeOffset asOfUtc)
     {
+        var configurations = _context.PropertyRoomTypes
+            .AsNoTracking()
+            .Where(item => item.PropertyId == propertyId);
+
+        if (roomTypeId.HasValue)
+        {
+            configurations = configurations.Where(item => item.RoomTypeId == roomTypeId.Value);
+        }
+
         var rentableRooms = RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc);
 
-        return _context.PropertyRoomTypes
-            .AsNoTracking()
+        return configurations
+            .OrderBy(item => item.RoomType!.TypeName)
+            .ThenBy(item => item.RoomTypeId)
             .Select(item => new PropertyRoomTypeReadModel(
                 item.PropertyId,
                 item.RoomTypeId,

@@ -35,6 +35,14 @@ public class RoomTypeRepository : IRoomTypeRepository
         return _context.RoomTypes.FirstOrDefaultAsync(rt => rt.RoomTypeId == id);
     }
 
+    public Task<bool> ExistsByNameAsync(string typeName)
+    {
+        var normalizedName = typeName.ToLower();
+        return _context.RoomTypes
+            .AsNoTracking()
+            .AnyAsync(roomType => roomType.TypeName.ToLower() == normalizedName);
+    }
+
     public async Task<RoomTypes> AddAsync(RoomTypes roomType)
     {
         await _context.RoomTypes.AddAsync(roomType);
