@@ -3,6 +3,8 @@
 > Lập ngày 14/11/2026, sau buổi review với giảng viên. Cả nhóm đã đồng ý rebuild.
 > File này là **nguồn sự thật chung** cho cả nhóm và cho 3 AI (Claude, Antigravity, Codex).
 > Mọi thay đổi nghiệp vụ phải cập nhật vào đây trước khi code.
+>
+> **Bản 2 (14/11/2026):** đã đối chiếu với `main` sau PR #32 của Châu (giá phòng theo khu trọ, địa chỉ 2 cấp, luồng xem phòng mới). Các mục bị ảnh hưởng được đánh dấu **[cập nhật theo main]**.
 
 ---
 
@@ -14,32 +16,38 @@
 | 2 | Hợp đồng chỉ có **1 người** (`Contracts.CustomerId`), không có người ở cùng → không xử lý được ở ghép, chuyển đi | 🔴 Nghiêm trọng | WS4 |
 | 3 | Phòng không có **số người tối đa**; dịch vụ tính theo đầu người bị chặn "not supported yet" | 🔴 Nghiêm trọng | WS2, WS4 |
 | 4 | Validate gần như chỉ "không rỗng" và "> 0" (diện tích 99.999 m², giá phòng 0đ vẫn hợp lệ) | 🟠 Cao | WS1 |
-| 5 | Địa chỉ vẫn 3 cấp, nhập tay tự do; Việt Nam đã bỏ cấp huyện từ 1/7/2025 | 🟠 Cao | WS1 |
+| 5 | ~~Địa chỉ 3 cấp nhập tay~~ → **đã làm phần lớn trên main** (dropdown Tỉnh/Phường, danh mục NSO). Còn thiếu: chưa lưu mã tỉnh/phường, đường cập nhật còn nhận `District` cũ | 🟡 Còn dọn | WS1 |
 | 6 | Không có **audit log** (ai làm gì, lúc nào) | 🟠 Cao | WS5 |
 | 7 | Trả phòng (`TerminateContract`) không quyết toán cọc, không kiểm kê thiết bị | 🟠 Cao | WS3 |
 | 8 | Hợp đồng hết hạn không tự chuyển trạng thái, không nhắc trước | 🟡 Trung bình | WS3 |
 | 9 | Chi tiết phòng / khu trọ hiển thị khác nhau giữa các vai trò; sidebar 13 mục phẳng, không nhóm | 🟡 Trung bình | WS6 |
 | 10 | Ảnh **đã** lưu trên Supabase Storage (không phải DB) — chỉ cần làm rõ khi demo | 🟢 Đã có | WS6 |
+| 11 | **Ứng dụng mobile** (`PRN232_Mobile`, Flutter) gọi cùng API; mọi thay đổi API/luồng đặt cọc đều có thể làm vỡ mobile | 🟠 Cao | Tất cả |
+| 12 | Migration của Châu (`PropertyScopedRoomTypesAndViewingFlow`) **chưa chạy trên DB Live**, các migration của rebuild phải xếp sau | 🟠 Cao | Điều phối |
 
 ---
 
 ## 1. Hiện trạng (kết quả rà soát code)
 
-### 1.1 Validate & dữ liệu đầu vào
+### 1.1 Validate & dữ liệu đầu vào **[cập nhật theo main]**
 - `RoomService` chỉ kiểm tra `RoomCode` không rỗng, `AreaSqm > 0`, trùng mã phòng.
-- `RoomTypeService` chỉ kiểm tra tên không rỗng, giá `>= 0` → **giá 0đ hợp lệ**.
-- `PropertyService` chỉ kiểm tra tên và địa chỉ không rỗng. `Ward`, `District`, `City` là ô nhập tự do (`PropertyFormModal.tsx`).
+- `PropertyRoomTypeService` (mới) chỉ kiểm tra giá thuê `> 0` → **giá 1đ vẫn hợp lệ**. Migration của Châu chỉ đánh dấu cấu hình cũ là "ngừng dùng" khi giá `< 10.000`, nhưng đó chỉ là xử lý dữ liệu cũ, không phải quy tắc nhập mới.
+- `RoomTypeService` (danh mục loại phòng): tên không rỗng, `Price >= 0`. Cột này giờ là dữ liệu legacy.
+- `PropertyService` đã kiểm tra tỉnh/phường theo danh mục (mới), nhưng tên khu trọ và địa chỉ vẫn chỉ cần không rỗng.
 - FluentValidation có trong tech stack nhưng chỉ dùng cho tài khoản (`Validation/AccountValidators.cs`).
 - Không có giới hạn độ dài chuỗi ở phần lớn DTO.
 
-### 1.2 Mô hình phòng
+### 1.2 Mô hình phòng **[cập nhật theo main]**
 - `Rooms`: `RoomCode`, `AreaSqm`, `Status`, `RoomTypeId`. **Không có** `MaxOccupants`, tầng, mô tả.
-- Giá nằm ở `RoomTypes.Price` (mọi phòng cùng loại cùng giá).
-- `Equipments`: tên, ngày lắp, bảo hành, nhà cung cấp, trạng thái. **Không có** giá trị bồi thường, số lượng, tình trạng lúc bàn giao.
+- Giá nay nằm ở `PropertyRoomTypes.MonthlyRent` (mỗi khu trọ có giá riêng cho từng loại phòng, khóa `PropertyId + RoomTypeId`). `Rooms` tham chiếu cặp này. `RoomTypes.Price` còn trong schema nhưng không dùng cho hiển thị.
+- `Bookings.AgreedMonthlyRent` lưu giá thuê đã chốt lúc đặt, hợp đồng lấy từ đây. Booking cũ không có giá chốt (ví dụ Booking 4) sẽ bị chặn tạo hợp đồng cho tới khi có người đối soát.
+- `Equipments`: tên, ngày lắp, bảo hành, nhà cung cấp, trạng thái. **Không có** giá trị bồi thường, số lượng, tình trạng lúc bàn giao. Trang thiết bị nay là **theo từng phòng** (`ManagementRoomEquipmentPage`).
 
-### 1.3 Luồng đặt cọc → hợp đồng (luồng chính)
-Luồng hiện tại:
+### 1.3 Luồng đặt cọc → hợp đồng (luồng chính) **[cập nhật theo main]**
+Luồng hiện tại (đã có thêm luồng xem phòng mới của Châu ở đầu):
 ```
+Khách xin xem phòng theo (khu trọ + loại phòng) → quản lý chọn phòng cụ thể → duyệt lịch
+  → (tùy chọn) đặt cọc từ lịch xem đã duyệt (Booking.ViewingId), giá chốt vào AgreedMonthlyRent
 Khách tạo Booking (Pending, giữ 15 phút)
   → Thanh toán cọc = 1 tháng tiền phòng (Deposited)
   → Giữ phòng 7 ngày (DepositHoldPolicy)
@@ -73,11 +81,14 @@ Vấn đề:
 
 > Các mục có 🔒 cần **cả nhóm chốt** trước khi code workstream đó. Con số in nghiêng là đề xuất, nhóm có thể đổi.
 
-### D1. Địa chỉ 2 cấp
+### D1. Địa chỉ 2 cấp — **phần lớn đã xong trên main (Châu)** **[cập nhật theo main]**
 - Từ 1/7/2025 cấp huyện chấm dứt hoạt động; cả nước còn **34 tỉnh/thành** và **3.321 đơn vị cấp xã** (Nghị quyết 202/2025/QH15).
-- Mô hình mới: `Tỉnh/Thành` → `Xã/Phường/Đặc khu` → `Số nhà, tên đường` (nhập tay).
-- Lưu bảng danh mục `Provinces`, `Wards` (seed từ danh sách chính thức) và `Property` lưu **mã** (`ProvinceCode`, `WardCode`) thay vì chuỗi tự do.
-- Bỏ cột `District` theo kiểu expand → contract: thêm cột mới, chuyển dữ liệu, cập nhật code, rồi mới xóa cột cũ.
+- Đã có: danh mục NSO dạng file JSON (`AdministrativeDivisionCatalog`), `GET /api/locations/provinces` và `/wards`, form tạo khu trọ dùng dropdown Tỉnh → Phường, kiểm tra phường thuộc đúng tỉnh.
+- **Không làm lại** bảng `Provinces`/`Wards` như bản 1 của plan. Dùng tiếp danh mục JSON của Châu.
+- Còn thiếu (chỉ là việc dọn, không phải làm mới):
+  - `Property` chưa lưu `ProvinceCode`/`WardCode`, chỉ lưu tên vào `Ward`/`City`. Nên lưu mã để tìm kiếm và thống kê không phụ thuộc cách viết tên.
+  - Cột `District` vẫn còn (tạo mới ghi chuỗi rỗng) và `UpdatePropertyDto` vẫn nhận `Ward`/`District`/`City` cũ cho khu trọ đời cũ. Cần quyết định có migrate hết khu trọ cũ sang mã rồi bỏ cột hay không.
+  - Endpoint `/api/locations` đang giới hạn `Admin`; nếu khách cũng cần chọn khu vực khi tìm phòng thì phải mở public.
 
 ### D2. Mô hình phòng và validate 🔒
 | Trường | Quy tắc đề xuất | Lý do |
@@ -85,7 +96,7 @@ Vấn đề:
 | `AreaSqm` | *8 – 100 m²*, tối đa 1 chữ số thập phân | Phòng trọ thực tế; chặn 99.999 m² |
 | `MaxOccupants` (mới) | *1 – 10*, và diện tích ≥ *5 m²/người* | Theo đề xuất của Sở Xây dựng TP.HCM (chưa phải luật — dùng làm quy tắc của hệ thống) |
 | `RoomCode` | 1–20 ký tự, chữ/số/`-`/`.`, duy nhất trong khu | |
-| `RoomTypes.Price` | *500.000 – 50.000.000đ*, bội số 1.000 | Chặn 0đ |
+| `PropertyRoomTypes.MonthlyRent` **[đổi đối tượng]** | *500.000 – 50.000.000đ*, bội số 1.000 | Hiện chỉ chặn `<= 0`. Quy tắc này thay cho `RoomTypes.Price` (legacy) |
 | `PropertyName` | 3–150 ký tự | |
 | `AddressText` | 5–255 ký tự | |
 | `Description` | ≤ 2.000 ký tự | |
@@ -166,10 +177,10 @@ Giữ Supabase Storage. Bổ sung:
 | ID | Việc | Owner | Phụ thuộc | Size | Người |
 |----|------|-------|-----------|------|-------|
 | 1.1 | Khung FluentValidation + format lỗi `ValidationProblem` thống nhất | Claude | — | S | |
-| 1.2 | Validator cho Property, Room, RoomType, Equipment, Service rate theo bảng D2 | Claude | 1.1 | M | |
-| 1.3 | Bảng `Provinces`/`Wards` + seed + API danh mục | Claude | — | M | |
-| 1.4 | Migration địa chỉ 2 cấp (expand → migrate → contract `District`) | Claude | 1.3 | M | |
-| 1.5 | FE: form khu trọ và phòng dùng dropdown, hiện lỗi theo field | AG | 1.1, 1.3 | M | |
+| 1.2 | Validator cho Property, Room, **PropertyRoomType**, Equipment, Service rate theo bảng D2 | Claude | 1.1 | M | |
+| ~~1.3~~ | ~~Bảng Provinces/Wards~~ — **Châu đã làm** (danh mục JSON + `/api/locations`). Đã bỏ khỏi plan | — | — | — | Châu |
+| 1.4 | Dọn địa chỉ: lưu `ProvinceCode`/`WardCode` vào `Property`, quyết định số phận cột `District`, mở `/api/locations` cho khách nếu cần | Claude | hỏi Châu | S | |
+| 1.5 | FE: phần form **phòng** và **giá theo khu trọ** dùng dropdown, hiện lỗi theo field (form khu trọ đã có dropdown) | AG | 1.1 | S | |
 | 1.6 | Test validate biên (đúng biên, dưới, trên) cho từng DTO | Codex | 1.2 | M | |
 
 ### WS2 — Mô hình phòng
@@ -182,7 +193,7 @@ Giữ Supabase Storage. Bổ sung:
 ### WS3 — Đặt cọc, hợp đồng, quyết toán (LUỒNG CHÍNH)
 | ID | Việc | Owner | Phụ thuộc | Size | Người |
 |----|------|-------|-----------|------|-------|
-| 3.1 | Booking thêm `MoveInDate`, `OccupantCount`, validate ≤ `MaxOccupants` | Claude | 2.1 | M | |
+| 3.1 | Booking thêm `MoveInDate`, `OccupantCount`, validate ≤ `MaxOccupants` (giữ nguyên `AgreedMonthlyRent` và `ViewingId` của Châu) | Claude | 2.1 | M | |
 | 3.2 | Chính sách hủy theo D3 bước 3 (khách hủy / chủ hủy / quá hạn dọn vào) | Claude | 3.1 | M | |
 | 3.3 | Cọc chuyển thành cọc hợp đồng, bỏ `PrepaidRentCredit` cho HĐ mới | Claude | 3.1 | M | |
 | 3.4 | Trạng thái `Expired` + job nhắc hạn 30 và 7 ngày | Claude | — | S | |
@@ -190,6 +201,7 @@ Giữ Supabase Storage. Bổ sung:
 | 3.6 | **Quyết toán cọc** khi trả phòng (công thức D3 bước 6), báo trước 30 ngày | Claude | 3.3, 3.5 | L | |
 | 3.7 | FE: trang đặt cọc mới, trang trả phòng và quyết toán | AG | 3.1, 3.6 | L | |
 | 3.8 | Test end-to-end toàn luồng: cọc → ký → hóa đơn → trả phòng → hoàn cọc | Codex | 3.6 | L | |
+| 3.9 | Mobile (Flutter): cập nhật màn đặt cọc, hợp đồng, trả phòng theo API mới — hoặc chốt rõ mobile **đóng băng** ở mức nào cho buổi present | Nhóm quyết định | 3.1, 3.6 | M | |
 
 ### WS4 — Người ở cùng & điện nước
 | ID | Việc | Owner | Phụ thuộc | Size | Người |
@@ -240,8 +252,9 @@ Quản trị         Người dùng · Phân công Manager · Báo cáo · Nhậ
 ## 4. Thứ tự thực hiện
 
 ```
-Giai đoạn 0  Chốt các mục 🔒 ở phần 2 (cả nhóm, 1 buổi họp)
+Giai đoạn 0  Chốt các mục 🔒 ở phần 2 (cả nhóm, 1 buổi họp) + hỏi Châu về migration (câu 8)
 Giai đoạn 1  WS1 + WS2           ← nền tảng, mọi thứ khác dựa vào
+             (việc 1.1 không cần migration nên bắt đầu được ngay)
              song song: 6.1 (sidebar), 5.1 (audit lớp 1)
 Giai đoạn 2  WS3                 ← luồng chính, ưu tiên cao nhất
              song song: 6.2, 6.3 (UI)
@@ -259,7 +272,7 @@ Ba AI **không nói chuyện trực tiếp** với nhau. Mọi trao đổi đi q
 | Vai | Được sửa | Không được sửa |
 |-----|----------|----------------|
 | Claude | `PRN232_BE/**` (trừ project test), `docs/rebuild/API-CHANGES.md` | `PRN232_FE/**` |
-| Antigravity | `PRN232_FE/src/**` | `PRN232_BE/**` |
+| Antigravity | `PRN232_FE/src/**` | `PRN232_BE/**`, `PRN232_Mobile/**` |
 | Codex | `PRN232_BE/PRN232.Application.Tests/**`, `PRN232_FE/tests/**`, `docs/rebuild/reviews/**` | Code chính (chỉ đề xuất trong review) |
 
 Quy trình cho mỗi task:
@@ -269,6 +282,14 @@ Quy trình cho mỗi task:
 4. Thành viên phụ trách đọc review, chạy thử, rồi mở PR vào `main`.
 
 **Quy tắc migration:** tại một thời điểm chỉ **một branch** được tạo EF migration. Migration được merge theo thứ tự để không vỡ `AppDbContextModelSnapshot`. DB Supabase dùng chung, nên chỉ chạy migration sau khi PR đã merge.
+
+**Điều kiện đặc biệt từ main:** migration `20261114085610_PropertyScopedRoomTypesAndViewingFlow` của Châu **chưa chạy trên DB Live** và đang chờ backup + rehearsal PostgreSQL 17. Hệ quả cho rebuild:
+- Mọi migration của rebuild phải sinh **sau** migration này (tạo từ nhánh đã có nó, không từ nhánh cũ hơn).
+- Không chạy migration nào của rebuild lên DB Live trước khi migration của Châu được áp dụng.
+- Phần lớn việc BE ở WS2–WS5 cần migration, nên **hỏi Châu lịch áp dụng** ngay từ đầu để tránh nghẽn.
+- Máy local chưa có DB riêng; các test PostgreSQL đang bị bỏ qua (24 test skipped). Nên dựng một PostgreSQL local (Docker) để chạy migration trước khi đụng Supabase dùng chung.
+
+**Mobile:** `PRN232_Mobile` gọi cùng API. Mỗi task đổi hợp đồng API phải ghi vào `API-CHANGES.md` kèm mục "ảnh hưởng mobile". Quyết định ở việc 3.9: cập nhật mobile hay đóng băng.
 
 ---
 
@@ -281,10 +302,14 @@ Quy trình cho mỗi task:
 5. Các con số trong bảng D2 (diện tích, giá, số người) — nhóm đồng ý hay chỉnh?
 6. "Hóa đơn vs thiết bị" — hỏi lại giảng viên xem có đúng cách hiểu ở D6 không.
 7. Phân công thành viên vào cột **Người** ở mục 3.
+8. **Hỏi Châu:** (a) lịch chạy migration `PropertyScopedRoomTypesAndViewingFlow` lên DB Live; (b) khu trọ cũ còn dùng `District` không, có thể migrate hết sang mã tỉnh/phường rồi bỏ cột; (c) `/api/locations` có mở public cho khách không.
+9. **Mobile:** cập nhật theo luồng cọc mới hay đóng băng ở mức nào cho buổi present?
+10. **Giá cũ bất thường:** RoomType 1 giá 3.000đ và Booking 4 (cọc 1.000đ so với hợp đồng 2.000.000đ) đang chờ người đối soát. Ai xử lý trước khi demo?
 
 ---
 
 ## Nguồn tham khảo
+- Tài liệu rollout của Châu trên main: `PRN232_PROPERTY_SCOPED_ROOM_TYPES_ROLLOUT.md`
 - Sắp xếp đơn vị hành chính 2025: [Thư viện Pháp luật – danh sách 3.321 xã/phường](https://thuvienphapluat.vn/hoi-dap-phap-luat/danh-sach-3321-dvhc-cap-xa-cua-34-tinh-thanh-sau-sap-nhap-2025-chi-tiet-ra-sao-138053823.html), [VCCI – kết thúc cấp huyện từ 1/7/2025](https://www.vcci.com.vn/tin-tuc/ket-thuc-hoat-dong-cua-don-vi-hanh-chinh-cap-huyen-tu-ngay-1-7-2025)
 - Giá điện cho người thuê trọ: [VOH – áp giá bậc 3](https://voh.com.vn/tin-tp-ho-chi-minh/tphcm-ap-dung-gia-ban-le-dien-sinh-hoat-bac-3-cho-nguoi-thue-tro-569652.html), [EVNSPC – phạt thu giá điện cao](https://cskh.evnspc.vn/NewLetter/Detail?newId=889)
 - Diện tích phòng trọ: [VnExpress – đề xuất 5 m²/người](https://vnexpress.net/gia-nha-tro-luong-cong-nhan-4778495.html), [Batdongsan wiki – chưa có chuẩn toàn quốc](https://wiki.batdongsan.com.vn/wiki/dien-tich-phong-tro-cdk-784698)
