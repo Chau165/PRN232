@@ -105,6 +105,13 @@ public sealed class PublicPropertyListingApiTests
                 City = "TP.HCM", District = "Thu Duc", Ward = "Linh Trung"
             });
             context.RoomTypes.Add(new RoomTypes { RoomTypeId = 601, TypeName = "Studio", Price = 2_000_000m });
+            context.PropertyRoomTypes.Add(new PropertyRoomTypes
+            {
+                PropertyId = 6,
+                RoomTypeId = 601,
+                MonthlyRent = 2_000_000m,
+                IsActive = true
+            });
             context.Rooms.Add(new Rooms { RoomId = 601, PropertyId = 6, RoomTypeId = 601, RoomCode = "LT-601", AreaSqm = 20m, Status = "Available" });
             await context.SaveChangesAsync();
         }
@@ -816,6 +823,13 @@ public sealed class PublicPropertyListingApiTests
                 AreaSqm = 21m,
                 Status = "Available"
             });
+            context.PropertyRoomTypes.Add(new PropertyRoomTypes
+            {
+                PropertyId = 1,
+                RoomTypeId = 105,
+                MonthlyRent = 3_000_000m,
+                IsActive = true
+            });
             await context.SaveChangesAsync();
         }
 
@@ -1251,6 +1265,16 @@ public sealed class PublicPropertyListingApiTests
                 Room(301, 3, 301, "Available"),
                 Room(302, 3, 302, "Available"),
                 Room(501, 5, 501, "Available"));
+            var roomTypePrices = context.RoomTypes.Local.ToDictionary(roomType => roomType.RoomTypeId, roomType => roomType.Price);
+            context.PropertyRoomTypes.AddRange(context.Rooms.Local
+                .GroupBy(room => new { room.PropertyId, room.RoomTypeId })
+                .Select(group => new PropertyRoomTypes
+                {
+                    PropertyId = group.Key.PropertyId,
+                    RoomTypeId = group.Key.RoomTypeId,
+                    MonthlyRent = roomTypePrices[group.Key.RoomTypeId],
+                    IsActive = true
+                }));
             context.Amenities.AddRange(
                 new Amenities { AmenityId = 1, Name = "Wi-Fi" },
                 new Amenities { AmenityId = 2, Name = "Air conditioning" },

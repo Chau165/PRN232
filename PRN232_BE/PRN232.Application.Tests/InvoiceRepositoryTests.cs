@@ -303,6 +303,7 @@ public sealed class InvoiceRepositoryTests
             User(10, 1, "Customer"));
         context.Properties.Add(new Property { PropertyId = 1, OwnerId = 9, PropertyName = "Sunrise" });
         context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio", Price = 700m });
+        context.PropertyRoomTypes.Add(new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 1, MonthlyRent = 700m, IsActive = true });
         context.Rooms.Add(new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A101" });
         context.Bookings.Add(new Bookings
         {

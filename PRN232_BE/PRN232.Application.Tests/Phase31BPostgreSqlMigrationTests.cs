@@ -161,6 +161,14 @@ public sealed class Phase31BPostgreSqlMigrationTests
         var roomType = new RoomTypes { TypeName = "Phase 3.1B isolated room type", Price = 1m };
         context.RoomTypes.Add(roomType);
         await context.SaveChangesAsync();
+        context.PropertyRoomTypes.Add(new PropertyRoomTypes
+        {
+            PropertyId = firstProperty.PropertyId,
+            RoomTypeId = roomType.RoomTypeId,
+            MonthlyRent = 1m,
+            IsActive = true
+        });
+        await context.SaveChangesAsync();
         var room = new Rooms
         {
             PropertyId = firstProperty.PropertyId,

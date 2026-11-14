@@ -237,6 +237,9 @@ namespace PRN232.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("BookingId"));
 
+                    b.Property<decimal?>("AgreedMonthlyRent")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<int>("CustomerId")
                         .HasColumnType("integer");
 
@@ -253,13 +256,24 @@ namespace PRN232.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int?>("ViewingId")
+                        .HasColumnType("integer");
+
                     b.HasKey("BookingId");
 
                     b.HasIndex("CustomerId");
 
                     b.HasIndex("RoomId");
 
-                    b.ToTable("Bookings");
+                    b.HasIndex("ViewingId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Bookings_ViewingId")
+                        .HasFilter("\"ViewingId\" IS NOT NULL");
+
+                    b.ToTable("Bookings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Bookings_AgreedMonthlyRent_Positive", "\"AgreedMonthlyRent\" IS NULL OR \"AgreedMonthlyRent\" > 0");
+                        });
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Contracts", b =>
@@ -1239,6 +1253,34 @@ namespace PRN232.Infrastructure.Migrations
                     b.ToTable("PropertyManagerAssignments");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.PropertyRoomTypes", b =>
+                {
+                    b.Property<int>("PropertyId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RoomTypeId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<decimal>("MonthlyRent")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("PropertyId", "RoomTypeId");
+
+                    b.HasIndex("RoomTypeId", "IsActive")
+                        .HasDatabaseName("IX_PropertyRoomTypes_RoomTypeId_IsActive");
+
+                    b.ToTable("PropertyRoomTypes", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PropertyRoomTypes_MonthlyRent_Positive", "\"MonthlyRent\" > 0");
+                        });
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.PropertyServiceRates", b =>
                 {
                     b.Property<int>("RateId")
@@ -1413,8 +1455,6 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.HasKey("RoomId");
 
-                    b.HasIndex("PropertyId");
-
                     b.HasIndex("RoomTypeId");
 
                     b.ToTable("Rooms");
@@ -1536,13 +1576,19 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<string>("ManagerNote")
                         .HasColumnType("text");
 
+                    b.Property<int>("PropertyId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("RespondedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int?>("RespondedBy")
                         .HasColumnType("integer");
 
-                    b.Property<int>("RoomId")
+                    b.Property<int?>("RoomId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RoomTypeId")
                         .HasColumnType("integer");
 
                     b.Property<DateTime?>("ScheduledAt")
@@ -1561,7 +1607,12 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.HasIndex("RespondedBy");
 
-                    b.HasIndex("RoomId");
+                    b.HasIndex("RoomTypeId");
+
+                    b.HasIndex("PropertyId", "RoomTypeId")
+                        .HasDatabaseName("IX_ViewingSchedules_PropertyId_RoomTypeId");
+
+                    b.HasIndex("PropertyId", "RoomTypeId", "RoomId");
 
                     b.ToTable("ViewingSchedules", null, t =>
                         {
@@ -1660,9 +1711,16 @@ namespace PRN232.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("PRN232.Domain.Entities.ViewingSchedules", "Viewing")
+                        .WithMany()
+                        .HasForeignKey("ViewingId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Customer");
 
                     b.Navigation("Room");
+
+                    b.Navigation("Viewing");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Contracts", b =>
@@ -2049,6 +2107,25 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("Property");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.PropertyRoomTypes", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Property", "Property")
+                        .WithMany("PropertyRoomTypes")
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.RoomTypes", "RoomType")
+                        .WithMany("PropertyRoomTypes")
+                        .HasForeignKey("RoomTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Property");
+
+                    b.Navigation("RoomType");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.PropertyServiceRates", b =>
                 {
                     b.HasOne("PRN232.Domain.Entities.Property", "Property")
@@ -2131,7 +2208,15 @@ namespace PRN232.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("PRN232.Domain.Entities.PropertyRoomTypes", "PropertyRoomType")
+                        .WithMany("Rooms")
+                        .HasForeignKey("PropertyId", "RoomTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("Property");
+
+                    b.Navigation("PropertyRoomType");
 
                     b.Navigation("RoomType");
                 });
@@ -2171,24 +2256,40 @@ namespace PRN232.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("PRN232.Domain.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("PRN232.Domain.Entities.Users", "RespondedByUser")
                         .WithMany()
                         .HasForeignKey("RespondedBy")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("PRN232.Domain.Entities.Rooms", "Room")
+                    b.HasOne("PRN232.Domain.Entities.RoomTypes", "RoomType")
                         .WithMany()
-                        .HasForeignKey("RoomId")
+                        .HasForeignKey("RoomTypeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Rooms", "Room")
+                        .WithMany("ViewingSchedules")
+                        .HasForeignKey("PropertyId", "RoomTypeId", "RoomId")
+                        .HasPrincipalKey("PropertyId", "RoomTypeId", "RoomId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("AssignedManager");
 
                     b.Navigation("Customer");
 
+                    b.Navigation("Property");
+
                     b.Navigation("RespondedByUser");
 
                     b.Navigation("Room");
+
+                    b.Navigation("RoomType");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Amenities", b =>
@@ -2264,8 +2365,15 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.Navigation("PropertyAmenities");
 
+                    b.Navigation("PropertyRoomTypes");
+
                     b.Navigation("PropertyServiceRates");
 
+                    b.Navigation("Rooms");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.PropertyRoomTypes", b =>
+                {
                     b.Navigation("Rooms");
                 });
 
@@ -2281,6 +2389,8 @@ namespace PRN232.Infrastructure.Migrations
 
             modelBuilder.Entity("PRN232.Domain.Entities.RoomTypes", b =>
                 {
+                    b.Navigation("PropertyRoomTypes");
+
                     b.Navigation("RoomTypeServices");
 
                     b.Navigation("Rooms");
@@ -2297,6 +2407,8 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("RoomAmenities");
 
                     b.Navigation("RoomImages");
+
+                    b.Navigation("ViewingSchedules");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Service", b =>

@@ -29,7 +29,8 @@ public class BookingRefundRequestApiTests
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var now = DateTime.UtcNow;
-        var booking = new Bookings { RoomId = roomId, CustomerId = 10, DepositAmount = 3000000, Status = status, ExpiryDate = now.AddDays(-30) };
+        var booking = new Bookings { RoomId = roomId, CustomerId = 10, DepositAmount = 3000000, AgreedMonthlyRent = 3000000m,
+            Status = status, ExpiryDate = now.AddDays(-30) };
         var payment = new Payments { Booking = booking, UserId = 10, Amount = 3000000, Status = "Success", PaymentMethod = method, PaidAtUtc = now.AddDays(-31) };
         db.Payments.Add(payment);
         await db.SaveChangesAsync();

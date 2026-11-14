@@ -43,6 +43,46 @@ public class ViewingScheduleServiceTests
         Assert.Null(Assert.Single(repository.Added).Viewing.ScheduledAt);
     }
 
+    [Fact]
+    public async Task CreateAsync_accepts_property_and_room_type_without_selecting_a_physical_room()
+    {
+        var repository = new FakeViewingRepository();
+
+        var created = await CreateService(repository).CreateAsync(
+            new CreateViewingScheduleDto(null, Now.AddDays(1), 1, 3),
+            42);
+
+        var added = Assert.Single(repository.Added).Viewing;
+        Assert.Null(added.RoomId);
+        Assert.Equal((1, 3, ViewingStatuses.Pending), (added.PropertyId, added.RoomTypeId, added.Status));
+        Assert.Null(created.RoomId);
+        Assert.Contains(repository.Added.Single().Notifications,
+            notification => notification.Body?.Contains("Sunrise", StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public async Task Assigned_manager_can_list_and_select_a_room_for_an_approved_viewing()
+    {
+        var repository = new FakeViewingRepository
+        {
+            Viewing = SampleViewing(customerId: 10, status: ViewingStatuses.Approved) with
+            {
+                AssignedTo = 7,
+                RoomId = null,
+                RoomCode = null
+            }
+        };
+        var service = CreateService(repository);
+
+        var availableRooms = await service.GetAvailableRoomsAsync(1, 7, RoleNames.Manager);
+        var availableRoom = Assert.Single(availableRooms);
+        Assert.Equal((5, "A-101"), (availableRoom.RoomId, availableRoom.RoomCode));
+
+        var selected = await service.SelectRoomAsync(1, new SelectViewingRoomDto(5), 7, RoleNames.Manager);
+
+        Assert.Equal((5, "A-101"), (selected.RoomId, selected.RoomCode));
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-30)]
@@ -270,12 +310,12 @@ public class ViewingScheduleServiceTests
         new(repository, new FixedTimeProvider(Now), new FakeNotificationService());
 
     private static ViewingScheduleDto SampleViewing(int customerId, string status = ViewingStatuses.Pending) =>
-        new(1, 5, "A-101", 1, "Sunrise", customerId, "Customer", "0900000000", Now.AddDays(1).UtcDateTime, status,
-            null, null, null, null, null, null);
+        new(1, 5, "A-101", 1, "Sunrise", 3, "Premium", 3_000_000m, customerId, "Customer", "0900000000",
+            Now.AddDays(1).UtcDateTime, status, null, null, null, null, null, null);
 
     private sealed class FakeViewingRepository : IViewingScheduleRepository
     {
-        public ViewingRoomReadModel? Room { get; init; } = new(5, "A-101", 7);
+        public ViewingRoomReadModel? Room { get; init; } = new(5, "A-101", 1, 3, 7);
         public ViewingManagerReadModel? Manager { get; init; } = new(7, "Manager A", "0911000000", RoleNames.Manager, true);
         public bool RoomIsRentable { get; init; } = true;
         public bool HasOpenRequest
@@ -290,6 +330,7 @@ public class ViewingScheduleServiceTests
         }
         private ViewingScheduleReadModel? ViewingReadModel => Viewing is null ? null : new ViewingScheduleReadModel(
             Viewing.ViewingId, Viewing.RoomId, Viewing.RoomCode, Viewing.PropertyId, Viewing.PropertyName,
+            Viewing.RoomTypeId, Viewing.RoomTypeName, Viewing.CurrentMonthlyRent,
             Viewing.CustomerId, Viewing.CustomerName, Viewing.CustomerPhone, Viewing.ScheduledAt, Viewing.Status,
             Viewing.AssignedTo, Viewing.AssignedManagerName, Viewing.AssignedManagerPhone, Viewing.ManagerNote,
             Viewing.RespondedBy, Viewing.RespondedAt);
@@ -308,6 +349,11 @@ public class ViewingScheduleServiceTests
         public Task<ViewingRoomReadModel?> GetRoomAsync(int roomId) =>
             Task.FromResult(Room?.RoomId == roomId ? Room : null);
 
+        public Task<ViewingPropertyRoomTypeReadModel?> GetActivePropertyRoomTypeAsync(int propertyId, int roomTypeId) =>
+            Task.FromResult(propertyId == 1 && roomTypeId == 3
+                ? new ViewingPropertyRoomTypeReadModel(1, "Sunrise", 3, "Premium", 3_000_000m)
+                : null);
+
         public Task<ViewingManagerReadModel?> GetManagerAsync(int userId) =>
             Task.FromResult(Manager?.UserId == userId ? Manager : null);
 
@@ -319,13 +365,30 @@ public class ViewingScheduleServiceTests
         public Task<bool> HasOpenRequestAsync(int customerId, int roomId, DateTimeOffset asOfUtc) =>
             Task.FromResult(HasOpenRequest);
 
+        public Task<bool> HasOpenRequestForRoomTypeAsync(int customerId, int propertyId, int roomTypeId, DateTimeOffset asOfUtc) =>
+            Task.FromResult(HasOpenRequest);
+
+        public Task<List<ViewingAvailableRoomReadModel>> GetAvailableRoomsAsync(int propertyId, int roomTypeId, DateTimeOffset asOfUtc) =>
+            Task.FromResult(new List<ViewingAvailableRoomReadModel> { new(5, "A-101", 24m, "Available") });
+
+        public Task<bool> SelectRoomAsync(int viewingId, int managerId, int roomId, DateTimeOffset asOfUtc, Notifications notification)
+        {
+            if (!ManagerHasActivePropertyAssignment || !RoomIsRentable || Viewing is null || Viewing.RoomId.HasValue)
+            {
+                return Task.FromResult(false);
+            }
+            Viewing = Viewing with { RoomId = roomId, RoomCode = Room?.RoomCode };
+            return Task.FromResult(true);
+        }
+
         public Task AddAsync(ViewingSchedules viewing, Func<int, IReadOnlyCollection<Notifications>> notificationFactory)
         {
             viewing.ViewingId = 1;
             var notifications = notificationFactory(viewing.ViewingId);
             Added.Add((viewing, notifications));
-            Viewing = new ViewingScheduleDto(1, viewing.RoomId, Room!.RoomCode, 1, "Sunrise", viewing.CustomerId,
-                "Customer", "0900000000", viewing.ScheduledAt, viewing.Status, null, null, null, null, null, null);
+            Viewing = new ViewingScheduleDto(1, viewing.RoomId, Room?.RoomCode, 1, "Sunrise", 3, "Premium", 3_000_000m,
+                viewing.CustomerId, "Customer", "0900000000", viewing.ScheduledAt, viewing.Status,
+                null, null, null, null, null, null);
             return Task.CompletedTask;
         }
 

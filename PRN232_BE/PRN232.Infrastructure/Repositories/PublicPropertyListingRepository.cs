@@ -73,11 +73,11 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 .Count(),
             StartingPrice = matchingRooms
                 .Where(room => room.PropertyId == property.PropertyId)
-                .Select(room => (decimal?)room.RoomType!.Price)
+                .Select(room => (decimal?)room.PropertyRoomType!.MonthlyRent)
                 .Min(),
             RepresentativeRoomId = matchingRooms
                 .Where(room => room.PropertyId == property.PropertyId)
-                .OrderBy(room => room.RoomType!.Price)
+                .OrderBy(room => room.PropertyRoomType!.MonthlyRent)
                 .ThenBy(room => room.RoomId)
                 .Select(room => (int?)room.RoomId)
                 .FirstOrDefault()
@@ -197,7 +197,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                     .Count(),
                 StartingPrice = rentableRooms
                     .Where(room => room.PropertyId == property.PropertyId)
-                    .Select(room => (decimal?)room.RoomType!.Price)
+                    .Select(room => (decimal?)room.PropertyRoomType!.MonthlyRent)
                     .Min()
             })
             .ToListAsync(cancellationToken);
@@ -279,7 +279,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                     .Count(),
                 StartingPrice = rentableRooms
                     .Where(room => room.PropertyId == property.PropertyId)
-                    .Select(room => (decimal?)room.RoomType!.Price)
+                    .Select(room => (decimal?)room.PropertyRoomType!.MonthlyRent)
                     .Min()
             })
             .FirstOrDefaultAsync(cancellationToken);
@@ -410,10 +410,10 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
         var orderedRooms = criteria.SortBy switch
         {
             "price_asc" => matchingRooms
-                .OrderBy(room => room.RoomType!.Price)
+                .OrderBy(room => room.PropertyRoomType!.MonthlyRent)
                 .ThenBy(room => room.RoomId),
             "price_desc" => matchingRooms
-                .OrderByDescending(room => room.RoomType!.Price)
+                .OrderByDescending(room => room.PropertyRoomType!.MonthlyRent)
                 .ThenBy(room => room.RoomId),
             _ => matchingRooms.OrderBy(room => room.RoomId)
         };
@@ -426,7 +426,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 room.RoomCode,
                 room.RoomTypeId,
                 RoomTypeName = room.RoomType!.TypeName,
-                BaseRent = room.RoomType.Price,
+                BaseRent = room.PropertyRoomType!.MonthlyRent,
                 room.AreaSqm
             })
             .ToListAsync(cancellationToken);
@@ -475,6 +475,127 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
         return new PublicPropertyRoomPageReadModel(items, totalCount, criteria.Page, criteria.PageSize);
     }
 
+    public async Task<List<PublicPropertyRoomTypeReadModel>?> GetRoomTypesAsync(
+        int propertyId,
+        PublicPropertySearchCriteria criteria,
+        DateTimeOffset asOfUtc,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = _context.Database.IsRelational()
+            ? await _context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken)
+            : null;
+
+        var propertyExists = await _context.Properties
+            .AsNoTracking()
+            .AnyAsync(property => property.PropertyId == propertyId, cancellationToken);
+        if (!propertyExists)
+        {
+            return null;
+        }
+
+        var matchingRooms = ApplyRoomFilters(
+            RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc)
+                .Where(room => room.PropertyId == propertyId),
+            criteria);
+
+        var configurations = _context.PropertyRoomTypes
+            .AsNoTracking()
+            .Where(configuration => configuration.PropertyId == propertyId && configuration.IsActive);
+        if (criteria.MinPrice is decimal minimumPrice)
+        {
+            configurations = configurations.Where(configuration => configuration.MonthlyRent >= minimumPrice);
+        }
+        if (criteria.MaxPrice is decimal maximumPrice)
+        {
+            configurations = configurations.Where(configuration => configuration.MonthlyRent <= maximumPrice);
+        }
+        if (criteria.RoomTypeName is not null)
+        {
+            var roomTypeName = criteria.RoomTypeName.ToLowerInvariant();
+            configurations = configurations.Where(configuration =>
+                configuration.RoomType!.TypeName.Trim().ToLower() == roomTypeName);
+        }
+
+        var orderedConfigurations = criteria.SortBy switch
+        {
+            "price_asc" => configurations
+                .OrderBy(configuration => configuration.MonthlyRent)
+                .ThenBy(configuration => configuration.RoomTypeId),
+            "price_desc" => configurations
+                .OrderByDescending(configuration => configuration.MonthlyRent)
+                .ThenBy(configuration => configuration.RoomTypeId),
+            _ => configurations.OrderBy(configuration => configuration.RoomTypeId)
+        };
+
+        var rows = await orderedConfigurations
+            .Select(configuration => new
+            {
+                configuration.PropertyId,
+                PropertyName = configuration.Property!.PropertyName,
+                configuration.RoomTypeId,
+                RoomTypeName = configuration.RoomType!.TypeName,
+                configuration.MonthlyRent,
+                AvailableRoomCount = matchingRooms
+                    .Where(room => room.RoomTypeId == configuration.RoomTypeId)
+                    .Select(room => room.RoomId)
+                    .Distinct()
+                    .Count(),
+                TotalRoomCount = _context.Rooms.Count(room =>
+                    room.PropertyId == configuration.PropertyId &&
+                    room.RoomTypeId == configuration.RoomTypeId),
+                MinimumAreaSqm = _context.Rooms
+                    .Where(room =>
+                        room.PropertyId == configuration.PropertyId &&
+                        room.RoomTypeId == configuration.RoomTypeId)
+                    .Select(room => (decimal?)room.AreaSqm)
+                    .Min(),
+                MaximumAreaSqm = _context.Rooms
+                    .Where(room =>
+                        room.PropertyId == configuration.PropertyId &&
+                        room.RoomTypeId == configuration.RoomTypeId)
+                    .Select(room => (decimal?)room.AreaSqm)
+                    .Max(),
+                ReferenceRoomId = matchingRooms
+                    .Where(room => room.RoomTypeId == configuration.RoomTypeId)
+                    .OrderBy(room => room.RoomId)
+                    .Select(room => (int?)room.RoomId)
+                    .FirstOrDefault()
+            })
+            .ToListAsync(cancellationToken);
+
+        var referenceRoomIds = rows
+            .Where(row => row.ReferenceRoomId.HasValue)
+            .Select(row => row.ReferenceRoomId!.Value)
+            .ToArray();
+        var images = await GetPublicRoomImagesAsync(referenceRoomIds, cancellationToken);
+        var primaryImagesByRoom = images
+            .Where(image => image.IsPrimary)
+            .ToDictionary(image => image.RoomId, image => image.ImageUrl);
+
+        var items = rows
+            .Select(row => new PublicPropertyRoomTypeReadModel(
+                row.PropertyId,
+                row.PropertyName,
+                row.RoomTypeId,
+                row.RoomTypeName,
+                row.MonthlyRent,
+                row.AvailableRoomCount,
+                row.TotalRoomCount,
+                row.MinimumAreaSqm,
+                row.MaximumAreaSqm,
+                row.ReferenceRoomId is int roomId && primaryImagesByRoom.TryGetValue(roomId, out var imageUrl)
+                    ? imageUrl
+                    : null))
+            .ToList();
+
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        return items;
+    }
+
     public async Task<PublicRoomDetailReadModel?> GetRoomDetailAsync(
         int roomId,
         DateTimeOffset asOfUtc,
@@ -493,7 +614,7 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 candidate.AreaSqm,
                 RoomTypeId = candidate.RoomType!.RoomTypeId,
                 RoomType = new PublicRoomTypeReadModel(candidate.RoomType.RoomTypeId, candidate.RoomType.TypeName),
-                BaseRent = candidate.RoomType.Price,
+                BaseRent = candidate.PropertyRoomType!.MonthlyRent,
                 Property = new PublicRoomPropertyReadModel(
                     candidate.Property!.PropertyId,
                     candidate.Property.PropertyName,
@@ -585,11 +706,11 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
     {
         if (criteria.MinPrice is decimal minPrice)
         {
-            rooms = rooms.Where(room => room.RoomType!.Price >= minPrice);
+            rooms = rooms.Where(room => room.PropertyRoomType!.MonthlyRent >= minPrice);
         }
         if (criteria.MaxPrice is decimal maxPrice)
         {
-            rooms = rooms.Where(room => room.RoomType!.Price <= maxPrice);
+            rooms = rooms.Where(room => room.PropertyRoomType!.MonthlyRent <= maxPrice);
         }
         if (criteria.RoomTypeName is not null)
         {

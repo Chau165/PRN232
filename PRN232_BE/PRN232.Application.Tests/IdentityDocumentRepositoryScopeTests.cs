@@ -87,6 +87,13 @@ public sealed class IdentityDocumentRepositoryScopeTests
             new PropertyManagerAssignment { PropertyId = 3, ManagerId = 7 },
             new PropertyManagerAssignment { PropertyId = 3, ManagerId = 8 });
         context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio", Price = 3_000_000m });
+        context.PropertyRoomTypes.AddRange(Enumerable.Range(1, 4).Select(propertyId => new PropertyRoomTypes
+        {
+            PropertyId = propertyId,
+            RoomTypeId = 1,
+            MonthlyRent = 3_000_000m,
+            IsActive = true
+        }));
         context.Rooms.AddRange(
             Room(1, 1, "A101"), Room(2, 2, "B101"), Room(3, 3, "S101"), Room(4, 4, "L101"));
         context.Bookings.AddRange(

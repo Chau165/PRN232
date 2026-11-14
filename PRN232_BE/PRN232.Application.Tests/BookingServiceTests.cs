@@ -442,6 +442,9 @@ public class BookingServiceTests
         public Task<BookingRoomReadModel?> GetRoomAsync(int roomId) =>
             Task.FromResult(Room?.RoomId == roomId ? Room : null);
 
+        public Task<ViewingBookingReadModel?> GetViewingForBookingAsync(int viewingId, int customerId) =>
+            Task.FromResult<ViewingBookingReadModel?>(null);
+
         public Task<bool> AddIfRoomRentableAsync(Bookings booking, Func<int, Notifications> notificationFactory, DateTimeOffset asOfUtc)
         {
             LastAsOfUtc = asOfUtc;

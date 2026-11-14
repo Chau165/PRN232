@@ -13,5 +13,6 @@ public class RoomTypes
     }
 
     public ICollection<Rooms> Rooms { get; set; } = new List<Rooms>();
+    public ICollection<PropertyRoomTypes> PropertyRoomTypes { get; set; } = new List<PropertyRoomTypes>();
     public ICollection<RoomTypeServices> RoomTypeServices { get; set; } = new List<RoomTypeServices>();
 }

@@ -19,7 +19,7 @@ import {
   updateProperty,
   type PropertyWriteRequest,
 } from "@/services/propertyService"
-import { managementPropertyRoomsPath } from "@/constants/routes"
+import { managementPropertyRoomTypesPath, managementPropertyRoomsPath } from "@/constants/routes"
 import type { PropertyManagerAssignmentDto } from "@/types/propertyManagerAssignment"
 import type { PropertyDto } from "@/types/user"
 import { getPropertyManagerAssignmentError } from "@/utils/propertyManagerAssignmentErrors"
@@ -343,6 +343,13 @@ export default function ManagementPropertiesPage() {
                       <>
                         <button
                           type="button"
+                          onClick={() => navigate(managementPropertyRoomTypesPath(property.propertyId))}
+                          className="rounded-lg bg-emerald-50 px-3 py-2 text-[12px] font-bold text-emerald-800"
+                        >
+                          Loại phòng & giá
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => void openPropertyEdit(property)}
                           className="rounded-lg bg-teal-50 px-3 py-2 text-[12px] font-bold text-[#087775]"
                         >
@@ -376,6 +383,7 @@ export default function ManagementPropertiesPage() {
       {propertyDialog && (
         <PropertyFormModal
           mode={propertyDialog}
+          accessToken={accessToken ?? ""}
           initialProperty={editingProperty}
           saving={savingProperty}
           onClose={() => {

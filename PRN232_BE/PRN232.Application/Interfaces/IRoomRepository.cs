@@ -25,6 +25,7 @@ public interface IRoomRepository
     Task<bool> RoomTypeExistsAsync(int roomTypeId);
     Task<bool> RoomCodeExistsAsync(int propertyId, string roomCode, int? excludedRoomId = null);
     Task<bool> HasDependentsAsync(int roomId);
+    Task<bool> HasBookingsOrContractsAsync(int roomId);
     Task SaveChangesAsync();
 
     // ảnh phòng

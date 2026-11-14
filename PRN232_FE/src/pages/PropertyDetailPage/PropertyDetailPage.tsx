@@ -4,6 +4,7 @@ import Footer from "@/components/common/Footer"
 import Icon, { type IconName } from "@/components/common/Icon"
 import Navbar from "@/components/common/Navbar"
 import DetailSection from "@/components/property/DetailSection"
+import PublicRoomTypeCards from "@/components/property/PublicRoomTypeCards"
 import {
   availableRoomsPath,
   parsePositiveRouteId,
@@ -202,7 +203,6 @@ export default function PropertyDetailPage() {
                     ? "Chưa có giá"
                     : formatVnd(property.startingPrice)}
                 </p>
-                {/* Viewings are booked per room, from the room detail; this page only leads to the rooms. */}
                 <Link
                   to={availableRoomsPath(property.propertyId)}
                   className="mt-5 block rounded-lg bg-[#087775] px-4 py-3 text-center text-[13px] font-bold text-white shadow-sm hover:bg-[#066a68]"
@@ -229,6 +229,16 @@ export default function PropertyDetailPage() {
                 </div>
               )}
             </div>
+
+            <section className="mt-10" aria-labelledby="property-room-types-title">
+              <h2 id="property-room-types-title" className="font-display text-2xl font-bold text-slate-900">
+                Loại phòng và giá thuê
+              </h2>
+              <p className="mt-2 text-sm text-slate-500">
+                Giá và tình trạng phòng được tính riêng cho khu trọ này.
+              </p>
+              <PublicRoomTypeCards propertyId={property.propertyId} />
+            </section>
 
             <div className="mt-12">
               <DetailSection title="Giới thiệu">

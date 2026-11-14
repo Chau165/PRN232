@@ -120,6 +120,7 @@ public class RevenueApiTests
         context.PropertyManagerAssignments.AddRange(
             new PropertyManagerAssignment { PropertyId = 2, ManagerId = 8 },
             new PropertyManagerAssignment { PropertyId = 3, ManagerId = 7 });
+        context.PropertyRoomTypes.Add(new PropertyRoomTypes { PropertyId = 2, RoomTypeId = 1, MonthlyRent = 3_000_000m, IsActive = true });
         context.Rooms.Add(new Rooms { RoomId = 3, PropertyId = 2, RoomTypeId = 1, RoomCode = "B101", Status = "Occupied" });
         foreach (var id in new[] { 1, 2 })
         {

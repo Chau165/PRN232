@@ -21,7 +21,7 @@ import type {
 
 vi.mock("@/services/publicBrowsingService", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/services/publicBrowsingService")>()
-  return { ...actual, publicApi: { ...actual.publicApi, listAreas: vi.fn().mockResolvedValue([]), listAmenities: vi.fn().mockResolvedValue([
+  return { ...actual, publicApi: { ...actual.publicApi, listAreas: vi.fn().mockResolvedValue([]), listRoomTypes: vi.fn().mockResolvedValue([]), listAmenities: vi.fn().mockResolvedValue([
     { amenityId: 3, name: "Wi-Fi" }, { amenityId: 9, name: "Máy lạnh" },
   ]) } }
 })
@@ -660,7 +660,7 @@ describe("public property detail and room listing", () => {
       within(dialog)
         .getByRole("link", { name: "Đặt lịch xem phòng" })
         .getAttribute("href"),
-    ).toBe("/viewing-request?roomId=501")
+    ).toBe("/viewing-request?propertyId=17&roomTypeId=2")
     expect(dialog.querySelector("img")).toBeNull()
     expect(requestUrl(fetchMock, 2).pathname).toBe("/api/public/rooms/501")
 

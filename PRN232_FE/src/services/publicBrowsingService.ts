@@ -17,6 +17,7 @@ import type {
   PublicPropertyDetail,
   PublicPropertyListQuery,
   PublicPropertyRoomCard,
+  PublicPropertyRoomType,
   PublicRoomDetail,
   PublicRoomListQuery,
 } from "@/types/publicBrowsing"
@@ -36,6 +37,7 @@ export type {
   PublicPropertyDetail,
   PublicPropertyListQuery,
   PublicPropertyRoomCard,
+  PublicPropertyRoomType,
   PublicRoomDetail,
   PublicRoomListQuery,
 }
@@ -216,6 +218,22 @@ export function createPublicApiClient(
       }
       return get(
         `/public/properties/${propertyId}/rooms`,
+        buildRoomListParams(query),
+        signal,
+      )
+    },
+    async listRoomTypes(
+      propertyId: number,
+      query: PublicRoomListQuery = {},
+      signal?: AbortSignal,
+    ): Promise<PublicPropertyRoomType[]> {
+      if (!Number.isSafeInteger(propertyId) || propertyId < 1) {
+        throw new PublicApiError("validation", "Hãy kiểm tra lại điều kiện tìm kiếm.", {
+          validationErrors: { propertyId: ["Mã khu trọ không hợp lệ."] },
+        })
+      }
+      return get(
+        `/public/properties/${propertyId}/room-types`,
         buildRoomListParams(query),
         signal,
       )

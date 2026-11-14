@@ -23,7 +23,26 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
         return _context.Rooms
             .AsNoTracking()
             .Where(room => room.RoomId == roomId)
-            .Select(room => new ViewingRoomReadModel(room.RoomId, room.RoomCode, room.Property!.OwnerId))
+            .Select(room => new ViewingRoomReadModel(
+                room.RoomId,
+                room.RoomCode,
+                room.PropertyId,
+                room.RoomTypeId,
+                room.Property!.OwnerId))
+            .FirstOrDefaultAsync();
+    }
+
+    public Task<ViewingPropertyRoomTypeReadModel?> GetActivePropertyRoomTypeAsync(int propertyId, int roomTypeId)
+    {
+        return _context.PropertyRoomTypes
+            .AsNoTracking()
+            .Where(item => item.PropertyId == propertyId && item.RoomTypeId == roomTypeId && item.IsActive)
+            .Select(item => new ViewingPropertyRoomTypeReadModel(
+                item.PropertyId,
+                item.Property!.PropertyName,
+                item.RoomTypeId,
+                item.RoomType!.TypeName,
+                item.MonthlyRent))
             .FirstOrDefaultAsync();
     }
 
@@ -64,6 +83,100 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
             viewing.RoomId == roomId &&
             (viewing.Status == ViewingStatuses.Pending || viewing.Status == ViewingStatuses.Approved) &&
             (viewing.ScheduledAt == null || viewing.ScheduledAt > instantUtc));
+    }
+
+    public Task<bool> HasOpenRequestForRoomTypeAsync(
+        int customerId,
+        int propertyId,
+        int roomTypeId,
+        DateTimeOffset asOfUtc)
+    {
+        var instantUtc = asOfUtc.UtcDateTime;
+        return _context.ViewingSchedules.AnyAsync(viewing =>
+            viewing.CustomerId == customerId &&
+            viewing.PropertyId == propertyId &&
+            viewing.RoomTypeId == roomTypeId &&
+            (viewing.Status == ViewingStatuses.Pending || viewing.Status == ViewingStatuses.Approved) &&
+            (viewing.ScheduledAt == null || viewing.ScheduledAt > instantUtc));
+    }
+
+    public Task<List<ViewingAvailableRoomReadModel>> GetAvailableRoomsAsync(
+        int propertyId,
+        int roomTypeId,
+        DateTimeOffset asOfUtc)
+    {
+        return RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc)
+            .Where(room => room.PropertyId == propertyId && room.RoomTypeId == roomTypeId)
+            .OrderBy(room => room.RoomCode)
+            .Select(room => new ViewingAvailableRoomReadModel(
+                room.RoomId,
+                room.RoomCode,
+                room.AreaSqm,
+                room.Status))
+            .ToListAsync();
+    }
+
+    public async Task<bool> SelectRoomAsync(
+        int viewingId,
+        int managerId,
+        int roomId,
+        DateTimeOffset asOfUtc,
+        Notifications notification)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+
+        if (_context.Database.IsNpgsql())
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"ViewingSchedules\" WHERE \"ViewingId\" = {viewingId} FOR UPDATE");
+        }
+
+        var viewing = await _context.ViewingSchedules
+            .Where(item => item.ViewingId == viewingId)
+            .Select(item => new { item.PropertyId, item.RoomTypeId })
+            .FirstOrDefaultAsync();
+        if (viewing is null)
+        {
+            return false;
+        }
+
+        if (_context.Database.IsNpgsql())
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT assignment.\"PropertyId\" FROM \"PropertyManagerAssignments\" assignment WHERE assignment.\"PropertyId\" = {viewing.PropertyId} AND assignment.\"ManagerId\" = {managerId} FOR SHARE");
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"Rooms\" WHERE \"RoomId\" = {roomId} FOR UPDATE");
+        }
+
+        if (!await HasActiveManagerAssignmentAsync(viewing.PropertyId, managerId))
+        {
+            return false;
+        }
+
+        var roomIsRentable = await RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc)
+            .AnyAsync(room => room.RoomId == roomId &&
+                room.PropertyId == viewing.PropertyId &&
+                room.RoomTypeId == viewing.RoomTypeId);
+        if (!roomIsRentable)
+        {
+            return false;
+        }
+
+        var updated = await _context.ViewingSchedules
+            .Where(item => item.ViewingId == viewingId &&
+                item.Status == ViewingStatuses.Approved &&
+                item.AssignedTo == managerId &&
+                item.RoomId == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.RoomId, (int?)roomId));
+        if (updated == 0)
+        {
+            return false;
+        }
+
+        await _context.Notifications.AddAsync(notification);
+        await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return true;
     }
 
     public async Task AddAsync(ViewingSchedules viewing, Func<int, IReadOnlyCollection<Notifications>> notificationFactory)
@@ -114,7 +227,7 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
         {
             var propertyId = await _context.ViewingSchedules
                 .Where(viewing => viewing.ViewingId == viewingId)
-                .Select(viewing => (int?)viewing.Room!.PropertyId)
+                .Select(viewing => (int?)viewing.PropertyId)
                 .FirstOrDefaultAsync();
             if (!propertyId.HasValue)
             {
@@ -162,7 +275,7 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
             .Where(viewing => customerId == null || viewing.CustomerId == customerId)
             .Where(viewing => assignedTo == null ||
                 (viewing.AssignedTo == assignedTo &&
-                 viewing.Room!.Property!.ManagerAssignments.Any(assignment =>
+                 viewing.Property!.ManagerAssignments.Any(assignment =>
                      assignment.ManagerId == assignedTo &&
                       assignment.Manager!.IsActive &&
                      assignment.Manager.Role!.RoleName == RoleNames.Manager)));
@@ -172,9 +285,15 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
         viewing => new ViewingScheduleReadModel(
             viewing.ViewingId,
             viewing.RoomId,
-            viewing.Room!.RoomCode,
-            viewing.Room.PropertyId,
-            viewing.Room.Property!.PropertyName,
+            viewing.Room == null ? null : viewing.Room.RoomCode,
+            viewing.PropertyId,
+            viewing.Property!.PropertyName,
+            viewing.RoomTypeId,
+            viewing.RoomType!.TypeName,
+            viewing.Property.PropertyRoomTypes
+                .Where(item => item.RoomTypeId == viewing.RoomTypeId)
+                .Select(item => (decimal?)item.MonthlyRent)
+                .FirstOrDefault(),
             viewing.CustomerId,
             viewing.Customer!.FullName,
             viewing.Customer.PhoneNumber,

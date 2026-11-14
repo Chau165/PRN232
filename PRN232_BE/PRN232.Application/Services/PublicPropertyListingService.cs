@@ -140,6 +140,36 @@ public sealed class PublicPropertyListingService : IPublicPropertyListingService
         return ConvertToDto(page);
     }
 
+    public async Task<IReadOnlyList<PublicPropertyRoomTypeDto>?> GetRoomTypesAsync(
+        int propertyId,
+        PublicPropertyRoomsQueryDto query,
+        CancellationToken cancellationToken)
+    {
+        var criteria = NormalizeAndValidate(
+            new PublicPropertyQueryDto
+            {
+                MinPrice = query.MinPrice,
+                MaxPrice = query.MaxPrice,
+                RoomTypeName = query.RoomTypeName,
+                AmenityIds = query.AmenityIds,
+                SortBy = query.SortBy,
+                Page = 1,
+                PageSize = MaximumPageSize
+            },
+            "roomtypeid",
+            ["roomtypeid", "price_asc", "price_desc"],
+            "Sort must be roomTypeId, price_asc, or price_desc.");
+        if (criteria.AmenityIds.Length > 0 &&
+            !await _repository.AmenityIdsExistAsync(criteria.AmenityIds, cancellationToken))
+        {
+            throw new PublicPropertyQueryValidationException("amenityIds", "One or more amenity IDs do not exist.");
+        }
+
+        var asOfUtc = _timeProvider.GetUtcNow().ToUniversalTime();
+        var items = await _repository.GetRoomTypesAsync(propertyId, criteria, asOfUtc, cancellationToken);
+        return items?.Select(ConvertToDto).ToArray();
+    }
+
     public async Task<PublicRoomDetailDto?> GetRoomDetailAsync(int roomId, CancellationToken cancellationToken)
     {
         var asOfUtc = _timeProvider.GetUtcNow().ToUniversalTime();
@@ -172,6 +202,18 @@ public sealed class PublicPropertyListingService : IPublicPropertyListingService
             item.RoomId, item.RoomCode, item.RoomTypeId, item.RoomTypeName, item.BaseRent, item.AreaSqm,
             item.PrimaryImageUrl, item.AmenitiesSummary.Select(ConvertToDto).ToArray());
     }
+
+    private static PublicPropertyRoomTypeDto ConvertToDto(PublicPropertyRoomTypeReadModel item) => new(
+        item.PropertyId,
+        item.PropertyName,
+        item.RoomTypeId,
+        item.RoomTypeName,
+        item.MonthlyRent,
+        item.AvailableRoomCount,
+        item.TotalRoomCount,
+        item.MinimumAreaSqm,
+        item.MaximumAreaSqm,
+        item.ReferenceImageUrl);
 
     private static PublicPropertyDetailDto ConvertToDto(PublicPropertyDetailReadModel item)
     {

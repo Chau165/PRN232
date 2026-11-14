@@ -18,6 +18,8 @@ public class Bookings
     {
         get; set;
     }
+    public decimal? AgreedMonthlyRent { get; set; }
+    public int? ViewingId { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime ExpiryDate
     {
@@ -36,6 +38,7 @@ public class Bookings
     {
         get; set;
     }
+    public ViewingSchedules? Viewing { get; set; }
     public ICollection<Payments> Payments { get; set; } = new List<Payments>();
     public ICollection<PaymentRequests> PaymentRequests { get; set; } = new List<PaymentRequests>();
     public ICollection<BookingRefundRequests> RefundRequests { get; set; } = new List<BookingRefundRequests>();

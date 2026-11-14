@@ -101,6 +101,60 @@ public class ViewingSchedulesController : ControllerBase
         }
     }
 
+    [HttpGet("{id:int}/available-rooms")]
+    [Authorize(Roles = RoleNames.Manager)]
+    public async Task<ActionResult<IEnumerable<ViewingAvailableRoomDto>>> GetAvailableRooms(int id)
+    {
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            return Ok(await _viewingService.GetAvailableRoomsAsync(id, userId, role));
+        }
+        catch (ViewingAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
+        catch (ViewingNotFoundException exception)
+        {
+            return NotFound(new ProblemDetails { Title = "Viewing request not found", Detail = exception.Message });
+        }
+    }
+
+    [HttpPut("{id:int}/selected-room")]
+    [Authorize(Roles = RoleNames.Manager)]
+    public async Task<ActionResult<ViewingScheduleDto>> SelectRoom(int id, SelectViewingRoomDto dto)
+    {
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            return Ok(await _viewingService.SelectRoomAsync(id, dto, userId, role));
+        }
+        catch (ViewingBusinessRuleException exception)
+        {
+            return BadRequest(new ProblemDetails { Title = "Invalid selected room", Detail = exception.Message });
+        }
+        catch (ViewingNotFoundException exception)
+        {
+            return NotFound(new ProblemDetails { Title = "Viewing request or room not found", Detail = exception.Message });
+        }
+        catch (ViewingAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
+        catch (ViewingConflictException exception)
+        {
+            return Conflict(new ProblemDetails { Title = "Room cannot be selected", Detail = exception.Message });
+        }
+    }
+
     [HttpPost("{id:int}/approve")]
     [Authorize(Roles = RoleNames.Admin)]
     public Task<ActionResult<ViewingScheduleDto>> Approve(int id, ApproveViewingScheduleDto dto)

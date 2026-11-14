@@ -99,6 +99,7 @@ function renderScopedRoomsPage() {
             }
           />
         </Routes>
+        <LocationProbe />
       </AuthProvider>
     </MemoryRouter>,
   )
@@ -147,6 +148,10 @@ describe("management property and room CRUD", () => {
           return jsonResponse([{ roleId: 2, roleName: "Manager" }])
         if (url.includes("/users?roleId=2")) return jsonResponse({ items: [], page: 1, pageSize: 100, totalCount: 0 })
         if (url.includes("/properties/managers?propertyIds=21")) return jsonResponse([])
+        if (url.endsWith("/locations/provinces"))
+          return jsonResponse([{ provinceCode: "01", provinceName: "Thành phố Hà Nội" }])
+        if (url.includes("/locations/wards?provinceCode=01"))
+          return jsonResponse([{ wardCode: "00004", wardName: "Phường Ba Đình" }])
         if (url.endsWith("/properties") && init?.method === "POST")
           return jsonResponse(property, 201)
         if (url.endsWith("/properties")) return jsonResponse([])
@@ -163,9 +168,18 @@ describe("management property and room CRUD", () => {
     fireEvent.change(screen.getByLabelText("Tên khu trọ"), {
       target: { value: property.propertyName },
     })
-    fireEvent.change(screen.getByLabelText("Địa chỉ"), {
-      target: { value: property.addressText },
+    const province = screen.getByRole("combobox", { name: "Tỉnh/Thành phố" })
+    fireEvent.focus(province)
+    fireEvent.change(province, { target: { value: "Hà Nội" } })
+    fireEvent.click(await screen.findByRole("option", { name: "Thành phố Hà Nội" }))
+    const ward = await screen.findByRole("combobox", { name: "Phường/Xã" })
+    fireEvent.focus(ward)
+    fireEvent.click(await screen.findByRole("option", { name: "Phường Ba Đình" }))
+    fireEvent.change(screen.getByLabelText("Số nhà, tên đường"), {
+      target: { value: "12 đường Lê Lợi" },
     })
+    expect(screen.queryByRole("button", { name: "Kiểm tra vị trí" })).toBeNull()
+    expect(screen.queryByText("Bản đồ xác nhận vị trí")).toBeNull()
     const image = new File([new Uint8Array([1, 2, 3])], "property.png", {
       type: "image/png",
     })
@@ -177,13 +191,18 @@ describe("management property and room CRUD", () => {
     await waitFor(() =>
       expect(calls.some((call) => call.init?.method === "POST")).toBe(true),
     )
-    const createCall = calls.find((call) => call.init?.method === "POST")!
+    const createCall = calls.find(
+      (call) => call.init?.method === "POST" && call.url.endsWith("/properties"),
+    )!
     expect(createCall.url).toMatch(/\/api\/properties$/)
     expect(createCall.init?.body).toBeInstanceOf(FormData)
     const body = createCall.init?.body as FormData
     expect(body.get("ownerId")).toBeNull()
-    expect(body.get("latitude")).toBeNull()
-    expect(body.get("longitude")).toBeNull()
+    expect(body.get("provinceCode")).toBe("01")
+    expect(body.get("wardCode")).toBe("00004")
+    expect(body.get("confirmedLatitude")).toBeNull()
+    expect(body.get("confirmedLongitude")).toBeNull()
+    expect(body.get("addressText")).toBe("12 đường Lê Lợi")
     expect(body.get("propertyName")).toBe(property.propertyName)
     expect(body.get("primaryImage")).toBeInstanceOf(File)
   })
@@ -290,10 +309,12 @@ describe("management property and room CRUD", () => {
           return jsonResponse(room, 201)
         if (url.includes("/rooms?propertyId=21")) return jsonResponse([room])
         if (url.endsWith("/properties")) return jsonResponse([property])
-        if (url.endsWith("/room-types"))
+        if (url.includes("/properties/21/room-types"))
           return jsonResponse([
-            { roomTypeId: 4, typeName: "Studio", price: 3_000_000 },
+            { propertyId: 21, roomTypeId: 4, roomTypeName: "Studio", monthlyRent: 3_000_000, isActive: true, totalRoomCount: 1, availableRoomCount: 1 },
           ])
+        if (url.endsWith("/room-types"))
+          return jsonResponse([{ roomTypeId: 4, typeName: "Studio", price: 3_000_000 }])
         return jsonResponse({ title: "Not Found" }, 404)
       }),
     )
@@ -308,6 +329,7 @@ describe("management property and room CRUD", () => {
     const propertySelect = screen.getByLabelText("Khu trọ") as HTMLSelectElement
     expect(propertySelect.value).toBe(String(property.propertyId))
     expect(propertySelect.disabled).toBe(true)
+    await screen.findByRole("option", { name: "Studio" })
     fireEvent.change(screen.getByLabelText("Loại phòng"), {
       target: { value: "4" },
     })
@@ -355,6 +377,40 @@ describe("management property and room CRUD", () => {
 
     expect(screen.queryByRole("link", { name: "Phòng" })).toBeNull()
     expect(screen.getByRole("link", { name: "Khu trọ" })).toBeTruthy()
+    expect(screen.queryByRole("link", { name: "Thiết bị" })).toBeNull()
+  })
+
+  it("opens equipment for the room's own property and room IDs", async () => {
+    adminSession()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async (input) => {
+        const url = String(input)
+        if (url.endsWith("/users/me")) return jsonResponse(admin)
+        if (url.includes("/rooms?propertyId=21")) return jsonResponse([room])
+        if (url.endsWith("/properties")) return jsonResponse([property])
+        if (url.includes("/properties/21/room-types")) {
+          return jsonResponse([
+            { propertyId: 21, roomTypeId: 4, roomTypeName: "Studio", monthlyRent: 3_000_000, isActive: true, totalRoomCount: 1, availableRoomCount: 1 },
+          ])
+        }
+        if (url.endsWith("/room-types"))
+          return jsonResponse([{ roomTypeId: 4, typeName: "Studio", price: 3_000_000 }])
+        return jsonResponse({ title: "Not Found" }, 404)
+      }),
+    )
+
+    renderScopedRoomsPage()
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Thiết bị Phòng BA-A101",
+      }),
+    )
+
+    expect(screen.getByTestId("location-probe").textContent).toBe(
+      "/management/properties/21/rooms/31/equipment",
+    )
   })
 
   it("loads rooms and creates one with property and room type selected from APIs", async () => {
@@ -370,10 +426,12 @@ describe("management property and room CRUD", () => {
           return jsonResponse(room, 201)
         if (url.endsWith("/rooms")) return jsonResponse([])
         if (url.endsWith("/properties")) return jsonResponse([property])
-        if (url.endsWith("/room-types"))
+        if (url.includes("/properties/21/room-types"))
           return jsonResponse([
-            { roomTypeId: 4, typeName: "Studio", price: 3_000_000 },
+            { propertyId: 21, roomTypeId: 4, roomTypeName: "Studio", monthlyRent: 3_000_000, isActive: true, totalRoomCount: 1, availableRoomCount: 1 },
           ])
+        if (url.endsWith("/room-types"))
+          return jsonResponse([{ roomTypeId: 4, typeName: "Studio", price: 3_000_000 }])
         return jsonResponse({ title: "Not Found" }, 404)
       }),
     )
@@ -383,6 +441,7 @@ describe("management property and room CRUD", () => {
     fireEvent.change(screen.getByLabelText("Khu trọ"), {
       target: { value: String(property.propertyId) },
     })
+    await screen.findByRole("option", { name: "Studio" })
     fireEvent.change(screen.getByLabelText("Loại phòng"), {
       target: { value: "4" },
     })

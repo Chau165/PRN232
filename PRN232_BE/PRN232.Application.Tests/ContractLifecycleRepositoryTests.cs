@@ -196,6 +196,13 @@ public sealed class ContractLifecycleRepositoryTests
             AddressText = "Test address"
         });
         context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio", Price = 3_000_000m });
+        context.PropertyRoomTypes.Add(new PropertyRoomTypes
+        {
+            PropertyId = 1,
+            RoomTypeId = 1,
+            MonthlyRent = 3_000_000m,
+            IsActive = true
+        });
         context.Rooms.Add(new Rooms
         {
             RoomId = 1,

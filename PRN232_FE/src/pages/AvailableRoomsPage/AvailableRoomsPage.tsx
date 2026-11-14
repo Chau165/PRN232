@@ -26,6 +26,7 @@ import {
   type RoomSearchDraft,
 } from "@/utils/publicQueryState"
 import AmenityMultiSelect from "@/components/common/AmenityMultiSelect"
+import PublicRoomTypeCards from "@/components/property/PublicRoomTypeCards"
 import { usePublicAmenities } from "@/hooks/usePublicAmenities"
 import { formatAddress } from "@/utils/publicFormatting"
 
@@ -199,6 +200,16 @@ export default function AvailableRoomsPage() {
                 <p className="mt-2 text-[14px] text-slate-500">{address}</p>
               )}
             </header>
+
+            <section className="mt-8" aria-labelledby="available-room-types-title">
+              <h2 id="available-room-types-title" className="font-display text-2xl font-bold text-slate-900">
+                Đặt lịch xem theo loại phòng
+              </h2>
+              <p className="mt-2 text-sm text-slate-500">
+                Bạn chọn loại phòng mong muốn; Manager sẽ xác nhận phòng cụ thể trước khi đặt cọc.
+              </p>
+              <PublicRoomTypeCards propertyId={property.propertyId} />
+            </section>
 
             <form
               onSubmit={submitFilters}

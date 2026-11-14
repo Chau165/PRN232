@@ -13,8 +13,8 @@ public record BookingDto(
     DateTime ExpiryDate,
     string CustomerPhone,
     int? ContractId, string? RefundStatus = null, bool CanRequestRefund = false, int? LatestPaymentRequestId = null,
-    DateTime? HoldUntilUtc = null, bool CanReleaseRoom = false);
+    DateTime? HoldUntilUtc = null, bool CanReleaseRoom = false, decimal? AgreedMonthlyRent = null);
 
-public record CreateBookingDto(int RoomId);
+public record CreateBookingDto(int RoomId, int? ViewingId = null);
 
 public record PayBookingDto(string PaymentMethod);

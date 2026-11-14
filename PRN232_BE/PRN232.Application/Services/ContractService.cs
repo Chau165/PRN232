@@ -103,6 +103,11 @@ public class ContractService : IContractService
             throw new ContractConflictException(
                 "A successful Booking payment is required before creating a contract.");
         }
+        if (booking.MonthlyRent is not > 0m)
+        {
+            throw new ContractConflictException(
+                "This historical booking has no verified agreed rent. Reconcile the accepted rent before creating a contract.");
+        }
         // The contract records the tenant's contact details.
         await PhoneNumberRequiredException.EnsureAsync(
             _contactLookup, booking.CustomerId, PhoneNumberRequiredException.CustomerMessage);
@@ -117,7 +122,7 @@ public class ContractService : IContractService
             throw new ContractBusinessRuleException("End date must be after the start date.");
         }
 
-        // Giá thuê chốt theo giá phòng lúc lập hợp đồng; tiền cọc là số khách đã trả cho booking.
+        // Contract rent comes from the immutable booking snapshot; the deposit stays the paid amount.
         var contract = ConvertToEntity(dto, booking, userId);
         var notification = new Notifications
         {
@@ -424,7 +429,7 @@ public class ContractService : IContractService
             ProcessedByStaffId = userId,
             StartDate = dto.StartDate,
             EndDate = dto.EndDate,
-            MonthlyRent = booking.MonthlyRent,
+            MonthlyRent = booking.MonthlyRent!.Value,
             DepositAmount = booking.DepositAmount,
             Status = ContractStatuses.Active
         };

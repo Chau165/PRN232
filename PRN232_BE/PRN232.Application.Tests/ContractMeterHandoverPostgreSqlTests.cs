@@ -187,6 +187,13 @@ public class ContractMeterHandoverPostgreSqlTests
         }
         db.Properties.Add(new Property { PropertyId = 1, OwnerId = 8, PropertyName = "Fixture", AddressText = "Fixture" });
         db.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Fixture", Price = 3_000_000m });
+        db.PropertyRoomTypes.Add(new PropertyRoomTypes
+        {
+            PropertyId = 1,
+            RoomTypeId = 1,
+            MonthlyRent = 3_000_000m,
+            IsActive = true
+        });
         for (var id = 1; id <= 4; id++)
         {
             db.Rooms.Add(new Rooms { RoomId = id, PropertyId = 1, RoomTypeId = 1, RoomCode = $"A{id}", Status = RoomStatuses.Occupied });

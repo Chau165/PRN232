@@ -54,8 +54,20 @@ public class BookingService : IBookingService
             throw new BookingNotFoundException("Room does not exist.");
         }
 
+        if (dto.ViewingId.HasValue)
+        {
+            var viewing = await _repository.GetViewingForBookingAsync(dto.ViewingId.Value, customerId);
+            if (viewing is null ||
+                viewing.Status != ViewingStatuses.Approved ||
+                viewing.RoomId != dto.RoomId)
+            {
+                throw new BookingStatusConflictException(
+                    "Booking from a viewing requires your approved viewing and its confirmed physical room.");
+            }
+        }
+
         var now = _timeProvider.GetUtcNow();
-        var booking = CreateBookingEntity(room, customerId, now);
+        var booking = CreateBookingEntity(room, customerId, now, dto.ViewingId);
         Notifications? pendingNotification = null;
 
         if (!await _repository.AddIfRoomRentableAsync(booking, bookingId => pendingNotification = new Notifications
@@ -256,13 +268,19 @@ public class BookingService : IBookingService
         return ConvertToDto(cancelled);
     }
 
-    private static Bookings CreateBookingEntity(BookingRoomReadModel room, int customerId, DateTimeOffset now)
+    private static Bookings CreateBookingEntity(
+        BookingRoomReadModel room,
+        int customerId,
+        DateTimeOffset now,
+        int? viewingId)
     {
         return new Bookings
         {
             RoomId = room.RoomId,
             CustomerId = customerId,
             DepositAmount = room.MonthlyRent,
+            AgreedMonthlyRent = room.MonthlyRent,
+            ViewingId = viewingId,
             Status = BookingStatuses.Pending,
             ExpiryDate = now.Add(PaymentWindow).UtcDateTime
         };
@@ -298,7 +316,7 @@ public class BookingService : IBookingService
             UtcTimestamp.ForResponse(booking.ExpiryDate),
             booking.CustomerPhone,
             booking.ContractId, booking.RefundStatus, booking.CanRequestRefund, booking.LatestPaymentRequestId,
-            UtcTimestamp.ForResponse(holdUntil), canReleaseRoom);
+            UtcTimestamp.ForResponse(holdUntil), canReleaseRoom, booking.AgreedMonthlyRent);
     }
 }
 

@@ -80,6 +80,13 @@ public class RoomAvailabilityTests
     {
         await using var context = await CreateInMemoryContextAsync();
         context.RoomTypes.Add(new RoomTypes { RoomTypeId = 3, TypeName = "Studio", Price = 2_000_000m });
+        context.PropertyRoomTypes.Add(new PropertyRoomTypes
+        {
+            PropertyId = 1,
+            RoomTypeId = 3,
+            MonthlyRent = 2_000_000m,
+            IsActive = true
+        });
         context.Rooms.AddRange(
             CreateRoom(1, propertyId: 1, roomTypeId: 1),
             CreateRoom(2, propertyId: 1, roomTypeId: 2),
@@ -271,6 +278,13 @@ public class RoomAvailabilityTests
         context.RoomTypes.AddRange(
             new RoomTypes { RoomTypeId = 1, TypeName = "Studio", Price = 3_000_000m },
             new RoomTypes { RoomTypeId = 2, TypeName = "Studio", Price = 4_000_000m });
+        context.PropertyRoomTypes.AddRange(
+            new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 1, MonthlyRent = 3_000_000m },
+            new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 2, MonthlyRent = 4_000_000m },
+            new PropertyRoomTypes { PropertyId = 2, RoomTypeId = 1, MonthlyRent = 5_000_000m },
+            new PropertyRoomTypes { PropertyId = 2, RoomTypeId = 2, MonthlyRent = 6_000_000m },
+            new PropertyRoomTypes { PropertyId = 3, RoomTypeId = 1, MonthlyRent = 7_000_000m },
+            new PropertyRoomTypes { PropertyId = 3, RoomTypeId = 2, MonthlyRent = 8_000_000m });
         await context.SaveChangesAsync();
     }
 

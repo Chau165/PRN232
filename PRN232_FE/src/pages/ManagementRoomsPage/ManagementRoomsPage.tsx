@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { useParams } from "react-router"
+import { useNavigate, useParams } from "react-router"
 import { useAuth } from "@/auth/AuthContext"
 import { ApiError } from "@/api/apiClient"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
@@ -23,7 +23,10 @@ import type {
   RoomTypeDto,
   UpdateRoomRequest,
 } from "@/types/managementRoom"
-import { parsePositiveRouteId } from "@/constants/routes"
+import {
+  managementRoomEquipmentPath,
+  parsePositiveRouteId,
+} from "@/constants/routes"
 import { formatVnd } from "@/utils/publicFormatting"
 
 type RoomFilter = "ALL" | "Available" | "Reserved" | "Occupied" | "Maintenance"
@@ -70,6 +73,7 @@ function errorMessage(cause: unknown): string {
 
 export default function ManagementRoomsPage() {
   const { accessToken, user } = useAuth()
+  const navigate = useNavigate()
   const { propertyId: propertyIdParam } = useParams<{ propertyId: string }>()
   const scopedPropertyId = parsePositiveRouteId(propertyIdParam)
   const [rooms, setRooms] = useState<ManagementRoomDto[]>([])
@@ -399,6 +403,21 @@ export default function ManagementRoomsPage() {
                   >
                     Xem
                   </button>
+                  <button
+                    type="button"
+                    aria-label={"Thiết bị Phòng " + room.roomCode}
+                    onClick={() =>
+                      navigate(
+                        managementRoomEquipmentPath(
+                          room.propertyId,
+                          room.roomId,
+                        ),
+                      )
+                    }
+                    className="rounded-lg bg-teal-50 px-3 py-2 text-[12px] font-bold text-[#087775]"
+                  >
+                    Thiết bị
+                  </button>
                   {isAdmin && (
                     <>
                       <button
@@ -438,7 +457,6 @@ export default function ManagementRoomsPage() {
           mode={roomDialog}
           initialRoom={editingRoom}
           properties={formProperties}
-          roomTypes={roomTypes}
           lockedPropertyId={scopedPropertyId ?? undefined}
           saving={savingRoom}
           onClose={() => {

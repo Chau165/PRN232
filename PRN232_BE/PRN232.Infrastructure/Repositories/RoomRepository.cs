@@ -33,7 +33,7 @@ public class RoomRepository : IRoomRepository
             .Where(r => propertyId == null || r.PropertyId == propertyId)
             .Where(r => status == null || r.Status == status)
             .Where(r => city == null || r.Property!.City == city)
-            .Where(r => maxPrice == null || r.RoomType!.Price <= maxPrice)
+            .Where(r => maxPrice == null || r.PropertyRoomType!.MonthlyRent <= maxPrice)
             .Where(r => roomTypeId == null || r.RoomTypeId == roomTypeId)
             .Where(r => normalizedSearch == null || r.RoomCode.ToLower().Contains(normalizedSearch))
             .Where(r => managerId == null || r.Property!.ManagerAssignments.Any(
@@ -47,7 +47,7 @@ public class RoomRepository : IRoomRepository
             r.Property!.PropertyName,
             r.RoomTypeId,
             r.RoomType!.TypeName,
-            r.RoomType.Price,
+            r.PropertyRoomType!.MonthlyRent,
             r.RoomCode,
             r.AreaSqm,
             r.Status,
@@ -70,7 +70,7 @@ public class RoomRepository : IRoomRepository
             r.Property!.PropertyName,
             r.RoomTypeId,
             r.RoomType!.TypeName,
-            r.RoomType.Price,
+            r.PropertyRoomType!.MonthlyRent,
             r.RoomCode,
             r.AreaSqm,
             r.Status,
@@ -87,7 +87,7 @@ public class RoomRepository : IRoomRepository
             room.PropertyId,
             room.RoomTypeId,
             room.RoomType!.TypeName,
-            room.RoomType.Price,
+            room.PropertyRoomType!.MonthlyRent,
             room.RoomCode,
             room.AreaSqm))
             .ToListAsync();
@@ -164,6 +164,12 @@ public class RoomRepository : IRoomRepository
             await _context.RoomImages.AnyAsync(image => image.RoomId == roomId) ||
             await _context.RoomAmenities.AnyAsync(amenity => amenity.RoomId == roomId) ||
             await _context.ViewingSchedules.AnyAsync(viewing => viewing.RoomId == roomId);
+    }
+
+    public async Task<bool> HasBookingsOrContractsAsync(int roomId)
+    {
+        return await _context.Bookings.AnyAsync(booking => booking.RoomId == roomId) ||
+            await _context.Contracts.AnyAsync(contract => contract.RoomId == roomId);
     }
 
     public Task SaveChangesAsync()

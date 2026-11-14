@@ -39,8 +39,43 @@ public sealed class PublicPropertyListingServiceTests
         Assert.Equal(new DateOnly(expectedYear, expectedMonth, 1), repository.CurrentMonthStart);
     }
 
+    [Fact]
+    public async Task Room_type_listing_preserves_property_scoped_rent_and_counts()
+    {
+        var repository = new CapturingPublicPropertyListingRepository
+        {
+            RoomTypesToReturn =
+            [
+                new PublicPropertyRoomTypeReadModel(
+                    10,
+                    "Property A",
+                    3,
+                    "Premium",
+                    3_000_000m,
+                    2,
+                    4,
+                    18m,
+                    22m,
+                    null)
+            ]
+        };
+        var service = new PublicPropertyListingService(repository, TimeProvider.System);
+
+        var result = await service.GetRoomTypesAsync(
+            10,
+            new PublicPropertyRoomsQueryDto { SortBy = "price_asc" },
+            CancellationToken.None);
+
+        var roomType = Assert.Single(result!);
+        Assert.Equal("Property A", roomType.PropertyName);
+        Assert.Equal(3_000_000m, roomType.MonthlyRent);
+        Assert.Equal(2, roomType.AvailableRoomCount);
+        Assert.Equal(4, roomType.TotalRoomCount);
+    }
+
     private sealed class CapturingPublicPropertyListingRepository : IPublicPropertyListingRepository
     {
+        public List<PublicPropertyRoomTypeReadModel>? RoomTypesToReturn { get; init; }
         public DateOnly? CurrentMonthStart
         {
             get; private set;
@@ -88,6 +123,13 @@ public sealed class PublicPropertyListingServiceTests
             DateTimeOffset asOfUtc,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+
+        public Task<List<PublicPropertyRoomTypeReadModel>?> GetRoomTypesAsync(
+            int propertyId,
+            PublicPropertySearchCriteria criteria,
+            DateTimeOffset asOfUtc,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(RoomTypesToReturn);
 
         public Task<PublicRoomDetailReadModel?> GetRoomDetailAsync(
             int roomId,

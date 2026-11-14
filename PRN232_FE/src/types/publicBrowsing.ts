@@ -92,6 +92,19 @@ export interface PublicPropertyRoomCard {
   amenitiesSummary: PublicAmenitySummary[]
 }
 
+export interface PublicPropertyRoomType {
+  propertyId: number
+  propertyName: string
+  roomTypeId: number
+  roomTypeName: string
+  monthlyRent: number
+  availableRoomCount: number
+  totalRoomCount: number
+  minimumAreaSqm: number | null
+  maximumAreaSqm: number | null
+  referenceImageUrl: string | null
+}
+
 export interface PublicRoomDetail {
   roomId: number
   roomCode: string

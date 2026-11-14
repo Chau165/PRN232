@@ -222,6 +222,13 @@ public sealed class RoomImagesApiTests
             }));
             context.Properties.Add(new Property { PropertyId = 1, OwnerId = 101, PropertyName = "Test House", AddressText = "Test address", City = "HCM" });
             context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio", Price = 3000000 });
+            context.PropertyRoomTypes.Add(new PropertyRoomTypes
+            {
+                PropertyId = 1,
+                RoomTypeId = 1,
+                MonthlyRent = 3_000_000m,
+                IsActive = true
+            });
             context.Rooms.Add(new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A101", AreaSqm = 20, Status = "Available" });
             context.PropertyManagerAssignments.Add(new PropertyManagerAssignment { PropertyId = 1, ManagerId = 102 });
             context.SaveChanges();

@@ -123,6 +123,7 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
             return Set<PropertyServiceRates>();
         }
     }
+    public DbSet<PropertyRoomTypes> PropertyRoomTypes => Set<PropertyRoomTypes>();
     public DbSet<Equipments> Equipments
     {
         get
@@ -267,12 +268,46 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
             .HasDatabaseName("UX_Users_GoogleSubject");
         modelBuilder.Entity<Property>().HasKey(x => x.PropertyId);
         modelBuilder.Entity<RoomTypes>().HasKey(x => x.RoomTypeId);
+        modelBuilder.Entity<PropertyRoomTypes>(entity =>
+        {
+            entity.HasKey(item => new { item.PropertyId, item.RoomTypeId });
+            entity.ToTable("PropertyRoomTypes", table => table.HasCheckConstraint(
+                "CK_PropertyRoomTypes_MonthlyRent_Positive",
+                "\"MonthlyRent\" > 0"));
+            entity.Property(item => item.MonthlyRent).HasPrecision(18, 2);
+            entity.Property(item => item.IsActive).HasDefaultValue(true);
+            entity.HasIndex(item => new { item.RoomTypeId, item.IsActive })
+                .HasDatabaseName("IX_PropertyRoomTypes_RoomTypeId_IsActive");
+            entity.HasOne(item => item.Property).WithMany(property => property.PropertyRoomTypes)
+                .HasForeignKey(item => item.PropertyId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(item => item.RoomType).WithMany(roomType => roomType.PropertyRoomTypes)
+                .HasForeignKey(item => item.RoomTypeId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<Service>().HasKey(x => x.ServiceId);
         modelBuilder.Entity<Rooms>().HasKey(x => x.RoomId);
+        modelBuilder.Entity<Rooms>()
+            .HasAlternateKey(room => new { room.PropertyId, room.RoomTypeId, room.RoomId });
+        modelBuilder.Entity<Rooms>()
+            .HasOne(room => room.PropertyRoomType)
+            .WithMany(propertyRoomType => propertyRoomType.Rooms)
+            .HasForeignKey(room => new { room.PropertyId, room.RoomTypeId })
+            .OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<RoomImages>().HasKey(x => x.RoomImageId);
         modelBuilder.Entity<Amenities>().HasKey(x => x.AmenityId);
         modelBuilder.Entity<Equipments>().HasKey(x => x.EquipmentId);
         modelBuilder.Entity<Bookings>().HasKey(x => x.BookingId);
+        modelBuilder.Entity<Bookings>(entity =>
+        {
+            entity.HasIndex(booking => booking.ViewingId)
+                .IsUnique()
+                .HasDatabaseName("UX_Bookings_ViewingId")
+                .HasFilter("\"ViewingId\" IS NOT NULL");
+            entity.ToTable("Bookings", table => table.HasCheckConstraint(
+                "CK_Bookings_AgreedMonthlyRent_Positive",
+                "\"AgreedMonthlyRent\" IS NULL OR \"AgreedMonthlyRent\" > 0"));
+            entity.HasOne(booking => booking.Viewing).WithMany()
+                .HasForeignKey(booking => booking.ViewingId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<Contracts>().HasKey(x => x.ContractId);
         modelBuilder.Entity<UtilityReadings>().HasKey(x => x.ReadingId);
         modelBuilder.Entity<Invoices>().HasKey(x => x.InvoiceId);
@@ -557,8 +592,16 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
                     "\"ManagerNote\" IS NULL OR char_length(\"ManagerNote\") <= 500"));
             }
 
-            entity.HasOne(v => v.Room).WithMany()
-                .HasForeignKey(v => v.RoomId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(viewing => new { viewing.PropertyId, viewing.RoomTypeId })
+                .HasDatabaseName("IX_ViewingSchedules_PropertyId_RoomTypeId");
+            entity.HasOne(v => v.Property).WithMany()
+                .HasForeignKey(v => v.PropertyId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(v => v.RoomType).WithMany()
+                .HasForeignKey(v => v.RoomTypeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(v => v.Room).WithMany(room => room.ViewingSchedules)
+                .HasForeignKey(v => new { v.PropertyId, v.RoomTypeId, v.RoomId })
+                .HasPrincipalKey(room => new { room.PropertyId, room.RoomTypeId, room.RoomId })
+                .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(v => v.Customer).WithMany()
                 .HasForeignKey(v => v.CustomerId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(v => v.AssignedManager).WithMany()

@@ -352,13 +352,13 @@ public class PropertiesController : ControllerBase
                 new CreatePropertyDto(
                     form.PropertyName ?? string.Empty,
                     form.AddressText ?? string.Empty,
-                    form.Ward ?? string.Empty,
-                    form.District ?? string.Empty,
-                    form.City ?? string.Empty,
+                    form.ProvinceCode,
+                    form.WardCode,
                     form.Description),
                 CurrentUserId(),
                 IsAdmin(),
-                await ReadImageAsync(form.PrimaryImage, cancellationToken));
+                await ReadImageAsync(form.PrimaryImage, cancellationToken),
+                cancellationToken);
             return CreatedAtAction(nameof(GetById), new
             {
                 id = created.PropertyId
@@ -367,6 +367,11 @@ public class PropertiesController : ControllerBase
         catch (PropertyValidationException exception)
         {
             return BadRequest(new ProblemDetails { Title = "Invalid property", Detail = exception.Message });
+        }
+        catch (PropertyGeocodingRateLimitedException exception)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new ProblemDetails { Title = "Geocoding rate limited", Detail = exception.Message });
         }
         catch (PropertyGeocodingException exception)
         {
@@ -399,10 +404,13 @@ public class PropertiesController : ControllerBase
                     form.Ward ?? string.Empty,
                     form.District ?? string.Empty,
                     form.City ?? string.Empty,
-                    form.Description),
+                    form.Description,
+                    form.ProvinceCode,
+                    form.WardCode),
                 CurrentUserId(),
                 IsAdmin(),
-                await ReadImageAsync(form.PrimaryImage, cancellationToken));
+                await ReadImageAsync(form.PrimaryImage, cancellationToken),
+                cancellationToken);
             if (updated is null)
             {
                 return NotFound();
@@ -417,6 +425,11 @@ public class PropertiesController : ControllerBase
         catch (PropertyValidationException exception)
         {
             return BadRequest(new ProblemDetails { Title = "Invalid property", Detail = exception.Message });
+        }
+        catch (PropertyGeocodingRateLimitedException exception)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new ProblemDetails { Title = "Geocoding rate limited", Detail = exception.Message });
         }
         catch (PropertyGeocodingException exception)
         {
@@ -530,6 +543,8 @@ public sealed class PropertyWriteForm
     public string? Ward { get; set; }
     public string? District { get; set; }
     public string? City { get; set; }
+    public string? ProvinceCode { get; set; }
+    public string? WardCode { get; set; }
     public string? Description { get; set; }
     public IFormFile? PrimaryImage { get; set; }
 }

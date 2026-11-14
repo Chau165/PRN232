@@ -24,4 +24,13 @@ public sealed record BookingReadModel(
     DateTime ExpiryDate,
     string CustomerPhone,
     int? ContractId, string? RefundStatus = null, bool CanRequestRefund = false, int? LatestPaymentRequestId = null,
-    DateTime? DepositPaidAtUtc = null);
+    DateTime? DepositPaidAtUtc = null,
+    decimal? AgreedMonthlyRent = null);
+
+public sealed record ViewingBookingReadModel(
+    int ViewingId,
+    int? RoomId,
+    int CustomerId,
+    int PropertyId,
+    int RoomTypeId,
+    string Status);

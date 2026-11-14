@@ -38,6 +38,12 @@ public interface IPublicPropertyListingRepository
         DateTimeOffset asOfUtc,
         CancellationToken cancellationToken);
 
+    Task<List<PublicPropertyRoomTypeReadModel>?> GetRoomTypesAsync(
+        int propertyId,
+        PublicPropertySearchCriteria criteria,
+        DateTimeOffset asOfUtc,
+        CancellationToken cancellationToken);
+
     Task<PublicRoomDetailReadModel?> GetRoomDetailAsync(
         int roomId,
         DateTimeOffset asOfUtc,

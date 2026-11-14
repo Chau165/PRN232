@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Link, useLocation } from "react-router"
+import { Link, useLocation, useNavigate } from "react-router"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
@@ -9,6 +9,8 @@ import type { BookingDto } from "@/types/booking"
 import { availableRoomsPath, routes } from "@/constants/routes"
 import { useBookings } from "@/hooks/useBookings"
 import { useViewingSchedules } from "@/hooks/useViewingSchedules"
+import { useAuth } from "@/auth/AuthContext"
+import { createBooking } from "@/services/bookingService"
 import { bookingErrorMessage, bookingStatusDisplay, formatDateTime, isBookingExpired } from "@/utils/bookingDisplay"
 import { formatVnd } from "@/utils/publicFormatting"
 import { viewingStatusDisplay, viewingTimeLabel } from "@/utils/viewingDisplay"
@@ -140,12 +142,33 @@ export default function MyBookingsPage() {
 }
 
 function MyViewings() {
+  const { accessToken } = useAuth()
+  const navigate = useNavigate()
   const { viewings, loading, error, retry } = useViewingSchedules()
+  const [bookingViewingId, setBookingViewingId] = useState<number | null>(null)
+  const [bookingError, setBookingError] = useState("")
   const location = useLocation()
   const requestedViewingId = new URLSearchParams(location.search).get("viewingId")
   const selectedViewingId = requestedViewingId && /^[1-9]\d*$/.test(requestedViewingId) && Number.isSafeInteger(Number(requestedViewingId))
     ? Number(requestedViewingId)
     : null
+
+  async function bookSelectedRoom(viewing: (typeof viewings)[number]) {
+    if (!accessToken || viewing.roomId === null || bookingViewingId !== null) return
+    setBookingViewingId(viewing.viewingId)
+    setBookingError("")
+    try {
+      const booking = await createBooking(accessToken, {
+        roomId: viewing.roomId,
+        viewingId: viewing.viewingId,
+      })
+      navigate(`${routes.deposit}?bookingId=${booking.bookingId}`)
+    } catch (cause) {
+      setBookingError(bookingErrorMessage(cause, "Phòng vừa thay đổi trạng thái; hãy tải lại lịch trước khi đặt cọc."))
+    } finally {
+      setBookingViewingId(null)
+    }
+  }
 
   useEffect(() => {
     if (selectedViewingId === null || loading) return
@@ -180,7 +203,8 @@ function MyViewings() {
                 className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl p-5 shadow-[0_3px_18px_rgba(16,65,67,.07)] ${viewing.viewingId === selectedViewingId ? "bg-teal-50 ring-2 ring-teal-300" : "bg-white"}`}
               >
                 <div>
-                  <p className="font-semibold text-slate-800">{viewing.propertyName} · Phòng {viewing.roomCode}</p>
+                  <p className="font-semibold text-slate-800">{viewing.propertyName} · {viewing.roomTypeName}</p>
+                  {viewing.currentMonthlyRent !== null && <p className="mt-1 text-[13px] text-slate-500">Giá tham khảo hiện tại: {formatVnd(viewing.currentMonthlyRent)}/tháng</p>}
                   <p className="mt-1 text-[13px] text-slate-500">Thời gian: {viewingTimeLabel(viewing)}</p>
                   {viewing.status === "Approved" && viewing.assignedManagerName && (
                     <p className="mt-1 text-[13px] text-slate-600">
@@ -189,7 +213,14 @@ function MyViewings() {
                     </p>
                   )}
                   {viewing.managerNote && <p className="mt-1 whitespace-pre-wrap text-[13px] text-slate-600">{viewing.status === "Rejected" ? "Lý do từ chối" : "Ghi chú"}: {viewing.managerNote}</p>}
-                  <Link to={`${availableRoomsPath(viewing.propertyId)}?roomId=${viewing.roomId}`} className="mt-2 inline-block text-[13px] font-semibold text-[#087775] underline underline-offset-2">Xem phòng {viewing.roomCode}</Link>
+                  {viewing.roomId === null ? (
+                    <p className="mt-2 text-[13px] text-slate-500">Manager chưa chọn phòng cụ thể.</p>
+                  ) : (
+                    <>
+                      <Link to={`${availableRoomsPath(viewing.propertyId)}?roomId=${viewing.roomId}`} className="mt-2 inline-block text-[13px] font-semibold text-[#087775] underline underline-offset-2">Phòng đã xác nhận: {viewing.roomCode}</Link>
+                      {viewing.status === "Approved" && <button type="button" disabled={bookingViewingId !== null} onClick={() => void bookSelectedRoom(viewing)} className="ml-4 rounded-lg bg-[#087775] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{bookingViewingId === viewing.viewingId ? "Đang đặt..." : "Đặt cọc phòng này"}</button>}
+                    </>
+                  )}
                 </div>
                 <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
               </article>
@@ -197,6 +228,7 @@ function MyViewings() {
           })}
         </div>
       )}
+      {bookingError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">{bookingError}</p>}
     </section>
   )
 }

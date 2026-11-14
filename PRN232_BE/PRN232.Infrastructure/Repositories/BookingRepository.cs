@@ -23,7 +23,26 @@ public class BookingRepository : IBookingRepository
         return _context.Rooms
             .AsNoTracking()
             .Where(room => room.RoomId == roomId)
-            .Select(room => new BookingRoomReadModel(room.RoomId, room.RoomCode, room.Property!.OwnerId, room.RoomType!.Price))
+            .Select(room => new BookingRoomReadModel(
+                room.RoomId,
+                room.RoomCode,
+                room.Property!.OwnerId,
+                room.PropertyRoomType!.MonthlyRent))
+            .FirstOrDefaultAsync();
+    }
+
+    public Task<ViewingBookingReadModel?> GetViewingForBookingAsync(int viewingId, int customerId)
+    {
+        return _context.ViewingSchedules
+            .AsNoTracking()
+            .Where(viewing => viewing.ViewingId == viewingId && viewing.CustomerId == customerId)
+            .Select(viewing => new ViewingBookingReadModel(
+                viewing.ViewingId,
+                viewing.RoomId,
+                viewing.CustomerId,
+                viewing.PropertyId,
+                viewing.RoomTypeId,
+                viewing.Status))
             .FirstOrDefaultAsync();
     }
 
@@ -34,15 +53,52 @@ public class BookingRepository : IBookingRepository
 
         if (_context.Database.IsNpgsql())
         {
-            // Khoá dòng phòng tới khi commit: hai khách đặt cùng lúc sẽ xếp hàng, người sau
-            // kiểm tra lại sẽ thấy booking của người trước nên không thể cùng giữ một phòng.
+            // Keep the same lock order as Manager room selection: ViewingSchedule, then Room.
+            if (booking.ViewingId.HasValue)
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT 1 FROM \"ViewingSchedules\" WHERE \"ViewingId\" = {booking.ViewingId.Value} FOR UPDATE");
+            }
+            // Locking Room serializes direct bookings and bookings originating from separate viewings.
             await _context.Database.ExecuteSqlInterpolatedAsync(
                 $"SELECT 1 FROM \"Rooms\" WHERE \"RoomId\" = {booking.RoomId} FOR UPDATE");
+        }
+
+        if (booking.ViewingId.HasValue)
+        {
+            var viewingIsValid = await _context.ViewingSchedules.AnyAsync(viewing =>
+                viewing.ViewingId == booking.ViewingId.Value &&
+                viewing.CustomerId == booking.CustomerId &&
+                viewing.RoomId == booking.RoomId &&
+                viewing.Status == ViewingStatuses.Approved);
+            var alreadyBookedFromViewing = await _context.Bookings.AnyAsync(item => item.ViewingId == booking.ViewingId);
+            if (!viewingIsValid || alreadyBookedFromViewing)
+            {
+                return false;
+            }
         }
 
         var isRentable = await RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc)
             .AnyAsync(room => room.RoomId == booking.RoomId);
         if (!isRentable) return false;
+
+        if (_context.Database.IsNpgsql())
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"PropertyRoomTypes\" WHERE \"PropertyId\" = (SELECT \"PropertyId\" FROM \"Rooms\" WHERE \"RoomId\" = {booking.RoomId}) AND \"RoomTypeId\" = (SELECT \"RoomTypeId\" FROM \"Rooms\" WHERE \"RoomId\" = {booking.RoomId}) AND \"IsActive\" = TRUE FOR SHARE");
+        }
+
+        var agreedMonthlyRent = await _context.Rooms
+            .Where(room => room.RoomId == booking.RoomId &&
+                room.PropertyRoomType != null && room.PropertyRoomType.IsActive)
+            .Select(room => (decimal?)room.PropertyRoomType!.MonthlyRent)
+            .FirstOrDefaultAsync();
+        if (agreedMonthlyRent is not > 0m)
+        {
+            return false;
+        }
+        booking.AgreedMonthlyRent = agreedMonthlyRent.Value;
+        booking.DepositAmount = agreedMonthlyRent.Value;
 
         await _context.Bookings.AddAsync(booking);
         await _context.SaveChangesAsync();
@@ -256,5 +312,6 @@ public class BookingRepository : IBookingRepository
                 payment.ContractId == null && payment.ReadingId == null)
             .OrderBy(payment => payment.PaymentId)
             .Select(payment => payment.PaidAtUtc)
-            .FirstOrDefault());
+            .FirstOrDefault(),
+        booking.AgreedMonthlyRent);
 }

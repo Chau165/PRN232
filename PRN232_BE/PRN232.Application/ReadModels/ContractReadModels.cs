@@ -8,7 +8,7 @@ public sealed record ContractBookingReadModel(
     int OwnerId,
     string Status,
     decimal DepositAmount,
-    decimal MonthlyRent,
+    decimal? MonthlyRent,
     bool HasContract,
     bool HasSuccessfulPayment = false,
     string? LessorName = null,

@@ -155,6 +155,13 @@ public sealed class PropertyRoomCrudTests
             TypeName = "Studio",
             Price = 3_000_000m
         });
+        context.PropertyRoomTypes.Add(new PropertyRoomTypes
+        {
+            PropertyId = 1,
+            RoomTypeId = 1,
+            MonthlyRent = 3_000_000m,
+            IsActive = true
+        });
         await context.SaveChangesAsync();
         return context;
     }

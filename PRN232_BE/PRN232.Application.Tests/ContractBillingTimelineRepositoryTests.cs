@@ -111,6 +111,13 @@ public sealed class ContractBillingTimelineRepositoryTests
             TypeName = "Studio",
             Price = 1_000m
         });
+        context.PropertyRoomTypes.Add(new PropertyRoomTypes
+        {
+            PropertyId = 1,
+            RoomTypeId = 1,
+            MonthlyRent = 1_000m,
+            IsActive = true
+        });
         context.Rooms.AddRange(
             new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A101" },
             new Rooms { RoomId = 2, PropertyId = 1, RoomTypeId = 1, RoomCode = "A102" });

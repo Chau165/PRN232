@@ -12,6 +12,7 @@ public static class RoomAvailabilityQueries
     {
         return rooms
             .AsNoTracking()
+            .Where(room => room.PropertyRoomType != null && room.PropertyRoomType.IsActive)
             .Where(RoomRentabilityPolicy.IsRentableAt(asOfUtc));
     }
 
@@ -34,7 +35,7 @@ public static class RoomAvailabilityQueries
                     .Count(),
                 rentableRooms
                     .Where(room => room.PropertyId == property.PropertyId)
-                    .Select(room => (decimal?)room.RoomType!.Price)
+                    .Select(room => (decimal?)room.PropertyRoomType!.MonthlyRent)
                     .Min()));
     }
 }

@@ -19,5 +19,10 @@ public interface IPublicPropertyListingService
         PublicPropertyRoomsQueryDto query,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<PublicPropertyRoomTypeDto>?> GetRoomTypesAsync(
+        int propertyId,
+        PublicPropertyRoomsQueryDto query,
+        CancellationToken cancellationToken);
+
     Task<PublicRoomDetailDto?> GetRoomDetailAsync(int roomId, CancellationToken cancellationToken);
 }

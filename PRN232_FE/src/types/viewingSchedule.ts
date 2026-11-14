@@ -2,10 +2,13 @@ export type ViewingStatus = "Pending" | "Approved" | "Rejected"
 
 export interface ViewingScheduleDto {
   viewingId: number
-  roomId: number
-  roomCode: string
+  roomId: number | null
+  roomCode: string | null
   propertyId: number
   propertyName: string
+  roomTypeId: number
+  roomTypeName: string
+  currentMonthlyRent: number | null
   customerId: number
   customerName: string
   customerPhone: string
@@ -18,4 +21,11 @@ export interface ViewingScheduleDto {
   managerNote: string | null
   respondedBy: number | null
   respondedAt: string | null
+}
+
+export interface ViewingAvailableRoomDto {
+  roomId: number
+  roomCode: string
+  areaSqm: number
+  status: string
 }

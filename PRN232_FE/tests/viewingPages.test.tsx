@@ -12,7 +12,10 @@ const mocks = vi.hoisted(() => ({
   createViewingSchedule: vi.fn(),
   approveViewingSchedule: vi.fn(),
   rejectViewingSchedule: vi.fn(),
+  getAvailableViewingRooms: vi.fn(),
+  selectViewingRoom: vi.fn(),
   getRoom: vi.fn(),
+  listRoomTypes: vi.fn(),
   getRoles: vi.fn(),
   getUsers: vi.fn(),
   getPropertyManagerAssignments: vi.fn(),
@@ -36,12 +39,14 @@ vi.mock("@/services/viewingScheduleService", () => ({
   createViewingSchedule: mocks.createViewingSchedule,
   approveViewingSchedule: mocks.approveViewingSchedule,
   rejectViewingSchedule: mocks.rejectViewingSchedule,
+  getAvailableViewingRooms: mocks.getAvailableViewingRooms,
+  selectViewingRoom: mocks.selectViewingRoom,
 }))
 vi.mock("@/services/userService", () => ({ getRoles: mocks.getRoles, getUsers: mocks.getUsers }))
 vi.mock("@/services/propertyManagerAssignmentService", () => ({ getPropertyManagerAssignments: mocks.getPropertyManagerAssignments }))
 vi.mock("@/services/publicBrowsingService", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/publicBrowsingService")>()),
-  publicApi: { getRoom: mocks.getRoom },
+  publicApi: { getRoom: mocks.getRoom, listRoomTypes: mocks.listRoomTypes },
 }))
 
 const futureIso = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString()
@@ -49,6 +54,7 @@ const futureLocal = "2099-05-20T09:30"
 
 const viewing = (overrides: Partial<ViewingScheduleDto> = {}): ViewingScheduleDto => ({
   viewingId: 3, roomId: 501, roomCode: "A101", propertyId: 1, propertyName: "Sunrise",
+  roomTypeId: 1, roomTypeName: "Studio", currentMonthlyRent: 3_000_000,
   customerId: 10, customerName: "Nguyễn An", customerPhone: "0908123456",
   scheduledAt: futureIso(1), status: "Pending",
   assignedTo: null, assignedManagerName: null, assignedManagerPhone: null,
@@ -73,19 +79,54 @@ function renderRequestPage() {
 
 beforeEach(() => {
   mocks.approveViewingSchedule.mockReset()
+  mocks.createViewingSchedule.mockReset()
   mocks.rejectViewingSchedule.mockReset()
+  mocks.getAvailableViewingRooms.mockReset()
+  mocks.selectViewingRoom.mockReset()
   mocks.getRoles.mockReset()
   mocks.getUsers.mockReset()
   mocks.getPropertyManagerAssignments.mockReset()
   mocks.getPropertyManagerAssignments.mockResolvedValue([{ propertyId: 1, managerId: 7, managerIsActive: true }])
   mocks.user = { id: "10", name: "Customer A", phone: "0900", role: "CUSTOMER" }
   mocks.getRoom.mockResolvedValue(room)
+  mocks.listRoomTypes.mockResolvedValue([{
+    propertyId: 1,
+    propertyName: "Sunrise",
+    roomTypeId: 3,
+    roomTypeName: "Premium",
+    monthlyRent: 3_000_000,
+    availableRoomCount: 2,
+    totalRoomCount: 4,
+    minimumAreaSqm: 18,
+    maximumAreaSqm: 22,
+    referenceImageUrl: null,
+  }])
   mocks.getViewingSchedules.mockResolvedValue([])
   mocks.getRoles.mockResolvedValue([{ roleId: 2, roleName: "Manager" }])
   mocks.getUsers.mockResolvedValue([{ userId: 7, fullName: "Manager A", phoneNumber: "0911", roleName: "Manager", isActive: true }])
 })
 
 describe("ViewingRequestPage", () => {
+  it("creates a viewing by property and room type without sending a RoomId", async () => {
+    mocks.createViewingSchedule.mockResolvedValue(viewing({ roomId: null, roomCode: null }))
+    render(
+      <MemoryRouter initialEntries={["/viewing-request?propertyId=1&roomTypeId=3"]}>
+        <Routes><Route path="/viewing-request" element={<ViewingRequestPage />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    await screen.findByText("Premium")
+    fireEvent.click(screen.getByLabelText("Để Admin phân công lịch"))
+    fireEvent.click(screen.getByRole("button", { name: "Gửi yêu cầu xem loại phòng" }))
+
+    expect(await screen.findByText(/Chưa có phòng cụ thể được giữ/)).toBeTruthy()
+    expect(mocks.createViewingSchedule).toHaveBeenCalledWith("token", {
+      propertyId: 1,
+      roomTypeId: 3,
+      scheduledAt: null,
+    })
+  })
+
   it("requires a future time and sends the chosen local time as UTC", async () => {
     mocks.createViewingSchedule.mockResolvedValue(viewing({ scheduledAt: new Date(futureLocal).toISOString() }))
     renderRequestPage()
@@ -215,6 +256,36 @@ describe("ManagementViewingsPage", () => {
     await screen.findByText("Nguyễn An")
     expect(screen.queryByRole("button", { name: "Phân công & duyệt" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Từ chối" })).toBeNull()
+  })
+
+  it("lets the assigned Manager select only a currently available room", async () => {
+    mocks.user = { id: "7", name: "Manager A", phone: "0911", role: "MANAGER" }
+    mocks.getViewingSchedules.mockResolvedValue([viewing({
+      status: "Approved",
+      assignedTo: 7,
+      assignedManagerName: "Manager A",
+      roomId: null,
+      roomCode: null,
+    })])
+    mocks.getAvailableViewingRooms.mockResolvedValue([
+      { roomId: 502, roomCode: "A-102", areaSqm: 21, status: "Available" },
+    ])
+    mocks.selectViewingRoom.mockResolvedValue(viewing({
+      status: "Approved",
+      assignedTo: 7,
+      roomId: 502,
+      roomCode: "A-102",
+    }))
+    render(<MemoryRouter><ManagementViewingsPage /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Chọn phòng dẫn khách xem" }))
+    await screen.findByRole("option", { name: "A-102 · 21 m² · Available" })
+    expect(mocks.getAvailableViewingRooms).toHaveBeenCalledWith("token", 3)
+    fireEvent.change(screen.getByLabelText("Phòng đủ điều kiện"), { target: { value: "502" } })
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận phòng" }))
+
+    await screen.findByText("Đã xác nhận phòng dẫn khách xem.")
+    expect(mocks.selectViewingRoom).toHaveBeenCalledWith("token", 3, 502)
   })
 
   it("requires a rejection reason before notifying the customer", async () => {

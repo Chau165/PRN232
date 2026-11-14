@@ -28,6 +28,7 @@ public class MaintenanceRepositoryTests
             User(10, 1, "Customer"));
         context.Properties.Add(new Property { PropertyId = 1, OwnerId = 9, PropertyName = "Assigned property" });
         context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio" });
+        context.PropertyRoomTypes.Add(new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 1, MonthlyRent = 3_000_000m, IsActive = true });
         context.Rooms.Add(new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A101" });
         context.Contracts.Add(new Contracts { ContractId = 1, CustomerId = 10, RoomId = 1 });
         context.PropertyManagerAssignments.Add(new PropertyManagerAssignment
@@ -82,6 +83,7 @@ public class MaintenanceRepositoryTests
             new Users { UserId = 20, RoleId = 1, FullName = "Customer B", IsActive = true });
         context.Properties.Add(new Property { PropertyId = 1, OwnerId = 10 });
         context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio" });
+        context.PropertyRoomTypes.Add(new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 1, MonthlyRent = 3_000_000m, IsActive = true });
         context.Rooms.AddRange(
             new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A-1" },
             new Rooms { RoomId = 2, PropertyId = 1, RoomTypeId = 1, RoomCode = "A-2" });
@@ -137,6 +139,9 @@ public class MaintenanceRepositoryTests
             new Property { PropertyId = 1, OwnerId = 40 },
             new Property { PropertyId = 2, OwnerId = 40 });
         context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio" });
+        context.PropertyRoomTypes.AddRange(
+            new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 1, MonthlyRent = 3_000_000m, IsActive = true },
+            new PropertyRoomTypes { PropertyId = 2, RoomTypeId = 1, MonthlyRent = 3_000_000m, IsActive = true });
         context.Rooms.AddRange(
             new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "A-1" },
             new Rooms { RoomId = 2, PropertyId = 2, RoomTypeId = 1, RoomCode = "B-1" });

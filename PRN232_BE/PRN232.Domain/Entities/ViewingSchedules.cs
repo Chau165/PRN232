@@ -6,7 +6,9 @@ public class ViewingSchedules
     {
         get; set;
     }
-    public int RoomId
+    public int PropertyId { get; set; }
+    public int RoomTypeId { get; set; }
+    public int? RoomId
     {
         get; set;
     }
@@ -29,6 +31,8 @@ public class ViewingSchedules
     {
         get; set;
     }
+    public Property? Property { get; set; }
+    public RoomTypes? RoomType { get; set; }
     public Users? Customer
     {
         get; set;

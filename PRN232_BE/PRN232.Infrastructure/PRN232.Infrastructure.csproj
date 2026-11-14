@@ -25,4 +25,10 @@
     <ProjectReference Include="..\PRN232.Application\PRN232.Application.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="AdministrativeDivisions\vietnam-administrative-divisions-2026-11-14.json">
+      <LogicalName>PRN232.Infrastructure.AdministrativeDivisions.vietnam-administrative-divisions-2026-11-14.json</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>
