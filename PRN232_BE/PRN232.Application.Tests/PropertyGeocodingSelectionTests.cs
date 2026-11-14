@@ -262,10 +262,6 @@ public sealed class PropertyGeocodingSelectionTests
             new UpdatePropertyDto(
                 "BVO mới",
                 "66A, Nguyễn Thái Học",
-                "Phường Cầu Ông Lãnh",
-                string.Empty,
-                "Thành phố Hồ Chí Minh",
-                null,
                 "79",
                 "26758"),
             requestingUserId: 10,
@@ -304,10 +300,6 @@ public sealed class PropertyGeocodingSelectionTests
             new UpdatePropertyDto(
                 "BVO đổi tên",
                 "65D, Nguyễn Thái Học",
-                "Phường Cầu Ông Lãnh",
-                string.Empty,
-                "Thành phố Hồ Chí Minh",
-                null,
                 "79",
                 "26758"),
             requestingUserId: 10,

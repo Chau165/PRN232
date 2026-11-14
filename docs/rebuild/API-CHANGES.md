@@ -107,14 +107,19 @@ Ba con số trần do BE cấu hình (`UtilityPriceLimits`) và **sẽ đổi** 
 ---
 
 <a id="c4"></a>
-## C4 — Sắp tới: địa chỉ chỉ còn 2 cấp · ⏳ chưa làm (việc 1.4)
+## C4 — Địa chỉ chỉ còn 2 cấp · ✅ phần 1 đã có (việc 1.4), phần 2 ⏳
 
-Nhóm đã chốt: **mọi địa chỉ trong hệ thống là địa chỉ sau sáp nhập** (Tỉnh/Thành → Xã/Phường/Đặc khu). Dự kiến thay đổi, **chưa** có trên BE:
-- `GET /api/locations/provinces` và `/wards` mở cho **mọi người** (không cần đăng nhập), để trang tìm phòng dùng chung danh mục.
-- `PropertyDto` trả thêm `provinceCode`, `wardCode`; bỏ `district`.
-- Tạo và sửa khu trọ **đều** bắt buộc `provinceCode` + `wardCode`; form sửa không còn nhận `ward`/`district`/`city` dạng chữ.
+Nhóm đã chốt: **mọi địa chỉ trong hệ thống là địa chỉ sau sáp nhập** (Tỉnh/Thành → Xã/Phường/Đặc khu).
 
-FE chưa cần làm gì cho C4. Khi BE xong, mục này sẽ đổi thành ✅ kèm chi tiết.
+**Phần 1 — đã có:**
+- `GET /api/locations/provinces` → `[{ provinceCode, provinceName }]` và `GET /api/locations/wards?provinceCode=79` → `[{ wardCode, wardName }]` nay **không cần đăng nhập** (trước đây chỉ Admin).
+- `PropertyDto` (mọi API trả khu trọ cho Admin/Manager) có thêm `provinceCode`, `wardCode`. Cả 32 khu trọ trên DB Live đã được gán mã (migration `AddPropertyAdministrativeCodes`).
+- `POST/PUT /api/properties` (multipart): form **không còn nhận** `ward`, `district`, `city` dạng chữ (gửi lên sẽ bị bỏ qua). Chỉ dùng `provinceCode` + `wardCode`.
+  - Tạo: bắt buộc cả hai mã (như trước).
+  - Sửa: gửi cả hai mã → lưu mã và tên chuẩn. **Không gửi mã** → giữ nguyên tỉnh/phường đang lưu, nhưng khi đó **không được đổi** `addressText`.
+- Việc FE: form sửa khu trọ **chọn sẵn** tỉnh/phường từ `provinceCode`/`wardCode` của khu trọ (thay vì đoán từ tên), và **luôn gửi** hai mã. Ngừng gửi `ward`/`district`/`city`.
+
+**Phần 2 — chưa làm (cần nhóm xác nhận trước khi xóa cột):** bỏ hẳn field `district` khỏi mọi response (cả API công khai `/api/public/...`) và xóa cột `District` trong DB. FE nên **ngừng hiển thị** `district` ngay từ bây giờ.
 
 ---
 

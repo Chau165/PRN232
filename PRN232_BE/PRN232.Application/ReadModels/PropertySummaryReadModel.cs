@@ -13,4 +13,6 @@ public sealed record PropertySummaryReadModel(
     decimal Longitude,
     int RoomCount,
     string? PrimaryImageUrl = null,
-    string? Description = null);
+    string? Description = null,
+    string ProvinceCode = "",
+    string WardCode = "");

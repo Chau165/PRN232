@@ -23,6 +23,9 @@ public class Property
     public string Ward { get; set; } = string.Empty;
     public string District { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
+    // Mã đơn vị hành chính sau sáp nhập (danh mục NSO). Rỗng = khu trọ cũ chưa được gán mã.
+    public string ProvinceCode { get; set; } = string.Empty;
+    public string WardCode { get; set; } = string.Empty;
     public decimal Latitude
     {
         get; set;

@@ -1212,7 +1212,15 @@ namespace PRN232.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("ProvinceCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Ward")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("WardCode")
                         .IsRequired()
                         .HasColumnType("text");
 

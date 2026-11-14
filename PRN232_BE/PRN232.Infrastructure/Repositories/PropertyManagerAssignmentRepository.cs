@@ -195,7 +195,9 @@ public sealed class PropertyManagerAssignmentRepository : IPropertyManagerAssign
                 property.Longitude,
                 property.Rooms.Count,
                 property.PrimaryImageUrl,
-                property.Description))
+                property.Description,
+                property.ProvinceCode,
+                property.WardCode))
             .ToListAsync(cancellationToken);
     }
 
@@ -230,7 +232,9 @@ public sealed class PropertyManagerAssignmentRepository : IPropertyManagerAssign
                     assignment.Property.Longitude,
                     assignment.Property.Rooms.Count,
                     assignment.Property.PrimaryImageUrl,
-                    assignment.Property.Description)))
+                    assignment.Property.Description,
+                    assignment.Property.ProvinceCode,
+                    assignment.Property.WardCode)))
             .ToListAsync(cancellationToken);
     }
 

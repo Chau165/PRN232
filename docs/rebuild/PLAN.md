@@ -184,7 +184,7 @@ Giữ Supabase Storage. Bổ sung:
 | 1.1 | Khung FluentValidation + format lỗi `ValidationProblem` thống nhất | Claude | — | S | |
 | 1.2 | Validator cho Property, Room, **PropertyRoomType**, Equipment, Service rate theo bảng D2 | Claude | 1.1 | M | |
 | ~~1.3~~ | ~~Bảng Provinces/Wards~~ — **Châu đã làm** (danh mục JSON + `/api/locations`). Đã bỏ khỏi plan | — | — | — | Châu |
-| 1.4 | Dọn địa chỉ: lưu `ProvinceCode`/`WardCode` vào `Property`, quyết định số phận cột `District`, mở `/api/locations` cho khách nếu cần | Claude | hỏi Châu | S | |
+| 1.4 | Dọn địa chỉ: lưu `ProvinceCode`/`WardCode` vào `Property` ✅, gán mã cho 32 khu trọ Live ✅, mở `/api/locations` cho khách ✅; **còn:** xóa cột `District` (nhóm chốt: mọi địa chỉ là sau sáp nhập) | Claude | — | S | |
 | 1.5 | FE: phần form **phòng** và **giá theo khu trọ** dùng dropdown, hiện lỗi theo field (form khu trọ đã có dropdown) | AG | 1.1 | S | |
 | 1.6 | Test validate biên (đúng biên, dưới, trên) cho từng DTO | Codex | 1.2 | M | |
 

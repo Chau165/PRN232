@@ -401,12 +401,9 @@ public class PropertiesController : ControllerBase
                 new UpdatePropertyDto(
                     form.PropertyName ?? string.Empty,
                     form.AddressText ?? string.Empty,
-                    form.Ward ?? string.Empty,
-                    form.District ?? string.Empty,
-                    form.City ?? string.Empty,
-                    form.Description,
                     form.ProvinceCode,
-                    form.WardCode),
+                    form.WardCode,
+                    form.Description),
                 CurrentUserId(),
                 IsAdmin(),
                 await ReadImageAsync(form.PrimaryImage, cancellationToken),
@@ -540,9 +537,6 @@ public sealed class PropertyWriteForm
 {
     public string? PropertyName { get; set; }
     public string? AddressText { get; set; }
-    public string? Ward { get; set; }
-    public string? District { get; set; }
-    public string? City { get; set; }
     public string? ProvinceCode { get; set; }
     public string? WardCode { get; set; }
     public string? Description { get; set; }
