@@ -404,6 +404,11 @@ builder.Services.AddScoped<IInvoiceComplaintService, InvoiceComplaintService>();
 // Rebuild 1.1: mọi AbstractValidator<T> trong Application được đăng ký và tự chạy qua
 // FluentValidationFilter cho các action nhận T.
 builder.Services.AddValidatorsFromAssemblyContaining<RegisterDtoValidator>();
+// Validator cho form multipart của tầng Api (ví dụ PropertyWriteForm).
+builder.Services.AddValidatorsFromAssemblyContaining<FluentValidationFilter>();
+// Trần giá điện nước (rebuild D5); thiếu mục này trong appsettings thì dùng giá trị mặc định.
+builder.Services.AddSingleton(
+    builder.Configuration.GetSection("UtilityPriceLimits").Get<UtilityPriceLimits>() ?? new UtilityPriceLimits());
 
 builder.Services.AddControllers(options =>
 {

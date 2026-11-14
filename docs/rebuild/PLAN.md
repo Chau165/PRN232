@@ -144,7 +144,12 @@ Lợi ích thêm: biết chính xác số người đang ở → tính được 
 
 ### D5. Điện nước và hạn mức 🔒
 - Bật dịch vụ tính **theo người** dựa trên `ContractOccupants` (kể cả tính theo tỷ lệ ngày khi vào/ra giữa tháng).
-- Cấu hình **trần giá điện và nước** cho mỗi khu trọ. Chặn giá cao hơn trần, vì chủ trọ thu tiền điện cao hơn giá quy định có thể bị phạt 7–10 triệu đồng. Biểu giá EVN thay đổi theo thời kỳ nên trần để trong cấu hình, nhóm tra biểu giá hiện hành rồi điền.
+- **Trần giá điện và nước** (đã làm ở việc 1.2b, cấu hình `UtilityPriceLimits` trong appsettings):
+  - Luật không đặt trần đơn giá, mà cấm chủ trọ thu **tổng** tiền điện cao hơn hóa đơn EVN; mỗi địa chỉ chỉ có một hợp đồng điện, cứ 4 người thuê tính là 1 hộ. Thu sai có thể bị phạt 20–30 triệu đồng (Nghị định 17/2022, theo Dân trí).
+  - Hệ thống không thấy hóa đơn EVN nên chặn đơn giá cao hơn **giá kWh đắt nhất có thể có**: bậc 5 biểu 5 bậc từ 01/11/2026 (Quyết định 2892/QĐ-BCT) 3.844đ × VAT 8% = **4.152đ/kWh**. VAT 8% chỉ áp dụng đến hết 31/12/2026 (Nghị quyết 204/2025/QH15); từ 2027 nếu về 10% thì đổi cấu hình thành 4.229đ.
+  - Biểu 5 bậc (chưa VAT): 1.901 / 2.289 / 2.894 / 3.456 / 3.844 đ/kWh.
+  - Nước: trần **16.560đ/m³** = bậc cao nhất hộ gia đình TP.HCM 14.400đ + VAT 5% + phí môi trường 10% (Nghị định 346/2025/NĐ-CP). ⚠️ Chưa tìm được quyết định giá nước chính thức năm 2026 của TP.HCM; tỉnh khác giá khác → nhóm cần xác nhận.
+  - Phí cố định hằng tháng (wifi, rác, nước khoán theo người, gửi xe): tối đa 1.000.000đ.
 - **Cảnh báo** (không chặn) khi chỉ số tháng này vượt *X%* so với trung bình 3 tháng gần nhất.
 
 ### D6. Thiết bị và hóa đơn ("nằm chung – không tách")
