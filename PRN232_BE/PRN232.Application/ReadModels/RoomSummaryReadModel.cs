@@ -10,4 +10,7 @@ public sealed record RoomSummaryReadModel(
     string RoomCode,
     decimal AreaSqm,
     string Status,
-    string? PrimaryImageUrl);
+    string? PrimaryImageUrl,
+    int MaxOccupants = 1,
+    int? Floor = null,
+    string? Description = null);

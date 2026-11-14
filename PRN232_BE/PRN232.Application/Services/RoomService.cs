@@ -2,6 +2,7 @@ using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.ReadModels;
 using PRN232.Application.States;
+using PRN232.Application.Validation;
 using PRN232.Domain.Entities;
 
 namespace PRN232.Application.Services;
@@ -376,6 +377,10 @@ public class RoomService : IRoomService
             RoomTypeId = dto.RoomTypeId,
             RoomCode = dto.RoomCode.Trim(),
             AreaSqm = dto.AreaSqm,
+            // Không nhập thì lấy mức tối đa diện tích cho phép (20 m² -> 2 người).
+            MaxOccupants = dto.MaxOccupants ?? RoomRules.MaxOccupantsFor(dto.AreaSqm),
+            Floor = dto.Floor,
+            Description = NormalizeOptional(dto.Description),
             Status = status
         };
     }
@@ -385,7 +390,16 @@ public class RoomService : IRoomService
         entity.RoomTypeId = dto.RoomTypeId;
         entity.RoomCode = dto.RoomCode.Trim();
         entity.AreaSqm = dto.AreaSqm;
+        // Không gửi số người: giữ giá trị đang lưu, nhưng giảm xuống nếu diện tích mới không còn đủ
+        // (FE cũ chưa có ô này vẫn sửa phòng được mà không xóa mất số Admin đã chọn).
+        entity.MaxOccupants = dto.MaxOccupants ??
+                              Math.Min(entity.MaxOccupants, RoomRules.MaxOccupantsFor(dto.AreaSqm));
+        entity.Floor = dto.Floor;
+        entity.Description = NormalizeOptional(dto.Description);
     }
+
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static RoomImages ConvertToEntity(AddRoomImageDto dto)
     {
@@ -426,7 +440,10 @@ public class RoomService : IRoomService
             readModel.RoomCode,
             readModel.AreaSqm,
             readModel.Status,
-            readModel.PrimaryImageUrl);
+            readModel.PrimaryImageUrl,
+            readModel.MaxOccupants,
+            readModel.Floor,
+            readModel.Description);
     }
 
     private static RentableRoomDto ConvertToDto(RentableRoomReadModel readModel)

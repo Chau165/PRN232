@@ -8,7 +8,9 @@ Mục lục
 - [C1 — Định dạng lỗi validate mới (áp dụng mọi endpoint)](#c1)
 - [C2 — Quy tắc validate phòng và giá thuê](#c2)
 - [C3 — Quy tắc validate khu trọ, thiết bị, giá dịch vụ](#c3)
-- [C4 — Sắp tới: địa chỉ chỉ còn 2 cấp (việc 1.4, chưa làm)](#c4)
+- [C4 — Địa chỉ chỉ còn 2 cấp (việc 1.4)](#c4)
+- C5 — Thông báo nhắc hạn hợp đồng (việc 3.4)
+- C6 — Phòng: số người tối đa, tầng, mô tả (việc 2.1)
 - [Việc FE cần làm (task 1.5)](#fe)
 
 ---
@@ -120,6 +122,47 @@ Nhóm đã chốt: **mọi địa chỉ trong hệ thống là địa chỉ sau 
 - Việc FE: form sửa khu trọ **chọn sẵn** tỉnh/phường từ `provinceCode`/`wardCode` của khu trọ (thay vì đoán từ tên), và **luôn gửi** hai mã. Ngừng gửi `ward`/`district`/`city`.
 
 **Phần 2 — chưa làm (cần nhóm xác nhận trước khi xóa cột):** bỏ hẳn field `district` khỏi mọi response (cả API công khai `/api/public/...`) và xóa cột `District` trong DB. FE nên **ngừng hiển thị** `district` ngay từ bây giờ.
+
+---
+
+## C5 — Thông báo nhắc hạn hợp đồng · ✅ đã có (việc 3.4)
+
+Không có endpoint mới. Một job nền mỗi giờ tạo thông báo (đi qua `GET /api/notifications` và SignalR như mọi thông báo khác) cho **khách thuê và quản lý của khu trọ**:
+
+| Khi nào | `title` |
+|---|---|
+| Còn 8–30 ngày | Hợp đồng phòng A101 sẽ hết hạn ngày 05/12/2026 (còn dưới 30 ngày) |
+| Còn 0–7 ngày | Hợp đồng phòng A101 sẽ hết hạn ngày 20/11/2026 (còn dưới 7 ngày) |
+| Đã quá ngày kết thúc, hợp đồng vẫn Active | Hợp đồng phòng A101 đã hết hạn ngày 12/11/2026 nhưng chưa gia hạn hoặc trả phòng |
+
+- `type = "Contract"`, `relatedEntityId = contractId` → FE có thể bấm vào thông báo để mở chi tiết hợp đồng.
+- Trạng thái hợp đồng **không đổi** (vẫn `Active`); `displayStatus` vẫn là `ExpiredPendingCheckout` khi quá hạn như trước.
+
+---
+
+## C6 — Phòng: số người tối đa, tầng, mô tả · ✅ đã có (việc 2.1)
+
+Migration `AddRoomOccupancyFloorAndDescription`. Phòng đã có được điền sẵn `maxOccupants` = diện tích ÷ 8, làm tròn xuống, trong khoảng 1–10.
+
+**Response** (thêm field, không bỏ field nào):
+- `RoomDto` (`GET /api/rooms`, `/api/rooms/{id}`) và `PublicRoomDetailDto` (`GET /api/public/rooms/{id}`) có thêm: `maxOccupants: number`, `floor: number | null`, `description: string | null`.
+
+**Request** `POST /api/rooms`, `PUT /api/rooms/{id}` thêm 3 field **không bắt buộc**:
+
+| Field | Quy tắc | Câu báo lỗi |
+|---|---|---|
+| `maxOccupants` | 1 ≤ x ≤ 10 | Số người tối đa phải từ 1 đến 10. |
+| | x ≤ làm tròn xuống(`areaSqm` ÷ 8) | Phòng 20 m² chỉ được ở tối đa 2 người (tối thiểu 8 m²/người). |
+| `floor` | 0 ≤ x ≤ 50 (0 = tầng trệt) | Tầng phải từ 0 (tầng trệt) đến 50. |
+| `description` | ≤ 1.000 ký tự | Mô tả phòng tối đa 1000 ký tự. |
+
+Ý nghĩa khi **không gửi** (null):
+- `maxOccupants` khi tạo: lấy mức tối đa theo diện tích. Khi sửa: **giữ** giá trị đang lưu (tự giảm nếu diện tích mới không còn đủ).
+- `floor`, `description`: null = không có giá trị (gửi null khi sửa sẽ **xóa** giá trị cũ). FE nên luôn gửi đủ 3 field khi sửa.
+
+Căn cứ 8 m²/người: Luật Nhà ở 2023 + Nghị định 100/2024 + Thông tư 05/2024 (dãy nhà trọ) và Luật Cư trú 2020; xem PLAN.md mục D2.
+
+Việc FE gợi ý: trong `RoomFormModal` thêm 3 ô; ô số người dùng `min=1`, `max = min(10, floor(diện tích/8))`, cập nhật khi đổi diện tích và hiện gợi ý "Tối đa N người cho phòng X m²". Trang chi tiết phòng (quản lý và công khai) hiển thị số người tối đa, tầng ("Tầng trệt" khi 0), mô tả.
 
 ---
 

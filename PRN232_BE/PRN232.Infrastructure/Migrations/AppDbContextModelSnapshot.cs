@@ -1447,6 +1447,15 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<decimal>("AreaSqm")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("Floor")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MaxOccupants")
+                        .HasColumnType("integer");
+
                     b.Property<int>("PropertyId")
                         .HasColumnType("integer");
 
@@ -1465,7 +1474,10 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.HasIndex("RoomTypeId");
 
-                    b.ToTable("Rooms");
+                    b.ToTable("Rooms", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Rooms_MaxOccupants_Range", "\"MaxOccupants\" BETWEEN 1 AND 10");
+                        });
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Service", b =>

@@ -285,6 +285,9 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         });
         modelBuilder.Entity<Service>().HasKey(x => x.ServiceId);
         modelBuilder.Entity<Rooms>().HasKey(x => x.RoomId);
+        modelBuilder.Entity<Rooms>().ToTable("Rooms", table => table.HasCheckConstraint(
+            "CK_Rooms_MaxOccupants_Range",
+            "\"MaxOccupants\" BETWEEN 1 AND 10"));
         modelBuilder.Entity<Rooms>()
             .HasAlternateKey(room => new { room.PropertyId, room.RoomTypeId, room.RoomId });
         modelBuilder.Entity<Rooms>()

@@ -252,7 +252,10 @@ public sealed class PublicPropertyListingService : IPublicPropertyListingService
             item.Images,
             item.Amenities.Select(ConvertToDto).ToArray(),
             item.Services.Select(ConvertToDto).ToArray(),
-            item.Equipments.Select(ConvertToDto).ToArray());
+            item.Equipments.Select(ConvertToDto).ToArray(),
+            item.MaxOccupants,
+            item.Floor,
+            item.Description);
     }
 
     private static PublicAmenitySummaryDto ConvertToDto(PublicAmenitySummaryReadModel item)

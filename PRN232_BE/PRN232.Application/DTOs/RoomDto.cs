@@ -10,11 +10,29 @@ public record RoomDto(
     string RoomCode,
     decimal AreaSqm,
     string Status,
-    string? PrimaryImageUrl);
+    string? PrimaryImageUrl,
+    int MaxOccupants = 1,
+    int? Floor = null,
+    string? Description = null);
 
-public record CreateRoomDto(int PropertyId, int RoomTypeId, string RoomCode, decimal AreaSqm);
+// MaxOccupants null: tạo mới thì lấy mức tối đa theo diện tích; sửa thì giữ giá trị đang lưu
+// (giảm xuống nếu diện tích mới không còn đủ). Floor/Description gửi null = không có giá trị.
+public record CreateRoomDto(
+    int PropertyId,
+    int RoomTypeId,
+    string RoomCode,
+    decimal AreaSqm,
+    int? MaxOccupants = null,
+    int? Floor = null,
+    string? Description = null);
 
-public record UpdateRoomDto(int RoomTypeId, string RoomCode, decimal AreaSqm);
+public record UpdateRoomDto(
+    int RoomTypeId,
+    string RoomCode,
+    decimal AreaSqm,
+    int? MaxOccupants = null,
+    int? Floor = null,
+    string? Description = null);
 
 public record RoomImageDto(int RoomImageId, int RoomId, string ImageUrl, bool IsPrimary);
 

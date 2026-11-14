@@ -956,7 +956,7 @@ public sealed class PublicPropertyListingApiTests
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var detail = document.RootElement;
         Assert.Equal(
-            new[] { "amenities", "areaSqm", "baseRent", "equipments", "images", "property", "roomCode", "roomId", "roomType", "services" },
+            new[] { "amenities", "areaSqm", "baseRent", "description", "equipments", "floor", "images", "maxOccupants", "property", "roomCode", "roomId", "roomType", "services" },
             detail.EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
         Assert.Equal(102, detail.GetProperty("roomId").GetInt32());
         Assert.Equal("R102", detail.GetProperty("roomCode").GetString());

@@ -612,6 +612,9 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 candidate.RoomId,
                 candidate.RoomCode,
                 candidate.AreaSqm,
+                candidate.MaxOccupants,
+                candidate.Floor,
+                candidate.Description,
                 RoomTypeId = candidate.RoomType!.RoomTypeId,
                 RoomType = new PublicRoomTypeReadModel(candidate.RoomType.RoomTypeId, candidate.RoomType.TypeName),
                 BaseRent = candidate.PropertyRoomType!.MonthlyRent,
@@ -671,7 +674,10 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             images.Select(image => image.ImageUrl).ToArray(),
             amenities,
             services,
-            Array.Empty<PublicRoomEquipmentReadModel>());
+            Array.Empty<PublicRoomEquipmentReadModel>(),
+            room.MaxOccupants,
+            room.Floor,
+            room.Description);
     }
 
     private async Task<List<RoomImageReadModel>> GetPublicRoomImagesAsync(int[] roomIds, CancellationToken cancellationToken)

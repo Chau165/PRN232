@@ -99,7 +99,10 @@ public sealed record PublicRoomDetailReadModel(
     IReadOnlyList<string> Images,
     IReadOnlyList<PublicAmenitySummaryReadModel> Amenities,
     IReadOnlyList<PublicRoomServiceReadModel> Services,
-    IReadOnlyList<PublicRoomEquipmentReadModel> Equipments);
+    IReadOnlyList<PublicRoomEquipmentReadModel> Equipments,
+    int MaxOccupants = 1,
+    int? Floor = null,
+    string? Description = null);
 
 public sealed record PublicRoomTypeReadModel(int RoomTypeId, string RoomTypeName);
 

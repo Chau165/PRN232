@@ -94,7 +94,7 @@ Vấn đề:
 | Trường | Quy tắc đề xuất | Lý do |
 |--------|-----------------|-------|
 | `AreaSqm` | *8 – 100 m²*, tối đa 1 chữ số thập phân | Phòng trọ thực tế; chặn 99.999 m² |
-| `MaxOccupants` (mới) | *1 – 10*, và diện tích ≥ *5 m²/người* | Theo đề xuất của Sở Xây dựng TP.HCM (chưa phải luật — dùng làm quy tắc của hệ thống) |
+| `MaxOccupants` (mới) | *1 – 10*, và diện tích ≥ *8 m²/người* (số người tối đa = làm tròn xuống của diện tích ÷ 8) | **Đã đổi từ 5 sang 8 m²** sau khi tra cứu: Luật Nhà ở 2023 + Nghị định 100/2024 + Thông tư 05/2024 yêu cầu dãy nhà trọ cho thuê có diện tích bình quân tối thiểu 8 m²/người (không tính khu phụ); Luật Cư trú 2020 cũng lấy 8 m² sàn/người làm mức sàn để đăng ký thường trú ở chỗ thuê. Mức 5 m² chỉ là đề xuất năm 2024 của Sở Xây dựng TP.HCM, chưa xác nhận được đã ban hành. Hằng số cấu hình được, đổi một chỗ. |
 | `RoomCode` | 1–20 ký tự, chữ/số/`-`/`.`, duy nhất trong khu | |
 | `PropertyRoomTypes.MonthlyRent` **[đổi đối tượng]** | *500.000 – 50.000.000đ*, bội số 1.000 | Hiện chỉ chặn `<= 0`. Quy tắc này thay cho `RoomTypes.Price` (legacy) |
 | `PropertyName` | 3–150 ký tự | |
@@ -128,7 +128,7 @@ Vấn đề:
    - Số âm → tạo hóa đơn công nợ cuối kỳ
 ```
 - Bỏ dòng `PrepaidRentCredit`. Các hợp đồng cũ đã bị trừ cọc thì giữ nguyên, chỉ áp dụng luật mới cho hợp đồng mới.
-- Thêm trạng thái hợp đồng `Expired` và job nền tự chuyển trạng thái, gửi thông báo trước 30 ngày và 7 ngày.
+- ~~Thêm trạng thái hợp đồng `Expired` lưu trong DB~~ → **đổi quyết định (việc 3.4):** KHÔNG tự đổi trạng thái. Quá ngày kết thúc thì khách vẫn đang ở; nếu chuyển `Expired`, quản lý sẽ không trả phòng, lập hóa đơn tháng cuối hay chốt điện nước được (đều đòi `Active`) và phòng có thể bị cho đặt nhầm. Trạng thái hiển thị `ExpiredPendingCheckout` ("Hết hạn — Chờ trả phòng") đã có sẵn. Job nền mỗi giờ gửi nhắc cho khách + quản lý: còn dưới 30 ngày, còn dưới 7 ngày, và quá hạn chưa xử lý; mỗi mốc gửi một lần, gia hạn thì bắt đầu lại.
 
 ### D4. Người ở cùng và chuyển đi trước hạn 🔒
 Mô hình: **1 người đứng tên** (chịu trách nhiệm tiền phòng, cọc) + bảng `ContractOccupants` (họ tên, CCCD, SĐT, ngày vào, ngày ra).
@@ -191,7 +191,7 @@ Giữ Supabase Storage. Bổ sung:
 ### WS2 — Mô hình phòng
 | ID | Việc | Owner | Phụ thuộc | Size | Người |
 |----|------|-------|-----------|------|-------|
-| 2.1 | Thêm `MaxOccupants`, `Floor`, `Description` vào phòng | Claude | 1.2 | S | |
+| 2.1 | ✅ Thêm `MaxOccupants` (8 m²/người, 1–10), `Floor`, `Description` vào phòng; hiển thị cả ở chi tiết phòng công khai | Claude | 1.2 | S | |
 | 2.2 | Thiết bị: `Quantity`, `CompensationValue`, `Condition` | Claude | — | S | |
 | 2.3 | FE: form phòng và thiết bị mới | AG | 2.1, 2.2 | S | |
 
@@ -201,7 +201,7 @@ Giữ Supabase Storage. Bổ sung:
 | 3.1 | Booking thêm `MoveInDate`, `OccupantCount`, validate ≤ `MaxOccupants` (giữ nguyên `AgreedMonthlyRent` và `ViewingId` của Châu) | Claude | 2.1 | M | |
 | 3.2 | Chính sách hủy theo D3 bước 3 (khách hủy / chủ hủy / quá hạn dọn vào) | Claude | 3.1 | M | |
 | 3.3 | Cọc chuyển thành cọc hợp đồng, bỏ `PrepaidRentCredit` cho HĐ mới | Claude | 3.1 | M | |
-| 3.4 | Trạng thái `Expired` + job nhắc hạn 30 và 7 ngày | Claude | — | S | |
+| 3.4 | ✅ Job nhắc hạn 30 ngày / 7 ngày / quá hạn (không thêm trạng thái `Expired`, xem D3) | Claude | — | S | |
 | 3.5 | Biên bản bàn giao thiết bị lúc nhận phòng và trả phòng | Claude | 2.2 | M | |
 | 3.6 | **Quyết toán cọc** khi trả phòng (công thức D3 bước 6), báo trước 30 ngày | Claude | 3.3, 3.5 | L | |
 | 3.7 | FE: trang đặt cọc mới, trang trả phòng và quyết toán | AG | 3.1, 3.6 | L | |
