@@ -371,6 +371,10 @@ builder.Services.AddScoped<IViewingScheduleRepository, ViewingScheduleRepository
 builder.Services.AddScoped<IViewingScheduleService, ViewingScheduleService>();
 builder.Services.AddScoped<IContractRepository, ContractRepository>();
 builder.Services.AddScoped<IContractService, ContractService>();
+// Rebuild 3.4: nhắc hạn hợp đồng (30 ngày, 7 ngày, quá hạn) chạy nền mỗi giờ.
+builder.Services.AddScoped<IContractExpiryReminderRepository, ContractExpiryReminderRepository>();
+builder.Services.AddScoped<IContractExpiryReminderService, ContractExpiryReminderService>();
+builder.Services.AddHostedService<PRN232.Api.Workers.ContractExpiryReminderWorker>();
 builder.Services.AddScoped<IUtilityReadingRepository, UtilityReadingRepository>();
 builder.Services.AddScoped<IUtilityReadingService, UtilityReadingService>();
 builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
