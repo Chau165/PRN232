@@ -64,8 +64,10 @@ interface UploadProgressState {
 
 export default function ContractEvidenceSection({
   contract,
+  isDepositSettled = false,
 }: {
   contract: ContractDto
+  isDepositSettled?: boolean
 }) {
   const { accessToken, user } = useAuth()
   const normalizedRole = user?.role?.toUpperCase() ?? "CUSTOMER"
@@ -132,7 +134,8 @@ export default function ContractEvidenceSection({
   function canUploadForKind(kind: ContractEvidenceKind): boolean {
     if (!evidence || isAdmin) return false
     if (kind === "MoveIn") return Boolean(evidence.canUploadMoveIn)
-    if (kind === "MoveOut") return Boolean(evidence.canUploadMoveOut)
+    if (kind === "MoveOut")
+      return !isDepositSettled && Boolean(evidence.canUploadMoveOut)
     return Boolean(evidence.canUploadSignedContract)
   }
 

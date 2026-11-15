@@ -30,6 +30,16 @@ export interface ContractDto {
   hasMeterHandover?: boolean
   hasUtilityReadings?: boolean
   hasInvoices?: boolean
+  plannedMoveOutDate?: string | null
+  moveOutNoticeAtUtc?: string | null
+  moveOutNoticeDays?: number | null
+  moveOutForfeitsDeposit?: boolean
+  hasDepositSettlement?: boolean
+  isDepositSettled?: boolean
+}
+
+export interface SaveMoveOutNoticeRequest {
+  plannedMoveOutDate: string
 }
 
 export interface ContractMeterHandoverValues {
@@ -148,4 +158,33 @@ export interface ContractEvidenceListDto {
   canUploadMoveOut: boolean
   canUploadSignedContract: boolean
   files: ContractEvidenceFileDto[]
+}
+
+export interface DepositSettlementDto {
+  contractId: number
+  isSettled: boolean
+  moveOutDate: string
+  contractEndDate: string
+  depositAmount: number
+  damageCharges: number
+  damageCoveredByDeposit: number
+  outstandingDebt: number
+  retainedForDebt: number
+  forfeitedAmount: number
+  refundAmount: number
+  amountDue: number
+  earlyWithoutNotice: boolean
+  noticeDays: number | null
+  note: string | null
+  settledByName: string | null
+  settledAtUtc: string | null
+  refundConfirmedAtUtc: string | null
+  refundConfirmedByName: string | null
+  dueCollectedAtUtc: string | null
+  dueCollectedByName: string | null
+}
+
+export interface ConfirmDepositSettlementRequest {
+  outstandingDebtAcknowledged: boolean
+  note?: string | null
 }

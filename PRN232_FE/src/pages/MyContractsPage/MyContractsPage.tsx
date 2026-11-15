@@ -1,6 +1,8 @@
 import ContractMeterHandover from "@/components/customer/ContractMeterHandover"
 import ContractEquipmentHandover from "@/components/customer/ContractEquipmentHandover"
 import ContractEvidenceSection from "@/components/customer/ContractEvidenceSection"
+import ContractMoveOutNotice from "@/components/customer/ContractMoveOutNotice"
+import ContractDepositSettlement from "@/components/customer/ContractDepositSettlement"
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { Link } from "react-router"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
@@ -233,6 +235,10 @@ function ContractBillingTimeline({
   state?: TimelineState
   onRetry: () => void
 }) {
+  const [isDepositSettled, setIsDepositSettled] = useState(
+    Boolean(contract.isDepositSettled ?? contract.hasDepositSettlement),
+  )
+
   if (!state || state.loading) {
     return <p role="status" className="mt-6 border-t border-slate-100 pt-5 text-sm text-slate-500">Đang tải chi tiết và lịch hóa đơn...</p>
   }
@@ -293,9 +299,20 @@ function ContractBillingTimeline({
             </>
           )}
         </dl>
+        <ContractMoveOutNotice contract={contract} />
         <ContractMeterHandover contract={contract} />
-        <ContractEquipmentHandover contract={contract} />
-        <ContractEvidenceSection contract={contract} />
+        <ContractEquipmentHandover
+          contract={contract}
+          isDepositSettled={isDepositSettled}
+        />
+        <ContractDepositSettlement
+          contract={contract}
+          onSettlementStatusChange={setIsDepositSettled}
+        />
+        <ContractEvidenceSection
+          contract={contract}
+          isDepositSettled={isDepositSettled}
+        />
         <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-xs text-amber-900">
           Chữ ký điện tử/chữ ký xác nhận chưa được lưu trong dữ liệu hợp đồng; trạng thái trên không xác nhận hợp đồng đã ký.
         </p>

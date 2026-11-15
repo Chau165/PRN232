@@ -2,6 +2,8 @@ import MeterHandoverModal from "@/components/management/MeterHandoverModal"
 import ContractMeterHandover from "@/components/customer/ContractMeterHandover"
 import ContractEquipmentHandover from "@/components/customer/ContractEquipmentHandover"
 import ContractEvidenceSection from "@/components/customer/ContractEvidenceSection"
+import ContractMoveOutNotice from "@/components/customer/ContractMoveOutNotice"
+import ContractDepositSettlement from "@/components/customer/ContractDepositSettlement"
 import { useEffect, useState } from "react"
 import { useLocation } from "react-router"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
@@ -17,8 +19,13 @@ import {
   markTerminatedRoomReady,
   terminateContract,
 } from "@/services/contractService"
+import { getContractDepositSettlement } from "@/services/contractSettlementService"
 import type { ContractBillingTimelineDto, ContractDto } from "@/types/contract"
 import type { InvoiceDto } from "@/types/invoice"
+import {
+  canTerminateContractWithSettlement,
+  requiresDepositSettlement,
+} from "@/utils/depositSettlementValidation"
 import { formatMonth } from "@/utils/invoiceDisplay"
 import { addContractMonths, formatContractDate, localToday } from "@/utils/managementContracts"
 import { formatVnd } from "@/utils/publicFormatting"
@@ -71,6 +78,8 @@ export default function ManagementContractsPage() {
   const [savingAction, setSavingAction] = useState(false)
   const [markingRoomReadyId, setMarkingRoomReadyId] = useState<number | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [settledByContractId, setSettledByContractId] = useState<Record<number, boolean>>({})
+  const [settlementRefreshCount, setSettlementRefreshCount] = useState(0)
   // Trang "Tạo hợp đồng" chuyển sang đây kèm id hợp đồng vừa tạo để báo thành công.
   const createdContractId = (location.state as { createdContractId?: number } | null)?.createdContractId
   const [toast, setToast] = useState(createdContractId ? `Đã tạo hợp đồng #${createdContractId} thành công.` : "")
@@ -82,7 +91,42 @@ export default function ManagementContractsPage() {
     setLoading(true)
     setError(null)
     getContracts(accessToken, controller.signal)
-      .then(setContracts)
+      .then((loadedContracts) => {
+        if (controller.signal.aborted) return
+        setContracts(loadedContracts)
+        for (const item of loadedContracts) {
+          if (
+            item.status === "Active" &&
+            requiresDepositSettlement(item) &&
+            item.isDepositSettled === undefined &&
+            item.hasDepositSettlement === undefined
+          ) {
+            Promise.resolve(
+              getContractDepositSettlement(
+                accessToken,
+                item.contractId,
+                controller.signal,
+              ),
+            )
+              .then((res) => {
+                if (!controller.signal.aborted && res) {
+                  setSettledByContractId((prev) => ({
+                    ...prev,
+                    [item.contractId]: res.isSettled,
+                  }))
+                }
+              })
+              .catch(() => {
+                if (!controller.signal.aborted) {
+                  setSettledByContractId((prev) => ({
+                    ...prev,
+                    [item.contractId]: false,
+                  }))
+                }
+              })
+          }
+        }
+      })
       .catch((fetchError: unknown) => {
         if (!controller.signal.aborted) {
           setError(fetchError instanceof Error ? fetchError.message : "Không thể tải danh sách hợp đồng.")
@@ -180,6 +224,12 @@ export default function ManagementContractsPage() {
     ? [addDays(localToday(), 1), addDays(action.contract.endDate, 1)].sort().at(-1) ?? ""
     : ""
   const validNewEndDate = Boolean(action && newEndDate > action.contract.endDate && newEndDate > localToday())
+  const canTerminateActionContract = action
+    ? canTerminateContractWithSettlement(
+        action.contract,
+        settledByContractId[action.contract.contractId],
+      )
+    : false
   const canSubmit = Boolean(
     action &&
     timelineState?.timeline &&
@@ -187,7 +237,9 @@ export default function ManagementContractsPage() {
     !timelineState.error &&
     (action.kind === "extend"
       ? validNewEndDate
-      : checkoutConfirmed && (outstandingDebt === 0 || outstandingDebtAcknowledged)),
+      : canTerminateActionContract &&
+        checkoutConfirmed &&
+        (outstandingDebt === 0 || outstandingDebtAcknowledged)),
   )
 
   return (
@@ -248,8 +300,23 @@ export default function ManagementContractsPage() {
                           </button>
                           <button
                             type="button"
+                            disabled={
+                              !canTerminateContractWithSettlement(
+                                contract,
+                                settledByContractId[contract.contractId],
+                              )
+                            }
+                            title={
+                              requiresDepositSettlement(contract) &&
+                              !canTerminateContractWithSettlement(
+                                contract,
+                                settledByContractId[contract.contractId],
+                              )
+                                ? "Cần lập biên bản trả phòng và quyết toán cọc trước khi xác nhận trả phòng."
+                                : undefined
+                            }
                             onClick={() => openAction(contract, "terminate")}
-                            className="rounded-lg bg-rose-50 px-3 py-2 text-[12px] font-bold text-rose-700"
+                            className="rounded-lg bg-rose-50 px-3 py-2 text-[12px] font-bold text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Xác nhận kết thúc / Trả phòng
                           </button>
@@ -295,9 +362,47 @@ export default function ManagementContractsPage() {
             <Detail label="Trạng thái" value={statusLabel(selected.displayStatus || selected.status)} />
             {selected.processedByStaffName && <Detail label="Người lập" value={selected.processedByStaffName} />}
           </dl>
+          <ContractMoveOutNotice
+            contract={selected}
+            onContractUpdated={(updated) => {
+              setContracts((items) =>
+                items.map((item) =>
+                  item.contractId === updated.contractId ? updated : item,
+                ),
+              )
+              setSelected((current) =>
+                current?.contractId === updated.contractId ? updated : current,
+              )
+            }}
+          />
           <ContractMeterHandover contract={selected} />
-          <ContractEquipmentHandover contract={selected} />
-          <ContractEvidenceSection contract={selected} />
+          <ContractEquipmentHandover
+            contract={selected}
+            isDepositSettled={Boolean(
+              settledByContractId[selected.contractId] ??
+                selected.isDepositSettled ??
+                selected.hasDepositSettlement,
+            )}
+            onMoveOutSaved={() => setSettlementRefreshCount((c) => c + 1)}
+          />
+          <ContractDepositSettlement
+            contract={selected}
+            refreshTrigger={settlementRefreshCount}
+            onSettlementStatusChange={(settled) =>
+              setSettledByContractId((prev) => ({
+                ...prev,
+                [selected.contractId]: settled,
+              }))
+            }
+          />
+          <ContractEvidenceSection
+            contract={selected}
+            isDepositSettled={Boolean(
+              settledByContractId[selected.contractId] ??
+                selected.isDepositSettled ??
+                selected.hasDepositSettlement,
+            )}
+          />
         </ManagementDetailDrawer>
       )}
       {handover && <MeterHandoverModal contract={handover} onClose={() => setHandover(null)} onSaved={(updated) => {

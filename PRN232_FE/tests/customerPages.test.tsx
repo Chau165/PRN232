@@ -72,6 +72,14 @@ vi.mock("@/services/contractEvidenceService", () => ({
   deleteContractEvidence: vi.fn(),
   hideContractEvidence: vi.fn(),
 }))
+vi.mock("@/services/contractMoveOutNoticeService", () => ({
+  saveContractMoveOutNotice: vi.fn(),
+  cancelContractMoveOutNotice: vi.fn(),
+}))
+vi.mock("@/services/contractSettlementService", () => ({
+  getContractDepositSettlement: vi.fn().mockResolvedValue(null),
+  confirmContractDepositSettlement: vi.fn(),
+}))
 vi.mock("@/services/maintenanceService", () => ({
   getMaintenanceRequests: mocks.getMaintenanceRequests,
   getMaintenanceRequest: mocks.getMaintenanceRequest,

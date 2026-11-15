@@ -97,8 +97,12 @@ function buildEditableRows(
 
 export default function ContractEquipmentHandover({
   contract,
+  isDepositSettled = false,
+  onMoveOutSaved,
 }: {
   contract: ContractDto
+  isDepositSettled?: boolean
+  onMoveOutSaved?: () => void
 }) {
   const { accessToken, user } = useAuth()
   const isManager = user?.role === "MANAGER"
@@ -279,6 +283,9 @@ export default function ContractEquipmentHandover({
               payload,
             )
       setData(saved)
+      if (editingKind === "MoveOut") {
+        onMoveOutSaved?.()
+      }
       setEditingKind(null)
     } catch (saveErr: unknown) {
       if (saveErr instanceof ApiError && saveErr.status === 400 && saveErr.validationErrors) {
@@ -371,11 +378,16 @@ export default function ContractEquipmentHandover({
               isManager={isManager}
               canEdit={
                 isManager &&
+                !isDepositSettled &&
                 (data.roomEquipments.length > 0 ||
                   data.moveIn !== null ||
                   data.moveOut !== null)
               }
-              lockedReason={null}
+              lockedReason={
+                isManager && isDepositSettled
+                  ? "Hợp đồng đã quyết toán cọc nên không thể sửa biên bản trả phòng."
+                  : null
+              }
               onEdit={() => startEditing("MoveOut")}
             />
           </div>

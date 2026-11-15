@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest"
 import {
+  canTerminateContractWithSettlement,
+  formatForfeitedDepositReason,
+  requiresDepositSettlement,
+  validateDepositSettlementConfirmation,
+} from "@/utils/depositSettlementValidation"
+import {
+  evaluateMoveOutDepositWarning,
+  getLatestNoticeDateToKeepDeposit,
+  validatePlannedMoveOutDate,
+} from "@/utils/moveOutNoticeValidation"
+import {
   MAX_IMAGE_EVIDENCE_BYTES,
   MAX_PDF_EVIDENCE_BYTES,
   validateContractEvidenceFile,
@@ -510,6 +521,109 @@ describe("rebuild validation rules (C2 & C3)", () => {
         "Lý do ẩn minh chứng không được vượt quá 500 ký tự.",
       )
       expect(validateHideEvidenceReason("Ảnh tải nhầm hợp đồng")).toBeNull()
+    })
+
+    it("validates planned move-out date and computes 30-day deposit forfeiture warning (C16)", () => {
+      expect(getLatestNoticeDateToKeepDeposit("2026-11-30")).toBe("2026-10-31")
+
+      expect(
+        validatePlannedMoveOutDate({
+          plannedMoveOutDate: "2026-11-10",
+          endDate: "2027-11-01",
+          today: "2026-11-15",
+        }),
+      ).toBe("Ngày dự kiến trả phòng không được ở quá khứ.")
+
+      expect(
+        validatePlannedMoveOutDate({
+          plannedMoveOutDate: "2027-11-05",
+          endDate: "2027-11-01",
+          today: "2026-11-15",
+        }),
+      ).toBe(
+        "Ngày dự kiến trả phòng không được sau ngày kết thúc hợp đồng. Muốn ở lâu hơn hãy gia hạn hợp đồng.",
+      )
+
+      const earlyUnder30 = evaluateMoveOutDepositWarning({
+        plannedMoveOutDate: "2026-11-30",
+        endDate: "2027-11-01",
+        today: "2026-11-15",
+      })
+      expect(earlyUnder30).toEqual({
+        forfeitsDeposit: true,
+        noticeDays: 15,
+        latestNoticeDate: "2026-10-31",
+        warningMessage:
+          "Bạn trả phòng trước hạn hợp đồng mà báo trước dưới 30 ngày nên sẽ mất phần tiền cọc còn lại khi quyết toán. Báo muộn nhất ngày 31/10/2026 để giữ cọc.",
+      })
+
+      const earlyOver30 = evaluateMoveOutDepositWarning({
+        plannedMoveOutDate: "2026-12-20",
+        endDate: "2027-11-01",
+        today: "2026-11-15",
+      })
+      expect(earlyOver30).toEqual({
+        forfeitsDeposit: false,
+        noticeDays: 35,
+        latestNoticeDate: "2026-11-20",
+        warningMessage: null,
+      })
+
+      const exactEndDate = evaluateMoveOutDepositWarning({
+        plannedMoveOutDate: "2026-11-20",
+        endDate: "2026-11-20",
+        today: "2026-11-15",
+      })
+      expect(exactEndDate?.forfeitsDeposit).toBe(false)
+      expect(exactEndDate?.warningMessage).toBeNull()
+    })
+
+    it("validates deposit settlement rules and checkout eligibility (C17)", () => {
+      expect(requiresDepositSettlement({ securityDepositAmount: 0 })).toBe(false)
+      expect(requiresDepositSettlement({ securityDepositAmount: 3_000_000 })).toBe(true)
+
+      // Hợp đồng cũ không có cọc đảm bảo -> cho phép trả phòng ngay
+      expect(
+        canTerminateContractWithSettlement({ securityDepositAmount: 0 }, false),
+      ).toBe(true)
+
+      // Hợp đồng có cọc đảm bảo -> chỉ bật nút Trả phòng khi đã quyết toán
+      expect(
+        canTerminateContractWithSettlement(
+          { securityDepositAmount: 3_000_000 },
+          false,
+        ),
+      ).toBe(false)
+      expect(
+        canTerminateContractWithSettlement(
+          { securityDepositAmount: 3_000_000 },
+          true,
+        ),
+      ).toBe(true)
+
+      expect(
+        formatForfeitedDepositReason({
+          earlyWithoutNotice: true,
+          noticeDays: 10,
+          forfeitedAmount: 1_800_000,
+        }),
+      ).toBe("trả trước hạn, báo trước 10 ngày < 30")
+
+      expect(
+        validateDepositSettlementConfirmation({
+          outstandingDebt: 500_000,
+          outstandingDebtAcknowledged: false,
+        }),
+      ).toBe(
+        "Khách còn nợ hóa đơn 500.000\u00a0₫. Nên thu hết trước khi quyết toán; nếu khách không trả, hãy xác nhận để giữ lại cọc bù nợ.",
+      )
+
+      expect(
+        validateDepositSettlementConfirmation({
+          outstandingDebt: 500_000,
+          outstandingDebtAcknowledged: true,
+        }),
+      ).toBeNull()
     })
   })
 })

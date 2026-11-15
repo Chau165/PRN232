@@ -8,6 +8,8 @@ import type { BookingDto } from "@/types/booking"
 import type { ContractBillingTimelineDto, ContractDto } from "@/types/contract"
 import type { InvoiceDto } from "@/types/invoice"
 import { addContractMonths, formatContractDate, localToday } from "@/utils/managementContracts"
+import { getVietnamTodayIsoDate } from "@/utils/equipmentValidation"
+import { addIsoDays } from "@/utils/moveOutNoticeValidation"
 
 const mocks = vi.hoisted(() => ({
   getBooking: vi.fn(),
@@ -24,6 +26,10 @@ const mocks = vi.hoisted(() => ({
   uploadContractEvidence: vi.fn(),
   deleteContractEvidence: vi.fn(),
   hideContractEvidence: vi.fn(),
+  saveContractMoveOutNotice: vi.fn(),
+  cancelContractMoveOutNotice: vi.fn(),
+  getContractDepositSettlement: vi.fn(),
+  confirmContractDepositSettlement: vi.fn(),
   role: "MANAGER" as string,
 }))
 
@@ -52,6 +58,14 @@ vi.mock("@/services/contractEvidenceService", () => ({
   uploadContractEvidence: mocks.uploadContractEvidence,
   deleteContractEvidence: mocks.deleteContractEvidence,
   hideContractEvidence: mocks.hideContractEvidence,
+}))
+vi.mock("@/services/contractMoveOutNoticeService", () => ({
+  saveContractMoveOutNotice: mocks.saveContractMoveOutNotice,
+  cancelContractMoveOutNotice: mocks.cancelContractMoveOutNotice,
+}))
+vi.mock("@/services/contractSettlementService", () => ({
+  getContractDepositSettlement: mocks.getContractDepositSettlement,
+  confirmContractDepositSettlement: mocks.confirmContractDepositSettlement,
 }))
 
 const booking = (overrides: Partial<BookingDto> = {}): BookingDto => ({
@@ -130,6 +144,29 @@ beforeEach(() => {
     canUploadMoveOut: true,
     canUploadSignedContract: true,
     files: [],
+  })
+  mocks.getContractDepositSettlement.mockResolvedValue({
+    contractId: 12,
+    isSettled: false,
+    moveOutDate: "2026-11-15",
+    contractEndDate: "2027-11-01",
+    depositAmount: 3_000_000,
+    damageCharges: 1_200_000,
+    damageCoveredByDeposit: 1_200_000,
+    outstandingDebt: 0,
+    retainedForDebt: 0,
+    forfeitedAmount: 0,
+    refundAmount: 1_800_000,
+    amountDue: 0,
+    earlyWithoutNotice: false,
+    noticeDays: 40,
+    note: null,
+    settledByName: null,
+    settledAtUtc: null,
+    refundConfirmedAtUtc: null,
+    refundConfirmedByName: null,
+    dueCollectedAtUtc: null,
+    dueCollectedByName: null,
   })
 })
 
@@ -619,5 +656,219 @@ describe("ManagementContractsPage", () => {
       ),
     )
     expect(await screen.findByText("Đã ẩn: Ảnh nhầm phòng khác")).toBeTruthy()
+  })
+
+  it("shows 30-day deposit forfeiture red warning and latest notice date before submitting move-out notice, and supports changing/canceling (C16)", async () => {
+    const today = getVietnamTodayIsoDate()
+    const nearDate = addIsoDays(today, 10)
+    const expectedLatestNotice = addIsoDays(nearDate, -30)
+
+    mocks.saveContractMoveOutNotice.mockResolvedValue(
+      contract({
+        plannedMoveOutDate: nearDate,
+        moveOutNoticeAtUtc: new Date().toISOString(),
+        moveOutNoticeDays: 10,
+        moveOutForfeitsDeposit: true,
+      }),
+    )
+    mocks.cancelContractMoveOutNotice.mockResolvedValue(
+      contract({
+        plannedMoveOutDate: null,
+        moveOutNoticeAtUtc: null,
+        moveOutNoticeDays: null,
+        moveOutForfeitsDeposit: false,
+      }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={["/management/contracts"]}>
+        <ManagementContractsPage />
+      </MemoryRouter>,
+    )
+
+    await screen.findByText("HĐ #12")
+    fireEvent.click(screen.getByRole("button", { name: "Xem" }))
+
+    fireEvent.click(await screen.findByRole("button", { name: "Báo trả phòng" }))
+
+    const dateInput = screen.getByLabelText("Ngày dự kiến trả phòng")
+    fireEvent.change(dateInput, { target: { value: nearDate } })
+
+    expect(
+      await screen.findByText(
+        `Bạn trả phòng trước hạn hợp đồng mà báo trước dưới 30 ngày nên sẽ mất phần tiền cọc còn lại khi quyết toán. Báo muộn nhất ngày ${formatContractDate(expectedLatestNotice)} để giữ cọc.`,
+      ),
+    ).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận báo trả phòng" }))
+
+    await waitFor(() =>
+      expect(mocks.saveContractMoveOutNotice).toHaveBeenCalledWith(
+        "manager-token",
+        12,
+        { plannedMoveOutDate: nearDate },
+      ),
+    )
+
+    expect(
+      await screen.findByText(
+        new RegExp(
+          `Dự kiến trả phòng ${formatContractDate(nearDate)} · báo trước 10 ngày`,
+        ),
+      ),
+    ).toBeTruthy()
+    expect(
+      screen.getByText("Báo trước dưới 30 ngày — Sẽ mất phần cọc còn lại"),
+    ).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Đổi ngày" })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "Hủy báo trả phòng" }))
+
+    await waitFor(() =>
+      expect(mocks.cancelContractMoveOutNotice).toHaveBeenCalledWith(
+        "manager-token",
+        12,
+      ),
+    )
+    expect(await screen.findByText("Đã hủy báo trả phòng.")).toBeTruthy()
+  })
+
+  it("disables terminate button until deposit settlement is confirmed, renders settlement preview table, and locks move-out edits after settlement (C17)", async () => {
+    mocks.getContracts.mockResolvedValue([
+      contract({
+        securityDepositAmount: 3_000_000,
+        prepaidRentAmount: 0,
+        prepaidRentApplied: 0,
+        remainingPrepaidCredit: 0,
+      }),
+    ])
+    mocks.getContractDepositSettlement.mockResolvedValue({
+      contractId: 12,
+      isSettled: false,
+      moveOutDate: "2026-11-15",
+      contractEndDate: "2027-11-01",
+      depositAmount: 3_000_000,
+      damageCharges: 1_200_000,
+      damageCoveredByDeposit: 1_200_000,
+      outstandingDebt: 500_000,
+      retainedForDebt: 500_000,
+      forfeitedAmount: 1_300_000,
+      refundAmount: 0,
+      amountDue: 0,
+      earlyWithoutNotice: true,
+      noticeDays: 15,
+      note: null,
+      settledByName: null,
+      settledAtUtc: null,
+      refundConfirmedAtUtc: null,
+      refundConfirmedByName: null,
+      dueCollectedAtUtc: null,
+      dueCollectedByName: null,
+    })
+    mocks.confirmContractDepositSettlement.mockResolvedValue({
+      contractId: 12,
+      isSettled: true,
+      moveOutDate: "2026-11-15",
+      contractEndDate: "2027-11-01",
+      depositAmount: 3_000_000,
+      damageCharges: 1_200_000,
+      damageCoveredByDeposit: 1_200_000,
+      outstandingDebt: 500_000,
+      retainedForDebt: 500_000,
+      forfeitedAmount: 1_300_000,
+      refundAmount: 0,
+      amountDue: 0,
+      earlyWithoutNotice: true,
+      noticeDays: 15,
+      note: "Đã thống nhất quyết toán",
+      settledByName: "Manager A",
+      settledAtUtc: "2026-11-15T10:00:00Z",
+      refundConfirmedAtUtc: null,
+      refundConfirmedByName: null,
+      dueCollectedAtUtc: null,
+      dueCollectedByName: null,
+    })
+
+    render(
+      <MemoryRouter initialEntries={["/management/contracts"]}>
+        <ManagementContractsPage />
+      </MemoryRouter>,
+    )
+
+    await screen.findByText("HĐ #12")
+    const terminateBtn = screen.getByRole("button", {
+      name: "Xác nhận kết thúc / Trả phòng",
+    }) as HTMLButtonElement
+    // Chưa quyết toán cọc -> nút Trả phòng bị khóa
+    expect(terminateBtn.disabled).toBe(true)
+
+    fireEvent.click(screen.getByRole("button", { name: "Xem" }))
+
+    const settlementSection = await screen.findByRole("region", {
+      name: "Quyết toán cọc hợp đồng 12",
+    })
+    expect(
+      within(settlementSection).getByText("Bản xem trước (Chưa quyết toán)"),
+    ).toBeTruthy()
+    expect(
+      within(settlementSection).getByText(
+        "trả trước hạn, báo trước 15 ngày < 30",
+      ),
+    ).toBeTruthy()
+    expect(within(settlementSection).getByText("Hoàn lại")).toBeTruthy()
+    expect(within(settlementSection).getByText("Khách nộp thêm")).toBeTruthy()
+
+    // Bấm Xác nhận quyết toán khi còn nợ nhưng chưa tick -> chặn và báo lỗi
+    fireEvent.click(
+      within(settlementSection).getByRole("button", {
+        name: "Xác nhận quyết toán",
+      }),
+    )
+    expect(
+      await within(settlementSection).findByRole("alert"),
+    ).toBeTruthy()
+    expect(mocks.confirmContractDepositSettlement).not.toHaveBeenCalled()
+
+    // Tick "Khách không trả, giữ cọc bù nợ", nhập ghi chú và xác nhận trong hộp thoại
+    fireEvent.click(
+      within(settlementSection).getByLabelText("Khách không trả, giữ cọc bù nợ"),
+    )
+    fireEvent.change(
+      within(settlementSection).getByLabelText("Ghi chú quyết toán"),
+      { target: { value: "Đã thống nhất quyết toán" } },
+    )
+    fireEvent.click(
+      within(settlementSection).getByRole("button", {
+        name: "Xác nhận quyết toán",
+      }),
+    )
+
+    const confirmDialog = await screen.findByRole("dialog", {
+      name: "Hộp xác nhận quyết toán cọc",
+    })
+    fireEvent.click(
+      within(confirmDialog).getByRole("button", { name: "Đồng ý quyết toán" }),
+    )
+
+    await waitFor(() =>
+      expect(mocks.confirmContractDepositSettlement).toHaveBeenCalledWith(
+        "manager-token",
+        12,
+        {
+          outstandingDebtAcknowledged: true,
+          note: "Đã thống nhất quyết toán",
+        },
+      ),
+    )
+
+    expect(
+      await within(settlementSection).findByText("Đã quyết toán"),
+    ).toBeTruthy()
+    // Sau khi quyết toán cọc -> nút Trả phòng được bật, ẩn nút Lập/Cập nhật biên bản trả phòng và Thêm ảnh trả phòng
+    expect(terminateBtn.disabled).toBe(false)
+    expect(
+      screen.queryByRole("button", { name: "Lập biên bản trả phòng" }),
+    ).toBeNull()
+    expect(screen.queryByLabelText("Thêm ảnh Ảnh trả phòng")).toBeNull()
   })
 })
