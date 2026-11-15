@@ -94,7 +94,11 @@ describe("DepositPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
 
     await screen.findByText("Thanh toán cọc qua payOS")
-    expect(mocks.createBooking).toHaveBeenCalledWith("customer-token", 501)
+    expect(mocks.createBooking).toHaveBeenCalledWith("customer-token", {
+      roomId: 501,
+      moveInDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      occupantCount: 1,
+    })
     expect(mocks.getBooking).toHaveBeenCalledWith("customer-token", 7, expect.any(AbortSignal))
 
     const payButton = screen.getByRole("button", { name: /^Thanh toán/ })
@@ -115,6 +119,22 @@ describe("DepositPage", () => {
     const rules = screen.getByText(/được trừ vào tiền phòng tháng đầu tiên/)
     expect(rules.textContent).toContain("giữ 7 ngày")
     expect(rules.textContent).toContain("không được hoàn")
+  })
+
+  it("validates occupantCount against room.maxOccupants and displays move-in summary (C9)", async () => {
+    mocks.getRoom.mockResolvedValue({ ...room, maxOccupants: 2 })
+    mocks.getBooking.mockResolvedValue(booking({ moveInDate: "2026-11-20", occupantCount: 2 }))
+    renderAt("/deposit?roomId=501")
+    await screen.findByText("A101 · Studio")
+
+    fireEvent.change(screen.getByLabelText("Số người ở"), { target: { value: "3" } })
+    fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
+    expect(await screen.findByText("Phòng A101 chỉ được ở tối đa 2 người.")).toBeTruthy()
+    expect(mocks.createBooking).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText("Số người ở"), { target: { value: "2" } })
+    fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
+    expect(await screen.findByText("Dọn vào 20/11/2026 · 2 người")).toBeTruthy()
   })
 
   it("tracks Creating without redirecting to a fabricated success page", async () => {

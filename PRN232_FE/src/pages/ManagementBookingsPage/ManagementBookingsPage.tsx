@@ -10,7 +10,7 @@ import { refundBlocksContract, refundDisplay } from "@/utils/bookingRefund"
 import type { BookingDto } from "@/types/booking"
 import { routes } from "@/constants/routes"
 import { useBookings } from "@/hooks/useBookings"
-import { bookingErrorMessage, bookingStatusDisplay, formatDateTime } from "@/utils/bookingDisplay"
+import { bookingErrorMessage, bookingStatusDisplay, formatBookingMoveInSummary, formatDateTime } from "@/utils/bookingDisplay"
 import { formatVnd } from "@/utils/publicFormatting"
 
 export default function ManagementBookingsPage() {
@@ -81,6 +81,9 @@ export default function ManagementBookingsPage() {
                     <span className="text-[13px] text-slate-600">
                       {booking.propertyName}
                       <small className="block text-slate-400">Phòng {booking.roomCode}</small>
+                      {formatBookingMoveInSummary(booking) && (
+                        <small className="block text-slate-500">{formatBookingMoveInSummary(booking)}</small>
+                      )}
                     </span>
                     <span className="font-semibold text-[#087775]">{formatVnd(booking.depositAmount)}</span>
                     <span className="text-[13px] text-slate-600">

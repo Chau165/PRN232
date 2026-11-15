@@ -14,6 +14,8 @@ export interface BookingDto {
   expiryDate: string
   customerPhone: string
   contractId: number | null
+  moveInDate?: string | null
+  occupantCount?: number | null
   refundStatus?: string | null
   canRequestRefund?: boolean
   latestPaymentRequestId?: number | null

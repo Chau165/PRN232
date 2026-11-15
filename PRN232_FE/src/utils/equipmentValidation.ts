@@ -149,6 +149,9 @@ export function formatEquipmentSummary(item: {
   if (!hasCompensation) {
     return quantityPart
   }
+  if ((item.compensationValue ?? 0) === 0) {
+    return `${quantityPart} — Chưa định giá`
+  }
   const formattedPrice = new Intl.NumberFormat("vi-VN").format(
     item.compensationValue ?? 0,
   )

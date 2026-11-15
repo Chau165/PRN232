@@ -11,7 +11,7 @@ import { useBookings } from "@/hooks/useBookings"
 import { useViewingSchedules } from "@/hooks/useViewingSchedules"
 import { useAuth } from "@/auth/AuthContext"
 import { createBooking } from "@/services/bookingService"
-import { bookingErrorMessage, bookingStatusDisplay, formatDateTime, isBookingExpired } from "@/utils/bookingDisplay"
+import { bookingErrorMessage, bookingStatusDisplay, formatBookingMoveInSummary, formatDateTime, isBookingExpired } from "@/utils/bookingDisplay"
 import { formatVnd } from "@/utils/publicFormatting"
 import { viewingStatusDisplay, viewingTimeLabel } from "@/utils/viewingDisplay"
 
@@ -75,6 +75,9 @@ export default function MyBookingsPage() {
                       {booking.propertyName}
                     </h2>
                     <p className="mt-1 text-[13px] text-slate-500">Phòng {booking.roomCode}</p>
+                    {formatBookingMoveInSummary(booking) && (
+                      <p className="mt-1 text-[12px] font-medium text-slate-600">{formatBookingMoveInSummary(booking)}</p>
+                    )}
                   </div>
                   <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
                 </div>

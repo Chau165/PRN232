@@ -15,9 +15,16 @@ export function getBooking(accessToken: string, bookingId: number, signal?: Abor
   return apiRequest<BookingDto>(`/bookings/${bookingId}`, { accessToken, signal, cache: "no-store" })
 }
 
+export interface CreateBookingRequest {
+  roomId: number
+  viewingId?: number
+  moveInDate?: string | null
+  occupantCount?: number | null
+}
+
 export function createBooking(
   accessToken: string,
-  request: number | { roomId: number; viewingId?: number },
+  request: number | CreateBookingRequest,
 ) {
   const body = typeof request === "number" ? { roomId: request } : request
   return apiRequest<BookingDto>("/bookings", {

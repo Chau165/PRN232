@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router"
+import { ApiError } from "@/api/apiClient"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
 import { useAuth } from "@/auth/AuthContext"
 import { createBooking, getBooking, createBookingPaymentLink } from "@/services/bookingService"
@@ -9,9 +10,21 @@ import { openPayOSCheckout, positiveId, validPayOSCheckout } from "@/utils/invoi
 import { publicApi } from "@/services/publicBrowsingService"
 import { usePublicApiResource } from "@/hooks/usePublicApiResource"
 import { parsePositiveRouteId, routes } from "@/constants/routes"
-import { bookingErrorMessage, formatDateTime, isBookingExpired } from "@/utils/bookingDisplay"
+import {
+  BOOKING_MAX_MOVE_IN_DAYS,
+  BOOKING_OCCUPANTS_MAX,
+  BOOKING_OCCUPANTS_MIN,
+  bookingErrorMessage,
+  bookingMoveInDateError,
+  bookingOccupantCountError,
+  formatBookingMoveInSummary,
+  formatDateTime,
+  getVietnamIsoDateOffset,
+  isBookingExpired,
+} from "@/utils/bookingDisplay"
 import { publicApiErrorMessage } from "@/utils/publicApiDisplay"
 import { formatVnd } from "@/utils/publicFormatting"
+import { splitValidationErrors } from "@/utils/roomValidation"
 
 
 // Bước 1 (?roomId=): giữ phòng bằng một booking Pending. Bước 2 (?bookingId=): thanh toán cọc
@@ -40,6 +53,9 @@ function HoldRoomStep({ roomId }: { roomId: number }) {
   const { accessToken, user } = useAuth()
   const navigate = useNavigate()
   const resource = usePublicApiResource(String(roomId), (signal) => publicApi.getRoom(roomId, signal))
+  const [moveInDate, setMoveInDate] = useState<string>(() => getVietnamIsoDateOffset(0))
+  const [occupantCount, setOccupantCount] = useState<string>("1")
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<"moveInDate" | "occupantCount", string>>>({})
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -53,14 +69,46 @@ function HoldRoomStep({ roomId }: { roomId: number }) {
   }
 
   const room = resource.data
+  const minMoveInDate = getVietnamIsoDateOffset(0)
+  const maxMoveInDate = getVietnamIsoDateOffset(BOOKING_MAX_MOVE_IN_DAYS)
+  const maxOccupantsLimit = room.maxOccupants ?? BOOKING_OCCUPANTS_MAX
+
   const holdRoom = async () => {
     if (!accessToken || pending) return
+    const nextFieldErrors: Partial<Record<"moveInDate" | "occupantCount", string>> = {}
+    const moveInErr = bookingMoveInDateError(moveInDate)
+    if (moveInErr) nextFieldErrors.moveInDate = moveInErr
+    const occupantErr = bookingOccupantCountError(occupantCount, room)
+    if (occupantErr) nextFieldErrors.occupantCount = occupantErr
+
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      setError(null)
+      return
+    }
+
     setPending(true)
+    setFieldErrors({})
     setError(null)
     try {
-      const booking = await createBooking(accessToken, room.roomId)
+      const booking = await createBooking(accessToken, {
+        roomId: room.roomId,
+        moveInDate: moveInDate.trim() || undefined,
+        occupantCount: occupantCount.trim() ? Number(occupantCount) : undefined,
+      })
       navigate(`${routes.deposit}?bookingId=${booking.bookingId}`, { replace: true })
     } catch (holdError) {
+      if (holdError instanceof ApiError && holdError.status === 400 && holdError.validationErrors) {
+        const { fieldErrors: mapped, generalError } = splitValidationErrors(
+          holdError.validationErrors,
+          ["moveInDate", "occupantCount"] as const,
+          holdError.message,
+        )
+        setFieldErrors(mapped)
+        setError(generalError || null)
+        setPending(false)
+        return
+      }
       setError(bookingErrorMessage(holdError, "Phòng vừa được người khác giữ hoặc không còn trống."))
       setPending(false)
     }
@@ -76,6 +124,56 @@ function HoldRoomStep({ roomId }: { roomId: number }) {
         ]}
         amount={room.baseRent}
       />
+
+      <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-2">
+        <label className="block space-y-1.5 text-sm">
+          <span className="font-medium text-slate-700">Ngày dọn vào dự kiến</span>
+          <input
+            type="date"
+            aria-label="Ngày dọn vào"
+            min={minMoveInDate}
+            max={maxMoveInDate}
+            value={moveInDate}
+            onChange={(e) => {
+              setMoveInDate(e.target.value)
+              setFieldErrors((prev) => ({ ...prev, moveInDate: undefined }))
+            }}
+            disabled={pending}
+            className={`w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 ${
+              fieldErrors.moveInDate ? "border-rose-400" : "border-slate-300"
+            }`}
+          />
+          <span className="block text-xs text-slate-500">Tối đa 14 ngày kể từ hôm nay</span>
+          {fieldErrors.moveInDate && <span className="block text-xs text-rose-600">{fieldErrors.moveInDate}</span>}
+        </label>
+
+        <label className="block space-y-1.5 text-sm">
+          <span className="font-medium text-slate-700">Số người ở</span>
+          <input
+            type="number"
+            aria-label="Số người ở"
+            min={BOOKING_OCCUPANTS_MIN}
+            max={maxOccupantsLimit}
+            step={1}
+            value={occupantCount}
+            onChange={(e) => {
+              setOccupantCount(e.target.value)
+              setFieldErrors((prev) => ({ ...prev, occupantCount: undefined }))
+            }}
+            disabled={pending}
+            className={`w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 ${
+              fieldErrors.occupantCount ? "border-rose-400" : "border-slate-300"
+            }`}
+          />
+          <span className="block text-xs text-slate-500">
+            {room.maxOccupants != null
+              ? `Tối đa ${room.maxOccupants} người cho phòng ${room.roomCode}`
+              : `Từ ${BOOKING_OCCUPANTS_MIN} đến ${BOOKING_OCCUPANTS_MAX} người`}
+          </span>
+          {fieldErrors.occupantCount && <span className="block text-xs text-rose-600">{fieldErrors.occupantCount}</span>}
+        </label>
+      </div>
+
       <p className="text-sm text-slate-500">Sau khi giữ phòng, bạn có 15 phút để thanh toán tiền cọc.</p>
       <p className="text-sm text-slate-500">
         Tiền cọc được trừ vào tiền phòng tháng đầu tiên khi lập hợp đồng. Sau khi đặt cọc, phòng được giữ 7 ngày để
@@ -155,6 +253,7 @@ function PayDepositStep({ bookingId }: { bookingId: number }) {
         rows={[
           ["Khu trọ", booking.propertyName],
           ["Phòng", booking.roomCode],
+          ["Dự kiến nhận phòng", formatBookingMoveInSummary(booking) ?? ""],
           ["Giữ phòng đến", formatDateTime(booking.expiryDate)],
         ]}
         amount={booking.depositAmount}

@@ -37,10 +37,9 @@ export default function EquipmentDetailModal({
         <p>
           <span className="text-slate-400">Giá trị bồi thường:</span>{" "}
           <strong>
-            {new Intl.NumberFormat("vi-VN").format(
-              equipment.compensationValue ?? 0,
-            )}
-            đ/cái
+            {equipment.compensationValue && equipment.compensationValue > 0
+              ? `${new Intl.NumberFormat("vi-VN").format(equipment.compensationValue)}đ/cái`
+              : "Chưa định giá"}
           </strong>
         </p>
         <p>

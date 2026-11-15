@@ -36,6 +36,11 @@ import {
   validateEquipmentForm,
   warrantyExpiryError,
 } from "@/utils/equipmentValidation"
+import {
+  bookingMoveInDateError,
+  bookingOccupantCountError,
+  formatBookingMoveInSummary,
+} from "@/utils/bookingDisplay"
 
 describe("rebuild validation rules (C2 & C3)", () => {
   describe("roomValidation (C2)", () => {
@@ -313,9 +318,45 @@ describe("rebuild validation rules (C2 & C3)", () => {
           compensationValue: 8_500_000,
         }),
       ).toBe("Máy lạnh × 2 — 8.500.000đ/cái")
+      expect(
+        formatEquipmentSummary({
+          name: "Bàn học",
+          quantity: 1,
+          compensationValue: 0,
+        }),
+      ).toBe("Bàn học × 1 — Chưa định giá")
       expect(formatEquipmentSummary({ name: "Máy lạnh API" })).toBe(
         "Máy lạnh API",
       )
+    })
+
+    it("validates booking moveInDate, occupantCount and move-in summary (C9)", () => {
+      const today = "2026-11-15"
+      expect(bookingMoveInDateError("2026-11-14", today)).toBe(
+        "Ngày dọn vào không được ở quá khứ.",
+      )
+      expect(bookingMoveInDateError("2026-11-15", today)).toBeNull()
+      expect(bookingMoveInDateError("2026-11-29", today)).toBeNull()
+      expect(bookingMoveInDateError("2026-11-30", today)).toBe(
+        "Ngày dọn vào tối đa 14 ngày kể từ hôm nay.",
+      )
+
+      expect(bookingOccupantCountError(0)).toBe("Số người ở phải từ 1 đến 10.")
+      expect(bookingOccupantCountError(11)).toBe("Số người ở phải từ 1 đến 10.")
+      expect(
+        bookingOccupantCountError(4, { roomCode: "A101", maxOccupants: 3 }),
+      ).toBe("Phòng A101 chỉ được ở tối đa 3 người.")
+      expect(
+        bookingOccupantCountError(3, { roomCode: "A101", maxOccupants: 3 }),
+      ).toBeNull()
+
+      expect(
+        formatBookingMoveInSummary({
+          moveInDate: "2026-11-20",
+          occupantCount: 2,
+        }),
+      ).toBe("Dọn vào 20/11/2026 · 2 người")
+      expect(formatBookingMoveInSummary({})).toBeNull()
     })
   })
 })
