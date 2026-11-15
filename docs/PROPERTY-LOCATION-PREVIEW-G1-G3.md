@@ -12,7 +12,7 @@ API mới: `POST /api/properties/location-preview`, chỉ Admin. Không ghi DB, 
 
 Tỉnh/phường được tra bằng danh mục của BE, kiểm tra quan hệ cha con; không nhận tên địa giới tự khai từ FE. Địa chỉ tối đa 250 ký tự.
 
-Response thành công HTTP 200 có `status`, `originalAddress`, `requiresConfirmation`, `candidates`, `providers`.
+Response thành công HTTP 200 có `status`, `originalAddress`, `candidates`, `providers`. Theo A1–A2, không còn cờ/bước xác nhận riêng; Admin chọn hoặc sửa ghim rồi lưu.
 
 | status | Ý nghĩa |
 |---|---|
@@ -37,7 +37,7 @@ Kết quả khác tỉnh/phường/đường đã xác minh, sai quốc gia/tọ
 
 Luồng tạo/sửa vẫn kiểm tra vị trí tự động như trước, không chấp nhận ghim tự khai. Chỉ thay thứ tự phân loại lỗi: nếu đã có kết quả nhưng chưa đủ tin cậy/không rõ vị trí, trả lỗi validation 400, thay vì để lỗi nhà cung cấp còn lại che thành 502. Không cần migration.
 
-G4 chưa triển khai: chưa có nút Tìm thử, danh sách gợi ý hoặc bản đồ mới trên FE. Có thể thử API qua Swagger với token Admin.
+Theo A1–A2, API preview không còn trả token. API lưu nhận trực tiếp kinh độ/vĩ độ; tìm gợi ý trực tiếp từ FE thuộc A3. Xem [luồng lưu tọa độ hiện hành](PROPERTY-COORDINATES-A1-A2.md).
 
 ## Kiểm thử
 

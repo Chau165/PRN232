@@ -76,7 +76,7 @@ public sealed class PropertyLocationPreviewService(IPropertyGeocodingService geo
         if (matches.Any(a => matches.Any(b => Distance(a.Location.Coordinates,b.Location.Coordinates) > 100)))
             candidates = candidates.Select(x => x.MatchLevel == "Match" ? x with { MatchLevel="Suggestion", Reasons=["spatially_ambiguous"] } : x).ToList();
         var status = candidates.Any(x => x.MatchLevel == "Match") ? "Matched" : candidates.Count > 0 ? "Suggestions" : anyResponse ? "NoResults" : "Unavailable";
-        return new(status, original, true, candidates, providers.Distinct().ToList());
+        return new(status, original, candidates, providers.Distinct().ToList());
     }
     private static PropertyLocationPreviewCandidate? Classify(AddressGeocodingCandidate candidate, PropertyGeocodingQuery expected)
     {

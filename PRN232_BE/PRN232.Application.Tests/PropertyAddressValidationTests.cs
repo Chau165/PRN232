@@ -13,30 +13,19 @@ namespace PRN232.Application.Tests;
 public sealed class PropertyAddressValidationTests
 {
     [Fact]
-    public async Task Create_resolves_official_names_and_geocodes_the_canonical_address()
+    public async Task Create_resolves_official_names_and_stores_map_coordinates()
     {
         await using var context = await CreateContextAsync();
-        var geocoder = new FixedGeocoder(new AddressGeocodingCandidate(
-            new AddressCoordinates(21.032m, 105.814m),
-            "12 đường Lê Lợi, Phường Ba Đình, Thành phố Hà Nội, Việt Nam",
-            "Nominatim",
-            "house",
-            "12",
-            "đường Lê Lợi",
-            "Phường Ba Đình",
-            "Thành phố Hà Nội",
-            "vn"));
         var service = new PropertyService(
             new PropertyRepository(context),
-            new AdministrativeDivisionCatalog(),
-            geocoder);
+            new AdministrativeDivisionCatalog());
 
         var created = await service.CreateAsync(
             new CreatePropertyDto(
                 "Nhà trọ Bình An",
                 "12 đường Lê Lợi",
                 "01",
-                "00004"),
+                "00004", Latitude:21.032m, Longitude:105.814m),
             ownerId: 10,
             isAdmin: true);
 
@@ -48,7 +37,6 @@ public sealed class PropertyAddressValidationTests
         Assert.Equal("00004", created.WardCode);
         Assert.Equal(21.032m, created.Latitude);
         Assert.Equal(105.814m, created.Longitude);
-        Assert.Equal("12 đường Lê Lợi, Phường Ba Đình, Thành phố Hà Nội, Việt Nam", geocoder.LastQuery);
     }
 
     // Rebuild 1.4: a legacy property (no codes, old district note) picks the same ward again.
@@ -74,7 +62,7 @@ public sealed class PropertyAddressValidationTests
 
         var updated = await CreateService(context).UpdateAsync(
             23,
-            new UpdatePropertyDto("Bến Thành House", "01 Lê Lợi", "79", "26743"),
+            new UpdatePropertyDto("Bến Thành House", "01 Lê Lợi", "79", "26743", Latitude:10.7725m, Longitude:106.698m),
             requestingUserId: 10,
             isAdmin: true);
 
@@ -271,29 +259,16 @@ public sealed class PropertyAddressValidationTests
     }
 
     [Fact]
-    public async Task Create_rejects_a_candidate_that_does_not_match_the_selected_ward()
+    public async Task Create_uses_admin_pin_without_revalidating_against_a_geocoder_ward()
     {
         await using var context = await CreateContextAsync();
-        var candidate = new AddressGeocodingCandidate(
-            new AddressCoordinates(21.032m, 105.814m),
-            "12 đường Lê Lợi, Phường Ba Đình, Thành phố Hà Nội, Việt Nam",
-            "Nominatim",
-            "house",
-            "12",
-            "đường Lê Lợi",
-            "Phường khác",
-            "Thành phố Hà Nội",
-            "vn");
         var service = new PropertyService(
             new PropertyRepository(context),
-            new AdministrativeDivisionCatalog(),
-            new FixedGeocoder(candidate));
+            new AdministrativeDivisionCatalog());
 
-        await Assert.ThrowsAsync<PropertyValidationException>(() => service.CreateAsync(
-            new CreatePropertyDto("Nhà trọ", "12 đường Lê Lợi", "01", "00004"),
-            ownerId: 10,
-            isAdmin: true));
-        Assert.Empty(context.Properties);
+        var saved = await service.CreateAsync(new CreatePropertyDto("Nhà trọ", "12 đường Lê Lợi", "01", "00004", Latitude:21.032m, Longitude:105.814m), ownerId:10,isAdmin:true);
+        Assert.Equal(21.032m,saved.Latitude);
+
     }
 
     private static PropertyService CreateService(AppDbContext context) => new(
@@ -318,24 +293,4 @@ public sealed class PropertyAddressValidationTests
         return context;
     }
 
-    private sealed class FixedGeocoder(AddressGeocodingCandidate candidate) : IPropertyGeocodingService
-    {
-        public string? LastQuery { get; private set; }
-
-        public Task<IReadOnlyList<AddressGeocodingCandidate>> FindNominatimCandidatesAsync(
-            PropertyGeocodingQuery query,
-            CancellationToken cancellationToken = default)
-        {
-            LastQuery = query.FullAddress;
-            return Task.FromResult<IReadOnlyList<AddressGeocodingCandidate>>([candidate]);
-        }
-
-        public Task<IReadOnlyList<AddressGeocodingCandidate>> FindPhotonCandidatesAsync(
-            PropertyGeocodingQuery query,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult<IReadOnlyList<AddressGeocodingCandidate>>(
-                Array.Empty<AddressGeocodingCandidate>());
-        }
-    }
 }

@@ -36,7 +36,7 @@ public class PropertyLocationPreviewTests
         var result=await new PropertyLocationPreviewService(gateway,new Catalog()).PreviewAsync(Request(),default);
         Assert.Equal("Suggestions",result.Status);var item=Assert.Single(result.Candidates);
         Assert.Contains("ward_unverified",item.Reasons);Assert.Contains("approximate_location",item.Reasons);
-        Assert.True(result.RequiresConfirmation);Assert.Contains(result.Providers,x=>x.Provider=="Nominatim" && x.Status=="Timeout");
+        Assert.Equal("Suggestion",item.MatchLevel);Assert.Contains(result.Providers,x=>x.Provider=="Nominatim" && x.Status=="Timeout");
         Assert.Equal("121, đường Lê Văn Việt",result.OriginalAddress);
     }
     [Theory]

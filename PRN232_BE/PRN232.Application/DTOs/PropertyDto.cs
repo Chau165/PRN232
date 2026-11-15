@@ -24,16 +24,20 @@ public record CreatePropertyDto(
     string AddressText,
     string? ProvinceCode,
     string? WardCode,
-    string? Description = null);
+    string? Description = null,
+    decimal? Latitude = null,
+    decimal? Longitude = null);
 
-// Cùng hình dạng với CreatePropertyDto. Không gửi mã tỉnh/phường = giữ nguyên vị trí đã lưu
-// (chỉ hợp lệ khi số nhà, tên đường cũng không đổi).
+// Có thể bỏ tọa độ khi địa chỉ và mã hành chính không đổi để giữ ghim cũ.
+// Chỉ đổi ghim: gửi đủ cặp tọa độ, có thể giữ nguyên mã hành chính bằng cách bỏ hai mã.
 public record UpdatePropertyDto(
     string PropertyName,
     string AddressText,
     string? ProvinceCode,
     string? WardCode,
-    string? Description = null);
+    string? Description = null,
+    decimal? Latitude = null,
+    decimal? Longitude = null);
 
 public sealed record AddressCoordinates(decimal Latitude, decimal Longitude);
 

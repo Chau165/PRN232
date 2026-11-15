@@ -354,7 +354,7 @@ public class PropertiesController : ControllerBase
                     form.AddressText ?? string.Empty,
                     form.ProvinceCode,
                     form.WardCode,
-                    form.Description),
+                    form.Description, form.Latitude, form.Longitude),
                 CurrentUserId(),
                 IsAdmin(),
                 await ReadImageAsync(form.PrimaryImage, cancellationToken),
@@ -403,7 +403,7 @@ public class PropertiesController : ControllerBase
                     form.AddressText ?? string.Empty,
                     form.ProvinceCode,
                     form.WardCode,
-                    form.Description),
+                    form.Description, form.Latitude, form.Longitude),
                 CurrentUserId(),
                 IsAdmin(),
                 await ReadImageAsync(form.PrimaryImage, cancellationToken),
@@ -540,5 +540,9 @@ public sealed class PropertyWriteForm
     public string? ProvinceCode { get; set; }
     public string? WardCode { get; set; }
     public string? Description { get; set; }
+    [ModelBinder(BinderType = typeof(PRN232.Api.Validation.CoordinateModelBinder))]
+    public decimal? Latitude { get; set; }
+    [ModelBinder(BinderType = typeof(PRN232.Api.Validation.CoordinateModelBinder))]
+    public decimal? Longitude { get; set; }
     public IFormFile? PrimaryImage { get; set; }
 }
