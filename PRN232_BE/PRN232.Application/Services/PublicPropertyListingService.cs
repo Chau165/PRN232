@@ -310,7 +310,7 @@ public sealed class PublicPropertyListingService : IPublicPropertyListingService
     private static PublicRoomEquipmentDto ConvertToDto(PublicRoomEquipmentReadModel equipment)
     {
         return new PublicRoomEquipmentDto(
-            equipment.EquipmentId, equipment.Name);
+            equipment.EquipmentId, equipment.Name, equipment.Quantity);
     }
 
     private static PublicPropertySearchCriteria NormalizeAndValidate(

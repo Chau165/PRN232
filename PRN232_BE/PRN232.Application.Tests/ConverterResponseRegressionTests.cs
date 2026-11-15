@@ -104,7 +104,7 @@ public sealed class ConverterResponseRegressionTests
                 new(9, "Home", "Address", "Ward", "District", "City"),
                 ["second-image", "first-image"], [new(8, "Wi-Fi"), new(2, "Parking")],
                 [new(6, "Water", 12345.67m), new(1, "Electricity", 3456.78m)],
-                [new(5, "Bed"), new(2, "Desk")])
+                [new(5, "Bed", 1), new(2, "Desk", 2)])
         };
         var service = new PublicPropertyListingService(repository, TimeProvider.System);
 
@@ -117,7 +117,7 @@ public sealed class ConverterResponseRegressionTests
         Assert.Equal(new[] { "second-image", "first-image" }, detail.Images);
         Assert.Equal(new[] { new PublicAmenitySummaryDto(8, "Wi-Fi"), new(2, "Parking") }, detail.Amenities);
         Assert.Equal(new[] { new PublicRoomServiceDto(6, "Water", 12345.67m), new(1, "Electricity", 3456.78m) }, detail.Services);
-        Assert.Equal(new[] { new PublicRoomEquipmentDto(5, "Bed"), new(2, "Desk") }, detail.Equipments);
+        Assert.Equal(new[] { new PublicRoomEquipmentDto(5, "Bed", 1), new(2, "Desk", 2) }, detail.Equipments);
         Assert.Equal(1, repository.ReadCount);
     }
 

@@ -116,4 +116,4 @@ public sealed record PublicRoomPropertyReadModel(
 
 public sealed record PublicRoomServiceReadModel(int ServiceId, string Name, decimal Price);
 
-public sealed record PublicRoomEquipmentReadModel(int EquipmentId, string Name);
+public sealed record PublicRoomEquipmentReadModel(int EquipmentId, string Name, int Quantity);

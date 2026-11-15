@@ -265,21 +265,21 @@ public sealed class PublicPropertyListingPostgreSqlTests
         Assert.Equal(eligibleRoomId, detail.RoomId);
         Assert.NotNull(detail.Property);
         Assert.Empty(detail.Images);
-        Assert.Empty(detail.Equipments);
-        Assert.Equal(3, sqlCapture.Commands.Count);
+        Assert.Equal(4, sqlCapture.Commands.Count);
 
         var generatedSql = string.Join(Environment.NewLine, sqlCapture.Commands);
         Assert.Contains("NOT EXISTS", generatedSql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("RoomAmenities", generatedSql, StringComparison.Ordinal);
         Assert.Contains("RoomTypeServices", generatedSql, StringComparison.Ordinal);
         Assert.DoesNotContain("RoomImages", generatedSql, StringComparison.Ordinal);
-        Assert.DoesNotContain("Equipments", generatedSql, StringComparison.Ordinal);
+        Assert.Contains("Equipments", generatedSql, StringComparison.Ordinal);
+        Assert.DoesNotContain("CompensationValue", generatedSql, StringComparison.Ordinal);
         Assert.DoesNotContain("OwnerId", generatedSql, StringComparison.Ordinal);
         Assert.DoesNotContain("CustomerId", generatedSql, StringComparison.Ordinal);
         Assert.DoesNotContain("Supplier", generatedSql, StringComparison.Ordinal);
         Assert.DoesNotContain("WarrantyExpiry", generatedSql, StringComparison.Ordinal);
         _output.WriteLine(
-            $"Room detail Npgsql SQL (structure only): selects={sqlCapture.Commands.Count}, rentabilityPredicate={generatedSql.Contains("NOT EXISTS", StringComparison.OrdinalIgnoreCase)}, amenityJoin={generatedSql.Contains("RoomAmenities", StringComparison.Ordinal)}, serviceJoin={generatedSql.Contains("RoomTypeServices", StringComparison.Ordinal)}, imageAndEquipmentTablesQueried=false.");
+            $"Room detail Npgsql SQL (structure only): selects={sqlCapture.Commands.Count}, rentabilityPredicate={generatedSql.Contains("NOT EXISTS", StringComparison.OrdinalIgnoreCase)}, amenityJoin={generatedSql.Contains("RoomAmenities", StringComparison.Ordinal)}, serviceJoin={generatedSql.Contains("RoomTypeServices", StringComparison.Ordinal)}, imageTableQueried=false, equipmentNameAndQuantityOnly=true.");
 
         var blockedRoomId = await context.Rooms
             .AsNoTracking()
@@ -356,7 +356,9 @@ public sealed class PublicPropertyListingPostgreSqlTests
         using var roomDetail = JsonDocument.Parse(await roomDetailResponse.Content.ReadAsStringAsync());
         Assert.Equal(roomId, roomDetail.RootElement.GetProperty("roomId").GetInt32());
         Assert.Empty(roomDetail.RootElement.GetProperty("images").EnumerateArray());
-        Assert.Empty(roomDetail.RootElement.GetProperty("equipments").EnumerateArray());
+        Assert.All(roomDetail.RootElement.GetProperty("equipments").EnumerateArray(), equipment =>
+            Assert.Equal(new[] { "equipmentId", "name", "quantity" },
+                equipment.EnumerateObject().Select(item => item.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray()));
         Assert.False(roomDetail.RootElement.TryGetProperty("status", out _));
         Assert.False(roomDetail.RootElement.TryGetProperty("ownerId", out _));
     }

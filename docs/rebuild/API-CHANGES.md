@@ -189,6 +189,20 @@ Việc FE gợi ý: thêm 2 ô vào form thiết bị; danh sách thiết bị h
 
 ---
 
+## C8 — Chi tiết phòng công khai hiển thị thiết bị · ✅ đã có (việc 2.4)
+
+Nhóm đã chốt: khách thuê cần biết phòng có gì. `GET /api/public/rooms/{id}` trước đây luôn trả `equipments: []`, giờ trả thiết bị thật của phòng:
+
+```json
+"equipments": [{ "equipmentId": 1, "name": "Máy lạnh", "quantity": 2 }]
+```
+
+Chỉ có 3 field này. Nhà cung cấp, bảo hành, trạng thái, giá trị bồi thường **không** công khai (thông tin nội bộ của chủ trọ). Không cần đăng nhập, không đổi URL.
+
+Việc FE gợi ý: type `PublicRoomDetail.equipments` thêm `quantity: number`; `RoomDetailModal` (và trang chi tiết phòng nếu có) hiển thị mục "Thiết bị trong phòng", ví dụ "Máy lạnh × 2" (ẩn "× 1"). Không có thiết bị thì ẩn mục.
+
+---
+
 <a id="fe"></a>
 ## Việc FE cần làm (task 1.5, Antigravity)
 

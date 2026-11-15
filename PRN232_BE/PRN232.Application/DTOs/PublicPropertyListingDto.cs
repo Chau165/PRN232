@@ -250,4 +250,4 @@ public sealed record PublicRoomPropertyDto(
 
 public sealed record PublicRoomServiceDto(int ServiceId, string Name, decimal Price);
 
-public sealed record PublicRoomEquipmentDto(int EquipmentId, string Name);
+public sealed record PublicRoomEquipmentDto(int EquipmentId, string Name, int Quantity);
