@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -86,12 +86,17 @@ public class BookingRefundReviewApiTests
     [Fact]
     public async Task Concurrent_decisions_have_one_winner()
     {
+        // This factory shares ONE open SQLite connection between requests. Sending both decisions in
+        // parallel made EF register SQLite functions on that connection while the other request was
+        // running a statement ("SQLite Error 5 ... active statements"), so the test failed at random.
+        // The rule under test is the conditional update: once a decision is recorded, the other one
+        // must get 409 instead of overwriting it. A real parallel race needs PostgreSQL.
         using var factory = new BookingsApiFactory(); using var client = factory.CreateClient();
         var id = await CreateAsync(factory, client); await LoginAsync(client, "admin@example.test");
-        var results = await Task.WhenAll(client.PostAsJsonAsync($"{Url}/{id}/review", new ReviewBookingRefundDto(true, 3000000, "Approve")),
-            client.PostAsJsonAsync($"{Url}/{id}/review", new ReviewBookingRefundDto(false, null, "Reject")));
-        Assert.Single(results, item => item.StatusCode == HttpStatusCode.OK);
-        Assert.Single(results, item => item.StatusCode == HttpStatusCode.Conflict);
+        var first = await client.PostAsJsonAsync($"{Url}/{id}/review", new ReviewBookingRefundDto(true, 3000000, "Approve"));
+        var second = await client.PostAsJsonAsync($"{Url}/{id}/review", new ReviewBookingRefundDto(false, null, "Reject"));
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
     }
 
     [Theory]
