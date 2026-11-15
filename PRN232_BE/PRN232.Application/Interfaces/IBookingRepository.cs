@@ -19,7 +19,7 @@ public interface IBookingRepository
         int bookingId,
         string expectedStatus,
         string reason,
-        Notifications? customerNotification,
+        IReadOnlyList<Notifications> notifications,
         DateTimeOffset asOfUtc,
         int? managerId = null);
     Task<List<BookingContactReadModel>> GetPropertyContactsAsync(IReadOnlyCollection<int> propertyIds);

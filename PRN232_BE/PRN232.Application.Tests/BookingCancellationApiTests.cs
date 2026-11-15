@@ -75,6 +75,30 @@ public sealed class BookingCancellationApiTests
         var booking = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("CustomerCancelled", booking.GetProperty("cancellationReason").GetString());
         Assert.False(booking.GetProperty("depositRefundDue").GetBoolean());
+        // Rebuild 3.2c: the assigned manager learns the room is free again.
+        using var scope = factory.Services.CreateScope();
+        var toManager = await scope.ServiceProvider.GetRequiredService<AppDbContext>().Notifications
+            .SingleAsync(item => item.UserId == 7);
+        Assert.Contains("đã hủy đặt cọc phòng A101", toManager.Title);
+    }
+
+    [Fact]
+    public async Task Move_in_reminders_reach_the_customer_and_the_assigned_manager()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await BookingsApiTests.LoginAsync(client, "customer@example.test");
+        await CreatePaidBookingAsync(client); // move-in defaults to today (Vietnam)
+
+        using var scope = factory.Services.CreateScope();
+        var reminders = scope.ServiceProvider.GetRequiredService<PRN232.Application.Interfaces.IBookingMoveInReminderService>();
+        var created = await reminders.SendDueRemindersAsync(CancellationToken.None);
+
+        Assert.Equal(2, created);
+        Assert.Equal(0, await reminders.SendDueRemindersAsync(CancellationToken.None));
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.True(await db.Notifications.AnyAsync(item => item.UserId == 10 && item.Title.StartsWith("Ngày dọn vào phòng A101")));
+        Assert.True(await db.Notifications.AnyAsync(item => item.UserId == 7 && item.Title.StartsWith("Khách Customer A dọn vào phòng A101")));
     }
 
     // Rebuild 3.2b: the manager pays the customer back outside the system and confirms it once.

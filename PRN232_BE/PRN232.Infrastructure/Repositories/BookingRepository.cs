@@ -188,7 +188,7 @@ public class BookingRepository : IBookingRepository
         int bookingId,
         string expectedStatus,
         string reason,
-        Notifications? customerNotification,
+        IReadOnlyList<Notifications> notifications,
         DateTimeOffset asOfUtc,
         int? managerId = null)
     {
@@ -259,9 +259,9 @@ public class BookingRepository : IBookingRepository
             return false;
         }
 
-        if (customerNotification is not null)
+        if (notifications.Count > 0)
         {
-            await _context.Notifications.AddAsync(customerNotification);
+            await _context.Notifications.AddRangeAsync(notifications);
             await _context.SaveChangesAsync();
         }
         await transaction.CommitAsync();
@@ -359,7 +359,7 @@ public class BookingRepository : IBookingRepository
                 assignment.Manager.Role!.RoleName == RoleNames.Manager)
             .OrderBy(assignment => assignment.ManagerId)
             .Select(assignment => new BookingContactReadModel(assignment.PropertyId, assignment.Manager!.FullName,
-                assignment.Manager.PhoneNumber, assignment.Manager.Email, RoleNames.Manager))
+                assignment.Manager.PhoneNumber, assignment.Manager.Email, RoleNames.Manager, assignment.ManagerId))
             .ToListAsync();
 
         // Khu trọ chưa có quản lý thì khách liên hệ chủ trọ.
@@ -368,7 +368,7 @@ public class BookingRepository : IBookingRepository
             .AsNoTracking()
             .Where(property => withoutManager.Contains(property.PropertyId))
             .Select(property => new BookingContactReadModel(property.PropertyId, property.Owner!.FullName,
-                property.Owner.PhoneNumber, property.Owner.Email, "Owner"))
+                property.Owner.PhoneNumber, property.Owner.Email, "Owner", property.OwnerId))
             .ToListAsync();
         return [.. managers, .. owners];
     }

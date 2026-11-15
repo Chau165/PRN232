@@ -301,6 +301,23 @@ Sau khi xác nhận: `depositRefundDue = false`, thêm `depositReturnedAtUtc` v�
 3. Sau khi xác nhận: thay nhãn bằng "Đã hoàn cọc lúc {depositReturnedAtUtc} — {depositReturnedByName}".
 4. Phía khách (`MyBookingsPage`): khung liên hệ ở C10 mục 4 đổi thành "Quản lý đã xác nhận hoàn {depositAmount} lúc …" khi `depositReturnedAtUtc` khác null.
 
+---
+
+## C12 — Thông báo mới về đặt cọc · ✅ đã có (việc 3.2c)
+
+Không đổi API, không có migration. Thông báo đi qua hệ thống thông báo sẵn có (`Type = "Booking"`, `relatedEntityId = bookingId`), FE không cần sửa gì.
+
+| Khi nào | Gửi cho | Tiêu đề (ví dụ dọn vào 20/11) |
+|---|---|---|
+| Lần chạy đầu tiên trong khoảng 20/11–23/11 | Khách | Ngày dọn vào phòng A101: 20/11/2026 |
+| như trên | Quản lý đang phụ trách (khu chưa có quản lý: chủ trọ) | Khách Nguyễn Văn A dọn vào phòng A101 ngày 20/11/2026 |
+| Ngày 23/11 (ngày cuối giữ phòng) | Khách | Phòng A101 chỉ được giữ đến hết ngày 23/11/2026 |
+| Khách tự hủy booking đã cọc | Quản lý đang phụ trách (hoặc chủ trọ) | Booking #12 - Khách Nguyễn Văn A đã hủy đặt cọc phòng A101 |
+
+Job nền chạy mỗi giờ; mỗi thông báo chỉ gửi một lần. Tiêu đề ghi ngày cụ thể nên nếu server tắt đúng ngày dọn vào, lần chạy sau vẫn gửi bù đúng nội dung.
+
+Việc FE nhỏ (gom khi rảnh): `DepositPage` bước thanh toán, dòng "Giữ phòng đến" đang hiện **hạn thanh toán 15 phút** (`expiryDate`) → đổi nhãn thành "Hạn thanh toán cọc".
+
 Nút "Đã hoàn cọc": xem C11.
 
 ---

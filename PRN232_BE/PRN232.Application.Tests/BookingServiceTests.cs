@@ -626,10 +626,11 @@ public class BookingServiceTests
             int bookingId,
             string expectedStatus,
             string reason,
-            Notifications? customerNotification,
+            IReadOnlyList<Notifications> notifications,
             DateTimeOffset asOfUtc,
             int? managerId = null)
         {
+            var customerNotification = notifications.FirstOrDefault();
             LastCancelReason = reason;
             LastCancelManagerId = managerId;
             LastCancelAsOfUtc = asOfUtc;

@@ -243,10 +243,24 @@ public class BookingService : IBookingService
             : deposited && booking.CanReleaseRoom
                 ? BookingCancellationReasons.NoShow
                 : BookingCancellationReasons.LandlordCancelled;
-        var notification = role == RoleNames.Customer ? null : CancellationNotification(booking, reason);
+        List<Notifications> notifications = role != RoleNames.Customer
+            ? [CancellationNotification(booking, reason)]
+            : deposited
+                // Rebuild 3.2c: khách tự hủy sau khi cọc thì phòng trống lại, báo người phụ trách khu trọ.
+                ? (await _repository.GetPropertyContactsAsync([booking.PropertyId]))
+                    .Select(staff => new Notifications
+                    {
+                        UserId = staff.UserId,
+                        Title = $"Booking #{id} - Khách {booking.CustomerName} đã hủy đặt cọc phòng {booking.RoomCode}",
+                        Body = "Phòng đã trống và có thể cho người khác thuê. Theo chính sách, khách tự hủy nên tiền cọc không được hoàn.",
+                        Type = NotificationTypes.Booking,
+                        IsRead = false
+                    })
+                    .ToList()
+                : [];
 
         int? managerId = role == RoleNames.Manager ? userId : null;
-        if (!await _repository.CancelAsync(id, booking.Status, reason, notification, _timeProvider.GetUtcNow(), managerId))
+        if (!await _repository.CancelAsync(id, booking.Status, reason, notifications, _timeProvider.GetUtcNow(), managerId))
         {
             throw new BookingStatusConflictException("Booking status has changed. Please reload and try again.");
         }
@@ -255,9 +269,9 @@ public class BookingService : IBookingService
         {
             throw new InvalidOperationException("Cancelled booking was not found.");
         }
-        if (notification is not null && _realtimePublisher is not null)
+        if (notifications.Count > 0 && _realtimePublisher is not null)
         {
-            await _realtimePublisher.PublishCreatedAsync([notification]);
+            await _realtimePublisher.PublishCreatedAsync(notifications);
         }
         return await ToDtoAsync(cancelled);
     }

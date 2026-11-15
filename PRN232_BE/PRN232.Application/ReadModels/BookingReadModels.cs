@@ -34,8 +34,14 @@ public sealed record BookingReadModel(
     DateTime? DepositReturnedAtUtc = null,
     string? DepositReturnedByName = null);
 
-// Người khách liên hệ để nhận lại tiền cọc (hệ thống không chuyển tiền hoàn).
-public sealed record BookingContactReadModel(int PropertyId, string FullName, string PhoneNumber, string Email, string Role);
+// Người khách liên hệ để nhận lại tiền cọc (hệ thống không chuyển tiền hoàn). UserId không trả ra API,
+// chỉ dùng để gửi thông báo cho đúng người.
+public sealed record BookingContactReadModel(int PropertyId, string FullName, string PhoneNumber, string Email, string Role,
+    int UserId = 0);
+
+// StaffIds: quản lý đang phụ trách khu trọ, hoặc chủ trọ khi khu chưa có quản lý (giống BookingContact).
+public sealed record BookingMoveInCandidateReadModel(
+    int BookingId, int CustomerId, string CustomerName, string RoomCode, DateOnly MoveInDate, IReadOnlyList<int> StaffIds);
 
 public sealed record ViewingBookingReadModel(
     int ViewingId,
