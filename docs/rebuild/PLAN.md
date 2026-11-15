@@ -206,7 +206,7 @@ Giữ Supabase Storage. Bổ sung:
 | 3.2 | Chính sách hủy theo D3 bước 3. **3.2a ✅** luật hủy + lý do hủy + hạn giữ phòng (ngày dọn vào + 3) + liên hệ quản lý + khóa luồng hoàn cọc payOS (giữ code, API-CHANGES C10). **3.2b ✅** nút "Đã hoàn cọc" (quản lý xác nhận số tiền đã trả ngoài hệ thống, API-CHANGES C11). **3.2c ✅** nhắc ngày dọn vào (khách + quản lý), nhắc ngày cuối giữ phòng, báo quản lý khi khách tự hủy cọc (C12) | Claude | 3.1 | M | |
 | 3.3 | ✅ Cọc chuyển thành cọc hợp đồng, bỏ `PrepaidRentCredit` cho booking mới (điều khoản ghi vào từng booking lúc cọc; booking cũ giữ luật cũ). API-CHANGES C13 — **chú ý thứ tự deploy** | Claude | 3.1 | M | |
 | 3.4 | ✅ Job nhắc hạn 30 ngày / 7 ngày / quá hạn (không thêm trạng thái `Expired`, xem D3) | Claude | — | S | |
-| 3.5 | Biên bản bàn giao thiết bị lúc nhận phòng và trả phòng | Claude | 2.2 | M | |
+| 3.5 | Biên bản bàn giao thiết bị lúc nhận phòng và trả phòng. **3.5a ✅** biên bản + tình trạng + bồi thường (C14). **3.5b ✅ + 3.5c ✅** ảnh/PDF minh chứng nhận phòng, trả phòng, hợp đồng đã ký (bucket private `contract-evidence`, khách và quản lý cùng upload, không duyệt, ảnh nhận phòng trong 7 ngày, Admin chỉ ẩn — C15) | Claude | 2.2 | M | |
 | 3.6 | **Quyết toán cọc** khi trả phòng (công thức D3 bước 6), báo trước 30 ngày | Claude | 3.3, 3.5 | L | |
 | 3.7 | FE: trang đặt cọc mới, trang trả phòng và quyết toán | AG | 3.1, 3.6 | L | |
 | 3.8 | Test end-to-end toàn luồng: cọc → ký → hóa đơn → trả phòng → hoàn cọc | Codex | 3.6 | L | |

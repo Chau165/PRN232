@@ -341,7 +341,7 @@ Hóa đơn đã phát hành **không đổi**.
 2. Chỗ nào đang nói "cọc trừ tháng đầu" cho một booking cụ thể (`MyBookingsPage`, `CreateContractPage`…): hiển thị theo `booking.depositAppliesToFirstMonth` — `true` giữ câu cũ, `false` dùng câu mới.
 3. Chi tiết hợp đồng (quản lý + khách): nếu `securityDepositAmount > 0` hiện dòng **"Tiền cọc (hoàn lại khi trả phòng): {securityDepositAmount}"**; nếu `prepaidRentAmount > 0` giữ cách hiển thị cũ.
 
-### Thứ tự deploy (quan trọng)
+### Thứ tự deploy (quan trọng) — C13
 Câu điều khoản trên FE phải khớp với điều khoản BE ghi vào booking:
 - **Deploy BE + FE cùng lúc**: để `BookingDeposits:AppliesToFirstMonth = false` (mặc định).
 - **Deploy BE trước FE**: đặt biến môi trường `BookingDeposits__AppliesToFirstMonth = true` trên Railway (BE vẫn chạy luật cũ, khớp câu FE cũ). Khi FE có câu mới đã lên → đổi thành `false` (không cần deploy lại).
@@ -367,3 +367,116 @@ Phạm vi: chỉ sửa trong `PRN232_FE/src/**` và `PRN232_FE/tests/**`. Không
 ### Ảnh hưởng mobile (`PRN232_Mobile`)
 - `lib/core/services/equipment_service.dart` tạo/sửa thiết bị → giờ có thể nhận 400 với `errors` theo field, và ngày lắp đặt ở tương lai bị chặn. Cần kiểm tra mobile hiện `detail` thay vì lỗi chung chung.
 - Các endpoint tài khoản (đăng ký, đổi mật khẩu, sửa hồ sơ) giờ cũng trả thêm `errors`; `detail` giữ nguyên nên mobile không vỡ.
+
+---
+
+## C14 — Biên bản bàn giao thiết bị (nhận phòng / trả phòng) · ✅ đã có (việc 3.5a)
+
+Migration `AddHandoverRecords` (2 bảng mới `HandoverRecords`, `HandoverItems`; không đổi bảng cũ). Ảnh/PDF minh chứng: việc 3.5b (sắp có).
+
+Mỗi hợp đồng có tối đa **1 biên bản nhận phòng** và **1 biên bản trả phòng**. Mỗi biên bản ghi **đủ mọi thiết bị hiện có của phòng**, mỗi thiết bị một tình trạng. Tên, số lượng, giá trị bồi thường do BE **chụp lại** từ danh sách thiết bị (FE không gửi) — sửa thiết bị sau này không đổi biên bản. Biên bản trả phòng dùng giá trị đã chụp lúc **nhận phòng** (mức hai bên đã thống nhất).
+
+### `GET /api/contracts/{contractId}/handovers`
+Quyền: khách của hợp đồng, quản lý đang phụ trách khu trọ, Admin.
+
+```json
+{
+  "contractId": 12,
+  "moveIn":  { "handoverRecordId": 1, "kind": "MoveIn", "handoverDate": "2026-11-20", "note": "...",
+               "recordedByName": "Manager A", "recordedAtUtc": "...", "totalCharge": 0,
+               "items": [ { "handoverItemId": 1, "equipmentId": 501, "equipmentName": "Máy lạnh", "quantity": 1,
+                            "compensationValue": 8500000, "condition": "Good", "chargeAmount": 0,
+                            "note": null, "moveInCondition": null } ] },
+  "moveOut": null,
+  "roomEquipments": [ { "equipmentId": 501, "name": "Máy lạnh", "quantity": 1, "compensationValue": 8500000 } ]
+}
+```
+`moveIn`/`moveOut` = `null` khi chưa lập. Ở `moveOut.items`, `moveInCondition` là tình trạng lúc nhận phòng (để so sánh).
+
+### `PUT /api/contracts/{contractId}/handovers/move-in` và `/move-out`
+Quyền: **chỉ Manager đang phụ trách**. Lưu lần nữa = thay toàn bộ biên bản đó. Trả về cùng dạng như GET.
+
+```json
+{ "handoverDate": "2026-11-20", "note": "Biên bản có chữ ký hai bên",
+  "items": [ { "equipmentId": 501, "condition": "Damaged", "chargeAmount": 1200000, "note": "Vỡ mặt nạ" } ] }
+```
+
+| `condition` | Hiển thị | Được tính tiền (chỉ ở trả phòng) |
+|---|---|---|
+| `Good` | Tốt | Không |
+| `Worn` | Hao mòn | **Không** (hao mòn tự nhiên — BLDS 2015 Điều 479) |
+| `Damaged` | Hư hỏng | Có |
+| `Missing` | Mất | Có |
+
+| Lỗi | Key trong `errors` | Câu báo lỗi |
+|---|---|---|
+| Ngày ở tương lai | `handoverDate` | Ngày bàn giao không được ở tương lai. |
+| Tình trạng sai | `items[i].condition` | Tình trạng phải là Tốt, Hao mòn, Hư hỏng hoặc Mất. |
+| Tiền âm / lẻ | `items[i].chargeAmount` | Tiền bồi thường không được âm. / …phải là bội số của 1.000đ. |
+| Tính tiền ở biên bản nhận phòng | `items[i].chargeAmount` | Biên bản nhận phòng không tính tiền bồi thường. |
+| Tính tiền thiết bị Tốt/Hao mòn | `items[i].chargeAmount` | {tên}: chỉ tính tiền khi thiết bị hư hỏng hoặc mất (hao mòn tự nhiên không phải bồi thường). |
+| Thiết bị đã hỏng/mất từ lúc nhận phòng | `items[i].chargeAmount` | {tên} đã hư hỏng hoặc mất từ lúc nhận phòng nên không tính tiền khách. |
+| Vượt trần | `items[i].chargeAmount` | {tên}: tiền bồi thường tối đa {giá × SL}đ ({SL} × {giá}đ). |
+| Thiếu thiết bị | (`detail`) | Biên bản phải ghi đủ thiết bị của phòng, còn thiếu: {tên,…}. |
+| Ngày trước ngày bắt đầu HĐ / trả trước nhận | (`detail`) | 400 |
+| Sửa biên bản nhận phòng khi đã có biên bản trả phòng | — | 409 |
+
+### Việc FE gợi ý
+1. Chi tiết hợp đồng (quản lý + khách): mục **"Biên bản bàn giao"** với 2 thẻ Nhận phòng / Trả phòng.
+2. **Quản lý**: nút "Lập biên bản nhận phòng" / "Lập biên bản trả phòng" → form một dòng cho mỗi `roomEquipments` (tên × SL, giá trị), dropdown tình trạng (Tốt / Hao mòn / Hư hỏng / Mất), ghi chú. Ở **trả phòng**: hiện cột "Lúc nhận phòng: {moveInCondition}", ô "Tiền bồi thường" chỉ bật khi chọn Hư hỏng/Mất **và** lúc nhận phòng không phải Hư hỏng/Mất, gợi ý tối đa = SL × giá. Dòng tổng "Tổng bồi thường: {totalCharge}".
+3. **Khách**: chỉ xem (không có nút sửa).
+4. Hiện lỗi theo dòng bằng key `items[i].field`.
+
+---
+
+## C15 — Ảnh/PDF minh chứng: nhận phòng, trả phòng, hợp đồng đã ký · ✅ đã có (việc 3.5b + 3.5c)
+
+Migration `AddContractEvidenceFiles` (1 bảng mới). File lưu trong bucket **private** `contract-evidence`; người xem chỉ nhận **link tạm 1 giờ** (`url`) — **không lưu `url` lâu dài**, mỗi lần mở trang thì gọi lại GET.
+
+Nhóm đã chốt: khách **và** quản lý cùng upload, **không có bước duyệt**. Mỗi người chỉ xóa file của mình. Admin chỉ **ẩn** (kèm lý do), không xóa.
+
+| `kind` | Ý nghĩa | Upload / xóa được khi |
+|---|---|---|
+| `MoveIn` | Ảnh tình trạng lúc nhận phòng + ảnh biên bản giấy đã ký | HĐ đang hiệu lực **và** chưa quá **7 ngày** kể từ ngày nhận phòng (`moveInUploadDeadline`) |
+| `MoveOut` | Ảnh lúc trả phòng + biên bản trả phòng đã ký | HĐ đang hiệu lực hoặc đã kết thúc (việc 3.6 sẽ khóa khi đã quyết toán cọc) |
+| `SignedContract` | Ảnh/scan hợp đồng giấy đã ký | HĐ đang hiệu lực hoặc đã kết thúc |
+
+Định dạng: **JPG / PNG / WEBP ≤ 5 MB**, **PDF ≤ 10 MB**; BE kiểm tra nội dung thật của file. Tối đa **20 file mỗi loại** mỗi hợp đồng.
+
+### API
+| | Quyền | |
+|---|---|---|
+| `GET /api/contracts/{id}/evidence` | Khách của HĐ, quản lý phụ trách, Admin | Danh sách + quyền upload |
+| `POST /api/contracts/{id}/evidence?kind=MoveIn` | Khách, quản lý | `multipart/form-data`, field **`file`**, **mỗi lần 1 file** |
+| `DELETE /api/contracts/{id}/evidence/{fileId}` | Người đã upload | |
+| `POST /api/contracts/{id}/evidence/{fileId}/hide` | Admin | body `{ "reason": "..." }` (bắt buộc, ≤ 500 ký tự) |
+
+Mọi API đều trả về toàn bộ danh sách mới:
+
+```json
+{
+  "contractId": 12,
+  "moveInUploadDeadline": "2026-11-27",
+  "canUploadMoveIn": true, "canUploadMoveOut": true, "canUploadSignedContract": true,
+  "files": [ { "contractEvidenceFileId": 3, "kind": "MoveIn", "fileName": "vet-nut-tuong.png",
+               "contentType": "image/png", "sizeBytes": 812345, "uploadedByName": "Nguyễn Văn A",
+               "uploadedByRole": "Customer", "uploadedAtUtc": "...", "canDelete": true,
+               "url": "https://…/storage/v1/object/sign/…?token=…", "isHidden": false, "hiddenReason": null } ]
+}
+```
+File bị ẩn: `isHidden = true`, `url = null` (Admin vẫn thấy `url`).
+
+| Lỗi | HTTP | `detail` |
+|---|---|---|
+| Sai định dạng / quá dung lượng / file giả đuôi | 400 | Chỉ nhận ảnh JPG, PNG, WEBP hoặc file PDF hợp lệ. / Ảnh tối đa 5 MB, PDF tối đa 10 MB. |
+| Quá hạn ảnh nhận phòng | 409 | Đã hết hạn upload hoặc xóa ảnh nhận phòng (hạn đến hết ngày dd/MM/yyyy). |
+| Đủ 20 file | 409 | Mỗi loại minh chứng tối đa 20 file. |
+| Xóa file người khác | 403 | |
+| Admin upload | 403 | |
+
+### Việc FE gợi ý
+1. Chi tiết hợp đồng (khách + quản lý): 3 khu **"Ảnh nhận phòng"**, **"Ảnh trả phòng"**, **"Hợp đồng đã ký"** — lưới ảnh thu nhỏ (PDF hiện biểu tượng + tên file), bấm để xem lớn / mở tab mới. Mỗi ảnh ghi "{uploadedByName} · {uploadedAtUtc}".
+2. Nút "Thêm ảnh" (cho chọn nhiều file, FE gửi **lần lượt** từng file, hiện tiến độ) chỉ hiện khi `canUploadX = true`. Kiểm tra trước ở FE: loại file và dung lượng như bảng trên.
+3. Khu ảnh nhận phòng ghi rõ: **"Bạn có thể thêm hoặc xóa ảnh nhận phòng đến hết ngày {moveInUploadDeadline}"**.
+4. Nút xóa chỉ hiện khi `canDelete = true`, có hộp xác nhận.
+5. Admin: nút "Ẩn" mở hộp nhập lý do. File đã ẩn hiện "Đã ẩn: {hiddenReason}" (không có ảnh).

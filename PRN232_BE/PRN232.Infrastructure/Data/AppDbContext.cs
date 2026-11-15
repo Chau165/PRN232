@@ -124,6 +124,9 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         }
     }
     public DbSet<PropertyRoomTypes> PropertyRoomTypes => Set<PropertyRoomTypes>();
+    public DbSet<HandoverRecords> HandoverRecords => Set<HandoverRecords>();
+    public DbSet<HandoverItems> HandoverItems => Set<HandoverItems>();
+    public DbSet<ContractEvidenceFiles> ContractEvidenceFiles => Set<ContractEvidenceFiles>();
     public DbSet<Equipments> Equipments
     {
         get
@@ -329,6 +332,62 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
                 .HasForeignKey(booking => booking.DepositReturnedById).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<Contracts>().HasKey(x => x.ContractId);
+        // Rebuild 3.5: biên bản bàn giao. Không cho xóa hợp đồng/người lập khi còn biên bản (giữ bằng chứng).
+        modelBuilder.Entity<HandoverRecords>(entity =>
+        {
+            entity.HasKey(record => record.HandoverRecordId);
+            entity.Property(record => record.Kind).HasMaxLength(20);
+            entity.Property(record => record.Note).HasMaxLength(1000);
+            entity.HasIndex(record => new { record.ContractId, record.Kind })
+                .IsUnique()
+                .HasDatabaseName("UX_HandoverRecords_ContractId_Kind");
+            entity.HasOne(record => record.Contract).WithMany()
+                .HasForeignKey(record => record.ContractId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(record => record.RecordedBy).WithMany()
+                .HasForeignKey(record => record.RecordedById).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("HandoverRecords", table => table.HasCheckConstraint(
+                "CK_HandoverRecords_Kind", "\"Kind\" IN ('MoveIn', 'MoveOut')"));
+        });
+        modelBuilder.Entity<ContractEvidenceFiles>(entity =>
+        {
+            entity.HasKey(file => file.ContractEvidenceFileId);
+            entity.Property(file => file.Kind).HasMaxLength(20);
+            entity.Property(file => file.ObjectPath).HasMaxLength(300);
+            entity.Property(file => file.ContentType).HasMaxLength(50);
+            entity.Property(file => file.FileName).HasMaxLength(255);
+            entity.Property(file => file.HiddenReason).HasMaxLength(500);
+            entity.HasIndex(file => new { file.ContractId, file.Kind });
+            entity.HasIndex(file => file.ObjectPath).IsUnique();
+            entity.HasOne(file => file.Contract).WithMany()
+                .HasForeignKey(file => file.ContractId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(file => file.UploadedBy).WithMany()
+                .HasForeignKey(file => file.UploadedById).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(file => file.HiddenBy).WithMany()
+                .HasForeignKey(file => file.HiddenById).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("ContractEvidenceFiles", table => table.HasCheckConstraint(
+                "CK_ContractEvidenceFiles_Kind", "\"Kind\" IN ('MoveIn', 'MoveOut', 'SignedContract')"));
+        });
+        modelBuilder.Entity<HandoverItems>(entity =>
+        {
+            entity.HasKey(item => item.HandoverItemId);
+            entity.Property(item => item.EquipmentName).HasMaxLength(200);
+            entity.Property(item => item.Condition).HasMaxLength(20);
+            entity.Property(item => item.Note).HasMaxLength(500);
+            entity.Property(item => item.CompensationValue).HasPrecision(18, 2);
+            entity.Property(item => item.ChargeAmount).HasPrecision(18, 2);
+            entity.HasOne(item => item.HandoverRecord).WithMany(record => record.Items)
+                .HasForeignKey(item => item.HandoverRecordId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(item => item.Equipment).WithMany()
+                .HasForeignKey(item => item.EquipmentId).OnDelete(DeleteBehavior.SetNull);
+            entity.ToTable("HandoverItems", table =>
+            {
+                table.HasCheckConstraint("CK_HandoverItems_Condition",
+                    "\"Condition\" IN ('Good', 'Worn', 'Damaged', 'Missing')");
+                table.HasCheckConstraint("CK_HandoverItems_Quantity_Range", "\"Quantity\" BETWEEN 1 AND 20");
+                table.HasCheckConstraint("CK_HandoverItems_Charge",
+                    "\"ChargeAmount\" >= 0 AND \"ChargeAmount\" <= \"CompensationValue\" * \"Quantity\"");
+            });
+        });
         modelBuilder.Entity<UtilityReadings>().HasKey(x => x.ReadingId);
         modelBuilder.Entity<Invoices>().HasKey(x => x.InvoiceId);
         modelBuilder.Entity<InvoiceDetails>().HasKey(x => x.InvoiceDetailId);

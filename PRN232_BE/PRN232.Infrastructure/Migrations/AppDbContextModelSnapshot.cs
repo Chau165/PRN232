@@ -301,6 +301,73 @@ namespace PRN232.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.ContractEvidenceFiles", b =>
+                {
+                    b.Property<int>("ContractEvidenceFileId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ContractEvidenceFileId"));
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("HiddenAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("HiddenById")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("HiddenReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ObjectPath")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("UploadedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UploadedById")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ContractEvidenceFileId");
+
+                    b.HasIndex("HiddenById");
+
+                    b.HasIndex("ObjectPath")
+                        .IsUnique();
+
+                    b.HasIndex("UploadedById");
+
+                    b.HasIndex("ContractId", "Kind");
+
+                    b.ToTable("ContractEvidenceFiles", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ContractEvidenceFiles_Kind", "\"Kind\" IN ('MoveIn', 'MoveOut', 'SignedContract')");
+                        });
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.Contracts", b =>
                 {
                     b.Property<int>("ContractId")
@@ -405,6 +472,104 @@ namespace PRN232.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_Equipments_CompensationValue_NonNegative", "\"CompensationValue\" >= 0");
 
                             t.HasCheckConstraint("CK_Equipments_Quantity_Range", "\"Quantity\" BETWEEN 1 AND 20");
+                        });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.HandoverItems", b =>
+                {
+                    b.Property<int>("HandoverItemId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("HandoverItemId"));
+
+                    b.Property<decimal>("ChargeAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("CompensationValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Condition")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int?>("EquipmentId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("EquipmentName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("HandoverRecordId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.HasKey("HandoverItemId");
+
+                    b.HasIndex("EquipmentId");
+
+                    b.HasIndex("HandoverRecordId");
+
+                    b.ToTable("HandoverItems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_HandoverItems_Charge", "\"ChargeAmount\" >= 0 AND \"ChargeAmount\" <= \"CompensationValue\" * \"Quantity\"");
+
+                            t.HasCheckConstraint("CK_HandoverItems_Condition", "\"Condition\" IN ('Good', 'Worn', 'Damaged', 'Missing')");
+
+                            t.HasCheckConstraint("CK_HandoverItems_Quantity_Range", "\"Quantity\" BETWEEN 1 AND 20");
+                        });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.HandoverRecords", b =>
+                {
+                    b.Property<int>("HandoverRecordId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("HandoverRecordId"));
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("HandoverDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("RecordedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("RecordedById")
+                        .HasColumnType("integer");
+
+                    b.HasKey("HandoverRecordId");
+
+                    b.HasIndex("RecordedById");
+
+                    b.HasIndex("ContractId", "Kind")
+                        .IsUnique()
+                        .HasDatabaseName("UX_HandoverRecords_ContractId_Kind");
+
+                    b.ToTable("HandoverRecords", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_HandoverRecords_Kind", "\"Kind\" IN ('MoveIn', 'MoveOut')");
                         });
                 });
 
@@ -1787,6 +1952,32 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("Viewing");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.ContractEvidenceFiles", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Contracts", "Contract")
+                        .WithMany()
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "HiddenBy")
+                        .WithMany()
+                        .HasForeignKey("HiddenById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "UploadedBy")
+                        .WithMany()
+                        .HasForeignKey("UploadedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Contract");
+
+                    b.Navigation("HiddenBy");
+
+                    b.Navigation("UploadedBy");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.Contracts", b =>
                 {
                     b.HasOne("PRN232.Domain.Entities.Bookings", "Booking")
@@ -1829,6 +2020,43 @@ namespace PRN232.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Room");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.HandoverItems", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Equipments", "Equipment")
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("PRN232.Domain.Entities.HandoverRecords", "HandoverRecord")
+                        .WithMany("Items")
+                        .HasForeignKey("HandoverRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Equipment");
+
+                    b.Navigation("HandoverRecord");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.HandoverRecords", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Contracts", "Contract")
+                        .WithMany()
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "RecordedBy")
+                        .WithMany()
+                        .HasForeignKey("RecordedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Contract");
+
+                    b.Navigation("RecordedBy");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.IdentityDocuments", b =>
@@ -2393,6 +2621,11 @@ namespace PRN232.Infrastructure.Migrations
             modelBuilder.Entity("PRN232.Domain.Entities.Equipments", b =>
                 {
                     b.Navigation("MaintenanceRequests");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.HandoverRecords", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Invoices", b =>
