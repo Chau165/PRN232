@@ -18,7 +18,10 @@ public record BookingDto(
     string? CancellationReason = null, DateTime? CancelledAtUtc = null, bool DepositRefundDue = false,
     IReadOnlyList<BookingContactDto>? Contacts = null,
     DateTime? DepositReturnedAtUtc = null, string? DepositReturnedByName = null,
-    bool DepositAppliesToFirstMonth = false);
+    bool DepositAppliesToFirstMonth = false,
+    int MaxOccupants = 1,
+    int RoomTypeId = 0,
+    string RoomTypeName = "");
 
 // Role: "Manager" (quản lý đang phụ trách khu trọ) hoặc "Owner" (chủ trọ, khi khu trọ chưa có quản lý).
 public record BookingContactDto(string FullName, string PhoneNumber, string Email, string Role);

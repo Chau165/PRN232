@@ -14,7 +14,8 @@ public sealed record InvoiceContractReadModel(
     DateOnly StartDate,
     DateOnly EndDate,
     int? BookingId = null,
-    DateOnly? PlannedMoveOutDate = null);
+    DateOnly? PlannedMoveOutDate = null,
+    int? RegisteredVehicleCount = null);
 
 public sealed record BillableServiceReadModel(
     int ServiceId,

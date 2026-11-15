@@ -19,6 +19,16 @@ export function saveContractMeterHandover(
   })
 }
 
+export function updateContractRegisteredVehicleCount(
+  accessToken: string,
+  contractId: number,
+  registeredVehicleCount: number,
+) {
+  return apiRequest<ContractDto>(`/contracts/${contractId}/registered-vehicles`, {
+    accessToken, method: "PATCH", json: { registeredVehicleCount },
+  })
+}
+
 export function getContracts(accessToken: string, signal?: AbortSignal) {
   return apiRequest<ContractDto[]>("/contracts", { accessToken, signal, cache: "no-store" })
 }
@@ -36,7 +46,17 @@ export function getContractBillingTimeline(
 
 export function createContract(
   accessToken: string,
-  request: { bookingId: number; startDate: string; endDate: string },
+  request: {
+    bookingId: number
+    startDate: string
+    endDate: string
+    holderIdentityNumber: string
+    occupants: { fullName: string; identityNumber: string; phoneNumber: string | null }[]
+    registeredVehicleCount: number
+    manualSecurityDepositAmount: number
+    securityDepositHandoverAcknowledged: boolean
+    occupantCountChangeConfirmed: boolean
+  },
 ) {
   return apiRequest<ContractDto>("/contracts", {
     accessToken,

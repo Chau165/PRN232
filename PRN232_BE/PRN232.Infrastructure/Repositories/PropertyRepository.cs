@@ -100,9 +100,13 @@ public class PropertyRepository : IPropertyRepository
             .ToListAsync(cancellationToken);
     }
 
-    public Task<bool> ServiceExistsAsync(int serviceId, CancellationToken cancellationToken)
+    public Task<string?> GetServiceNameByIdAsync(int serviceId, CancellationToken cancellationToken)
     {
-        return _context.Services.AnyAsync(service => service.ServiceId == serviceId, cancellationToken);
+        return _context.Services
+            .AsNoTracking()
+            .Where(service => service.ServiceId == serviceId)
+            .Select(service => service.Name)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
     public async Task<bool> AddServiceRateIfNoOverlapAsync(PropertyServiceRates rate, CancellationToken cancellationToken)

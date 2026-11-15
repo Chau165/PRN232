@@ -207,7 +207,13 @@ public class BookingRefundRequestApiTests
         {
             await LoginAsync(client, "manager@example.test");
             var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh")).DateTime);
-            return (await client.PostAsJsonAsync("/api/contracts", new { bookingId = id, startDate = today, endDate = today.AddMonths(6) })).StatusCode;
+            return (await client.PostAsJsonAsync("/api/contracts", new
+            {
+                bookingId = id, startDate = today, endDate = today.AddMonths(6),
+                holderIdentityNumber = "079201000001", occupants = Array.Empty<object>(),
+                registeredVehicleCount = 0, manualSecurityDepositAmount = 0m,
+                securityDepositHandoverAcknowledged = true, occupantCountChangeConfirmed = false
+            })).StatusCode;
         }
         Assert.Equal(HttpStatusCode.Created, refundFirst ? await Refund() : await Contract());
         Assert.Equal(HttpStatusCode.Conflict, refundFirst ? await Contract() : await Refund());
@@ -335,7 +341,15 @@ public class BookingRefundRequestApiTests
             refundRequest.Headers.Authorization = customerToken;
             var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh")).DateTime);
             using var contractRequest = new HttpRequestMessage(HttpMethod.Post, "/api/contracts")
-            { Content = JsonContent.Create(new { bookingId = other, startDate = today, endDate = today.AddMonths(6) }) };
+            {
+                Content = JsonContent.Create(new
+                {
+                    bookingId = other, startDate = today, endDate = today.AddMonths(6),
+                    holderIdentityNumber = "079201000001", occupants = Array.Empty<object>(),
+                    registeredVehicleCount = 0, manualSecurityDepositAmount = 0m,
+                    securityDepositHandoverAcknowledged = true, occupantCountChangeConfirmed = false
+                })
+            };
             contractRequest.Headers.Authorization = managerToken;
             var raced = await Task.WhenAll(client.SendAsync(refundRequest), client.SendAsync(contractRequest));
             Assert.Single(raced, item => item.StatusCode == HttpStatusCode.Created);

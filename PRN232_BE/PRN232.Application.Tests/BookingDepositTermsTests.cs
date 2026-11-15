@@ -18,6 +18,19 @@ public sealed class BookingDepositTermsTests
         DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh")).DateTime);
 
     [Fact]
+    public async Task New_bookings_use_the_first_month_deposit_rule_by_default()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        var bookingId = await ContractsApiTests.CreatePaidBookingAsync(client);
+
+        using var scope = factory.Services.CreateScope();
+        var booking = await scope.ServiceProvider.GetRequiredService<AppDbContext>().Bookings
+            .SingleAsync(item => item.BookingId == bookingId);
+        Assert.True(booking.DepositAppliesToFirstMonth);
+    }
+
+    [Fact]
     public async Task New_terms_bill_the_full_first_month_and_hold_the_deposit_on_the_contract()
     {
         using var factory = new BookingsApiFactory { LegacyDepositTerms = false };

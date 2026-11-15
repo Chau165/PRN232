@@ -594,6 +594,10 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<decimal?>("InitialWaterReading")
                         .HasColumnType("numeric");
 
+                    b.Property<decimal?>("ManualSecurityDepositAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<DateOnly?>("MeterHandoverDate")
                         .HasColumnType("date");
 
@@ -612,7 +616,16 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<int?>("ProcessedByStaffId")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("RegisteredVehicleCount")
+                        .HasColumnType("integer");
+
                     b.Property<int>("RoomId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("SecurityDepositAcknowledgedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("SecurityDepositRecordedByManagerId")
                         .HasColumnType("integer");
 
                     b.Property<DateOnly>("StartDate")
@@ -638,12 +651,19 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.HasIndex("RoomId");
 
+                    b.HasIndex("SecurityDepositRecordedByManagerId");
+
                     b.HasIndex("TransferredFromContractId")
                         .IsUnique()
                         .HasDatabaseName("UX_Contracts_TransferredFromContractId")
                         .HasFilter("\"TransferredFromContractId\" IS NOT NULL");
 
-                    b.ToTable("Contracts");
+                    b.ToTable("Contracts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Contracts_ManualSecurityDeposit_Recorded", "\"ManualSecurityDepositAmount\" IS NULL OR (\"ManualSecurityDepositAmount\" >= 0 AND \"SecurityDepositAcknowledgedAtUtc\" IS NOT NULL AND \"SecurityDepositRecordedByManagerId\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_Contracts_RegisteredVehicleCount_NonNegative", "\"RegisteredVehicleCount\" IS NULL OR \"RegisteredVehicleCount\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.DepositSettlements", b =>
@@ -1851,7 +1871,7 @@ namespace PRN232.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_PropertyServiceRates_Price_NonNegative", "\"Price\" >= 0");
 
-                            t.HasCheckConstraint("CK_PropertyServiceRates_UnitBillingBasis", "(\"UnitCode\" = 'kwh' AND \"BillingBasis\" = 'usage') OR (\"UnitCode\" = 'm3' AND \"BillingBasis\" = 'usage') OR (\"UnitCode\" = 'room_month' AND \"BillingBasis\" = 'fixed_room') OR (\"UnitCode\" = 'person_month' AND \"BillingBasis\" = 'occupant') OR (\"UnitCode\" = 'vehicle_month' AND \"BillingBasis\" = 'vehicle')");
+                            t.HasCheckConstraint("CK_PropertyServiceRates_UnitBillingBasis", "(\"UnitCode\" = 'kwh' AND \"BillingBasis\" = 'usage') OR (\"UnitCode\" = 'm3' AND \"BillingBasis\" = 'usage') OR (\"UnitCode\" = 'room_month' AND \"BillingBasis\" = 'fixed_room') OR (\"UnitCode\" = 'person_month' AND \"BillingBasis\" = 'occupant') OR (\"UnitCode\" = 'person_month' AND \"BillingBasis\" = 'additional_occupant') OR (\"UnitCode\" = 'vehicle_month' AND \"BillingBasis\" = 'vehicle')");
                         });
                 });
 
@@ -2296,7 +2316,7 @@ namespace PRN232.Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("PRN232.Domain.Entities.Contracts", "Contract")
-                        .WithMany()
+                        .WithMany("Occupants")
                         .HasForeignKey("ContractId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -2369,6 +2389,11 @@ namespace PRN232.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("PRN232.Domain.Entities.Users", "SecurityDepositRecordedByManager")
+                        .WithMany()
+                        .HasForeignKey("SecurityDepositRecordedByManagerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PRN232.Domain.Entities.Contracts", "TransferredFromContract")
                         .WithMany()
                         .HasForeignKey("TransferredFromContractId")
@@ -2383,6 +2408,8 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("ProcessedByStaff");
 
                     b.Navigation("Room");
+
+                    b.Navigation("SecurityDepositRecordedByManager");
 
                     b.Navigation("TransferredFromContract");
                 });
@@ -3021,6 +3048,8 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("Invoices");
 
                     b.Navigation("MaintenanceRequests");
+
+                    b.Navigation("Occupants");
 
                     b.Navigation("Payments");
 

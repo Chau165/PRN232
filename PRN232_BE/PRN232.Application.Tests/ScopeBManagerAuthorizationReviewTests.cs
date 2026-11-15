@@ -214,20 +214,21 @@ public class ScopeBManagerAuthorizationReviewTests
                     .ExecuteDelete();
             }
             if (operation == "booking-cancel")
-                RegisterRevocationProxy<IBookingRepository>(services, context => new BookingRepository(context), "CancelAsync", Revoke);
+                RegisterRevocationProxy<IBookingRepository>(services, (_, context) => new BookingRepository(context), "CancelAsync", Revoke);
             else if (operation.StartsWith("contract-") || operation == "room-ready")
-                RegisterRevocationProxy<IContractRepository>(services, context => new ContractRepository(context), operation switch
+                RegisterRevocationProxy<IContractRepository>(services,
+                    (provider, context) => new ContractRepository(context, provider.GetRequiredService<ICccdHasher>()), operation switch
                 {
                     "contract-create" => "AddFromBookingAsync", "contract-extend" => "ExtendAsync",
                     "contract-terminate" => "TerminateAsync", _ => "MarkTerminatedRoomReadyAsync"
                 }, Revoke);
             else if (operation == "reading-create")
-                RegisterRevocationProxy<IUtilityReadingRepository>(services, context => new UtilityReadingRepository(context), "AddIfLatestAsync", Revoke);
+                RegisterRevocationProxy<IUtilityReadingRepository>(services, (_, context) => new UtilityReadingRepository(context), "AddIfLatestAsync", Revoke);
             else if (operation.StartsWith("invoice-"))
-                RegisterRevocationProxy<IInvoiceRepository>(services, context => new InvoiceRepository(context),
+                RegisterRevocationProxy<IInvoiceRepository>(services, (_, context) => new InvoiceRepository(context),
                     operation == "invoice-create" ? "AddIfAbsentAsync" : "MarkPaidAsync", Revoke);
             else
-                RegisterRevocationProxy<IInvoiceComplaintRepository>(services, context => new InvoiceComplaintRepository(context), "UpdateStatusAsync", Revoke);
+                RegisterRevocationProxy<IInvoiceComplaintRepository>(services, (_, context) => new InvoiceComplaintRepository(context), "UpdateStatusAsync", Revoke);
         }));
         using var client = factory.CreateClient();
         await SeedAsync(factory);
@@ -285,13 +286,13 @@ public class ScopeBManagerAuthorizationReviewTests
     }
 
     private static void RegisterRevocationProxy<T>(IServiceCollection services,
-        Func<AppDbContext, T> createRepository, string member, Action<AppDbContext> revoke) where T : class
+        Func<IServiceProvider, AppDbContext, T> createRepository, string member, Action<AppDbContext> revoke) where T : class
     {
         services.AddScoped<T>(provider =>
         {
             var context = provider.GetRequiredService<AppDbContext>();
             var proxy = DispatchProxy.Create<T, ScopeBReviewRevocationProxy<T>>();
-            ((ScopeBReviewRevocationProxy<T>)(object)proxy).Configure(createRepository(context), member, () => revoke(context));
+            ((ScopeBReviewRevocationProxy<T>)(object)proxy).Configure(createRepository(provider, context), member, () => revoke(context));
             return proxy;
         });
     }
@@ -304,7 +305,13 @@ public class ScopeBManagerAuthorizationReviewTests
         "viewing-create" => client.PostAsJsonAsync("/api/viewing-schedules", new { roomId = 1, scheduledAt = DateTimeOffset.UtcNow.AddDays(1) }),
         "viewing-approve" => client.PostAsJsonAsync("/api/viewing-schedules/1/approve", new { assignedTo = 7, scheduledAt = DateTimeOffset.UtcNow.AddDays(1) }),
         "viewing-reject" => client.PostAsJsonAsync("/api/viewing-schedules/1/reject", new { reason = "Review authorization" }),
-        "contract-create" => client.PostAsJsonAsync("/api/contracts", new { bookingId = 3, startDate = Today, endDate = Today.AddYears(1) }),
+        "contract-create" => client.PostAsJsonAsync("/api/contracts", new
+        {
+            bookingId = 3, startDate = Today, endDate = Today.AddYears(1),
+            holderIdentityNumber = "079201000001", occupants = Array.Empty<object>(),
+            registeredVehicleCount = 0, manualSecurityDepositAmount = 0m,
+            securityDepositHandoverAcknowledged = true, occupantCountChangeConfirmed = false
+        }),
         "contract-extend" => client.PutAsJsonAsync("/api/contracts/1/extend", new { newEndDate = Today.AddYears(2) }),
         "contract-terminate" => client.PostAsJsonAsync("/api/contracts/1/terminate", new { checkoutConfirmed = true, roomReadyForRental = true, outstandingDebtAcknowledged = true }),
         "room-ready" => client.PostAsync("/api/contracts/1/room-ready", null),

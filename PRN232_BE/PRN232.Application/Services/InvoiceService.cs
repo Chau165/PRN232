@@ -326,16 +326,29 @@ public class InvoiceService : IInvoiceService
         }
 
         decimal? personMonths = null;
-        if (services.Any(service => service.BillingBasis == "occupant"))
+        decimal? additionalPersonMonths = null;
+        if (services.Any(service => service.BillingBasis is "occupant" or "additional_occupant"))
         {
             var stays = await _repository.GetOccupantStaysAsync(contract.ContractId, dto.InvoiceMonth);
-            personMonths = OccupantBilling.PersonMonths(dto.InvoiceMonth,
-                new OccupantStayReadModel(contract.StartDate, lastBilledDay), stays);
+            if (services.Any(service => service.BillingBasis == "occupant"))
+            {
+                personMonths = OccupantBilling.PersonMonths(dto.InvoiceMonth,
+                    new OccupantStayReadModel(contract.StartDate, lastBilledDay), stays);
+            }
+            if (services.Any(service => service.BillingBasis == "additional_occupant"))
+            {
+                additionalPersonMonths = OccupantBilling.AdditionalPersonMonths(dto.InvoiceMonth, stays);
+            }
+        }
+        if (services.Any(service => service.BillingBasis == "vehicle") && contract.RegisteredVehicleCount is null)
+        {
+            throw new InvoiceConflictException("Xác nhận số xe đang đăng ký trong hợp đồng trước khi lập hóa đơn dịch vụ gửi xe.");
         }
 
         foreach (var service in services)
         {
-            details.Add(BuildServiceLine(service, usage, personMonths, roomMonths, period));
+            details.Add(BuildServiceLine(service, usage, personMonths, additionalPersonMonths,
+                contract.RegisteredVehicleCount, roomMonths, period));
         }
 
         // Luật cọc cũ (cọc trừ vào tiền phòng): cọc trừ ở hóa đơn tháng đầu. Tháng đầu không trọn thì tiền phòng ít
@@ -378,8 +391,8 @@ public class InvoiceService : IInvoiceService
     // Mỗi dòng lưu lại RateId, số lượng, đơn giá và đơn vị lúc lập: khu trọ đổi giá sau này
     // thì hoá đơn cũ vẫn giữ nguyên số tiền đã tính.
     private static InvoiceDetails BuildServiceLine(
-        BillableServiceReadModel service, MonthUsageReadModel? usage, decimal? personMonths, decimal roomMonths,
-        string period)
+        BillableServiceReadModel service, MonthUsageReadModel? usage, decimal? personMonths,
+        decimal? additionalPersonMonths, int? registeredVehicleCount, decimal roomMonths, string period)
     {
         if (service.RateId is null || service.Price is null)
         {
@@ -392,8 +405,9 @@ public class InvoiceService : IInvoiceService
             ("m3", "usage") => (InvoiceItemTypes.Water, usage!.WaterUsage),
             (_, "fixed_room") => (InvoiceItemTypes.Service, roomMonths),
             (_, "occupant") => (InvoiceItemTypes.Service, personMonths!.Value),
-            _ => throw new InvoiceBusinessRuleException(
-                $"Service \"{service.ServiceName}\" is billed per vehicle, which is not supported yet.")
+            (_, "additional_occupant") => (InvoiceItemTypes.Service, additionalPersonMonths!.Value),
+            ("vehicle_month", "vehicle") => (InvoiceItemTypes.Service, registeredVehicleCount!.Value * roomMonths),
+            _ => throw new InvoiceBusinessRuleException($"Service \"{service.ServiceName}\" has an unsupported billing basis.")
         };
 
         return new InvoiceDetails

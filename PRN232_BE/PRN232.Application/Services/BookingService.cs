@@ -432,7 +432,7 @@ public class BookingService : IBookingService
             booking.CancellationReason, UtcTimestamp.ForResponse(booking.CancelledAtUtc), depositRefundDue,
             contacts.Select(contact => new BookingContactDto(contact.FullName, contact.PhoneNumber, contact.Email, contact.Role)).ToArray(),
             UtcTimestamp.ForResponse(booking.DepositReturnedAtUtc), booking.DepositReturnedByName,
-            booking.DepositAppliesToFirstMonth);
+            booking.DepositAppliesToFirstMonth, booking.MaxOccupants, booking.RoomTypeId, booking.RoomTypeName);
     }
 }
 

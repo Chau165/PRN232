@@ -80,10 +80,20 @@ function stubApi(handlers: ApiHandlers = {}) {
     "fetch",
     vi.fn<typeof fetch>(async (input, init) => {
       const url = String(input)
+      const path = new URL(url, "http://localhost").pathname
       const method = init?.method ?? "GET"
       calls.push({ url, init })
 
       if (url.endsWith("/users/me")) return jsonResponse(admin)
+      if (/\/room-types\/\d+\/services$/.test(path)) {
+        return jsonResponse([])
+      }
+      if (/\/room-types\/\d+\/services\/\d+$/.test(path)) {
+        return new Response(null, { status: 204 })
+      }
+      if (path.endsWith("/api/services")) {
+        return jsonResponse([{ serviceId: 1, name: "Điện", price: 3500 }])
+      }
       if (url.endsWith("/properties/21/room-types") && method === "POST") {
         const body = init?.body ? JSON.parse(String(init.body)) : null
         return handlers.createConfiguration
@@ -241,7 +251,7 @@ describe("management property room types", () => {
 
   it("renders configured property prices", async () => {
     adminSession()
-    stubApi()
+    const calls = stubApi()
 
     renderPage()
 
@@ -249,6 +259,10 @@ describe("management property room types", () => {
       await screen.findByRole("heading", { name: "Studio" }),
     ).toBeTruthy()
     expect(screen.getByText(/3\.000\.000/)).toBeTruthy()
+    expect(await screen.findByText("Chưa gắn dịch vụ.")).toBeTruthy()
+    expect(calls.some((call) =>
+      new URL(String(call.url), "http://localhost").pathname === "/api/room-types/4/services",
+    )).toBe(true)
   })
 
   it("creates a catalog type and configures it only for the current property", async () => {

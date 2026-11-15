@@ -118,6 +118,37 @@ public class ContractsController : ControllerBase
         }
     }
 
+    [HttpPatch("{id:int}/registered-vehicles")]
+    [Authorize(Roles = "Manager")]
+    public async Task<ActionResult<ContractDto>> SaveRegisteredVehicleCount(
+        int id, UpdateContractRegisteredVehicleCountDto request, CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+        try
+        {
+            return Ok(await _contractService.SaveRegisteredVehicleCountAsync(id, request, userId, role, cancellationToken));
+        }
+        catch (ContractBusinessRuleException exception)
+        {
+            return BadRequest(new ProblemDetails { Title = "Invalid vehicle count", Detail = exception.Message });
+        }
+        catch (ContractNotFoundException exception)
+        {
+            return NotFound(new ProblemDetails { Title = "Contract not found", Detail = exception.Message });
+        }
+        catch (ContractAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
+        catch (ContractConflictException exception)
+        {
+            return Conflict(new ProblemDetails { Title = "Vehicle count conflict", Detail = exception.Message });
+        }
+    }
+
     [HttpPut("{id:int}/extend")]
     [Authorize(Roles = "Manager")]
     public async Task<ActionResult<ContractDto>> Extend(

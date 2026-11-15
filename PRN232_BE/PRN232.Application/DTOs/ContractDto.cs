@@ -40,7 +40,10 @@ public record ContractDto(
     bool MoveOutForfeitsDeposit = false,
     // Rebuild 4.2: hợp đồng này nhận chuyển từ / đã chuyển sang hợp đồng nào (chuyển người đứng tên).
     int? TransferredFromContractId = null,
-    int? TransferredToContractId = null)
+    int? TransferredToContractId = null,
+    int? RegisteredVehicleCount = null,
+    decimal? ManualSecurityDepositAmount = null,
+    DateTime? SecurityDepositAcknowledgedAtUtc = null)
 {
     public bool HasMeterHandover => InitialElectricReading.HasValue &&
         InitialWaterReading.HasValue && MeterHandoverDate.HasValue;
@@ -57,7 +60,20 @@ public record SaveContractMeterHandoverDto(
     [System.ComponentModel.DataAnnotations.Required] decimal? InitialWaterReading,
     ContractMeterHandoverValues? ExpectedMeterHandover = null);
 
-public record CreateContractDto(int BookingId, DateOnly StartDate, DateOnly EndDate);
+public record CreateContractDto(
+    int BookingId,
+    DateOnly StartDate,
+    DateOnly EndDate,
+    string? HolderIdentityNumber = null,
+    IReadOnlyList<CreateContractOccupantDto>? Occupants = null,
+    int RegisteredVehicleCount = 0,
+    decimal ManualSecurityDepositAmount = 0m,
+    bool SecurityDepositHandoverAcknowledged = false,
+    bool OccupantCountChangeConfirmed = false);
+
+public record CreateContractOccupantDto(string? FullName, string? IdentityNumber, string? PhoneNumber = null);
+
+public record UpdateContractRegisteredVehicleCountDto(int RegisteredVehicleCount);
 
 public record ExtendContractRequestDto(DateOnly NewEndDate);
 

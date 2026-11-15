@@ -195,7 +195,9 @@ public sealed class ContractTransferService(
                 $"Hợp đồng mới có hiệu lực từ ngày {Format(transfer.EffectiveDate)} đến {Format(contract.EndDate)}, tiền phòng {Money(contract.MonthlyRent)}/tháng, tiền cọc đang giữ {Money(contract.SecurityDepositAmount)}.")
         };
         var newContractId = await repository.CompleteAsync(new ContractTransferCompletion(transferId, userId,
-            clock.GetUtcNow().UtcDateTime, contract.SecurityDepositAmount, electric, water), notifications, cancellationToken);
+            clock.GetUtcNow().UtcDateTime, contract.SecurityDepositAmount, electric, water,
+            contract.RegisteredVehicleCount, contract.ManualSecurityDepositAmount,
+            contract.SecurityDepositAcknowledgedAtUtc, contract.SecurityDepositRecordedByManagerId), notifications, cancellationToken);
         if (newContractId is null)
         {
             throw new ContractConflictException("Đề nghị hoặc hợp đồng vừa thay đổi. Vui lòng tải lại.");

@@ -15,6 +15,49 @@ public class PropertyServiceRatesApiTests
     private static CreatePropertyServiceRateDto NewRate(int serviceId = 1) => new(
         serviceId, 4000, "kwh", "usage", new DateOnly(2027, 1, 1));
 
+    private static async Task UseCurrentCatalogNamesAsync(BookingsApiFactory factory)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Services.Single(service => service.ServiceId == 1).Name = "Electricity";
+        db.Services.Single(service => service.ServiceId == 2).Name = "Water";
+        db.Services.Single(service => service.ServiceId == 3).Name = "Internet";
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Service_catalog_returns_backend_billing_defaults_for_the_current_catalog()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await UseCurrentCatalogNamesAsync(factory);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Services.AddRange(
+                new Service { ServiceId = 4, Name = "Garbage Collection" },
+                new Service { ServiceId = 5, Name = "Parking" },
+                new Service { ServiceId = 6, Name = "Cleaning" },
+                new Service { ServiceId = 7, Name = "Security" },
+                new Service { ServiceId = 8, Name = "Additional Occupant" });
+            await db.SaveChangesAsync();
+        }
+
+        var services = await client.GetFromJsonAsync<List<ServiceDto>>("/api/services");
+        var defaults = services!.ToDictionary(service => service.Name);
+
+        Assert.Equal(1, defaults["Electricity"].ServiceId);
+        Assert.Equal(("kwh", "usage"), (defaults["Electricity"].DefaultUnitCode, defaults["Electricity"].DefaultBillingBasis));
+        Assert.Equal(("m3", "usage"), (defaults["Water"].DefaultUnitCode, defaults["Water"].DefaultBillingBasis));
+        Assert.Equal(("room_month", "fixed_room"), (defaults["Internet"].DefaultUnitCode, defaults["Internet"].DefaultBillingBasis));
+        Assert.Equal(("room_month", "fixed_room"), (defaults["Garbage Collection"].DefaultUnitCode, defaults["Garbage Collection"].DefaultBillingBasis));
+        Assert.Equal(5, defaults["Parking"].ServiceId);
+        Assert.Equal(("vehicle_month", "vehicle"), (defaults["Parking"].DefaultUnitCode, defaults["Parking"].DefaultBillingBasis));
+        Assert.Equal(("room_month", "fixed_room"), (defaults["Cleaning"].DefaultUnitCode, defaults["Cleaning"].DefaultBillingBasis));
+        Assert.Equal(("room_month", "fixed_room"), (defaults["Security"].DefaultUnitCode, defaults["Security"].DefaultBillingBasis));
+        Assert.Equal(("person_month", "occupant"), (defaults["Additional Occupant"].DefaultUnitCode, defaults["Additional Occupant"].DefaultBillingBasis));
+    }
+
     [Theory]
     [InlineData(null, HttpStatusCode.Unauthorized)]
     [InlineData("customer@example.test", HttpStatusCode.Forbidden)]
@@ -36,6 +79,7 @@ public class PropertyServiceRatesApiTests
     {
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
+        await UseCurrentCatalogNamesAsync(factory);
         using (var scope = factory.Services.CreateScope())
         {
             var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -51,7 +95,7 @@ public class PropertyServiceRatesApiTests
         Assert.True(created.RateId > 3);
         Assert.Equal(1, created.PropertyId);
         Assert.Equal(4000m, created.Price);
-        Assert.Equal("Electricity - per kWh", created.ServiceName);
+        Assert.Equal("Electricity", created.ServiceName);
         var january = await client.GetFromJsonAsync<List<PropertyServiceRateDto>>("/api/properties/1/service-rates?month=2027-01-01");
         Assert.Equal(created.RateId, Assert.Single(january!, rate => rate.ServiceId == 1).RateId);
         // The same service/period is independent for a different property.
@@ -59,7 +103,10 @@ public class PropertyServiceRatesApiTests
             (await client.PostAsJsonAsync("/api/properties/2/service-rates", NewRate())).StatusCode);
         using var verifyScope = factory.Services.CreateScope();
         var verify = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Assert.Equal(3500m, (await verify.PropertyServiceRates.SingleAsync(rate => rate.RateId == 1)).Price);
+        var preservedRate = await verify.PropertyServiceRates.SingleAsync(rate => rate.RateId == 1);
+        Assert.Equal(3500m, preservedRate.Price);
+        Assert.Equal("kwh", preservedRate.UnitCode);
+        Assert.Equal("usage", preservedRate.BillingBasis);
     }
 
     [Fact]
@@ -67,6 +114,7 @@ public class PropertyServiceRatesApiTests
     {
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
+        await UseCurrentCatalogNamesAsync(factory);
         await LoginAsync(client, "admin@example.test");
         foreach (var input in new[]
         {
@@ -91,6 +139,7 @@ public class PropertyServiceRatesApiTests
     {
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
+        await UseCurrentCatalogNamesAsync(factory);
         await LoginAsync(client, "admin@example.test");
         var valid = NewRate();
         foreach (var input in new[]
@@ -101,12 +150,53 @@ public class PropertyServiceRatesApiTests
             valid with { EffectiveTo = new DateOnly(2027, 1, 1) },
             valid with { EffectiveTo = new DateOnly(2027, 2, 2) },
             valid with { UnitCode = "kwh", BillingBasis = "fixed_room" },
+            valid with { UnitCode = "m3", BillingBasis = "usage" },
             valid with { UnitCode = null! }, valid with { BillingBasis = null! }
         })
             Assert.Equal(HttpStatusCode.BadRequest,
                 (await client.PostAsJsonAsync("/api/properties/1/service-rates", input)).StatusCode);
         using var scope = factory.Services.CreateScope();
         Assert.Equal(3, await scope.ServiceProvider.GetRequiredService<AppDbContext>().PropertyServiceRates.CountAsync());
+    }
+
+    [Fact]
+    public async Task Admin_uses_the_default_billing_basis_for_catalog_services()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Services.AddRange(
+                new Service { ServiceId = 4, Name = "Garbage Collection" },
+                new Service { ServiceId = 5, Name = "Parking" },
+                new Service { ServiceId = 6, Name = "Cleaning" },
+                new Service { ServiceId = 7, Name = "Security" },
+                new Service { ServiceId = 8, Name = "Additional Occupant" });
+            await db.SaveChangesAsync();
+        }
+        await LoginAsync(client, "admin@example.test");
+
+        var additionalOccupantWithLegacyBasis = await client.PostAsJsonAsync("/api/properties/1/service-rates",
+            NewRate(8) with { UnitCode = "person_month", BillingBasis = "additional_occupant" });
+        var garbageCollection = await client.PostAsJsonAsync("/api/properties/1/service-rates",
+            NewRate(4) with { UnitCode = "room_month", BillingBasis = "fixed_room" });
+        var vehicle = await client.PostAsJsonAsync("/api/properties/1/service-rates",
+            NewRate(5) with { UnitCode = "vehicle_month", BillingBasis = "vehicle" });
+        var cleaning = await client.PostAsJsonAsync("/api/properties/1/service-rates",
+            NewRate(6) with { UnitCode = "room_month", BillingBasis = "fixed_room" });
+        var security = await client.PostAsJsonAsync("/api/properties/1/service-rates",
+            NewRate(7) with { UnitCode = "room_month", BillingBasis = "fixed_room" });
+        var additionalOccupant = await client.PostAsJsonAsync("/api/properties/1/service-rates",
+            NewRate(8) with { UnitCode = "person_month", BillingBasis = "occupant" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, additionalOccupantWithLegacyBasis.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, garbageCollection.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, vehicle.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, cleaning.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, security.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, additionalOccupant.StatusCode);
+        Assert.Equal("occupant", (await additionalOccupant.Content.ReadFromJsonAsync<PropertyServiceRateDto>())!.BillingBasis);
     }
 
     [Fact]

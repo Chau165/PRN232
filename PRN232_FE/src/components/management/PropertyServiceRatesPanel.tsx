@@ -14,34 +14,30 @@ import { formatVnd } from "@/utils/publicFormatting"
 
 type RateFormField =
   | "serviceId"
-  | "billing"
   | "price"
   | "effectiveFrom"
   | "effectiveTo"
 
 const RATE_FORM_FIELDS: readonly RateFormField[] = [
   "serviceId",
-  "billing",
   "price",
   "effectiveFrom",
   "effectiveTo",
 ]
 
-// Chỉ đưa ra các cách tính mà hoá đơn hiện tính được. Giá theo xe (vehicle_month) chưa được hỗ trợ.
-const billingOptions = [
-  { key: "kwh", unitCode: "kwh", billingBasis: "usage", label: "Theo số điện (kWh)", unit: "kWh" },
-  { key: "m3", unitCode: "m3", billingBasis: "usage", label: "Theo số nước (m³)", unit: "m³" },
-  { key: "room", unitCode: "room_month", billingBasis: "fixed_room", label: "Cố định mỗi phòng/tháng", unit: "phòng/tháng" },
-  { key: "person", unitCode: "person_month", billingBasis: "occupant", label: "Theo đầu người/tháng", unit: "người/tháng" },
-] as const
+const unitLabels: Record<string, string> = {
+  kwh: "kWh",
+  m3: "m³",
+  room_month: "phòng/tháng",
+  person_month: "người/tháng",
+  vehicle_month: "xe/tháng",
+}
 
 const inputClass =
   "mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#087775] focus:ring-2 focus:ring-[#087775]/15"
 
 function unitLabel(unitCode: string) {
-  return billingOptions.find((option) => option.unitCode === unitCode)?.unit
-    ?? ({ person_month: "người/tháng", vehicle_month: "xe/tháng" } as Record<string, string>)[unitCode]
-    ?? unitCode
+  return unitLabels[unitCode] ?? unitCode
 }
 
 // "2026-11-01" -> "11/2026"
@@ -155,7 +151,6 @@ function AddRateForm({ accessToken, propertyId, catalog, defaultMonth, onCreated
   onCreated: () => void
 }) {
   const [serviceId, setServiceId] = useState("")
-  const [billing, setBilling] = useState("")
   const [price, setPrice] = useState("")
   // input type="month" dùng dạng yyyy-MM; gửi lên BE thêm "-01".
   const [from, setFrom] = useState(defaultMonth.slice(0, 7))
@@ -167,6 +162,8 @@ function AddRateForm({ accessToken, propertyId, catalog, defaultMonth, onCreated
   const [success, setSuccess] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const locked = useRef(false)
+
+  const selectedService = catalog.find((service) => service.serviceId === Number(serviceId))
 
   function clearFieldError(field: RateFormField) {
     setFieldErrors((current) => {
@@ -181,7 +178,6 @@ function AddRateForm({ accessToken, propertyId, catalog, defaultMonth, onCreated
   const submit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (locked.current) return
-    const option = billingOptions.find((item) => item.key === billing)
     setSuccess(null)
     setError(null)
 
@@ -190,8 +186,8 @@ function AddRateForm({ accessToken, propertyId, catalog, defaultMonth, onCreated
       setFieldErrors({ serviceId: svcErr })
       return
     }
-    if (!option) {
-      setFieldErrors({ billing: "Vui lòng chọn cách tính tiền." })
+    if (!selectedService?.defaultUnitCode || !selectedService.defaultBillingBasis) {
+      setFieldErrors({ serviceId: "Dịch vụ này chưa có cấu hình tính giá mặc định." })
       return
     }
     const priceErr = serviceRatePriceError(price)
@@ -217,14 +213,13 @@ function AddRateForm({ accessToken, propertyId, catalog, defaultMonth, onCreated
       const created = await createPropertyServiceRate(accessToken, propertyId, {
         serviceId: Number(serviceId),
         price: amount,
-        unitCode: option.unitCode,
-        billingBasis: option.billingBasis,
+        unitCode: selectedService.defaultUnitCode,
+        billingBasis: selectedService.defaultBillingBasis,
         effectiveFrom: `${from}-01`,
         effectiveTo: to ? `${to}-01` : null,
       })
       setSuccess(`Đã thêm giá ${created.serviceName}: ${formatVnd(created.price)}/${unitLabel(created.unitCode)}.`)
       setServiceId("")
-      setBilling("")
       setPrice("")
       setTo("")
       onCreated()
@@ -235,7 +230,7 @@ function AddRateForm({ accessToken, propertyId, catalog, defaultMonth, onCreated
               Object.entries(createError.validationErrors).map(([key, msgs]) => {
                 const lower = key.toLowerCase()
                 if (lower === "unitcode" || lower === "billingbasis") {
-                  return ["billing", msgs]
+                  return ["serviceId", msgs]
                 }
                 return [key, msgs]
               }),
@@ -255,7 +250,7 @@ function AddRateForm({ accessToken, propertyId, catalog, defaultMonth, onCreated
       locked.current = false
       setPending(false)
     }
-  }, [accessToken, billing, from, onCreated, price, propertyId, serviceId, to])
+  }, [accessToken, catalog, from, onCreated, price, propertyId, selectedService, serviceId, to])
 
   return (
     <form onSubmit={submit} noValidate className="mt-4 space-y-3 rounded-xl bg-slate-50 p-4">
@@ -280,33 +275,6 @@ function AddRateForm({ accessToken, propertyId, catalog, defaultMonth, onCreated
           {fieldErrors.serviceId && (
             <p role="alert" className="mt-1 text-xs text-rose-600">
               {fieldErrors.serviceId}
-            </p>
-          )}
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-600">
-            Cách tính tiền
-            <select
-              aria-invalid={Boolean(fieldErrors.billing)}
-              value={billing}
-              onChange={(event) => {
-                setBilling(event.target.value)
-                clearFieldError("billing")
-              }}
-              className={inputClass}
-            >
-              <option value="" disabled>Chọn cách tính</option>
-              {billingOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
-            </select>
-          </label>
-          {billing === "person" && (
-            <p className="mt-1 text-xs text-slate-500">
-              Tính theo số người trong danh sách người ở cùng, người vào/ra giữa tháng tính theo số ngày.
-            </p>
-          )}
-          {fieldErrors.billing && (
-            <p role="alert" className="mt-1 text-xs text-rose-600">
-              {fieldErrors.billing}
             </p>
           )}
         </div>

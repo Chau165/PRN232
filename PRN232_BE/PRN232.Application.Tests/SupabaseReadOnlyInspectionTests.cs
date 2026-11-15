@@ -5,9 +5,18 @@ using Xunit;
 
 namespace PRN232.Application.Tests;
 
+public sealed class SupabaseReadOnlyInspectionFactAttribute : FactAttribute
+{
+    public SupabaseReadOnlyInspectionFactAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")))
+            Skip = "Requires an explicitly configured read-only Supabase inspection connection.";
+    }
+}
+
 public sealed class SupabaseReadOnlyInspectionTests
 {
-    [Fact]
+    [SupabaseReadOnlyInspectionFact]
     public async Task Inspect_configured_supabase_schema_and_migration_history_without_writes()
     {
         var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");

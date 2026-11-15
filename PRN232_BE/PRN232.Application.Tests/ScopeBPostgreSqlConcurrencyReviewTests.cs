@@ -1,5 +1,6 @@
 using System.Data.Common;
 using System.Diagnostics;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Npgsql;
@@ -11,6 +12,7 @@ using PRN232.Application.States;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
 using PRN232.Infrastructure.Repositories;
+using PRN232.Infrastructure.Security;
 using Xunit;
 
 namespace PRN232.Application.Tests;
@@ -70,11 +72,12 @@ public class ScopeBPostgreSqlConcurrencyReviewTests
         var gate = new ScopeBSqlPause("INSERT INTO \"Contracts\"");
         await using var first = db.Context(gate);
         await using var second = db.Context();
-        var dto = new CreateContractDto(1, Today, Today.AddYears(1));
-        var winner = Attempt(() => new ContractService(new ContractRepository(first), TimeProvider.System)
+        var dto = new CreateContractDto(1, Today, Today.AddYears(1), "079201000001", [], 0, 0m, true);
+        var hasher = new HmacCccdHasher(Encoding.UTF8.GetBytes("scope-b-integration-test-key-at-least-32-bytes"));
+        var winner = Attempt(() => new ContractService(new ContractRepository(first, hasher), TimeProvider.System)
             .CreateFromBookingAsync(dto, 7, RoleNames.Manager));
         await gate.Entered.WaitAsync(Deadline);
-        var loser = Attempt(() => new ContractService(new ContractRepository(second), TimeProvider.System)
+        var loser = Attempt(() => new ContractService(new ContractRepository(second, hasher), TimeProvider.System)
             .CreateFromBookingAsync(dto, 7, RoleNames.Manager));
         try { await db.AssertBlockedByAsync(first); }
         finally { gate.Release(); }

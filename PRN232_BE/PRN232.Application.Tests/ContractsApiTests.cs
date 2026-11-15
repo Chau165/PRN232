@@ -63,6 +63,118 @@ public class ContractsApiTests
         Assert.Equal(1, rentals.GetArrayLength());
     }
 
+    [Fact]
+    public async Task Create_contract_records_initial_occupants_vehicles_security_deposit_and_pending_holder_identity()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            (await db.Rooms.SingleAsync(room => room.RoomId == 1)).MaxOccupants = 3;
+            await db.SaveChangesAsync();
+        }
+        var bookingId = await CreatePaidBookingAsync(client);
+        await LoginAsync(client, "manager@example.test");
+
+        var guests = new object[]
+        {
+            new { fullName = "Trần Thị B", phoneNumber = "0905123456", identityNumber = "079201001234" },
+            new { fullName = "Lê Văn C", phoneNumber = (string?)null, identityNumber = "079201005678" }
+        };
+        using var response = await PostContractAsync(client, bookingId, VietnamToday, VietnamToday.AddYears(1),
+            holderCccd: "079201000001", occupants: guests, registeredVehicleCount: 3,
+            manualSecurityDepositAmount: 1_500_000m, securityDepositHandoverAcknowledged: true,
+            occupantCountChangeConfirmed: true);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("079201000001", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("079201001234", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("079201005678", json, StringComparison.Ordinal);
+        var contractId = JsonDocument.Parse(json).RootElement.GetProperty("contractId").GetInt32();
+        using var verifyScope = factory.Services.CreateScope();
+        var context = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var contract = await context.Contracts.SingleAsync(item => item.ContractId == contractId);
+        Assert.Equal(3, contract.RegisteredVehicleCount);
+        Assert.Equal(1_500_000m, contract.ManualSecurityDepositAmount);
+        Assert.Equal(7, contract.SecurityDepositRecordedByManagerId);
+        Assert.True(contract.SecurityDepositAcknowledgedAtUtc.HasValue);
+        Assert.Equal(2, await context.ContractOccupants.CountAsync(item => item.ContractId == contractId));
+        var holderDocument = await context.IdentityDocuments.SingleAsync(item => item.CustomerId == 10);
+        Assert.Equal("Pending", holderDocument.Status);
+        Assert.Equal("079201000001", holderDocument.CCCDNumber);
+        Assert.Equal(1, await context.Notifications.CountAsync(item => item.UserId == 10 && item.Type == "Contract"));
+    }
+
+    [Fact]
+    public async Task Create_contract_rejects_vehicle_count_above_registered_occupant_count()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            (await db.Rooms.SingleAsync(room => room.RoomId == 1)).MaxOccupants = 3;
+            await db.SaveChangesAsync();
+        }
+        var bookingId = await CreatePaidBookingAsync(client);
+        await LoginAsync(client, "manager@example.test");
+
+        using var response = await PostContractAsync(client, bookingId, VietnamToday, VietnamToday.AddYears(1),
+            occupants: [new { fullName = "Trần Thị B", phoneNumber = "0905123456", identityNumber = "079201001234" }],
+            registeredVehicleCount: 3, occupantCountChangeConfirmed: true);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var scopeAfter = factory.Services.CreateScope();
+        Assert.Empty(await scopeAfter.ServiceProvider.GetRequiredService<AppDbContext>().Contracts.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_contract_requires_acknowledgment_even_when_recording_zero_manual_security_deposit()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        var bookingId = await CreatePaidBookingAsync(client);
+        await LoginAsync(client, "manager@example.test");
+
+        using var response = await PostContractAsync(client, bookingId, VietnamToday, VietnamToday.AddYears(1),
+            securityDepositHandoverAcknowledged: false);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_contract_rejects_holder_identity_that_differs_from_an_approved_identity_document()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var services = scope.ServiceProvider;
+            var hasher = services.GetRequiredService<PRN232.Application.Interfaces.ICccdHasher>();
+            var db = services.GetRequiredService<AppDbContext>();
+            db.IdentityDocuments.Add(new IdentityDocuments
+            {
+                CustomerId = 10,
+                CCCDNumber = "079201009999",
+                CCCDNumberHash = hasher.Hash("079201009999"),
+                Status = "Approved"
+            });
+            await db.SaveChangesAsync();
+        }
+        var bookingId = await CreatePaidBookingAsync(client);
+        await LoginAsync(client, "manager@example.test");
+
+        using var response = await PostContractAsync(client, bookingId, VietnamToday, VietnamToday.AddYears(1),
+            holderCccd: "079201000001");
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        using var verifyScope = factory.Services.CreateScope();
+        Assert.Empty(await verifyScope.ServiceProvider.GetRequiredService<AppDbContext>().Contracts.ToListAsync());
+        Assert.Single(await verifyScope.ServiceProvider.GetRequiredService<AppDbContext>().IdentityDocuments.ToListAsync());
+    }
+
     [Theory]
     [InlineData("admin@example.test", HttpStatusCode.Forbidden)]
     [InlineData("admin-b@example.test", HttpStatusCode.Forbidden)]
@@ -470,12 +582,21 @@ public class ContractsApiTests
                 .SingleAsync(room => room.RoomId == 1)).Status);
     }
 
-    internal static Task<HttpResponseMessage> PostContractAsync(HttpClient client, int bookingId, DateOnly startDate, DateOnly endDate) =>
+    internal static Task<HttpResponseMessage> PostContractAsync(HttpClient client, int bookingId, DateOnly startDate, DateOnly endDate,
+        string holderCccd = "079201000001", object[]? occupants = null, int registeredVehicleCount = 0,
+        decimal manualSecurityDepositAmount = 0m, bool securityDepositHandoverAcknowledged = true,
+        bool occupantCountChangeConfirmed = false) =>
         client.PostAsJsonAsync("/api/contracts", new
         {
             bookingId,
             startDate,
-            endDate
+            endDate,
+            holderIdentityNumber = holderCccd,
+            occupants = occupants ?? [],
+            registeredVehicleCount,
+            manualSecurityDepositAmount,
+            securityDepositHandoverAcknowledged,
+            occupantCountChangeConfirmed
         });
 
     private static async Task<int> CreateContractAsync(HttpClient client)

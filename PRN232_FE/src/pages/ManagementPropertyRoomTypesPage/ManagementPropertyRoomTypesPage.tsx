@@ -16,6 +16,8 @@ import {
 } from "@/constants/routes"
 import { getProperties } from "@/services/propertyService"
 import { createRoomType, getRoomTypes } from "@/services/roomService"
+import { addRoomTypeService, getRoomTypeServices, removeRoomTypeService } from "@/services/roomTypeService"
+import { getServiceCatalog } from "@/services/serviceRateService"
 import {
   createPropertyRoomType,
   getPropertyRoomTypes,
@@ -27,6 +29,7 @@ import type {
   RoomTypeCatalogItem,
 } from "@/types/propertyRoomType"
 import type { PropertyDto } from "@/types/user"
+import type { ServiceCatalogItem } from "@/types/serviceRate"
 import { formatVnd } from "@/utils/publicFormatting"
 import {
   MONTHLY_RENT_MAX,
@@ -816,11 +819,114 @@ export default function ManagementPropertyRoomTypesPage() {
                     Đang ngừng dùng cho giao dịch mới.
                   </p>
                 )}
+                {accessToken && (
+                  <div className="md:col-span-4">
+                    <RoomTypeServicesEditor
+                      accessToken={accessToken}
+                      roomTypeId={item.roomTypeId}
+                      roomTypeName={item.roomTypeName}
+                    />
+                  </div>
+                )}
               </article>
             ))}
           </div>
         )}
       </section>
     </ManagementPage>
+  )
+}
+
+function RoomTypeServicesEditor({ accessToken, roomTypeId, roomTypeName }: {
+  accessToken: string
+  roomTypeId: number
+  roomTypeName: string
+}) {
+  const [catalog, setCatalog] = useState<ServiceCatalogItem[]>([])
+  const [assigned, setAssigned] = useState<ServiceCatalogItem[]>([])
+  const [selectedId, setSelectedId] = useState("")
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  const [reload, setReload] = useState(0)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setLoading(true)
+    setError("")
+    void Promise.all([
+      getServiceCatalog(controller.signal),
+      getRoomTypeServices(accessToken, roomTypeId, controller.signal),
+    ])
+      .then(([allServices, roomServices]) => {
+        setCatalog(allServices)
+        setAssigned(roomServices.map((service) => ({
+          serviceId: service.serviceId,
+          name: service.name,
+          price: service.price,
+        })))
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) setError(errorMessage(cause))
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+    return () => controller.abort()
+  }, [accessToken, roomTypeId, reload])
+
+  const assignedIds = new Set(assigned.map((service) => service.serviceId))
+  const available = catalog.filter((service) => !assignedIds.has(service.serviceId))
+
+  async function changeService(serviceId: number, add: boolean) {
+    setBusy(true)
+    setError("")
+    try {
+      if (add) await addRoomTypeService(accessToken, roomTypeId, serviceId)
+      else await removeRoomTypeService(accessToken, roomTypeId, serviceId)
+      setReload((value) => value + 1)
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-slate-100 bg-slate-50 p-4" aria-label={`Dịch vụ cho ${roomTypeName}`}>
+      <h4 className="text-sm font-bold text-slate-800">Dịch vụ áp dụng cho {roomTypeName}</h4>
+      <p className="mt-1 text-xs text-slate-500">Hóa đơn chỉ tính dịch vụ được gắn với loại phòng này.</p>
+      {loading && <p role="status" className="mt-2 text-xs text-slate-500">Đang tải dịch vụ...</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-rose-600">{error}</p>}
+      {!loading && !error && (
+        <>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <select aria-label={`Chọn dịch vụ ${roomTypeName}`} value={selectedId}
+              onChange={(event) => setSelectedId(event.target.value)}
+              className="h-9 min-w-52 rounded-lg border border-slate-200 bg-white px-3 text-sm">
+              <option value="">Chọn dịch vụ để thêm</option>
+              {available.map((service) => <option key={service.serviceId} value={service.serviceId}>{service.name}</option>)}
+            </select>
+            <button type="button" disabled={busy || !selectedId}
+              onClick={() => { void changeService(Number(selectedId), true); setSelectedId("") }}
+              className="rounded-lg bg-teal-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
+              Thêm dịch vụ
+            </button>
+          </div>
+          {assigned.length === 0 ? <p className="mt-2 text-xs text-slate-500">Chưa gắn dịch vụ.</p> : (
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {assigned.map((service) => (
+                <li key={service.serviceId} className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs text-slate-700">
+                  {service.name}
+                  <button type="button" aria-label={`Gỡ dịch vụ ${service.name}`} disabled={busy}
+                    onClick={() => void changeService(service.serviceId, false)}
+                    className="font-bold text-rose-600 disabled:opacity-40">Gỡ</button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
   )
 }

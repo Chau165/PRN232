@@ -38,6 +38,13 @@ public class Contracts
     {
         get; set;
     }
+    // Null only for contracts created before vehicle registration was introduced.
+    public int? RegisteredVehicleCount { get; set; }
+    // Manual handover deposit is separate from the Booking deposit and may be explicitly recorded as zero.
+    public decimal? ManualSecurityDepositAmount { get; set; }
+    public DateTime? SecurityDepositAcknowledgedAtUtc { get; set; }
+    public int? SecurityDepositRecordedByManagerId { get; set; }
+    public Users? SecurityDepositRecordedByManager { get; set; }
     public string Status { get; set; } = string.Empty;
 
     public decimal? InitialElectricReading { get; set; }
@@ -73,4 +80,5 @@ public class Contracts
     public ICollection<Invoices> Invoices { get; set; } = new List<Invoices>();
     public ICollection<Payments> Payments { get; set; } = new List<Payments>();
     public ICollection<MaintenanceRequests> MaintenanceRequests { get; set; } = new List<MaintenanceRequests>();
+    public ICollection<ContractOccupants> Occupants { get; set; } = new List<ContractOccupants>();
 }

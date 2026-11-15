@@ -11,12 +11,18 @@ namespace PRN232.Application.Services;
 public static class OccupantBilling
 {
     public static decimal PersonMonths(DateOnly month, OccupantStayReadModel holder, IEnumerable<OccupantStayReadModel> stays)
+        => CalculatePersonMonths(month, stays.Prepend(holder));
+
+    public static decimal AdditionalPersonMonths(DateOnly month, IEnumerable<OccupantStayReadModel> stays)
+        => CalculatePersonMonths(month, stays);
+
+    private static decimal CalculatePersonMonths(DateOnly month, IEnumerable<OccupantStayReadModel> stays)
     {
         var first = new DateOnly(month.Year, month.Month, 1);
         var last = first.AddMonths(1).AddDays(-1);
         var daysInMonth = last.Day;
         var total = 0m;
-        foreach (var stay in stays.Prepend(holder))
+        foreach (var stay in stays)
         {
             var from = stay.MoveInDate > first ? stay.MoveInDate : first;
             var to = stay.MoveOutDate is { } moveOut && moveOut < last ? moveOut : last;

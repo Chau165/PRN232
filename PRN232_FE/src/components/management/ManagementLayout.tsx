@@ -19,23 +19,21 @@ export default function ManagementLayout({
   const location = useLocation()
   return (
     <div className="min-h-screen bg-[#f8fbfb]">
-      <div className="flex min-h-screen">
-        <ManagementSidebar
+      <ManagementSidebar
+        user={user}
+        pathname={location.pathname}
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+      />
+      <div className="min-w-0 lg:ml-[260px]">
+        <ManagementHeader
           user={user}
-          pathname={location.pathname}
-          open={menuOpen}
-          onClose={() => setMenuOpen(false)}
+          title={title}
+          onMenu={() => setMenuOpen(true)}
         />
-        <div className="min-w-0 flex-1">
-          <ManagementHeader
-            user={user}
-            title={title}
-            onMenu={() => setMenuOpen(true)}
-          />
-          <main className="mx-auto max-w-[1440px] px-5 py-7 lg:px-8">
-            {children}
-          </main>
-        </div>
+        <main className="mx-auto max-w-[1440px] px-5 py-7 lg:px-8">
+          {children}
+        </main>
       </div>
     </div>
   )

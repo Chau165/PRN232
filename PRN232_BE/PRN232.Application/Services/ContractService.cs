@@ -5,6 +5,7 @@ using PRN232.Application.ReadModels;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 
 namespace PRN232.Application.Services;
@@ -80,6 +81,31 @@ public class ContractService : IContractService
         return ConvertToDto(updated);
     }
 
+    public async Task<ContractDto> SaveRegisteredVehicleCountAsync(
+        int contractId, UpdateContractRegisteredVehicleCountDto request, int userId, string role,
+        CancellationToken cancellationToken)
+    {
+        if (request.RegisteredVehicleCount < 0)
+        {
+            throw new ContractBusinessRuleException("Số xe đăng ký không được âm.");
+        }
+        var contract = await GetContractForManagerMutationAsync(contractId, userId, role);
+        if (contract.Status != ContractStatuses.Active)
+        {
+            throw new ContractConflictException("Chỉ hợp đồng đang hiệu lực mới cập nhật được số xe.");
+        }
+        var result = await _repository.SaveRegisteredVehicleCountAsync(
+            contractId, userId, request.RegisteredVehicleCount, cancellationToken);
+        if (result.Status == ContractMutationStatus.Conflict)
+        {
+            throw new ContractConflictException("Số xe không được vượt số người đang đăng ký ở trong hợp đồng.");
+        }
+        var updated = GetUpdatedContract(result);
+        _logger?.LogInformation("Manager {ManagerId} updated registered vehicles for contract {ContractId} to {VehicleCount}",
+            userId, contractId, updated.RegisteredVehicleCount);
+        return ConvertToDto(updated);
+    }
+
     public async Task<ContractDto> CreateFromBookingAsync(CreateContractDto dto, int userId, string role)
     {
         if (role != RoleNames.Manager)
@@ -128,8 +154,72 @@ public class ContractService : IContractService
             throw new ContractBusinessRuleException("End date must be after the start date.");
         }
 
+        var occupants = dto.Occupants ?? [];
+        var registeredOccupantCount = occupants.Count + 1;
+        var bookedOccupantCount = booking.BookingOccupantCount ?? 1;
+        if (registeredOccupantCount > booking.MaxOccupants)
+        {
+            throw new ContractBusinessRuleException($"Phòng {booking.RoomCode} chỉ được đăng ký tối đa {booking.MaxOccupants} người.");
+        }
+        if (registeredOccupantCount != bookedOccupantCount && !dto.OccupantCountChangeConfirmed)
+        {
+            throw new ContractBusinessRuleException("Số người đăng ký khác số người trên booking. Vui lòng xác nhận thay đổi.");
+        }
+        if (dto.RegisteredVehicleCount < 0 || dto.RegisteredVehicleCount > registeredOccupantCount)
+        {
+            throw new ContractBusinessRuleException("Số xe phải từ 0 đến bằng số người đăng ký trong hợp đồng.");
+        }
+        if (!dto.SecurityDepositHandoverAcknowledged)
+        {
+            throw new ContractBusinessRuleException("Vui lòng xác nhận đã bàn giao tiền bảo đảm; nhập 0 nếu không thu khoản này.");
+        }
+        if (dto.ManualSecurityDepositAmount < 0m || dto.ManualSecurityDepositAmount > 9_999_999_999_999_999.99m ||
+            decimal.Round(dto.ManualSecurityDepositAmount, 2) != dto.ManualSecurityDepositAmount)
+        {
+            throw new ContractBusinessRuleException("Tiền bảo đảm bàn giao phải từ 0 trở lên và tối đa 2 chữ số thập phân.");
+        }
+        if (!IsValidIdentityNumber(dto.HolderIdentityNumber))
+        {
+            throw new ContractBusinessRuleException("CCCD người đứng tên phải gồm đúng 12 chữ số.");
+        }
+        var identityNumbers = new HashSet<string>(StringComparer.Ordinal) { dto.HolderIdentityNumber! };
+        var normalizedHolderName = NormalizeName(booking.CustomerName);
+        foreach (var occupant in occupants)
+        {
+            if (string.IsNullOrWhiteSpace(occupant.FullName) || occupant.FullName.Trim().Length > 100 ||
+                string.Equals(NormalizeName(occupant.FullName), normalizedHolderName, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ContractBusinessRuleException("Người ở cùng phải có họ tên hợp lệ và không được đăng ký trùng người đứng tên.");
+            }
+            if (!IsValidIdentityNumber(occupant.IdentityNumber) || !identityNumbers.Add(occupant.IdentityNumber!))
+            {
+                throw new ContractBusinessRuleException("Mỗi người phải có CCCD riêng gồm đúng 12 chữ số.");
+            }
+        }
+
         // Contract rent comes from the immutable booking snapshot; the deposit stays the paid amount.
         var contract = ConvertToEntity(dto, booking, userId);
+        var createdAtUtc = _timeProvider.GetUtcNow().UtcDateTime;
+        contract.SecurityDepositAcknowledgedAtUtc = createdAtUtc;
+        contract.SecurityDepositRecordedByManagerId = userId;
+        foreach (var occupant in occupants)
+        {
+            contract.Occupants.Add(new ContractOccupants
+            {
+                FullName = occupant.FullName!.Trim(),
+                PhoneNumber = string.IsNullOrWhiteSpace(occupant.PhoneNumber) ? null : occupant.PhoneNumber.Trim(),
+                IdentityNumber = occupant.IdentityNumber!,
+                MoveInDate = dto.StartDate,
+                AddedById = userId,
+                CreatedAtUtc = createdAtUtc
+            });
+        }
+        var pendingHolderIdentity = new IdentityDocuments
+        {
+            CustomerId = booking.CustomerId,
+            CCCDNumber = dto.HolderIdentityNumber!,
+            Status = IdentityDocumentStatuses.Pending
+        };
         var notification = new Notifications
         {
             UserId = booking.CustomerId,
@@ -137,7 +227,13 @@ public class ContractService : IContractService
             Type = NotificationTypes.Contract,
             IsRead = false
         };
-        if (!await _repository.AddFromBookingAsync(contract, notification))
+        var creationStatus = await _repository.AddFromBookingAsync(new ContractCreationCommand(
+            contract, contract.Occupants.ToArray(), pendingHolderIdentity, dto.OccupantCountChangeConfirmed), notification);
+        if (creationStatus == ContractCreationStatus.HolderIdentityConflict)
+        {
+            throw new ContractConflictException("CCCD người đứng tên không khớp hồ sơ đã duyệt hoặc đã được dùng cho khách hàng khác.");
+        }
+        if (creationStatus != ContractCreationStatus.Created)
         {
             throw new ContractConflictException("The booking changed or the room already has an active contract.");
         }
@@ -456,6 +552,8 @@ public class ContractService : IContractService
             EndDate = dto.EndDate,
             MonthlyRent = booking.MonthlyRent!.Value,
             DepositAmount = booking.DepositAmount,
+            RegisteredVehicleCount = dto.RegisteredVehicleCount,
+            ManualSecurityDepositAmount = dto.ManualSecurityDepositAmount,
             Status = ContractStatuses.Active
         };
     }
@@ -507,7 +605,10 @@ public class ContractService : IContractService
             NoticeDays(contract),
             ForfeitsDeposit(contract.PlannedMoveOutDate, contract.EndDate, NoticeDays(contract)),
             contract.TransferredFromContractId,
-            contract.TransferredToContractId);
+            contract.TransferredToContractId,
+            contract.RegisteredVehicleCount,
+            contract.ManualSecurityDepositAmount,
+            UtcTimestamp.ForResponse(contract.SecurityDepositAcknowledgedAtUtc));
     }
 
     // Rebuild 3.6a (PLAN D3 bước 6). Trả phòng TRƯỚC ngày kết thúc hợp đồng mà báo trước dưới 30 ngày thì
@@ -522,6 +623,12 @@ public class ContractService : IContractService
 
     public static bool ForfeitsDeposit(DateOnly? moveOutDate, DateOnly endDate, int? noticeDays) =>
         moveOutDate is { } date && date < endDate && (noticeDays ?? 0) < MoveOutNoticeRequiredDays;
+
+    private static bool IsValidIdentityNumber(string? value) =>
+        value is { Length: 12 } && value.All(char.IsAsciiDigit);
+
+    private static string NormalizeName(string value) =>
+        Regex.Replace(value.Trim(), "\\s+", " ");
 
     public async Task<ContractDto> GiveMoveOutNoticeAsync(int contractId, MoveOutNoticeDto request, int userId,
         string role, CancellationToken cancellationToken)
