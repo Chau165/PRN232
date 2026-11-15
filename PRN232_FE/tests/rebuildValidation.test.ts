@@ -24,10 +24,13 @@ import {
   validatePropertyForm,
 } from "@/utils/propertyValidation"
 import {
+  equipmentCompensationValueError,
   equipmentNameError,
+  equipmentQuantityError,
   equipmentRoomIdError,
   equipmentStatusError,
   equipmentSupplierError,
+  formatEquipmentSummary,
   getVietnamTodayIsoDate,
   installDateError,
   validateEquipmentForm,
@@ -280,6 +283,39 @@ describe("rebuild validation rules (C2 & C3)", () => {
           today,
         ),
       ).toEqual({})
+    })
+
+    it("checks C7 equipment quantity (1..20), compensationValue (0..50M, step 1000), and summary formatting", () => {
+      expect(equipmentQuantityError("")).toBeNull()
+      expect(equipmentQuantityError(1)).toBeNull()
+      expect(equipmentQuantityError(20)).toBeNull()
+      expect(equipmentQuantityError(0)).toBe("Số lượng phải từ 1 đến 20.")
+      expect(equipmentQuantityError(21)).toBe("Số lượng phải từ 1 đến 20.")
+      expect(equipmentQuantityError(1.5)).toBe("Số lượng phải từ 1 đến 20.")
+
+      expect(equipmentCompensationValueError("")).toBeNull()
+      expect(equipmentCompensationValueError(0)).toBeNull()
+      expect(equipmentCompensationValueError(50_000_000)).toBeNull()
+      expect(equipmentCompensationValueError(-1_000)).toBe(
+        "Giá trị bồi thường phải từ 0đ đến 50.000.000đ.",
+      )
+      expect(equipmentCompensationValueError(50_001_000)).toBe(
+        "Giá trị bồi thường phải từ 0đ đến 50.000.000đ.",
+      )
+      expect(equipmentCompensationValueError(8_500_500)).toBe(
+        "Giá trị bồi thường phải là bội số của 1.000đ.",
+      )
+
+      expect(
+        formatEquipmentSummary({
+          name: "Máy lạnh",
+          quantity: 2,
+          compensationValue: 8_500_000,
+        }),
+      ).toBe("Máy lạnh × 2 — 8.500.000đ/cái")
+      expect(formatEquipmentSummary({ name: "Máy lạnh API" })).toBe(
+        "Máy lạnh API",
+      )
     })
   })
 })

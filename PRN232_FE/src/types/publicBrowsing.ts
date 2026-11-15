@@ -135,6 +135,7 @@ export interface PublicRoomDetail {
   equipments: Array<{
     equipmentId: number
     name: string
+    quantity?: number
   }>
 }
 

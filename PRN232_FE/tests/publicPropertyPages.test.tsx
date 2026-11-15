@@ -651,9 +651,7 @@ describe("public property detail and room listing", () => {
     expect(within(dialog).getByText(/3\.500/)).toBeTruthy()
     expect(within(dialog).queryByText(/4\.000,5|25\.000/)).toBeNull()
     expect(within(dialog).getByText(/biểu phí/i)).toBeTruthy()
-    expect(
-      within(dialog).getByText("Chưa có thông tin thiết bị công khai."),
-    ).toBeTruthy()
+    expect(within(dialog).queryByText("Thiết bị trong phòng")).toBeNull()
     expect(within(dialog).queryByText("R-501")).toBeNull()
     expect(
       within(dialog)
@@ -689,7 +687,10 @@ describe("public property detail and room listing", () => {
           images: ["https://images.example.test/room.jpg"],
           amenities: [],
           services: [],
-          equipments: [{ equipmentId: 4, name: "Bàn làm việc" }],
+          equipments: [
+            { equipmentId: 1, name: "Máy lạnh", quantity: 2 },
+            { equipmentId: 4, name: "Bàn làm việc", quantity: 1 },
+          ],
         }),
       )
     })
@@ -709,7 +710,10 @@ describe("public property detail and room listing", () => {
     expect(
       within(dialog).getByText("Phòng sáng sủa, có cửa sổ lớn."),
     ).toBeTruthy()
+    expect(within(dialog).getByText("Thiết bị trong phòng")).toBeTruthy()
+    expect(within(dialog).getByText("Máy lạnh × 2")).toBeTruthy()
     expect(within(dialog).getByText("Bàn làm việc")).toBeTruthy()
+    expect(within(dialog).queryByText("Bàn làm việc × 1")).toBeNull()
     expect(
       within(dialog).getByText("Chưa có thông tin tiện ích công khai."),
     ).toBeTruthy()

@@ -23,6 +23,7 @@ import {
 import { getManagementRoom } from "@/services/roomService"
 import type { EquipmentDto, EquipmentWriteRequest } from "@/types/equipment"
 import type { ManagementRoomDto } from "@/types/managementRoom"
+import { formatEquipmentSummary } from "@/utils/equipmentValidation"
 
 const equipmentPageSize = 50
 const maintenanceHistoryMessage =
@@ -534,7 +535,7 @@ export default function ManagementRoomEquipmentPage() {
                       className="grid gap-3 px-5 py-5 lg:grid-cols-[1.3fr_1fr_1fr_1.2fr_.9fr_1.5fr] lg:items-center"
                     >
                       <strong className="text-[13px] text-slate-800">
-                        {item.name}
+                        {formatEquipmentSummary(item)}
                       </strong>
                       <span className="text-[13px] text-slate-600">
                         {formatDate(item.installDate)}

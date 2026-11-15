@@ -7,6 +7,8 @@ export type EquipmentDto = {
   propertyId: number | null
   propertyName: string | null
   name: string
+  quantity?: number
+  compensationValue?: number
   installDate: string
   warrantyExpiry: string
   supplier: string
@@ -16,6 +18,8 @@ export type EquipmentDto = {
 export type EquipmentWriteRequest = {
   roomId?: number
   name: string
+  quantity?: number | null
+  compensationValue?: number | null
   installDate: string
   warrantyExpiry: string
   supplier: string

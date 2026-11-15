@@ -3,6 +3,11 @@ import { ApiError } from "@/api/apiClient"
 import type { ManagementRoomDto } from "@/types/managementRoom"
 import type { EquipmentDto, EquipmentWriteRequest } from "@/types/equipment"
 import {
+  EQUIPMENT_COMPENSATION_MAX,
+  EQUIPMENT_COMPENSATION_MIN,
+  EQUIPMENT_COMPENSATION_STEP,
+  EQUIPMENT_QUANTITY_MAX,
+  EQUIPMENT_QUANTITY_MIN,
   getVietnamTodayIsoDate,
   validateEquipmentForm,
   type EquipmentFormField,
@@ -12,6 +17,8 @@ import { splitValidationErrors } from "@/utils/roomValidation"
 const EQUIPMENT_FORM_FIELDS: readonly EquipmentFormField[] = [
   "roomId",
   "name",
+  "quantity",
+  "compensationValue",
   "installDate",
   "warrantyExpiry",
   "supplier",
@@ -32,6 +39,8 @@ type EquipmentFormModalProps = {
 
 type FormValues = {
   name: string
+  quantity: string
+  compensationValue: string
   installDate: string
   warrantyExpiry: string
   supplier: string
@@ -43,6 +52,15 @@ function valuesFromEquipment(
 ): FormValues {
   return {
     name: equipment?.name ?? "",
+    quantity:
+      equipment?.quantity !== undefined && equipment?.quantity !== null
+        ? String(equipment.quantity)
+        : "",
+    compensationValue:
+      equipment?.compensationValue !== undefined &&
+      equipment?.compensationValue !== null
+        ? String(equipment.compensationValue)
+        : "",
     installDate: equipment?.installDate ?? "",
     warrantyExpiry: equipment?.warrantyExpiry ?? "",
     supplier: equipment?.supplier ?? "",
@@ -127,6 +145,8 @@ export default function EquipmentFormModal({
         mode,
         roomId: room.roomId,
         name: values.name,
+        quantity: values.quantity,
+        compensationValue: values.compensationValue,
         installDate: values.installDate,
         warrantyExpiry: values.warrantyExpiry,
         supplier: values.supplier,
@@ -143,11 +163,19 @@ export default function EquipmentFormModal({
 
     const name = values.name.trim()
     const supplier = values.supplier.trim()
+    const quantity =
+      values.quantity.trim() === "" ? null : Number(values.quantity)
+    const compensationValue =
+      values.compensationValue.trim() === ""
+        ? null
+        : Number(values.compensationValue)
 
     setFieldErrors({})
     setFormError("")
     const request: Omit<EquipmentWriteRequest, "roomId"> = {
       name,
+      ...(quantity !== null ? { quantity } : {}),
+      ...(compensationValue !== null ? { compensationValue } : {}),
       installDate: values.installDate,
       warrantyExpiry: values.warrantyExpiry,
       supplier,
@@ -236,6 +264,59 @@ export default function EquipmentFormModal({
                   {fieldErrors.name}
                 </p>
               )}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                  Số lượng
+                  <input
+                    aria-label="Số lượng"
+                    aria-invalid={Boolean(fieldErrors.quantity)}
+                    type="number"
+                    min={EQUIPMENT_QUANTITY_MIN}
+                    max={EQUIPMENT_QUANTITY_MAX}
+                    step={1}
+                    placeholder="1"
+                    value={values.quantity}
+                    onChange={(event) =>
+                      updateValue("quantity", event.target.value)
+                    }
+                    className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                  />
+                </label>
+                {fieldErrors.quantity && (
+                  <p role="alert" className="mt-1 text-xs text-rose-600">
+                    {fieldErrors.quantity}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                  Giá trị bồi thường (đ/cái)
+                  <input
+                    aria-label="Giá trị bồi thường (đ/cái)"
+                    aria-invalid={Boolean(fieldErrors.compensationValue)}
+                    type="number"
+                    min={EQUIPMENT_COMPENSATION_MIN}
+                    max={EQUIPMENT_COMPENSATION_MAX}
+                    step={EQUIPMENT_COMPENSATION_STEP}
+                    placeholder="0"
+                    value={values.compensationValue}
+                    onChange={(event) =>
+                      updateValue("compensationValue", event.target.value)
+                    }
+                    className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                  />
+                </label>
+                <p className="mt-1 text-xs text-slate-500">
+                  Giá trị ghi trong biên bản bàn giao; không áp dụng cho hao mòn tự nhiên.
+                </p>
+                {fieldErrors.compensationValue && (
+                  <p role="alert" className="mt-1 text-xs text-rose-600">
+                    {fieldErrors.compensationValue}
+                  </p>
+                )}
+              </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>

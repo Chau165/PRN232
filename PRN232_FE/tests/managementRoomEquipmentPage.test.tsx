@@ -411,4 +411,74 @@ describe("room-scoped equipment management", () => {
       screen.getByLabelText("Nhà cung cấp").getAttribute("aria-invalid"),
     ).toBe("true")
   })
+
+  it("supports C7 quantity and compensationValue validation, handover note, and list summary display", async () => {
+    mocks.getEquipments.mockResolvedValue([
+      {
+        ...equipment,
+        name: "Máy lạnh",
+        quantity: 2,
+        compensationValue: 8_500_000,
+      },
+    ])
+    renderPage()
+
+    expect(
+      await screen.findByText("Máy lạnh × 2 — 8.500.000đ/cái"),
+    ).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Thêm thiết bị" }))
+    expect(
+      screen.getByText(
+        "Giá trị ghi trong biên bản bàn giao; không áp dụng cho hao mòn tự nhiên.",
+      ),
+    ).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText("Tên thiết bị"), {
+      target: { value: "Tủ lạnh" },
+    })
+    fireEvent.change(screen.getByLabelText("Số lượng"), {
+      target: { value: "21" },
+    })
+    fireEvent.change(screen.getByLabelText("Giá trị bồi thường (đ/cái)"), {
+      target: { value: "4500500" },
+    })
+    fireEvent.change(screen.getByLabelText("Ngày lắp đặt"), {
+      target: { value: "2026-01-10" },
+    })
+    fireEvent.change(screen.getByLabelText("Hạn bảo hành"), {
+      target: { value: "2028-01-10" },
+    })
+    fireEvent.change(screen.getByLabelText("Nhà cung cấp"), {
+      target: { value: "Toshiba" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thiết bị" }))
+
+    expect(screen.getByText("Số lượng phải từ 1 đến 20.")).toBeTruthy()
+    expect(
+      screen.getByText("Giá trị bồi thường phải là bội số của 1.000đ."),
+    ).toBeTruthy()
+    expect(mocks.createEquipment).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText("Số lượng"), {
+      target: { value: "2" },
+    })
+    fireEvent.change(screen.getByLabelText("Giá trị bồi thường (đ/cái)"), {
+      target: { value: "4500000" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thiết bị" }))
+
+    await waitFor(() =>
+      expect(mocks.createEquipment).toHaveBeenCalledWith("admin-token", {
+        roomId: 31,
+        name: "Tủ lạnh",
+        quantity: 2,
+        compensationValue: 4_500_000,
+        installDate: "2026-01-10",
+        warrantyExpiry: "2028-01-10",
+        supplier: "Toshiba",
+        status: "Operational",
+      }),
+    )
+  })
 })

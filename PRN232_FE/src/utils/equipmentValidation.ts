@@ -1,11 +1,18 @@
-// Quy tắc validate thiết bị (C3 — docs/rebuild/API-CHANGES.md).
+// Quy tắc validate thiết bị (C3, C7 — docs/rebuild/API-CHANGES.md).
 
 export const EQUIPMENT_NAME_MAX_LENGTH = 200
 export const EQUIPMENT_SUPPLIER_MAX_LENGTH = 200
+export const EQUIPMENT_QUANTITY_MIN = 1
+export const EQUIPMENT_QUANTITY_MAX = 20
+export const EQUIPMENT_COMPENSATION_MIN = 0
+export const EQUIPMENT_COMPENSATION_MAX = 50_000_000
+export const EQUIPMENT_COMPENSATION_STEP = 1_000
 
 export type EquipmentFormField =
   | "roomId"
   | "name"
+  | "quantity"
+  | "compensationValue"
   | "installDate"
   | "warrantyExpiry"
   | "supplier"
@@ -79,11 +86,82 @@ export function equipmentStatusError(status: string): string | null {
   return null
 }
 
+export function equipmentQuantityError(
+  quantity: number | string | null | undefined,
+): string | null {
+  if (
+    quantity === null ||
+    quantity === undefined ||
+    (typeof quantity === "string" && quantity.trim() === "")
+  ) {
+    return null
+  }
+  const value = typeof quantity === "number" ? quantity : Number(quantity)
+  if (
+    !Number.isInteger(value) ||
+    value < EQUIPMENT_QUANTITY_MIN ||
+    value > EQUIPMENT_QUANTITY_MAX
+  ) {
+    return "Số lượng phải từ 1 đến 20."
+  }
+  return null
+}
+
+export function equipmentCompensationValueError(
+  compensationValue: number | string | null | undefined,
+): string | null {
+  if (
+    compensationValue === null ||
+    compensationValue === undefined ||
+    (typeof compensationValue === "string" && compensationValue.trim() === "")
+  ) {
+    return null
+  }
+  const value =
+    typeof compensationValue === "number"
+      ? compensationValue
+      : Number(compensationValue)
+  if (
+    !Number.isFinite(value) ||
+    value < EQUIPMENT_COMPENSATION_MIN ||
+    value > EQUIPMENT_COMPENSATION_MAX
+  ) {
+    return "Giá trị bồi thường phải từ 0đ đến 50.000.000đ."
+  }
+  if (!Number.isInteger(value) || value % EQUIPMENT_COMPENSATION_STEP !== 0) {
+    return "Giá trị bồi thường phải là bội số của 1.000đ."
+  }
+  return null
+}
+
+export function formatEquipmentSummary(item: {
+  name: string
+  quantity?: number | null
+  compensationValue?: number | null
+}): string {
+  const hasQuantity = item.quantity !== undefined && item.quantity !== null
+  const hasCompensation =
+    item.compensationValue !== undefined && item.compensationValue !== null
+  if (!hasQuantity && !hasCompensation) {
+    return item.name
+  }
+  const quantityPart = `${item.name} × ${item.quantity ?? 1}`
+  if (!hasCompensation) {
+    return quantityPart
+  }
+  const formattedPrice = new Intl.NumberFormat("vi-VN").format(
+    item.compensationValue ?? 0,
+  )
+  return `${quantityPart} — ${formattedPrice}đ/cái`
+}
+
 export function validateEquipmentForm(
   input: {
     mode?: "create" | "edit"
     roomId?: number | string
     name: string
+    quantity?: number | string | null
+    compensationValue?: number | string | null
     installDate: string
     warrantyExpiry: string
     supplier: string
@@ -98,6 +176,14 @@ export function validateEquipmentForm(
   }
   const nameErr = equipmentNameError(input.name)
   if (nameErr) errors.name = nameErr
+
+  const quantityErr = equipmentQuantityError(input.quantity)
+  if (quantityErr) errors.quantity = quantityErr
+
+  const compensationErr = equipmentCompensationValueError(
+    input.compensationValue,
+  )
+  if (compensationErr) errors.compensationValue = compensationErr
 
   const installErr = installDateError(input.installDate, today)
   if (installErr) errors.installDate = installErr
