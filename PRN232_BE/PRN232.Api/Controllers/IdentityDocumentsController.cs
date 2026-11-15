@@ -111,6 +111,10 @@ public class IdentityDocumentsController : ControllerBase
         {
             return Conflict(new ProblemDetails { Title = "Invalid status transition", Detail = exception.Message });
         }
+        catch (IdentityDocumentValidationException exception)
+        {
+            return BadRequest(new ProblemDetails { Title = "Invalid review", Detail = exception.Message });
+        }
     }
 
     private int CurrentUserId()

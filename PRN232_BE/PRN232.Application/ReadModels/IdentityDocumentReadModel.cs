@@ -7,4 +7,5 @@ public sealed record IdentityDocumentReadModel(
     string CCCDNumber,
     string Status,
     int? ReviewedBy,
-    string? ReviewedByName);
+    string? ReviewedByName,
+    string? ReviewNote = null);

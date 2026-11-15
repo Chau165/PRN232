@@ -100,9 +100,16 @@ public class IdentityDocumentService : IIdentityDocumentService
             throw new IdentityDocumentStatusTransitionException(
                 $"Không thể chuyển trạng thái từ '{entity.Status}' sang '{dto.Status}'.");
         }
+        var validationError = AccountValidation.FirstError(AccountValidation.ReviewIdentityDocument, dto);
+        if (validationError is not null)
+        {
+            throw new IdentityDocumentValidationException(validationError);
+        }
 
         entity.Status = dto.Status;
         entity.ReviewedBy = reviewerId;
+        // V3: keep the reason only for a rejection; an approval clears it.
+        entity.ReviewNote = dto.Status == IdentityDocumentStatuses.Rejected ? dto.Note!.Trim() : null;
 
         await _repository.SaveChangesAsync();
         var updated = await _repository.GetByIdAsync(id);
@@ -152,7 +159,8 @@ public class IdentityDocumentService : IIdentityDocumentService
             revealCccd ? readModel.CCCDNumber : CccdMasking.MaskNumber(readModel.CCCDNumber),
             readModel.Status,
             readModel.ReviewedBy,
-            readModel.ReviewedByName);
+            readModel.ReviewedByName,
+            readModel.ReviewNote);
     }
 
     private async Task<IdentityDocumentReadModel> GetDocumentResponseAsync(int documentId)

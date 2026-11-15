@@ -19,6 +19,8 @@ public class IdentityDocuments
     {
         get; set;
     }
+    // V3: reason given when the document is rejected; shown to the customer. Null otherwise.
+    public string? ReviewNote { get; set; }
 
     public Users? Customer
     {
