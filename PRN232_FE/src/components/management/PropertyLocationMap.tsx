@@ -18,26 +18,28 @@ const icon = L.divIcon({
 function MapEvents({
   point,
   onPick,
+  disabled,
 }: {
   point: LocationPoint | null
   onPick: (point: LocationPoint) => void
+  disabled: boolean
 }) {
   const map = useMap()
   useEffect(() => {
     if (point) map.panTo([point.latitude, point.longitude])
   }, [map, point])
   useMapEvents({
-    click: (e) => onPick({ latitude: e.latlng.lat, longitude: e.latlng.lng }),
+    click: (e) => { if (!disabled) onPick({ latitude: e.latlng.lat, longitude: e.latlng.lng }) },
   })
   return point ? (
     <Marker
       position={[point.latitude, point.longitude]}
       icon={icon}
-      draggable
+      draggable={!disabled}
       eventHandlers={{
         dragend: (e) => {
           const p = (e.target as L.Marker).getLatLng()
-          onPick({ latitude: p.lat, longitude: p.lng })
+          if (!disabled) onPick({ latitude: p.lat, longitude: p.lng })
         },
       }}
     />
@@ -47,10 +49,12 @@ export default function PropertyLocationMap({
   point,
   initialPoint,
   onPick,
+  disabled = false,
 }: {
   point: LocationPoint | null
   initialPoint?: LocationPoint
   onPick: (point: LocationPoint) => void
+  disabled?: boolean
 }) {
   const center = point ??
     initialPoint ?? { latitude: 10.8231, longitude: 106.6297 }
@@ -68,7 +72,7 @@ export default function PropertyLocationMap({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <MapEvents point={point} onPick={onPick} />
+        <MapEvents point={point} onPick={onPick} disabled={disabled} />
       </MapContainer>
     </div>
   )

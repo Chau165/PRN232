@@ -33,3 +33,17 @@ it("allows manual selection when search is unavailable",async()=>{
   fireEvent.click(await screen.findByRole("button",{name:"Kéo ghim kiểm thử"}))
   expect(change).toHaveBeenLastCalledWith({latitude:10.86,longitude:106.78})
 })
+
+it("keeps the current pin when a same-address lookup fails",async()=>{
+  mocks.preview.mockRejectedValue(new Error("Mạng tìm kiếm không khả dụng"))
+  const change=vi.fn();render(<PropertyLocationPicker address={address} accessToken="jwt" initialPoint={{latitude:10.85,longitude:106.77}} disabled={false} onChange={change}/>)
+  fireEvent.click(screen.getByRole("button",{name:"Tìm thử"}))
+  await screen.findByText("Mạng tìm kiếm không khả dụng")
+  expect(screen.getByText(/Vị trí đã lưu: 10.850000, 106.770000/)).toBeTruthy()
+  expect(change).not.toHaveBeenCalled()
+})
+it("does not accept map edits while saving",async()=>{
+  const change=vi.fn();render(<PropertyLocationPicker address={address} accessToken="jwt" disabled onChange={change}/>)
+  fireEvent.click(await screen.findByRole("button",{name:"Kéo ghim kiểm thử"}))
+  expect(change).not.toHaveBeenCalled()
+})

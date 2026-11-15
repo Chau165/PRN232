@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 
 import PropertyLocationPicker from "./PropertyLocationPicker"
+import { isSupportedPropertyLocation } from "@/utils/propertyLocation"
 import type { LocationPoint } from "./PropertyLocationMap"
 import { ApiError } from "@/api/apiClient"
 
@@ -191,7 +192,15 @@ export default function PropertyFormModal({
     values.addressText.trim() === initialProperty.addressText.trim() &&
     values.provinceCode === (initialProperty.provinceCode ?? "") &&
     values.wardCode === (initialProperty.wardCode ?? "")
-  const validPoint = locationPoint?.key === locationKey ? locationPoint : null
+  const previousLocationKey = useRef(locationKey)
+  useEffect(() => {
+    if (previousLocationKey.current !== locationKey) {
+      previousLocationKey.current = locationKey
+      setLocationPoint(null)
+      setLocationTouched(true)
+    }
+  }, [locationKey])
+  const validPoint = locationPoint?.key === locationKey && isSupportedPropertyLocation(locationPoint) ? locationPoint : null
   const [catalogStatus, setCatalogStatus] = useState<LoadStatus>("loading")
 
   const [catalogError, setCatalogError] = useState("")
@@ -795,6 +804,7 @@ export default function PropertyFormModal({
             </section>
 
             <PropertyLocationPicker
+              key={locationKey}
               address={locationAddress}
               accessToken={accessToken}
               disabled={saving}
@@ -803,8 +813,7 @@ export default function PropertyFormModal({
                 initialProperty &&
                 typeof initialProperty.latitude === "number" &&
                 typeof initialProperty.longitude === "number" &&
-                initialProperty.latitude > 0 &&
-                initialProperty.longitude > 0
+                isSupportedPropertyLocation({ latitude: initialProperty.latitude, longitude: initialProperty.longitude })
                   ? {
                       latitude: initialProperty.latitude,
                       longitude: initialProperty.longitude,
