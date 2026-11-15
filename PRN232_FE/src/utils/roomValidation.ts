@@ -1,9 +1,15 @@
-// Quy tắc validate phòng và giá thuê theo khu trọ (C2 — docs/rebuild/API-CHANGES.md).
+// Quy tắc validate phòng và giá thuê theo khu trọ (C2, C6 — docs/rebuild/API-CHANGES.md).
 
 export const ROOM_CODE_MAX_LENGTH = 20
 export const ROOM_AREA_MIN = 8
 export const ROOM_AREA_MAX = 100
 export const ROOM_AREA_STEP = 0.1
+
+export const ROOM_MAX_OCCUPANTS_MIN = 1
+export const ROOM_MAX_OCCUPANTS_MAX = 10
+export const ROOM_FLOOR_MIN = 0
+export const ROOM_FLOOR_MAX = 50
+export const ROOM_DESCRIPTION_MAX_LENGTH = 1_000
 
 export const MONTHLY_RENT_MIN = 500_000
 export const MONTHLY_RENT_MAX = 50_000_000
@@ -11,8 +17,34 @@ export const MONTHLY_RENT_STEP = 1_000
 
 const ROOM_CODE_PATTERN = /^[A-Za-z0-9.-]+$/
 
-export type RoomFormField = "propertyId" | "roomTypeId" | "roomCode" | "areaSqm"
+export type RoomFormField =
+  | "propertyId"
+  | "roomTypeId"
+  | "roomCode"
+  | "areaSqm"
+  | "maxOccupants"
+  | "floor"
+  | "description"
 export type PropertyRoomTypeFormField = "roomTypeId" | "monthlyRent"
+
+export function maxOccupantsByArea(
+  areaSqm: number | string | null | undefined,
+): number | null {
+  if (areaSqm === null || areaSqm === undefined) return null
+  if (typeof areaSqm === "string" && areaSqm.trim() === "") return null
+  const value = typeof areaSqm === "number" ? areaSqm : Number(areaSqm)
+  if (!Number.isFinite(value) || value < ROOM_AREA_MIN) return null
+  return Math.min(
+    ROOM_MAX_OCCUPANTS_MAX,
+    Math.max(ROOM_MAX_OCCUPANTS_MIN, Math.floor(value / 8)),
+  )
+}
+
+export function formatRoomFloor(floor: number | null | undefined): string | null {
+  if (floor === null || floor === undefined) return null
+  if (floor === 0) return "Tầng trệt"
+  return `Tầng ${floor}`
+}
 
 export function propertyIdError(propertyId: number | string): string | null {
   if (typeof propertyId === "string" && propertyId.trim() === "") {
@@ -78,12 +110,82 @@ export function monthlyRentError(monthlyRent: number | string): string | null {
   return null
 }
 
+export function maxOccupantsError(
+  maxOccupants: number | string | null | undefined,
+  areaSqm?: number | string | null,
+): string | null {
+  if (
+    maxOccupants === null ||
+    maxOccupants === undefined ||
+    (typeof maxOccupants === "string" && maxOccupants.trim() === "")
+  ) {
+    return null
+  }
+  const value =
+    typeof maxOccupants === "number" ? maxOccupants : Number(maxOccupants)
+  if (
+    !Number.isInteger(value) ||
+    value < ROOM_MAX_OCCUPANTS_MIN ||
+    value > ROOM_MAX_OCCUPANTS_MAX
+  ) {
+    return "Số người tối đa phải từ 1 đến 10."
+  }
+  if (
+    areaSqm !== undefined &&
+    areaSqm !== null &&
+    !(typeof areaSqm === "string" && areaSqm.trim() === "")
+  ) {
+    const areaValue = typeof areaSqm === "number" ? areaSqm : Number(areaSqm)
+    if (Number.isFinite(areaValue) && areaValue >= ROOM_AREA_MIN) {
+      const maxByArea = Math.floor(areaValue / 8)
+      if (value > maxByArea) {
+        return `Phòng ${areaValue} m² chỉ được ở tối đa ${maxByArea} người (tối thiểu 8 m²/người).`
+      }
+    }
+  }
+  return null
+}
+
+export function roomFloorError(
+  floor: number | string | null | undefined,
+): string | null {
+  if (
+    floor === null ||
+    floor === undefined ||
+    (typeof floor === "string" && floor.trim() === "")
+  ) {
+    return null
+  }
+  const value = typeof floor === "number" ? floor : Number(floor)
+  if (
+    !Number.isInteger(value) ||
+    value < ROOM_FLOOR_MIN ||
+    value > ROOM_FLOOR_MAX
+  ) {
+    return "Tầng phải từ 0 (tầng trệt) đến 50."
+  }
+  return null
+}
+
+export function roomDescriptionError(
+  description: string | null | undefined,
+): string | null {
+  if (!description) return null
+  if (description.trim().length > ROOM_DESCRIPTION_MAX_LENGTH) {
+    return "Mô tả phòng tối đa 1000 ký tự."
+  }
+  return null
+}
+
 export function validateRoomForm(input: {
   mode: "create" | "edit"
   propertyId?: number | string
   roomTypeId: number | string
   roomCode: string
   areaSqm: number | string
+  maxOccupants?: number | string | null
+  floor?: number | string | null
+  description?: string | null
 }): Partial<Record<RoomFormField, string>> {
   const errors: Partial<Record<RoomFormField, string>> = {}
   if (input.mode === "create") {
@@ -98,6 +200,15 @@ export function validateRoomForm(input: {
 
   const areaErr = areaSqmError(input.areaSqm)
   if (areaErr) errors.areaSqm = areaErr
+
+  const occupantsErr = maxOccupantsError(input.maxOccupants, input.areaSqm)
+  if (occupantsErr) errors.maxOccupants = occupantsErr
+
+  const floorErr = roomFloorError(input.floor)
+  if (floorErr) errors.floor = floorErr
+
+  const descErr = roomDescriptionError(input.description)
+  if (descErr) errors.description = descErr
 
   return errors
 }

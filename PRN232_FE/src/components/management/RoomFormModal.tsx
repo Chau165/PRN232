@@ -13,6 +13,11 @@ import {
   ROOM_AREA_MAX,
   ROOM_AREA_MIN,
   ROOM_AREA_STEP,
+  ROOM_FLOOR_MAX,
+  ROOM_FLOOR_MIN,
+  ROOM_MAX_OCCUPANTS_MAX,
+  ROOM_MAX_OCCUPANTS_MIN,
+  maxOccupantsByArea,
   splitValidationErrors,
   validateRoomForm,
   type RoomFormField,
@@ -23,6 +28,9 @@ const ROOM_FORM_FIELDS: readonly RoomFormField[] = [
   "roomTypeId",
   "roomCode",
   "areaSqm",
+  "maxOccupants",
+  "floor",
+  "description",
 ]
 
 type RoomFormModalProps = {
@@ -41,6 +49,9 @@ type FormValues = {
   roomTypeId: string
   roomCode: string
   areaSqm: string
+  maxOccupants: string
+  floor: string
+  description: string
 }
 
 function valuesFromRoom(
@@ -56,6 +67,15 @@ function valuesFromRoom(
     roomTypeId: room ? String(room.roomTypeId) : "",
     roomCode: room?.roomCode ?? "",
     areaSqm: room ? String(room.areaSqm) : "",
+    maxOccupants:
+      room?.maxOccupants !== undefined && room?.maxOccupants !== null
+        ? String(room.maxOccupants)
+        : "",
+    floor:
+      room?.floor !== undefined && room?.floor !== null
+        ? String(room.floor)
+        : "",
+    description: room?.description ?? "",
   }
 }
 
@@ -178,12 +198,17 @@ export default function RoomFormModal({
       ...(field === "propertyId" ? { roomTypeId: "" } : {}),
     }))
     setFieldErrors((current) => {
-      if (!current[field] && !(field === "propertyId" && current.roomTypeId)) {
+      if (
+        !current[field] &&
+        !(field === "propertyId" && current.roomTypeId) &&
+        !(field === "areaSqm" && current.maxOccupants)
+      ) {
         return current
       }
       const next = { ...current }
       delete next[field]
       if (field === "propertyId") delete next.roomTypeId
+      if (field === "areaSqm") delete next.maxOccupants
       return next
     })
     setFormError("")
@@ -197,6 +222,9 @@ export default function RoomFormModal({
       roomTypeId: values.roomTypeId,
       roomCode: values.roomCode,
       areaSqm: values.areaSqm,
+      maxOccupants: values.maxOccupants,
+      floor: values.floor,
+      description: values.description,
     })
 
     const roomTypeId = Number(values.roomTypeId)
@@ -223,13 +251,33 @@ export default function RoomFormModal({
     const propertyId = Number(values.propertyId)
     const areaSqm = Number(values.areaSqm)
     const roomCode = values.roomCode.trim()
+    const maxOccupants =
+      values.maxOccupants.trim() === "" ? null : Number(values.maxOccupants)
+    const floor = values.floor.trim() === "" ? null : Number(values.floor)
+    const description =
+      values.description.trim() === "" ? null : values.description.trim()
 
     setFieldErrors({})
     setFormError("")
-    const request =
+    const request: CreateRoomRequest | UpdateRoomRequest =
       mode === "create"
-        ? { propertyId, roomTypeId, roomCode, areaSqm }
-        : { roomTypeId, roomCode, areaSqm }
+        ? {
+            propertyId,
+            roomTypeId,
+            roomCode,
+            areaSqm,
+            ...(maxOccupants !== null ? { maxOccupants } : {}),
+            ...(floor !== null ? { floor } : {}),
+            ...(description !== null ? { description } : {}),
+          }
+        : {
+            roomTypeId,
+            roomCode,
+            areaSqm,
+            maxOccupants,
+            floor,
+            description,
+          }
     try {
       const saved = await onSubmit(request)
       if (!saved) return
@@ -238,6 +286,7 @@ export default function RoomFormModal({
     }
   }
 
+  const maxAllowedOccupants = maxOccupantsByArea(values.areaSqm)
   const isMissingDependency = properties.length === 0
   const title = mode === "create" ? "Thêm phòng" : "Sửa phòng"
   const submitLabel = mode === "create" ? "Tạo phòng" : "Lưu phòng"
@@ -401,6 +450,78 @@ export default function RoomFormModal({
               {fieldErrors.areaSqm && (
                 <p role="alert" className="mt-1 text-xs text-rose-600">
                   {fieldErrors.areaSqm}
+                </p>
+              )}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                  Số người tối đa
+                  <input
+                    aria-label="Số người tối đa"
+                    aria-invalid={Boolean(fieldErrors.maxOccupants)}
+                    type="number"
+                    min={ROOM_MAX_OCCUPANTS_MIN}
+                    max={maxAllowedOccupants ?? ROOM_MAX_OCCUPANTS_MAX}
+                    step={1}
+                    value={values.maxOccupants}
+                    onChange={(event) =>
+                      updateValue("maxOccupants", event.target.value)
+                    }
+                    className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                  />
+                </label>
+                {maxAllowedOccupants !== null && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Tối đa {maxAllowedOccupants} người cho phòng {Number(values.areaSqm)} m²
+                  </p>
+                )}
+                {fieldErrors.maxOccupants && (
+                  <p role="alert" className="mt-1 text-xs text-rose-600">
+                    {fieldErrors.maxOccupants}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                  Tầng
+                  <input
+                    aria-label="Tầng"
+                    aria-invalid={Boolean(fieldErrors.floor)}
+                    type="number"
+                    min={ROOM_FLOOR_MIN}
+                    max={ROOM_FLOOR_MAX}
+                    step={1}
+                    placeholder="0 là tầng trệt"
+                    value={values.floor}
+                    onChange={(event) => updateValue("floor", event.target.value)}
+                    className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                  />
+                </label>
+                {fieldErrors.floor && (
+                  <p role="alert" className="mt-1 text-xs text-rose-600">
+                    {fieldErrors.floor}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                Mô tả phòng
+                <textarea
+                  aria-label="Mô tả phòng"
+                  aria-invalid={Boolean(fieldErrors.description)}
+                  rows={3}
+                  value={values.description}
+                  onChange={(event) =>
+                    updateValue("description", event.target.value)
+                  }
+                  className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                />
+              </label>
+              {fieldErrors.description && (
+                <p role="alert" className="mt-1 text-xs text-rose-600">
+                  {fieldErrors.description}
                 </p>
               )}
             </div>

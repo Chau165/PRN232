@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest"
 import {
   areaSqmError,
+  formatRoomFloor,
+  maxOccupantsByArea,
+  maxOccupantsError,
   monthlyRentError,
   propertyIdError,
   roomCodeError,
+  roomDescriptionError,
+  roomFloorError,
   roomTypeIdError,
   splitValidationErrors,
   validatePropertyRoomTypeForm,
@@ -127,6 +132,39 @@ describe("rebuild validation rules (C2 & C3)", () => {
         areaSqm: "Diện tích phòng phải từ 8 đến 100 m².",
       })
       expect(split.generalError).toBe("Lỗi chung.")
+    })
+
+    it("checks C6 room fields: maxOccupants (1..10 & area/8), floor (0..50 & Tầng trệt), and description (<=1000)", () => {
+      expect(maxOccupantsByArea(20)).toBe(2)
+      expect(maxOccupantsByArea(95)).toBe(10)
+      expect(maxOccupantsByArea("7.9")).toBeNull()
+
+      expect(maxOccupantsError("", 20)).toBeNull()
+      expect(maxOccupantsError(0, 20)).toBe(
+        "Số người tối đa phải từ 1 đến 10.",
+      )
+      expect(maxOccupantsError(11, 100)).toBe(
+        "Số người tối đa phải từ 1 đến 10.",
+      )
+      expect(maxOccupantsError(3, 20)).toBe(
+        "Phòng 20 m² chỉ được ở tối đa 2 người (tối thiểu 8 m²/người).",
+      )
+      expect(maxOccupantsError(2, 20)).toBeNull()
+
+      expect(roomFloorError("")).toBeNull()
+      expect(roomFloorError(0)).toBeNull()
+      expect(roomFloorError(50)).toBeNull()
+      expect(roomFloorError(-1)).toBe("Tầng phải từ 0 (tầng trệt) đến 50.")
+      expect(roomFloorError(51)).toBe("Tầng phải từ 0 (tầng trệt) đến 50.")
+      expect(formatRoomFloor(0)).toBe("Tầng trệt")
+      expect(formatRoomFloor(3)).toBe("Tầng 3")
+      expect(formatRoomFloor(null)).toBeNull()
+
+      expect(roomDescriptionError("")).toBeNull()
+      expect(roomDescriptionError("a".repeat(1000))).toBeNull()
+      expect(roomDescriptionError("a".repeat(1001))).toBe(
+        "Mô tả phòng tối đa 1000 ký tự.",
+      )
     })
   })
 

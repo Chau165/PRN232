@@ -572,4 +572,113 @@ describe("management property and room CRUD", () => {
 
     await waitFor(() => expect(postAttempt).toBe(2))
   })
+
+  it("supports C6 room occupancy hint/validation, sends all 3 fields on edit, and shows Tầng trệt in detail drawer", async () => {
+    adminSession()
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const detailedRoom = {
+      ...room,
+      areaSqm: 20,
+      maxOccupants: 2,
+      floor: 0,
+      description: "Phòng tầng trệt có cửa sổ thoáng.",
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async (input, init) => {
+        const url = String(input)
+        calls.push({ url, init })
+        if (url.endsWith("/users/me")) return jsonResponse(admin)
+        if (url.endsWith(`/rooms/${room.roomId}`) && init?.method === "PUT") {
+          return jsonResponse(detailedRoom)
+        }
+        if (url.endsWith(`/rooms/${room.roomId}`)) {
+          return jsonResponse(detailedRoom)
+        }
+        if (url.endsWith(`/rooms/${room.roomId}/images`)) {
+          return jsonResponse([])
+        }
+        if (url.includes("/rooms?propertyId=21")) return jsonResponse([detailedRoom])
+        if (url.endsWith("/properties")) return jsonResponse([property])
+        if (url.includes("/properties/21/room-types")) {
+          return jsonResponse([
+            {
+              propertyId: 21,
+              roomTypeId: 4,
+              roomTypeName: "Studio",
+              monthlyRent: 3_000_000,
+              isActive: true,
+              totalRoomCount: 1,
+              availableRoomCount: 1,
+            },
+          ])
+        }
+        if (url.endsWith("/room-types")) {
+          return jsonResponse([
+            { roomTypeId: 4, typeName: "Studio", price: 3_000_000 },
+          ])
+        }
+        return jsonResponse({ title: "Not Found" }, 404)
+      }),
+    )
+
+    renderScopedRoomsPage()
+
+    // Open detail drawer and verify maxOccupants, floor=0 ("Tầng trệt"), and description
+    fireEvent.click(await screen.findByRole("button", { name: "Xem" }))
+    expect(await screen.findByText("Chi tiết phòng")).toBeTruthy()
+    expect(screen.getByText("2 người")).toBeTruthy()
+    expect(screen.getByText("Tầng trệt")).toBeTruthy()
+    expect(
+      screen.getByText("Phòng tầng trệt có cửa sổ thoáng."),
+    ).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Đóng" }))
+
+    // Open edit modal and verify dynamic hint + validation + payload
+    fireEvent.click(screen.getByRole("button", { name: "Sửa" }))
+    await screen.findByRole("option", { name: "Studio" })
+    expect(
+      await screen.findByText("Tối đa 2 người cho phòng 20 m²"),
+    ).toBeTruthy()
+
+    const occupantsInput = screen.getByLabelText(
+      "Số người tối đa",
+    ) as HTMLInputElement
+    expect(occupantsInput.getAttribute("max")).toBe("2")
+    expect(occupantsInput.value).toBe("2")
+
+    fireEvent.change(occupantsInput, { target: { value: "3" } })
+    fireEvent.click(screen.getByRole("button", { name: "Lưu phòng" }))
+    expect(
+      screen.getByText(
+        "Phòng 20 m² chỉ được ở tối đa 2 người (tối thiểu 8 m²/người).",
+      ),
+    ).toBeTruthy()
+
+    fireEvent.change(occupantsInput, { target: { value: "2" } })
+    fireEvent.click(screen.getByRole("button", { name: "Lưu phòng" }))
+
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (call) =>
+            call.init?.method === "PUT" &&
+            call.url.endsWith(`/rooms/${room.roomId}`),
+        ),
+      ).toBe(true),
+    )
+    const putCall = calls.find(
+      (call) =>
+        call.init?.method === "PUT" &&
+        call.url.endsWith(`/rooms/${room.roomId}`),
+    )!
+    expect(JSON.parse(String(putCall.init?.body))).toEqual({
+      roomTypeId: 4,
+      roomCode: room.roomCode,
+      areaSqm: 20,
+      maxOccupants: 2,
+      floor: 0,
+      description: "Phòng tầng trệt có cửa sổ thoáng.",
+    })
+  })
 })

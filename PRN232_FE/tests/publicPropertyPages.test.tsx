@@ -683,6 +683,9 @@ describe("public property detail and room listing", () => {
       return Promise.resolve(
         jsonResponse({
           ...roomDetail(501),
+          maxOccupants: 2,
+          floor: 0,
+          description: "Phòng sáng sủa, có cửa sổ lớn.",
           images: ["https://images.example.test/room.jpg"],
           amenities: [],
           services: [],
@@ -701,6 +704,11 @@ describe("public property detail and room listing", () => {
       name: "Đóng chi tiết phòng",
     })
     expect(within(dialog).getByRole("img", { name: "Ảnh Studio" })).toBeTruthy()
+    expect(within(dialog).getByText("Tối đa 2 người")).toBeTruthy()
+    expect(within(dialog).getByText("Tầng trệt")).toBeTruthy()
+    expect(
+      within(dialog).getByText("Phòng sáng sủa, có cửa sổ lớn."),
+    ).toBeTruthy()
     expect(within(dialog).getByText("Bàn làm việc")).toBeTruthy()
     expect(
       within(dialog).getByText("Chưa có thông tin tiện ích công khai."),

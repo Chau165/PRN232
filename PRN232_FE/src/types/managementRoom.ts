@@ -9,6 +9,9 @@ export type ManagementRoomDto = {
   roomTypePrice: number
   roomCode: string
   areaSqm: number
+  maxOccupants?: number
+  floor?: number | null
+  description?: string | null
   status: ManagementRoomStatus | string
   primaryImageUrl?: string | null
 }
@@ -36,10 +39,16 @@ export type CreateRoomRequest = {
   roomTypeId: number
   roomCode: string
   areaSqm: number
+  maxOccupants?: number | null
+  floor?: number | null
+  description?: string | null
 }
 
 export type UpdateRoomRequest = {
   roomTypeId: number
   roomCode: string
   areaSqm: number
+  maxOccupants?: number | null
+  floor?: number | null
+  description?: string | null
 }

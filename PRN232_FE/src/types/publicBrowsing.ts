@@ -109,6 +109,9 @@ export interface PublicRoomDetail {
   roomId: number
   roomCode: string
   areaSqm: number
+  maxOccupants?: number
+  floor?: number | null
+  description?: string | null
   roomType: {
     roomTypeId: number
     roomTypeName: string

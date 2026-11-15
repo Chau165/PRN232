@@ -12,6 +12,7 @@ import { usePublicApiResource } from "@/hooks/usePublicApiResource"
 import { routes, viewingRequestPath } from "@/constants/routes"
 import { publicApiErrorMessage } from "@/utils/publicApiDisplay"
 import { formatAddress, formatVnd, serviceRateUnitLabel } from "@/utils/publicFormatting"
+import { formatRoomFloor } from "@/utils/roomValidation"
 
 type RoomDetailModalProps = {
   roomId: number
@@ -189,10 +190,27 @@ export default function RoomDetailModal({
                     {formatVnd(room.baseRent)}
                   </p>
                 </div>
-                <p className="text-[13px] font-medium text-slate-600">
-                  {room.areaSqm} m²
-                </p>
+                <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-[13px] font-medium text-slate-600">
+                  <span>{room.areaSqm} m²</span>
+                  {room.maxOccupants !== undefined && room.maxOccupants !== null && (
+                    <span>Tối đa {room.maxOccupants} người</span>
+                  )}
+                  {room.floor !== undefined && room.floor !== null && (
+                    <span>{formatRoomFloor(room.floor)}</span>
+                  )}
+                </div>
               </section>
+
+              {room.description?.trim() && (
+                <section className="mt-7">
+                  <h3 className="font-display text-[19px] font-bold text-slate-900">
+                    Mô tả phòng
+                  </h3>
+                  <p className="mt-2 whitespace-pre-line text-[14px] leading-6 text-slate-600">
+                    {room.description}
+                  </p>
+                </section>
+              )}
 
               <section className="mt-7">
                 <h3 className="font-display text-[19px] font-bold text-slate-900">
