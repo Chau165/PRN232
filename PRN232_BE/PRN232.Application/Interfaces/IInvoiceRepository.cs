@@ -14,7 +14,8 @@ public interface IInvoiceRepository
     Task<List<OccupantStayReadModel>> GetOccupantStaysAsync(int contractId, DateOnly month);
     Task<bool> ExistsForMonthAsync(int contractId, DateOnly month);
     Task<bool> AddIfAbsentAsync(Invoices invoice, Notifications customerNotification, int managerId = 0);
-    Task<List<InvoiceReadModel>> GetAllAsync(int? customerId, int? ownerId, int? contractId, string? status);
+    // status Overdue/Unpaid follow InvoiceOverduePolicy for the given Vietnam-time today (B5).
+    Task<List<InvoiceReadModel>> GetAllAsync(int? customerId, int? ownerId, int? contractId, string? status, DateOnly today);
     Task<InvoiceReadModel?> GetByIdAsync(int invoiceId, int? customerId, int? ownerId);
     Task<bool> ExistsAsync(int invoiceId);
     Task<InvoicePaymentReadModel?> GetForPaymentAsync(int invoiceId);
