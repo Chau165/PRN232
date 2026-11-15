@@ -3,6 +3,7 @@ using PRN232.Application.Interfaces;
 using PRN232.Application.Policies;
 using PRN232.Application.ReadModels;
 using PRN232.Application.States;
+using PRN232.Application.Validation;
 using DomainIdentityDocument = PRN232.Domain.Entities.IdentityDocuments;
 
 namespace PRN232.Application.Services;
@@ -54,9 +55,11 @@ public class IdentityDocumentService : IIdentityDocumentService
 
     public async Task<IdentityDocumentDto> SubmitAsync(SubmitIdentityDocumentDto dto, int customerId)
     {
-        if (string.IsNullOrWhiteSpace(dto.CCCDNumber))
+        // V2: same 12-digit rule as contract occupants (AccountRules.ValidCccd).
+        var validationError = AccountValidation.FirstError(AccountValidation.SubmitIdentityDocument, dto);
+        if (validationError is not null)
         {
-            throw new IdentityDocumentValidationException("Số CCCD không được để trống.");
+            throw new IdentityDocumentValidationException(validationError);
         }
 
         var cccdNumber = dto.CCCDNumber.Trim();

@@ -33,6 +33,19 @@ public static partial class AccountRules
     [GeneratedRegex(@"\d")]
     private static partial Regex Digit();
 
+    // CCCD (căn cước công dân): đúng 12 chữ số, chỉ bỏ khoảng trắng hai đầu.
+    [GeneratedRegex("^[0-9]{12}$")]
+    private static partial Regex CccdPattern();
+
+    public const string CccdFormatMessage = "Số CCCD phải gồm đúng 12 chữ số.";
+
+    public static bool IsValidCccd(string? cccdNumber) =>
+        cccdNumber is not null && CccdPattern().IsMatch(cccdNumber.Trim());
+
+    // Used for the customer's own CCCD (IdentityDocuments) and for contract occupants.
+    public static IRuleBuilderOptions<T, string> ValidCccd<T>(this IRuleBuilder<T, string> rule) =>
+        rule.Must(IsValidCccd).WithMessage(CccdFormatMessage);
+
     public static string NormalizePhone(string? phone) => PhoneSeparators().Replace(phone ?? string.Empty, string.Empty);
 
     public static bool IsValidEmail(string? email)
@@ -111,12 +124,24 @@ public sealed class ChangePasswordDtoValidator : AbstractValidator<ChangePasswor
     }
 }
 
+public sealed class SubmitIdentityDocumentDtoValidator : AbstractValidator<SubmitIdentityDocumentDto>
+{
+    public SubmitIdentityDocumentDtoValidator()
+    {
+        RuleFor(dto => dto.CCCDNumber)
+            .Must(value => !string.IsNullOrWhiteSpace(value))
+            .WithMessage("Số CCCD không được để trống.")
+            .DependentRules(() => RuleFor(dto => dto.CCCDNumber).ValidCccd());
+    }
+}
+
 public static class AccountValidation
 {
     public static readonly RegisterDtoValidator Register = new();
     public static readonly CreateUserDtoValidator CreateUser = new();
     public static readonly UpdateProfileDtoValidator UpdateProfile = new();
     public static readonly ChangePasswordDtoValidator ChangePassword = new();
+    public static readonly SubmitIdentityDocumentDtoValidator SubmitIdentityDocument = new();
 
     // Trả về câu báo lỗi đầu tiên (theo thứ tự khai báo rule) hoặc null nếu hợp lệ.
     public static string? FirstError<T>(IValidator<T> validator, T dto)
