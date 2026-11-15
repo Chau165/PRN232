@@ -455,30 +455,15 @@ public class PropertyService : IPropertyService
             return photonSelection.Candidate.Coordinates;
         }
 
-        if (nominatimResult.IsRateLimited || photonResult.IsRateLimited)
-        {
-            throw new PropertyGeocodingRateLimitedException();
-        }
-
-        if (!nominatimResult.IsAvailable || !photonResult.IsAvailable)
-        {
-            throw new PropertyGeocodingException();
-        }
-
         if (nominatimSelection.IsAmbiguous || photonSelection.IsAmbiguous)
-        {
-            throw new PropertyValidationException(
-                "Tìm thấy nhiều vị trí phù hợp nhưng cách nhau quá xa để xác định an toàn. Hãy kiểm tra lại số nhà và tên đường.");
-        }
-
-        if (nominatimResult.Candidates.Count == 0 && photonResult.Candidates.Count == 0)
-        {
-            throw new PropertyValidationException(
-                "Không tìm thấy kết quả định vị cho địa chỉ đã nhập. Hãy kiểm tra số nhà, tên đường và địa giới hành chính.");
-        }
-
-        throw new PropertyValidationException(
-            "Kết quả định vị không khớp đủ tin cậy với số nhà, tên đường hoặc phường/xã đã chọn.");
+            throw new PropertyValidationException("Tìm thấy nhiều vị trí phù hợp nhưng cách nhau quá xa để xác định an toàn. Hãy kiểm tra lại số nhà và tên đường.");
+        if (nominatimResult.Candidates.Count > 0 || photonResult.Candidates.Count > 0)
+            throw new PropertyValidationException("Kết quả định vị không khớp đủ tin cậy với số nhà, tên đường hoặc phường/xã đã chọn.");
+        if (nominatimResult.IsRateLimited || photonResult.IsRateLimited)
+            throw new PropertyGeocodingRateLimitedException();
+        if (!nominatimResult.IsAvailable || !photonResult.IsAvailable)
+            throw new PropertyGeocodingException();
+        throw new PropertyValidationException("Không tìm thấy kết quả định vị cho địa chỉ đã nhập. Hãy kiểm tra số nhà, tên đường và địa giới hành chính.");
     }
 
     private async Task<ProviderCandidates> TryFindCandidatesAsync(
@@ -577,78 +562,8 @@ public class PropertyService : IPropertyService
         return new CandidateSelection(bestCandidates[0].Candidate, false);
     }
 
-    private static string? GetCandidateRejectionReason(
-        AddressGeocodingCandidate candidate,
-        PropertyGeocodingQuery query)
-    {
-        if (!IsWithinVietnam(candidate))
-        {
-            return "country_or_coordinate_mismatch";
-        }
-
-        if (candidate.ProvinceName is not null)
-        {
-            if (!NamesMatch(candidate.ProvinceName, query.ProvinceName))
-            {
-                return "province_mismatch";
-            }
-        }
-        else if (candidate.ProvinceAreas?.Any(area => NamesMatch(area.Name, query.ProvinceName)) != true)
-        {
-            return "province_unverified";
-        }
-
-        if (candidate.WardName is not null)
-        {
-            if (!NamesMatch(candidate.WardName, query.WardName))
-            {
-                return "ward_mismatch";
-            }
-        }
-        else if (candidate.AdministrativeAreas?.Any(area => NamesMatch(area.Name, query.WardName)) != true)
-        {
-            return "ward_unverified";
-        }
-
-        if (string.IsNullOrWhiteSpace(candidate.StreetName))
-        {
-            return "street_missing";
-        }
-
-        if (!string.Equals(
-                NormalizeStreetName(candidate.StreetName),
-                NormalizeStreetName(query.StreetName),
-                StringComparison.Ordinal))
-        {
-            return "street_mismatch";
-        }
-
-        if (candidate.HouseNumber is not null)
-        {
-            if (query.HouseNumber is null ||
-                !string.Equals(
-                    NormalizeHouseNumber(candidate.HouseNumber),
-                    NormalizeHouseNumber(query.HouseNumber),
-                    StringComparison.Ordinal))
-            {
-                return "house_number_mismatch";
-            }
-        }
-
-        if (query.HouseNumber is not null &&
-            (candidate.Precision is "building" or "house") &&
-            candidate.HouseNumber is null)
-        {
-            return "house_number_unverified";
-        }
-
-        if (PrecisionRank(candidate.Precision) < PrecisionRank("street"))
-        {
-            return "object_precision_too_low";
-        }
-
-        return null;
-    }
+    private static string? GetCandidateRejectionReason(AddressGeocodingCandidate candidate, PropertyGeocodingQuery query)
+        => PRN232.Application.Policies.PropertyLocationCandidatePolicy.GetCandidateRejectionReason(candidate, query);
 
     private static int GetCandidateQualityScore(
         AddressGeocodingCandidate candidate,

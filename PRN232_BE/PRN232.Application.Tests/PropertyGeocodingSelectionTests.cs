@@ -351,6 +351,18 @@ public sealed class PropertyGeocodingSelectionTests
         Assert.Empty(context.Properties);
     }
 
+    [Fact]
+    public async Task Create_does_not_mask_unverified_photon_candidates_with_nominatim_failure()
+    {
+        await using var context = await CreateContextAsync();
+        var service = CreatePropertyService(context, new FakeGeocodingService(
+            [], [CreateCandidate(precision: "street", houseNumber: null, wardName: null,
+                administrativeAreas: [])], nominatimFailure: new PropertyGeocodingException()));
+        await Assert.ThrowsAsync<PropertyValidationException>(() => service.CreateAsync(
+            new CreatePropertyDto("BVO", "65D, Nguyễn Thái Học", "79", "26758"), ownerId: 10, isAdmin: true));
+        Assert.Empty(context.Properties);
+    }
+
     private static AddressGeocodingCandidate CreateCandidate(
         AddressCoordinates? coordinates = null,
         string precision = "house",
