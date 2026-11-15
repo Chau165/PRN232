@@ -18,7 +18,7 @@ PropertyLocationMap.test.tsx kiểm tra chuyển đổi lat/lng từ sự kiện
 
 PropertyLocationFlow.test.tsx nối form thật, picker thật và service multipart với API mô phỏng: tạo bằng ghim cuối cùng → GET mở lại → đổi tên giữ ghim → chỉ đổi ghim → GET mở lại vị trí mới. Có regression cho trường hợp địa chỉ A → B → A. Bản đồ được thay bằng mock trong test này; không phải thử trực tiếp dịch vụ tile hay Railway.
 
-Không đổi API/DB hoặc tạo migration. A3 chưa triển khai: Tìm thử vẫn dùng endpoint preview BE hiện có; chuyển nhà cung cấp gợi ý sang FE là bước riêng.
+Không đổi API/DB hoặc tạo migration. A3 đã triển khai sau A4–A5: Tìm thử gọi Photon trực tiếp từ FE. Xem PROPERTY-ADDRESS-SEARCH-A3.md và PROPERTY-LOCATION-ACCEPTANCE-A6.md để biết luồng hiện tại và kết quả kiểm tra.
 
 Kiểm tra: 26 test FE liên quan, 18 test API tọa độ, TypeScript và production build đều pass. Chưa thử trực tiếp trên Railway hoặc với tile/geocoding thật.
 
