@@ -22,6 +22,17 @@ public sealed class DepositSettlementsController(IDepositSettlementService servi
     public Task<ActionResult<DepositSettlementDto>> Settle(int contractId, SettleDepositDto dto, CancellationToken cancellationToken) =>
         Run((userId, role) => service.SettleAsync(contractId, dto, userId, role, cancellationToken));
 
+    // Rebuild 3.6c: hệ thống không chuyển tiền; quản lý xác nhận đã hoàn cọc / đã thu phần nộp thêm.
+    [HttpPost("refund-confirmed")]
+    [Authorize(Roles = RoleNames.Manager + "," + RoleNames.Admin)]
+    public Task<ActionResult<DepositSettlementDto>> ConfirmRefund(int contractId, CancellationToken cancellationToken) =>
+        Run((userId, role) => service.ConfirmRefundAsync(contractId, userId, role, cancellationToken));
+
+    [HttpPost("due-collected")]
+    [Authorize(Roles = RoleNames.Manager + "," + RoleNames.Admin)]
+    public Task<ActionResult<DepositSettlementDto>> ConfirmDueCollected(int contractId, CancellationToken cancellationToken) =>
+        Run((userId, role) => service.ConfirmDueCollectedAsync(contractId, userId, role, cancellationToken));
+
     private async Task<ActionResult<DepositSettlementDto>> Run(Func<int, string, Task<DepositSettlementDto>> action)
     {
         if (currentUser.UserId is not > 0 || string.IsNullOrEmpty(currentUser.Role))

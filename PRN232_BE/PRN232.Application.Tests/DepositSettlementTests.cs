@@ -144,6 +144,63 @@ public sealed class DepositSettlementTests
         Assert.Contains("không có tiền cọc đảm bảo", (await preview.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("detail").GetString());
     }
 
+    // Rebuild 3.6c: money moves outside the system; the manager (or the owning Admin) confirms it once.
+    [Fact]
+    public async Task Manager_confirms_the_refund_once_and_the_customer_is_told()
+    {
+        using var factory = new BookingsApiFactory { LegacyDepositTerms = false };
+        using var client = factory.CreateClient();
+        var contractId = await CreateContractWithAirConditionerAsync(factory, client);
+        var url = $"/api/contracts/{contractId}/settlement";
+        await UpdateAsync(factory, db => db.Contracts.Single().MoveOutNoticeAtUtc = DateTime.UtcNow.AddDays(-40));
+        await client.PutAsJsonAsync($"/api/contracts/{contractId}/handovers/move-out", Handover("Damaged", 1_200_000m));
+        var beforeSettlement = await client.PostAsync($"{url}/refund-confirmed", null);
+        await client.PostAsJsonAsync(url, new { });
+
+        await LoginAsync(client, "customer@example.test");
+        var byCustomer = await client.PostAsync($"{url}/refund-confirmed", null);
+        await LoginAsync(client, "manager-b@example.test");
+        var byOtherManager = await client.PostAsync($"{url}/refund-confirmed", null);
+        await LoginAsync(client, "manager@example.test");
+        var nothingDue = await client.PostAsync($"{url}/due-collected", null);
+        using var confirmed = await client.PostAsync($"{url}/refund-confirmed", null);
+        var again = await client.PostAsync($"{url}/refund-confirmed", null);
+
+        Assert.Equal(HttpStatusCode.Conflict, beforeSettlement.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, byCustomer.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, byOtherManager.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, nothingDue.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+        var settlement = await confirmed.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.NotEqual(JsonValueKind.Null, settlement.GetProperty("refundConfirmedAtUtc").ValueKind);
+        Assert.Equal("Manager A", settlement.GetProperty("refundConfirmedByName").GetString());
+        using var scope = factory.Services.CreateScope();
+        Assert.True(await scope.ServiceProvider.GetRequiredService<AppDbContext>().Notifications.AnyAsync(item =>
+            item.UserId == 10 && item.Title == "Đã xác nhận hoàn 1.800.000đ tiền cọc phòng A101"));
+    }
+
+    [Fact]
+    public async Task Only_the_owning_admin_or_manager_confirms_damage_paid_above_the_deposit()
+    {
+        using var factory = new BookingsApiFactory { LegacyDepositTerms = false };
+        using var client = factory.CreateClient();
+        var contractId = await CreateContractWithAirConditionerAsync(factory, client);
+        var url = $"/api/contracts/{contractId}/settlement";
+        await client.PutAsJsonAsync($"/api/contracts/{contractId}/handovers/move-out", Handover("Damaged", 4_000_000m));
+        var settled = await (await client.PostAsJsonAsync(url, new { })).Content.ReadFromJsonAsync<JsonElement>();
+
+        await LoginAsync(client, "admin-b@example.test");
+        var notOwner = await client.PostAsync($"{url}/due-collected", null);
+        await LoginAsync(client, "admin@example.test");
+        using var byOwner = await client.PostAsync($"{url}/due-collected", null);
+
+        Assert.Equal((1_000_000m, 0m), (settled.GetProperty("amountDue").GetDecimal(), settled.GetProperty("refundAmount").GetDecimal()));
+        Assert.Equal(HttpStatusCode.Forbidden, notOwner.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, byOwner.StatusCode);
+        Assert.Equal("Admin", (await byOwner.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("dueCollectedByName").GetString());
+    }
+
     private static object Handover(string condition, decimal? charge) => new
     {
         handoverDate = Today,

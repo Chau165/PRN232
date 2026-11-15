@@ -562,4 +562,24 @@ Khách nhận thông báo "Quyết toán cọc phòng A101": *"Cọc 3.000.000đ
 2. Quản lý, chưa quyết toán: bảng xem trước + nút **"Xác nhận quyết toán"** → hộp xác nhận nhắc số tiền hoàn/nộp thêm. Nếu `outstandingDebt > 0`: cảnh báo + ô tick "Khách không trả, giữ cọc bù nợ".
 3. Nút "Trả phòng" (terminate): với HĐ có `securityDepositAmount > 0`, chỉ bật khi đã quyết toán; hướng dẫn thứ tự 3 bước ở trên.
 4. Sau quyết toán: ẩn nút sửa biên bản trả phòng và thêm ảnh trả phòng.
-5. Nút "Đã hoàn cọc" / "Đã thu": việc 3.6c (sắp có).
+5. Nút "Đã hoàn cọc" / "Đã thu": xem C18.
+
+---
+
+## C18 — Xác nhận "Đã hoàn cọc" / "Đã thu" sau quyết toán · ✅ đã có (việc 3.6c)
+
+Không có migration (cột đã thêm ở C17). Giống nút "Đã hoàn cọc" của booking (C11): hệ thống **không chuyển tiền**, quản lý trả/nhận tiền bên ngoài rồi bấm xác nhận để lưu vết và báo khách.
+
+| API | Khi nào dùng | Quyền |
+|---|---|---|
+| `POST /api/contracts/{id}/settlement/refund-confirmed` | `refundAmount > 0` và `refundConfirmedAtUtc = null` | Quản lý phụ trách, hoặc Admin là **chủ** khu trọ |
+| `POST /api/contracts/{id}/settlement/due-collected` | `amountDue > 0` và `dueCollectedAtUtc = null` | như trên |
+
+Không có body. Trả về `DepositSettlementDto` (C17) với `refundConfirmedAtUtc`/`refundConfirmedByName` hoặc `dueCollectedAtUtc`/`dueCollectedByName` đã điền. Không có khoản đó / đã xác nhận rồi (bấm 2 lần) / chưa quyết toán → **409**; khách, quản lý khu khác, Admin không phải chủ → **403**.
+
+Khách nhận thông báo: *"Đã xác nhận hoàn 1.800.000đ tiền cọc phòng A101"* (kèm "Nếu bạn chưa nhận được, hãy liên hệ quản lý khu trọ") hoặc *"Đã xác nhận thu 1.000.000đ tiền bồi thường phòng A101"*.
+
+### Việc FE gợi ý (mục "Quyết toán cọc", C17)
+1. `refundAmount > 0`: nhãn **"Chờ hoàn {refundAmount}"** + nút **"Đã hoàn cọc"** → cửa sổ xác nhận giống C11 (tên khách, SĐT, số tiền lớn, ghi chú "Chỉ xác nhận sau khi bạn ĐÃ chuyển tiền cho khách. Hệ thống không chuyển tiền.", nút "Xác nhận đã hoàn" / "Hủy"). Sau đó: "Đã hoàn lúc … — {refundConfirmedByName}".
+2. `amountDue > 0`: nhãn **"Khách cần nộp thêm {amountDue}"** + nút **"Đã thu"** → cửa sổ tương tự ("Chỉ xác nhận sau khi bạn ĐÃ nhận tiền của khách."). Sau đó: "Đã thu lúc … — {dueCollectedByName}".
+3. Phía khách: hiện trạng thái tương ứng ("Quản lý đã xác nhận hoàn … lúc …" / "Chờ quản lý hoàn …").

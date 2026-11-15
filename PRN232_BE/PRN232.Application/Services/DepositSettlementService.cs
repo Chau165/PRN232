@@ -101,6 +101,71 @@ public sealed class DepositSettlementService(
         return ToDto((await settlements.GetAsync(contractId, cancellationToken))!, contract.EndDate);
     }
 
+    // Rebuild 3.6c: quản lý đã chuyển trả tiền cọc cho khách NGOÀI hệ thống và xác nhận để lưu vết.
+    public Task<DepositSettlementDto> ConfirmRefundAsync(int contractId, int userId, string role,
+        CancellationToken cancellationToken) =>
+        ConfirmAsync(contractId, userId, role, cancellationToken,
+            settlement => settlement.RefundAmount > 0m && settlement.RefundConfirmedAtUtc is null,
+            "Không có khoản hoàn cọc cần xác nhận hoặc đã xác nhận trước đó.",
+            (contract, settlement) => ($"Đã xác nhận hoàn {Money(settlement.RefundAmount)} tiền cọc phòng {contract.RoomCode}",
+                $"Quản lý khu {contract.PropertyName} xác nhận đã chuyển lại cho bạn {Money(settlement.RefundAmount)} tiền cọc. Nếu bạn chưa nhận được, hãy liên hệ quản lý khu trọ."),
+            settlements.ConfirmRefundAsync);
+
+    // Rebuild 3.6c: khách đã nộp phần bồi thường vượt quá tiền cọc, quản lý xác nhận đã thu.
+    public Task<DepositSettlementDto> ConfirmDueCollectedAsync(int contractId, int userId, string role,
+        CancellationToken cancellationToken) =>
+        ConfirmAsync(contractId, userId, role, cancellationToken,
+            settlement => settlement.AmountDue > 0m && settlement.DueCollectedAtUtc is null,
+            "Không có khoản khách cần nộp thêm hoặc đã xác nhận thu trước đó.",
+            (contract, settlement) => ($"Đã xác nhận thu {Money(settlement.AmountDue)} tiền bồi thường phòng {contract.RoomCode}",
+                $"Quản lý khu {contract.PropertyName} xác nhận đã nhận {Money(settlement.AmountDue)} tiền bồi thường thiết bị vượt quá tiền cọc. Quyết toán đã hoàn tất."),
+            settlements.ConfirmDueCollectedAsync);
+
+    private async Task<DepositSettlementDto> ConfirmAsync(int contractId, int userId, string role,
+        CancellationToken cancellationToken,
+        Func<DepositSettlementReadModel, bool> isPending,
+        string nothingToConfirm,
+        Func<ContractReadModel, DepositSettlementReadModel, (string Title, string Body)> message,
+        Func<int, int, DateTime, Notifications, CancellationToken, Task<bool>> confirm)
+    {
+        // Giống "Đã hoàn cọc" ở booking (3.2b): quản lý đang phụ trách, hoặc Admin là chủ khu trọ.
+        var contract = role switch
+        {
+            RoleNames.Manager => await GetContractAsync(contractId, null, userId),
+            RoleNames.Admin => await GetContractAsync(contractId, null, null),
+            _ => throw new ContractAuthorizationException("Chỉ quản lý hoặc chủ trọ được xác nhận khoản quyết toán.")
+        };
+        if (role == RoleNames.Admin && contract.LessorUserId != userId)
+        {
+            throw new ContractAuthorizationException("Chỉ chủ trọ của khu này được xác nhận khoản quyết toán.");
+        }
+        var settlement = await settlements.GetAsync(contractId, cancellationToken);
+        if (settlement is null || !isPending(settlement))
+        {
+            throw new ContractConflictException(nothingToConfirm);
+        }
+
+        var (title, body) = message(contract, settlement);
+        var notification = new Notifications
+        {
+            UserId = contract.CustomerId,
+            Title = title,
+            Body = body,
+            Type = NotificationTypes.Contract,
+            RelatedEntityId = contractId,
+            IsRead = false
+        };
+        if (!await confirm(contractId, userId, clock.GetUtcNow().UtcDateTime, notification, cancellationToken))
+        {
+            throw new ContractConflictException(nothingToConfirm);
+        }
+        if (realtimePublisher is not null)
+        {
+            await realtimePublisher.PublishCreatedAsync([notification]);
+        }
+        return ToDto((await settlements.GetAsync(contractId, cancellationToken))!, contract.EndDate);
+    }
+
     private async Task<ContractReadModel> GetContractAsync(int contractId, int? customerId, int? managerId) =>
         await contracts.GetByIdAsync(contractId, customerId, managerId)
             ?? throw (await contracts.ExistsAsync(contractId)

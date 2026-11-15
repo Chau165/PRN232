@@ -55,4 +55,37 @@ public sealed class DepositSettlementRepository(AppDbContext context) : IDeposit
         await transaction.CommitAsync(cancellationToken);
         return true;
     }
+
+    public Task<bool> ConfirmRefundAsync(int contractId, int userId, DateTime atUtc, Notifications customerNotification,
+        CancellationToken cancellationToken) =>
+        ConfirmAsync(context.DepositSettlements.Where(settlement => settlement.ContractId == contractId &&
+                settlement.RefundAmount > 0m && settlement.RefundConfirmedAtUtc == null),
+            setters => setters.SetProperty(settlement => settlement.RefundConfirmedAtUtc, atUtc)
+                .SetProperty(settlement => settlement.RefundConfirmedById, userId),
+            customerNotification, cancellationToken);
+
+    public Task<bool> ConfirmDueCollectedAsync(int contractId, int userId, DateTime atUtc, Notifications customerNotification,
+        CancellationToken cancellationToken) =>
+        ConfirmAsync(context.DepositSettlements.Where(settlement => settlement.ContractId == contractId &&
+                settlement.AmountDue > 0m && settlement.DueCollectedAtUtc == null),
+            setters => setters.SetProperty(settlement => settlement.DueCollectedAtUtc, atUtc)
+                .SetProperty(settlement => settlement.DueCollectedById, userId),
+            customerNotification, cancellationToken);
+
+    // Điều kiện "còn khoản và chưa xác nhận" nằm trong câu UPDATE: hai lần bấm song song chỉ một lần khớp.
+    private async Task<bool> ConfirmAsync(IQueryable<DepositSettlements> pending,
+        System.Linq.Expressions.Expression<Func<Microsoft.EntityFrameworkCore.Query.SetPropertyCalls<DepositSettlements>,
+            Microsoft.EntityFrameworkCore.Query.SetPropertyCalls<DepositSettlements>>> setters,
+        Notifications customerNotification, CancellationToken cancellationToken)
+    {
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        if (await pending.ExecuteUpdateAsync(setters, cancellationToken) == 0)
+        {
+            return false;
+        }
+        context.Notifications.Add(customerNotification);
+        await context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
 }
