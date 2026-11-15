@@ -45,3 +45,7 @@ export function payBooking(accessToken: string, bookingId: number, paymentMethod
 export function cancelBooking(accessToken: string, bookingId: number) {
   return apiRequest<BookingDto>(`/bookings/${bookingId}/cancel`, { accessToken, method: "POST" })
 }
+
+export function markBookingDepositReturned(accessToken: string, bookingId: number) {
+  return apiRequest<BookingDto>(`/bookings/${bookingId}/deposit-returned`, { accessToken, method: "POST" })
+}

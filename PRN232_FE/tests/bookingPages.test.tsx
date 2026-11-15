@@ -112,13 +112,14 @@ describe("DepositPage", () => {
     expect(screen.queryByText("payment success page")).toBeNull()
   })
 
-  it("explains before the hold that the deposit is the first month's rent and holds the room for 7 days", async () => {
+  it("explains before the hold that the deposit is the first month's rent and holds the room until moveInDate + 3 days", async () => {
     renderAt("/deposit?roomId=501")
     await screen.findByText("A101 · Studio")
 
     const rules = screen.getByText(/được trừ vào tiền phòng tháng đầu tiên/)
-    expect(rules.textContent).toContain("giữ 7 ngày")
+    expect(rules.textContent).toContain("Phòng được giữ đến hết ngày")
     expect(rules.textContent).toContain("không được hoàn")
+    expect(rules.textContent).toContain("Nếu chủ trọ hủy, bạn được hoàn 100%")
   })
 
   it("validates occupantCount against room.maxOccupants and displays move-in summary (C9)", async () => {
@@ -210,9 +211,85 @@ describe("MyBookingsPage", () => {
     renderAt("/my-bookings")
 
     const hold = await screen.findByText(/Phòng được giữ đến/)
-    expect(hold.textContent).toContain("7 ngày kể từ khi đặt cọc")
+    expect(hold.textContent).toContain("Giữ phòng đến hết 21/11/2026")
     expect(hold.textContent).toContain("tiền cọc không được hoàn")
     expect(screen.queryByText(/giữ đến khi lập hợp đồng/)).toBeNull()
+  })
+
+  it("hides 'Xin hoàn cọc', lets customer cancel a deposited booking with loss-of-deposit confirmation, and shows refund contact box + returned status + cancellation reason (C10 & C11)", async () => {
+    mocks.getBookings.mockResolvedValue([
+      booking({
+        bookingId: 9,
+        roomCode: "B202",
+        status: "Deposited",
+        depositAmount: 3_000_000,
+        canRequestRefund: false,
+        refundStatus: null,
+      }),
+      booking({
+        bookingId: 10,
+        roomCode: "C303",
+        status: "Cancelled",
+        depositAmount: 3_500_000,
+        cancellationReason: "LandlordCancelled",
+        depositRefundDue: true,
+        contacts: [
+          {
+            fullName: "Trần Quản Lý",
+            phoneNumber: "0912345678",
+            email: "manager@boarding.vn",
+            role: "Manager",
+          },
+        ],
+      }),
+      booking({
+        bookingId: 11,
+        roomCode: "D404",
+        status: "Cancelled",
+        depositAmount: 4_000_000,
+        cancellationReason: "LandlordCancelled",
+        depositRefundDue: false,
+        depositReturnedAtUtc: "2026-11-16T03:00:00Z",
+        depositReturnedByName: "Quản lý Bình",
+      }),
+    ])
+    mocks.cancelBooking.mockResolvedValue(
+      booking({
+        bookingId: 9,
+        roomCode: "B202",
+        status: "Cancelled",
+        cancellationReason: "CustomerCancelled",
+      }),
+    )
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true)
+    renderAt("/my-bookings")
+
+    await screen.findByText("Booking #9")
+    // 1. Nút Xin hoàn cọc bị ẩn
+    expect(screen.queryByRole("button", { name: /Xin hoàn cọc/ })).toBeNull()
+
+    // 4 & 5. Lý do hủy + khung liên hệ nhận lại tiền cọc + trạng thái đã xác nhận hoàn cọc (C11)
+    expect(screen.getAllByText(/Lý do hủy: Quản lý \/ chủ trọ hủy/)).toHaveLength(2)
+    expect(screen.getByText(/Bạn được hoàn 100% tiền cọc/)).toBeTruthy()
+    expect(screen.getByText(/Liên hệ để nhận lại tiền:/)).toBeTruthy()
+    expect(screen.getByText(/Trần Quản Lý/)).toBeTruthy()
+    expect(screen.getByText(/Quản lý đã xác nhận hoàn .* lúc/)).toBeTruthy()
+    const telLink = screen.getByRole("link", { name: "Gọi/Zalo: 0912345678" })
+    expect(telLink.getAttribute("href")).toBe("tel:0912345678")
+    const mailLink = screen.getByRole("link", { name: "manager@boarding.vn" })
+    expect(mailLink.getAttribute("href")).toBe("mailto:manager@boarding.vn")
+
+    // 2. Khách hủy booking đã cọc -> xác nhận mất cọc
+    const cancelDepositBtn = screen.getByRole("button", { name: "Hủy đặt cọc" })
+    fireEvent.click(cancelDepositBtn)
+    expect(confirm.mock.calls[0][0]).toContain("Nếu hủy, bạn sẽ mất tiền cọc")
+    expect(confirm.mock.calls[0][0]).toContain("Bạn chắc chắn?")
+    expect(mocks.cancelBooking).not.toHaveBeenCalled()
+
+    fireEvent.click(cancelDepositBtn)
+    await screen.findByText("Đã hủy đặt cọc phòng B202.")
+    expect(mocks.cancelBooking).toHaveBeenCalledWith("customer-token", 9)
+    expect(screen.getByText(/Lý do hủy: Khách hủy đặt cọc/)).toBeTruthy()
   })
 
   it("shows the customer's viewing requests above the deposit holds", async () => {

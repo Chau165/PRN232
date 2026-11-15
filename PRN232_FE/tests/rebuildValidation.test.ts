@@ -332,6 +332,9 @@ describe("rebuild validation rules (C2 & C3)", () => {
 
     it("validates booking moveInDate, occupantCount and move-in summary (C9)", () => {
       const today = "2026-11-15"
+      expect(bookingMoveInDateError("", today)).toBe(
+        "Vui lòng chọn ngày dọn vào.",
+      )
       expect(bookingMoveInDateError("2026-11-14", today)).toBe(
         "Ngày dọn vào không được ở quá khứ.",
       )

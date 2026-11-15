@@ -19,6 +19,7 @@ import {
   bookingOccupantCountError,
   formatBookingMoveInSummary,
   formatDateTime,
+  formatMoveInHoldEndDate,
   getVietnamIsoDateOffset,
   isBookingExpired,
 } from "@/utils/bookingDisplay"
@@ -33,6 +34,7 @@ export default function DepositPage() {
   const [params] = useSearchParams()
   const bookingId = parsePositiveRouteId(params.get("bookingId") ?? undefined)
   const roomId = parsePositiveRouteId(params.get("roomId") ?? undefined)
+  const viewingId = parsePositiveRouteId(params.get("viewingId") ?? undefined)
 
   return (
     <CustomerPageShell centerHeader title="Đặt cọc giữ phòng" description="Tiền cọc tương đương 1 tháng tiền thuê.">
@@ -40,7 +42,7 @@ export default function DepositPage() {
         {bookingId ? (
           <PayDepositStep key={bookingId} bookingId={bookingId} />
         ) : roomId ? (
-          <HoldRoomStep roomId={roomId} />
+          <HoldRoomStep roomId={roomId} viewingId={viewingId} />
         ) : (
           <Notice message="Không tìm thấy phòng cần đặt cọc." />
         )}
@@ -49,7 +51,7 @@ export default function DepositPage() {
   )
 }
 
-function HoldRoomStep({ roomId }: { roomId: number }) {
+function HoldRoomStep({ roomId, viewingId }: { roomId: number; viewingId?: number | null }) {
   const { accessToken, user } = useAuth()
   const navigate = useNavigate()
   const resource = usePublicApiResource(String(roomId), (signal) => publicApi.getRoom(roomId, signal))
@@ -72,6 +74,7 @@ function HoldRoomStep({ roomId }: { roomId: number }) {
   const minMoveInDate = getVietnamIsoDateOffset(0)
   const maxMoveInDate = getVietnamIsoDateOffset(BOOKING_MAX_MOVE_IN_DAYS)
   const maxOccupantsLimit = room.maxOccupants ?? BOOKING_OCCUPANTS_MAX
+  const holdEndDateLabel = formatMoveInHoldEndDate(moveInDate)
 
   const holdRoom = async () => {
     if (!accessToken || pending) return
@@ -93,6 +96,7 @@ function HoldRoomStep({ roomId }: { roomId: number }) {
     try {
       const booking = await createBooking(accessToken, {
         roomId: room.roomId,
+        ...(viewingId ? { viewingId } : {}),
         moveInDate: moveInDate.trim() || undefined,
         occupantCount: occupantCount.trim() ? Number(occupantCount) : undefined,
       })
@@ -176,8 +180,12 @@ function HoldRoomStep({ roomId }: { roomId: number }) {
 
       <p className="text-sm text-slate-500">Sau khi giữ phòng, bạn có 15 phút để thanh toán tiền cọc.</p>
       <p className="text-sm text-slate-500">
-        Tiền cọc được trừ vào tiền phòng tháng đầu tiên khi lập hợp đồng. Sau khi đặt cọc, phòng được giữ 7 ngày để
-        lập hợp đồng; quá hạn mà chưa lập hợp đồng thì phòng có thể được mở lại và tiền cọc không được hoàn.
+        Tiền cọc được trừ vào tiền phòng tháng đầu tiên khi lập hợp đồng.{" "}
+        {holdEndDateLabel
+          ? `Phòng được giữ đến hết ngày ${holdEndDateLabel}.`
+          : "Phòng được giữ đến hết ngày dọn vào + 3 ngày."}{" "}
+        Nếu bạn hủy hoặc không đến nhận phòng trước hạn đó, tiền cọc không được hoàn. Nếu chủ trọ hủy, bạn được hoàn
+        100% (liên hệ trực tiếp quản lý để nhận lại tiền).
       </p>
       {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
       <button

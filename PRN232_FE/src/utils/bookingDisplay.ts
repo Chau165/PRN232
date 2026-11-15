@@ -43,7 +43,7 @@ export function bookingMoveInDateError(
 ): string | null {
   const trimmed = moveInDate?.trim() ?? ""
   if (!trimmed) {
-    return "Ngày dọn vào không được ở quá khứ."
+    return "Vui lòng chọn ngày dọn vào."
   }
   if (trimmed < today) {
     return "Ngày dọn vào không được ở quá khứ."
@@ -52,6 +52,22 @@ export function bookingMoveInDateError(
     return "Ngày dọn vào tối đa 14 ngày kể từ hôm nay."
   }
   return null
+}
+
+export function formatMoveInHoldEndDate(
+  moveInDate: string | null | undefined,
+): string | null {
+  const trimmed = moveInDate?.trim() ?? ""
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const dateUtc = new Date(Date.UTC(year, month - 1, day + 3))
+  const dd = String(dateUtc.getUTCDate()).padStart(2, "0")
+  const mm = String(dateUtc.getUTCMonth() + 1).padStart(2, "0")
+  const yyyy = dateUtc.getUTCFullYear()
+  return `${dd}/${mm}/${yyyy}`
 }
 
 export function bookingOccupantCountError(
@@ -104,6 +120,36 @@ export function formatBookingMoveInSummary(
 
   if (datePart && occupantPart) return `${datePart} · ${occupantPart}`
   return datePart ?? occupantPart
+}
+
+export function formatHoldUntilDate(
+  holdUntilUtc: string | null | undefined,
+): string | null {
+  if (!holdUntilUtc) return null
+  const ms = Date.parse(holdUntilUtc)
+  if (Number.isNaN(ms)) return null
+  // C10: hiển thị "Giữ phòng đến hết {holdUntilUtc − 1 giây, giờ VN, dd/MM/yyyy}"
+  const vnTime = new Date(ms - 1_000 + 7 * 60 * 60 * 1_000)
+  const dd = String(vnTime.getUTCDate()).padStart(2, "0")
+  const mm = String(vnTime.getUTCMonth() + 1).padStart(2, "0")
+  const yyyy = vnTime.getUTCFullYear()
+  return `Giữ phòng đến hết ${dd}/${mm}/${yyyy}`
+}
+
+export function formatBookingCancellationReason(
+  reason: string | null | undefined,
+): string | null {
+  if (!reason) return null
+  switch (reason) {
+    case "CustomerCancelled":
+      return "Khách hủy đặt cọc"
+    case "LandlordCancelled":
+      return "Quản lý / chủ trọ hủy (hoàn 100% cọc)"
+    case "NoShow":
+      return "Quá hạn nhận phòng (khách mất cọc)"
+    default:
+      return reason
+  }
 }
 
 // 409 nghĩa là trạng thái phòng/booking vừa đổi; mỗi màn hình tự giải thích bằng câu phù hợp.

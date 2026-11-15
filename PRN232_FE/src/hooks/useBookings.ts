@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/auth/AuthContext"
-import { cancelBooking, getBookings } from "@/services/bookingService"
+import { cancelBooking, getBookings, markBookingDepositReturned } from "@/services/bookingService"
 import type { BookingDto } from "@/types/booking"
 
 // Dùng chung cho trang của khách và trang quản lý: BE tự lọc danh sách theo role của token.
@@ -11,6 +11,7 @@ export function useBookings() {
   const [error, setError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
   const [cancellingId, setCancellingId] = useState<number | null>(null)
+  const [markingReturnedId, setMarkingReturnedId] = useState<number | null>(null)
 
   useEffect(() => {
     if (!accessToken) return
@@ -43,5 +44,26 @@ export function useBookings() {
     }
   }
 
-  return { bookings, loading, error, retry: () => setReload((value) => value + 1), cancel, cancellingId }
+  const markDepositReturned = async (bookingId: number) => {
+    if (!accessToken) throw new Error("Bạn cần đăng nhập lại.")
+    setMarkingReturnedId(bookingId)
+    try {
+      const updated = await markBookingDepositReturned(accessToken, bookingId)
+      setBookings((items) => items.map((item) => (item.bookingId === updated.bookingId ? updated : item)))
+      return updated
+    } finally {
+      setMarkingReturnedId(null)
+    }
+  }
+
+  return {
+    bookings,
+    loading,
+    error,
+    retry: () => setReload((value) => value + 1),
+    cancel,
+    cancellingId,
+    markDepositReturned,
+    markingReturnedId,
+  }
 }
