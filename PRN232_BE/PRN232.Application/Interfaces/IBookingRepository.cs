@@ -18,7 +18,11 @@ public interface IBookingRepository
     Task<bool> CancelAsync(
         int bookingId,
         string expectedStatus,
-        Notifications? customerNotification,
+        string reason,
+        IReadOnlyList<Notifications> notifications,
         DateTimeOffset asOfUtc,
         int? managerId = null);
+    Task<List<BookingContactReadModel>> GetPropertyContactsAsync(IReadOnlyCollection<int> propertyIds);
+    // Chỉ ghi khi booking vẫn đang nợ khách tiền cọc (chủ trọ hủy, đã cọc, chưa xác nhận).
+    Task<bool> ConfirmDepositReturnedAsync(int bookingId, int confirmedById, DateTimeOffset asOfUtc, Notifications customerNotification);
 }

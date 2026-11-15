@@ -5,8 +5,10 @@ using PRN232.Application.Interfaces;
 
 namespace PRN232.Api.Controllers;
 
+// Danh mục hành chính công khai (Cục Thống kê), chỉ đọc từ bộ nhớ, không có dữ liệu cá nhân:
+// khách chưa đăng nhập cũng cần để lọc phòng theo tỉnh/phường.
 [ApiController]
-[Authorize(Roles = "Admin")]
+[AllowAnonymous]
 [Route("api/locations")]
 public sealed class LocationsController : ControllerBase
 {

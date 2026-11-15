@@ -43,6 +43,12 @@ public class Contracts
     public decimal? InitialElectricReading { get; set; }
     public decimal? InitialWaterReading { get; set; }
     public DateOnly? MeterHandoverDate { get; set; }
+    // Rebuild 3.6a (PLAN D3 bước 6): khách báo ngày dự kiến trả phòng. Trả TRƯỚC ngày kết thúc mà báo trước
+    // dưới 30 ngày thì mất phần cọc còn lại khi quyết toán. Mỗi lần đổi ngày tính lại từ lúc báo mới.
+    public DateOnly? PlannedMoveOutDate { get; set; }
+    public DateTime? MoveOutNoticeAtUtc { get; set; }
+    public int? MoveOutNoticeById { get; set; }
+    public Users? MoveOutNoticeBy { get; set; }
 
     public Rooms? Room
     {

@@ -27,7 +27,8 @@ public class BookingRepository : IBookingRepository
                 room.RoomId,
                 room.RoomCode,
                 room.Property!.OwnerId,
-                room.PropertyRoomType!.MonthlyRent))
+                room.PropertyRoomType!.MonthlyRent,
+                room.MaxOccupants))
             .FirstOrDefaultAsync();
     }
 
@@ -186,7 +187,8 @@ public class BookingRepository : IBookingRepository
     public async Task<bool> CancelAsync(
         int bookingId,
         string expectedStatus,
-        Notifications? customerNotification,
+        string reason,
+        IReadOnlyList<Notifications> notifications,
         DateTimeOffset asOfUtc,
         int? managerId = null)
     {
@@ -199,21 +201,13 @@ public class BookingRepository : IBookingRepository
         { return false; }
         if (expectedStatus == BookingStatuses.Deposited)
         {
-            // OD07: re-check the 7-day hold and refund requests under the lock; the deposit is kept.
-            var hold = await _context.Bookings
+            // Rebuild 3.2: ai hủy và khi nào do BookingService quyết định (lý do hủy). Ở đây chỉ chặn booking
+            // còn yêu cầu hoàn cọc cũ đang xử lý, để không hủy chồng lên luồng hoàn cọc payOS.
+            var hasOpenRefund = await _context.Bookings
                 .Where(booking => booking.BookingId == bookingId)
-                .Select(booking => new
-                {
-                    HasOpenRefund = booking.RefundRequests.Any(refund => refund.Status != BookingRefundRequestStatuses.Rejected),
-                    DepositPaidAtUtc = booking.Payments
-                        .Where(payment => payment.Status == PaymentStatuses.Success && payment.InvoiceId == null &&
-                            payment.ContractId == null && payment.ReadingId == null)
-                        .OrderBy(payment => payment.PaymentId)
-                        .Select(payment => payment.PaidAtUtc)
-                        .FirstOrDefault()
-                })
+                .Select(booking => (bool?)booking.RefundRequests.Any(refund => refund.Status != BookingRefundRequestStatuses.Rejected))
                 .SingleOrDefaultAsync();
-            if (hold is null || hold.HasOpenRefund || !DepositHoldPolicy.IsHoldOver(hold.DepositPaidAtUtc, asOfUtc.UtcDateTime))
+            if (hasOpenRefund is not false)
             { return false; }
         }
         else if (await _context.Payments.AnyAsync(item => item.BookingId == bookingId && item.PaymentMethod == PaymentMethods.PayOS && item.Status == PaymentStatuses.Success))
@@ -256,15 +250,18 @@ public class BookingRepository : IBookingRepository
         var updated = await _context.Bookings
             .Where(booking => booking.BookingId == bookingId && booking.Status == expectedStatus &&
                 booking.Contract == null)
-            .ExecuteUpdateAsync(setters => setters.SetProperty(booking => booking.Status, BookingStatuses.Cancelled));
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(booking => booking.Status, BookingStatuses.Cancelled)
+                .SetProperty(booking => booking.CancellationReason, reason)
+                .SetProperty(booking => booking.CancelledAtUtc, asOfUtc.UtcDateTime));
         if (updated == 0)
         {
             return false;
         }
 
-        if (customerNotification is not null)
+        if (notifications.Count > 0)
         {
-            await _context.Notifications.AddAsync(customerNotification);
+            await _context.Notifications.AddRangeAsync(notifications);
             await _context.SaveChangesAsync();
         }
         await transaction.CommitAsync();
@@ -313,5 +310,67 @@ public class BookingRepository : IBookingRepository
             .OrderBy(payment => payment.PaymentId)
             .Select(payment => payment.PaidAtUtc)
             .FirstOrDefault(),
-        booking.AgreedMonthlyRent);
+        booking.AgreedMonthlyRent,
+        booking.MoveInDate,
+        booking.OccupantCount,
+        booking.CancellationReason,
+        booking.CancelledAtUtc,
+        booking.Payments.Any(payment => payment.Status == PaymentStatuses.Success && payment.InvoiceId == null &&
+            payment.ContractId == null && payment.ReadingId == null),
+        booking.DepositReturnedAtUtc,
+        booking.DepositReturnedBy != null ? booking.DepositReturnedBy.FullName : null,
+        booking.DepositAppliesToFirstMonth);
+
+    public async Task<bool> ConfirmDepositReturnedAsync(
+        int bookingId, int confirmedById, DateTimeOffset asOfUtc, Notifications customerNotification)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        // Điều kiện "chưa xác nhận" nằm trong câu UPDATE: bấm hai lần thì lần sau khớp 0 dòng.
+        var updated = await _context.Bookings
+            .Where(booking => booking.BookingId == bookingId &&
+                booking.Status == BookingStatuses.Cancelled &&
+                booking.CancellationReason == BookingCancellationReasons.LandlordCancelled &&
+                booking.DepositReturnedAtUtc == null)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(booking => booking.DepositReturnedAtUtc, asOfUtc.UtcDateTime)
+                .SetProperty(booking => booking.DepositReturnedById, confirmedById));
+        if (updated == 0)
+        {
+            return false;
+        }
+
+        await _context.Notifications.AddAsync(customerNotification);
+        await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return true;
+    }
+
+    public async Task<List<BookingContactReadModel>> GetPropertyContactsAsync(IReadOnlyCollection<int> propertyIds)
+    {
+        var ids = propertyIds.Distinct().ToArray();
+        if (ids.Length == 0)
+        {
+            return [];
+        }
+
+        var managers = await _context.PropertyManagerAssignments
+            .AsNoTracking()
+            .Where(assignment => ids.Contains(assignment.PropertyId) &&
+                assignment.Manager!.IsActive &&
+                assignment.Manager.Role!.RoleName == RoleNames.Manager)
+            .OrderBy(assignment => assignment.ManagerId)
+            .Select(assignment => new BookingContactReadModel(assignment.PropertyId, assignment.Manager!.FullName,
+                assignment.Manager.PhoneNumber, assignment.Manager.Email, RoleNames.Manager, assignment.ManagerId))
+            .ToListAsync();
+
+        // Khu trọ chưa có quản lý thì khách liên hệ chủ trọ.
+        var withoutManager = ids.Except(managers.Select(contact => contact.PropertyId)).ToArray();
+        var owners = await _context.Properties
+            .AsNoTracking()
+            .Where(property => withoutManager.Contains(property.PropertyId))
+            .Select(property => new BookingContactReadModel(property.PropertyId, property.Owner!.FullName,
+                property.Owner.PhoneNumber, property.Owner.Email, "Owner", property.OwnerId))
+            .ToListAsync();
+        return [.. managers, .. owners];
+    }
 }

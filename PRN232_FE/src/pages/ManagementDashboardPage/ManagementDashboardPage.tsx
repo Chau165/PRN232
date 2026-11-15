@@ -85,7 +85,7 @@ export default function ManagementDashboardPage() {
                   <div key={property.propertyId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-4">
                     <div className="min-w-0">
                       <p className="break-words font-semibold text-slate-800">{property.propertyName}</p>
-                      <p className="mt-1 text-xs text-slate-500">{[property.district, property.city].filter(Boolean).join(", ")}</p>
+                      <p className="mt-1 text-xs text-slate-500">{[property.ward, property.city].filter(Boolean).join(", ")}</p>
                       <p className="mt-1 text-xs text-slate-500">Chủ sở hữu: {property.ownerName}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-3 text-xs">

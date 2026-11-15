@@ -19,6 +19,17 @@ public class Rooms
     {
         get; set;
     }
+    // Số người ở tối đa (1–10, không vượt diện tích ÷ 8 m²/người — xem RoomRules).
+    public int MaxOccupants { get; set; } = 1;
+    // Tầng: 0 = tầng trệt. Null = chưa nhập (phòng tạo trước khi có trường này).
+    public int? Floor
+    {
+        get; set;
+    }
+    public string? Description
+    {
+        get; set;
+    }
     public string Status { get; set; } = string.Empty;
 
     public Property? Property

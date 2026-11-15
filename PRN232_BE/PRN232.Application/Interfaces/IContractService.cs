@@ -26,6 +26,9 @@ public interface IContractService
         int userId,
         string role,
         CancellationToken cancellationToken);
+    Task<ContractDto> GiveMoveOutNoticeAsync(int contractId, MoveOutNoticeDto request, int userId, string role,
+        CancellationToken cancellationToken);
+    Task<ContractDto> CancelMoveOutNoticeAsync(int contractId, int userId, string role, CancellationToken cancellationToken);
     Task MarkTerminatedRoomReadyAsync(
         int contractId,
         int userId,

@@ -44,9 +44,76 @@ public sealed class PropertyAddressValidationTests
         Assert.Equal("Phường Ba Đình", created.Ward);
         Assert.Equal(string.Empty, created.District);
         Assert.Equal("Thành phố Hà Nội", created.City);
+        Assert.Equal("01", created.ProvinceCode);
+        Assert.Equal("00004", created.WardCode);
         Assert.Equal(21.032m, created.Latitude);
         Assert.Equal(105.814m, created.Longitude);
         Assert.Equal("12 đường Lê Lợi, Phường Ba Đình, Thành phố Hà Nội, Việt Nam", geocoder.LastQuery);
+    }
+
+    // Rebuild 1.4: a legacy property (no codes, old district note) picks the same ward again.
+    // It must get the codes and lose the district without moving: CreateService has no geocoder,
+    // so any geocoding attempt would fail this test.
+    [Fact]
+    public async Task Choosing_the_same_ward_gives_a_legacy_property_codes_without_moving_it()
+    {
+        await using var context = await CreateContextAsync();
+        context.Properties.Add(new Property
+        {
+            PropertyId = 23,
+            OwnerId = 10,
+            PropertyName = "Bến Thành House",
+            AddressText = "01 Lê Lợi",
+            Ward = "Phường Bến Thành",
+            District = "Khu vực Quận 1 cũ",
+            City = "Thành phố Hồ Chí Minh",
+            Latitude = 10.7725m,
+            Longitude = 106.6980m
+        });
+        await context.SaveChangesAsync();
+
+        var updated = await CreateService(context).UpdateAsync(
+            23,
+            new UpdatePropertyDto("Bến Thành House", "01 Lê Lợi", "79", "26743"),
+            requestingUserId: 10,
+            isAdmin: true);
+
+        Assert.Equal("79", updated!.ProvinceCode);
+        Assert.Equal("26743", updated.WardCode);
+        Assert.Equal(string.Empty, updated.District);
+        Assert.Equal(10.7725m, updated.Latitude);
+        Assert.Equal(106.6980m, updated.Longitude);
+    }
+
+    [Fact]
+    public async Task Update_without_codes_keeps_the_stored_codes()
+    {
+        await using var context = await CreateContextAsync();
+        context.Properties.Add(new Property
+        {
+            PropertyId = 24,
+            OwnerId = 10,
+            PropertyName = "Bến Thành House",
+            AddressText = "01 Lê Lợi",
+            Ward = "Phường Bến Thành",
+            City = "Thành phố Hồ Chí Minh",
+            ProvinceCode = "79",
+            WardCode = "26743",
+            Latitude = 10.7725m,
+            Longitude = 106.6980m
+        });
+        await context.SaveChangesAsync();
+
+        var updated = await CreateService(context).UpdateAsync(
+            24,
+            new UpdatePropertyDto("Đổi tên", "01 Lê Lợi", null, null),
+            requestingUserId: 10,
+            isAdmin: true);
+
+        Assert.Equal("Đổi tên", updated!.PropertyName);
+        Assert.Equal("79", updated.ProvinceCode);
+        Assert.Equal("26743", updated.WardCode);
+        Assert.Equal("Phường Bến Thành", updated.Ward);
     }
 
     [Theory]
@@ -116,9 +183,8 @@ public sealed class PropertyAddressValidationTests
             new UpdatePropertyDto(
                 "Tên mới",
                 "12 Lê Lợi, Phường cũ, Quận cũ, Thành phố cũ",
-                "Phường cũ",
-                "Quận cũ",
-                "Thành phố cũ",
+                null,
+                null,
                 "Mô tả mới"),
             requestingUserId: 10,
             isAdmin: true);
@@ -157,9 +223,8 @@ public sealed class PropertyAddressValidationTests
             new UpdatePropertyDto(
                 "Tên mới",
                 string.Empty,
-                string.Empty,
-                "Quận cũ",
-                string.Empty,
+                null,
+                null,
                 "Mô tả mới"),
             requestingUserId: 10,
             isAdmin: true);
@@ -199,9 +264,8 @@ public sealed class PropertyAddressValidationTests
             new UpdatePropertyDto(
                 "Khu trọ cũ",
                 "13 Lê Lợi",
-                "Phường Ba Đình",
-                string.Empty,
-                "Thành phố Hà Nội"),
+                null,
+                null),
             requestingUserId: 10,
             isAdmin: true));
     }

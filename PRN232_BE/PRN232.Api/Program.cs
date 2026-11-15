@@ -28,6 +28,9 @@ using PRN232.Infrastructure.PaymentGateways;
 using PRN232.Api.Configuration;
 using PRN232.Api.Hubs;
 using PRN232.Api.Services;
+using PRN232.Api.Validation;
+using PRN232.Application.Validation;
+using FluentValidation;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddPayOSConfiguration(builder.Configuration, builder.Environment);
@@ -368,6 +371,25 @@ builder.Services.AddScoped<IViewingScheduleRepository, ViewingScheduleRepository
 builder.Services.AddScoped<IViewingScheduleService, ViewingScheduleService>();
 builder.Services.AddScoped<IContractRepository, ContractRepository>();
 builder.Services.AddScoped<IContractService, ContractService>();
+// Rebuild 3.4: nhắc hạn hợp đồng (30 ngày, 7 ngày, quá hạn) chạy nền mỗi giờ.
+builder.Services.AddScoped<IContractExpiryReminderRepository, ContractExpiryReminderRepository>();
+builder.Services.AddScoped<IContractExpiryReminderService, ContractExpiryReminderService>();
+builder.Services.AddHostedService<PRN232.Api.Workers.ContractExpiryReminderWorker>();
+builder.Services.AddScoped<IHandoverRepository, HandoverRepository>();
+builder.Services.AddScoped<IHandoverService, HandoverService>();
+builder.Services.AddScoped<IContractOccupantRepository, ContractOccupantRepository>();
+builder.Services.AddScoped<IContractOccupantService, ContractOccupantService>();
+builder.Services.AddScoped<IAuditLogWriter, AuditLogWriter>();
+builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+builder.Services.AddScoped<IDepositSettlementRepository, DepositSettlementRepository>();
+builder.Services.AddScoped<IDepositSettlementService, DepositSettlementService>();
+builder.Services.AddScoped<IContractEvidenceRepository, ContractEvidenceRepository>();
+builder.Services.AddScoped<IContractEvidenceService, ContractEvidenceService>();
+builder.Services.AddHttpClient<IContractEvidenceStorage, SupabaseContractEvidenceStorage>();
+builder.Services.AddScoped<IBookingMoveInReminderRepository, BookingMoveInReminderRepository>();
+builder.Services.AddScoped<IBookingMoveInReminderService, BookingMoveInReminderService>();
+builder.Services.AddHostedService<PRN232.Api.Workers.BookingMoveInReminderWorker>();
 builder.Services.AddScoped<IUtilityReadingRepository, UtilityReadingRepository>();
 builder.Services.AddScoped<IUtilityReadingService, UtilityReadingService>();
 builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
@@ -398,10 +420,30 @@ builder.Services.AddScoped<IDepositReportService, DepositReportService>();
 builder.Services.AddScoped<IInvoiceComplaintRepository, InvoiceComplaintRepository>();
 builder.Services.AddScoped<IInvoiceComplaintService, InvoiceComplaintService>();
 
+// Rebuild 1.1: mọi AbstractValidator<T> trong Application được đăng ký và tự chạy qua
+// FluentValidationFilter cho các action nhận T.
+builder.Services.AddValidatorsFromAssemblyContaining<RegisterDtoValidator>();
+// Validator cho form multipart của tầng Api (ví dụ PropertyWriteForm).
+builder.Services.AddValidatorsFromAssemblyContaining<FluentValidationFilter>();
+// Trần giá điện nước (rebuild D5); thiếu mục này trong appsettings thì dùng giá trị mặc định.
+builder.Services.AddSingleton(
+    builder.Configuration.GetSection("UtilityPriceLimits").Get<UtilityPriceLimits>() ?? new UtilityPriceLimits());
+// Rebuild 3.2: mặc định khóa luồng yêu cầu hoàn cọc (khách liên hệ quản lý để nhận lại tiền).
+builder.Services.AddSingleton(
+    builder.Configuration.GetSection("BookingRefunds").Get<PRN232.Application.Settings.BookingRefundSettings>()
+        ?? new PRN232.Application.Settings.BookingRefundSettings());
+// Rebuild 3.3: điều khoản cọc cho booking mới (false = cọc là tiền đảm bảo, hoàn khi trả phòng).
+builder.Services.AddSingleton(
+    builder.Configuration.GetSection("BookingDeposits").Get<PRN232.Application.Settings.BookingDepositSettings>()
+        ?? new PRN232.Application.Settings.BookingDepositSettings());
+
 builder.Services.AddControllers(options =>
 {
     options.Conventions.Add(new RouteTokenTransformerConvention(
         new SlugifyParameterTransformer()));
+    // Rebuild 5.1: ngoài cùng (Order nhỏ nhất) để ghi cả kết quả 400 của FluentValidationFilter.
+    options.Filters.Add<PRN232.Api.Auditing.AuditLogFilter>(PRN232.Api.Auditing.AuditLogFilter.FilterOrder);
+    options.Filters.Add<FluentValidationFilter>();
 });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>

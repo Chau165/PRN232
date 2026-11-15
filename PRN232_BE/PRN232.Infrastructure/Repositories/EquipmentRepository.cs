@@ -124,6 +124,8 @@ public class EquipmentRepository : IEquipmentRepository
             equipment.InstallDate,
             equipment.WarrantyExpiry,
             equipment.Supplier,
-            equipment.Status));
+            equipment.Status,
+            equipment.Quantity,
+            equipment.CompensationValue));
     }
 }

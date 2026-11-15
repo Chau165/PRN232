@@ -10,14 +10,34 @@ import { refundBlocksContract, refundDisplay } from "@/utils/bookingRefund"
 import type { BookingDto } from "@/types/booking"
 import { routes } from "@/constants/routes"
 import { useBookings } from "@/hooks/useBookings"
-import { bookingErrorMessage, bookingStatusDisplay, formatDateTime } from "@/utils/bookingDisplay"
+import {
+  bookingErrorMessage,
+  bookingStatusDisplay,
+  formatBookingCancellationReason,
+  formatBookingMoveInSummary,
+  formatDateTime,
+  formatHoldUntilDate,
+} from "@/utils/bookingDisplay"
 import { formatVnd } from "@/utils/publicFormatting"
+
+const ONLINE_REFUND_REQUESTS_ENABLED = false
 
 export default function ManagementBookingsPage() {
   const { user } = useAuth()
-  const { bookings, loading, error, retry, cancel: cancelById, cancellingId } = useBookings()
+  const {
+    bookings,
+    loading,
+    error,
+    retry,
+    cancel: cancelById,
+    cancellingId,
+    markDepositReturned,
+    markingReturnedId,
+  } = useBookings()
   const [toast, setToast] = useState("")
   const [openedRefund, setOpenedRefund] = useState<number | null>(null)
+  const [confirmingReturnBooking, setConfirmingReturnBooking] = useState<BookingDto | null>(null)
+  const [confirmReturnError, setConfirmReturnError] = useState<string | null>(null)
 
   const cancel = async (booking: BookingDto) => {
     if (cancellingId !== null) return
@@ -31,16 +51,47 @@ export default function ManagementBookingsPage() {
     }
   }
 
-  // OD07: after the 7-day hold the customer did not move in; the room reopens and the deposit is kept.
+  // C10: quản lý hủy khi còn trong hạn giữ phòng (canReleaseRoom = false) -> khách được hoàn 100% cọc ngoài hệ thống.
+  const cancelWithFullRefund = async (booking: BookingDto) => {
+    if (cancellingId !== null) return
+    const question = `Khách sẽ được hoàn ${formatVnd(booking.depositAmount)}. Bạn cần tự chuyển tiền cho khách.`
+    if (!window.confirm(question)) return
+    try {
+      await cancelById(booking.bookingId)
+      setToast(`Đã huỷ booking #${booking.bookingId} và thông báo cho khách.`)
+    } catch (cancelError) {
+      setToast(bookingErrorMessage(cancelError, "Booking vừa đổi trạng thái, vui lòng tải lại trang."))
+    }
+  }
+
+  // C10: hết hạn giữ phòng (canReleaseRoom = true), khách không nhận phòng -> nhả phòng, khách mất cọc.
   const release = async (booking: BookingDto) => {
     if (cancellingId !== null) return
-    const question = `Giải phóng phòng ${booking.roomCode} (booking #${booking.bookingId}) vì khách ${booking.customerName} không nhận phòng trong 7 ngày? Phòng sẽ mở cho người khác thuê và tiền cọc không được hoàn.`
+    const holdLabel = formatHoldUntilDate(booking.holdUntilUtc)
+    const question = `Giải phóng phòng ${booking.roomCode} (booking #${booking.bookingId}) vì khách ${booking.customerName} quá hạn nhận phòng${holdLabel ? ` (${holdLabel})` : ""}? Phòng sẽ mở cho người khác thuê và tiền cọc không được hoàn.`
     if (!window.confirm(question)) return
     try {
       await cancelById(booking.bookingId)
       setToast(`Đã giải phóng phòng ${booking.roomCode} (booking #${booking.bookingId}) và thông báo cho khách.`)
     } catch (releaseError) {
       setToast(bookingErrorMessage(releaseError, "Booking vừa đổi trạng thái hoặc khách vừa xin hoàn cọc, vui lòng tải lại trang."))
+    }
+  }
+
+  const submitDepositReturned = async () => {
+    if (!confirmingReturnBooking || markingReturnedId !== null) return
+    setConfirmReturnError(null)
+    try {
+      const updated = await markDepositReturned(confirmingReturnBooking.bookingId)
+      setConfirmingReturnBooking(null)
+      setToast(`Đã xác nhận hoàn cọc cho booking #${updated.bookingId}.`)
+    } catch (returnError) {
+      setConfirmReturnError(
+        bookingErrorMessage(
+          returnError,
+          "Booking không có khoản phải hoàn hoặc đã được xác nhận hoàn cọc trước đó.",
+        ),
+      )
     }
   }
 
@@ -81,17 +132,37 @@ export default function ManagementBookingsPage() {
                     <span className="text-[13px] text-slate-600">
                       {booking.propertyName}
                       <small className="block text-slate-400">Phòng {booking.roomCode}</small>
+                      {formatBookingMoveInSummary(booking) && (
+                        <small className="block text-slate-500">{formatBookingMoveInSummary(booking)}</small>
+                      )}
                     </span>
                     <span className="font-semibold text-[#087775]">{formatVnd(booking.depositAmount)}</span>
                     <span className="text-[13px] text-slate-600">
                       {booking.status === "Pending" ? formatDateTime(booking.expiryDate)
                         : booking.status === "Deposited" && booking.contractId === null
-                          ? booking.holdUntilUtc ? formatDateTime(booking.holdUntilUtc) : "Không rõ (dữ liệu cũ)"
+                          ? booking.holdUntilUtc ? formatHoldUntilDate(booking.holdUntilUtc) : "Không rõ (dữ liệu cũ)"
                           : "—"}
                       {booking.canReleaseRoom && <small className="block font-semibold text-rose-700">Quá hạn nhận phòng</small>}
                     </span>
-                    <div className="space-y-2"><StatusBadge tone={display.tone}>{display.label}</StatusBadge>
-                      {booking.refundStatus && <StatusBadge tone={refundDisplay(booking.refundStatus).tone}>{refundDisplay(booking.refundStatus).label}</StatusBadge>}</div>
+                    <div className="space-y-2">
+                      <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
+                      {booking.refundStatus && <StatusBadge tone={refundDisplay(booking.refundStatus).tone}>{refundDisplay(booking.refundStatus).label}</StatusBadge>}
+                      {booking.status === "Cancelled" && formatBookingCancellationReason(booking.cancellationReason) && (
+                        <small className="block text-[12px] text-slate-600">
+                          Lý do hủy: {formatBookingCancellationReason(booking.cancellationReason)}
+                        </small>
+                      )}
+                      {booking.depositReturnedAtUtc ? (
+                        <small className="block text-[12px] font-semibold text-emerald-700">
+                          Đã hoàn cọc lúc {formatDateTime(booking.depositReturnedAtUtc)}
+                          {booking.depositReturnedByName ? ` — ${booking.depositReturnedByName}` : ""}
+                        </small>
+                      ) : booking.depositRefundDue ? (
+                        <small className="block text-[12px] font-semibold text-amber-700">
+                          Chờ hoàn cọc {formatVnd(booking.depositAmount)}
+                        </small>
+                      ) : null}
+                    </div>
                     {/* Booking đã lên hợp đồng thì không còn thao tác: BE cũng chặn huỷ trường hợp này. */}
                     <div className="flex flex-wrap gap-2">
                       {user?.role === "MANAGER" && booking.status === "Deposited" && booking.contractId === null && !refundBlocksContract(booking.refundStatus) && (
@@ -112,18 +183,42 @@ export default function ManagementBookingsPage() {
                           {cancellingId === booking.bookingId ? "Đang huỷ..." : "Huỷ booking"}
                         </button>
                       )}
+                      {booking.status === "Deposited" && booking.contractId === null && !refundBlocksContract(booking.refundStatus) && !booking.canReleaseRoom && (
+                        <button
+                          type="button"
+                          onClick={() => cancelWithFullRefund(booking)}
+                          disabled={cancellingId !== null}
+                          aria-label={`Hủy (hoàn 100% cọc) #${booking.bookingId}`}
+                          className="rounded-lg bg-amber-50 px-3 py-2 text-[12px] font-bold text-amber-800 disabled:opacity-60"
+                        >
+                          {cancellingId === booking.bookingId ? "Đang huỷ..." : "Hủy (hoàn 100% cọc)"}
+                        </button>
+                      )}
                       {booking.canReleaseRoom && (
                         <button
                           type="button"
                           onClick={() => release(booking)}
                           disabled={cancellingId !== null}
-                          aria-label={`Giải phóng phòng #${booking.bookingId}`}
+                          aria-label={`Nhả phòng (khách mất cọc) #${booking.bookingId}`}
                           className="rounded-lg bg-rose-50 px-3 py-2 text-[12px] font-bold text-rose-700 disabled:opacity-60"
                         >
-                          {cancellingId === booking.bookingId ? "Đang giải phóng..." : "Giải phóng phòng"}
+                          {cancellingId === booking.bookingId ? "Đang giải phóng..." : "Nhả phòng (khách mất cọc)"}
                         </button>
                       )}
-                      {(booking.status === "Deposited" && booking.contractId === null || booking.refundStatus) && <button type="button"
+                      {booking.depositRefundDue && !booking.depositReturnedAtUtc && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfirmReturnError(null)
+                            setConfirmingReturnBooking(booking)
+                          }}
+                          disabled={cancellingId !== null || markingReturnedId !== null}
+                          className="rounded-lg bg-emerald-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+                        >
+                          Đã hoàn cọc
+                        </button>
+                      )}
+                      {(Boolean(booking.refundStatus) || (ONLINE_REFUND_REQUESTS_ENABLED && booking.status === "Deposited" && booking.contractId === null)) && <button type="button"
                         aria-expanded={openedRefund === booking.bookingId} onClick={() => setOpenedRefund(value => value === booking.bookingId ? null : booking.bookingId)}
                         className="rounded-lg border border-[#087775] px-3 py-2 text-xs font-bold text-[#087775]">Theo dõi hoàn cọc #{booking.bookingId}</button>}
                     </div>
@@ -133,6 +228,57 @@ export default function ManagementBookingsPage() {
             </div>
           )}
         </ManagementDataTable>
+      )}
+      {confirmingReturnBooking && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-deposit-returned-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h2 id="confirm-deposit-returned-title" className="font-display text-lg font-bold text-slate-900">
+              Xác nhận đã hoàn cọc
+            </h2>
+            <p className="mt-3 text-sm text-slate-700">
+              Khách <strong>{confirmingReturnBooking.customerName}</strong> ({confirmingReturnBooking.customerPhone}) · Booking #
+              {confirmingReturnBooking.bookingId} · Phòng {confirmingReturnBooking.roomCode}
+            </p>
+            <p className="mt-3 text-2xl font-extrabold text-[#087775]">
+              {formatVnd(confirmingReturnBooking.depositAmount)}
+            </p>
+            <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs font-medium text-amber-800">
+              Chỉ xác nhận sau khi bạn ĐÃ chuyển tiền cho khách. Hệ thống không chuyển tiền.
+            </p>
+            {confirmReturnError && (
+              <p role="alert" className="mt-3 text-xs font-medium text-rose-600">
+                {confirmReturnError}
+              </p>
+            )}
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (markingReturnedId !== null) return
+                  setConfirmingReturnBooking(null)
+                  setConfirmReturnError(null)
+                }}
+                disabled={markingReturnedId !== null}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitDepositReturned()}
+                disabled={markingReturnedId !== null}
+                className="rounded-lg bg-[#087775] px-4 py-2 text-sm font-bold text-white hover:bg-[#066a68] disabled:opacity-60"
+              >
+                {markingReturnedId === confirmingReturnBooking.bookingId ? "Đang xác nhận..." : "Xác nhận đã hoàn"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {toast && <Toast message={toast} onClose={() => setToast("")} />}
     </ManagementPage>

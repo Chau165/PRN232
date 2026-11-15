@@ -341,8 +341,10 @@ public class BookingsApiTests
         })).StatusCode);
     }
 
+    // Rebuild 3.2: a legacy deposit (no move-in date) is held 7 days after payment; after that the
+    // manager releases the room as a no-show and the deposit is kept.
     [Fact]
-    public async Task Paid_booking_is_released_by_owner_only_after_the_hold_and_customer_is_notified()
+    public async Task Paid_legacy_booking_is_released_as_no_show_after_the_hold_and_customer_is_notified()
     {
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
@@ -353,30 +355,30 @@ public class BookingsApiTests
             paymentMethod = "VNPay"
         });
 
-        var byCustomer = await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
         await LoginAsync(client, "manager-b@example.test");
         var byOtherManager = await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
-        await LoginAsync(client, "manager@example.test");
-        var duringHold = await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
         using (var timeTravel = factory.Services.CreateScope())
         {
-            // Move the deposit 8 days into the past: the 7-day hold is over.
+            // Legacy booking paid 8 days ago: the 7-day hold is over.
             var db = timeTravel.ServiceProvider.GetRequiredService<AppDbContext>();
-            var payment = await db.Payments.SingleAsync();
-            payment.PaidAtUtc = DateTime.UtcNow.AddDays(-8);
+            (await db.Bookings.SingleAsync()).MoveInDate = null;
+            (await db.Payments.SingleAsync()).PaidAtUtc = DateTime.UtcNow.AddDays(-8);
             await db.SaveChangesAsync();
         }
-        var byOwner = await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
+        await LoginAsync(client, "manager@example.test");
+        var byManager = await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
 
-        Assert.Equal(HttpStatusCode.Conflict, byCustomer.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, byOtherManager.StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, duringHold.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, byOwner.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, byManager.StatusCode);
+        var body = await byManager.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("NoShow", body.GetProperty("cancellationReason").GetString());
+        Assert.False(body.GetProperty("depositRefundDue").GetBoolean());
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Equal("Cancelled", (await context.Bookings.SingleAsync()).Status);
         Assert.Equal(2, await context.Notifications.CountAsync(notification => notification.UserId == 9));
-        Assert.Equal(1, await context.Notifications.CountAsync(notification => notification.UserId == 10));
+        var toCustomer = await context.Notifications.SingleAsync(notification => notification.UserId == 10);
+        Assert.Contains("không được hoàn", toCustomer.Body);
     }
 
     private static async Task<int> CreateBookingAsync(HttpClient client)
@@ -407,6 +409,8 @@ public class BookingsApiTests
 internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsController>
 {
     private readonly SqliteConnection _connection = new("Data Source=:memory:");
+    public bool RefundRequestsEnabled { get; init; } = true;
+    public bool LegacyDepositTerms { get; init; } = true;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -434,6 +438,14 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
             services.AddSingleton<CapturingNotificationRealtimePublisher>();
             services.AddSingleton<INotificationRealtimePublisher>(provider =>
                 provider.GetRequiredService<CapturingNotificationRealtimePublisher>());
+            // Rebuild 3.2: production khóa luồng yêu cầu hoàn cọc; test vẫn bật để code hoàn cọc (P6-P10)
+            // tiếp tục được kiểm tra. BookingRefundLockTests kiểm tra trạng thái khóa.
+            services.RemoveAll<PRN232.Application.Settings.BookingRefundSettings>();
+            services.AddSingleton(new PRN232.Application.Settings.BookingRefundSettings { RequestsEnabled = RefundRequestsEnabled });
+            // Rebuild 3.3: các test thanh toán/hóa đơn có sẵn được viết theo luật cũ (cọc trừ tháng đầu);
+            // test của luật mới đặt LegacyDepositTerms = false (BookingDepositTermsTests).
+            services.RemoveAll<PRN232.Application.Settings.BookingDepositSettings>();
+            services.AddSingleton(new PRN232.Application.Settings.BookingDepositSettings { AppliesToFirstMonth = LegacyDepositTerms });
         });
     }
 

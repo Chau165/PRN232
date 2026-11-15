@@ -64,10 +64,6 @@ function errorMessage(cause: unknown): string {
   }
   if (cause.status === 403)
     return cause.message || "Bạn không có quyền thực hiện thao tác này."
-  if (cause.status === 400) {
-    const messages = Object.values(cause.validationErrors ?? {}).flat()
-    return messages.length > 0 ? messages.join(" ") : cause.message
-  }
   return cause.message
 }
 
@@ -91,6 +87,7 @@ export default function ManagementRoomsPage() {
   const [editingRoom, setEditingRoom] = useState<ManagementRoomDto | null>(null)
   const [detailRoom, setDetailRoom] = useState<ManagementRoomDto | null>(null)
   const [savingRoom, setSavingRoom] = useState(false)
+  const [roomSubmitError, setRoomSubmitError] = useState<unknown>(null)
   const [deletingRoomId, setDeletingRoomId] = useState<number | null>(null)
   const effectivePropertyFilter =
     scopedPropertyId === null ? propertyFilter : String(scopedPropertyId)
@@ -153,6 +150,7 @@ export default function ManagementRoomsPage() {
     setSavingRoom(true)
     setError("")
     setSuccess("")
+    setRoomSubmitError(null)
     try {
       if (roomDialog === "edit" && editingRoom) {
         await updateRoom(
@@ -170,7 +168,7 @@ export default function ManagementRoomsPage() {
       setReload((value) => value + 1)
       return true
     } catch (cause) {
-      setError(errorMessage(cause))
+      setRoomSubmitError(cause)
       return false
     } finally {
       setSavingRoom(false)
@@ -459,8 +457,10 @@ export default function ManagementRoomsPage() {
           properties={formProperties}
           lockedPropertyId={scopedPropertyId ?? undefined}
           saving={savingRoom}
+          serverError={roomSubmitError}
           onClose={() => {
             if (!savingRoom) {
+              setRoomSubmitError(null)
               setRoomDialog(null)
               setEditingRoom(null)
             }

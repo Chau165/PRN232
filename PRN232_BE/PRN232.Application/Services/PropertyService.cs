@@ -154,8 +154,8 @@ public class PropertyService : IPropertyService
             var property = ConvertToEntity(
                 dto,
                 ownerId,
-                commune.Name,
-                province.Name,
+                commune,
+                province,
                 coordinates,
                 uploadedImageUrl);
             var created = await _repository.AddAsync(property);
@@ -192,12 +192,18 @@ public class PropertyService : IPropertyService
             throw new PropertyValidationException("Hãy chọn cả tỉnh/thành phố và phường/xã từ danh mục.");
         }
 
-        var provinceName = dto.City.Trim();
-        var wardName = dto.Ward.Trim();
-        var districtName = dto.District.Trim();
+        // Không gửi mã: giữ nguyên vị trí đã lưu (chỉ hợp lệ khi số nhà, tên đường không đổi).
+        // Có mã: lấy tên chuẩn từ danh mục và bỏ cấp quận/huyện (địa chỉ sau sáp nhập).
+        var provinceCode = entity.ProvinceCode;
+        var wardCode = entity.WardCode;
+        var provinceName = entity.City;
+        var wardName = entity.Ward;
+        var districtName = entity.District;
         if (hasProvinceCode && hasWardCode)
         {
             var administrativeLocation = ResolveAdministrativeLocation(dto.ProvinceCode, dto.WardCode);
+            provinceCode = administrativeLocation.Province.Code;
+            wardCode = administrativeLocation.Commune.Code;
             provinceName = administrativeLocation.Province.Name;
             wardName = administrativeLocation.Commune.Name;
             districtName = string.Empty;
@@ -207,7 +213,6 @@ public class PropertyService : IPropertyService
             entity,
             dto.AddressText,
             wardName,
-            districtName,
             provinceName);
         var updateLocation = !addressUnchanged;
         AddressCoordinates coordinates;
@@ -239,6 +244,8 @@ public class PropertyService : IPropertyService
             ApplyUpdateToEntity(
                 dto,
                 entity,
+                provinceCode,
+                wardCode,
                 wardName,
                 districtName,
                 provinceName,
@@ -284,15 +291,15 @@ public class PropertyService : IPropertyService
         return true;
     }
 
+    // Quận/huyện không còn tham gia so sánh: gán mã cho khu trọ cũ (cùng phường, cùng số nhà)
+    // không làm đổi vị trí nên không cần geocode lại.
     private static bool IsSameAddress(
         PRN232.Domain.Entities.Property entity,
         string addressText,
         string ward,
-        string district,
         string city) =>
         string.Equals(entity.AddressText.Trim(), addressText.Trim(), StringComparison.Ordinal) &&
         string.Equals(entity.Ward.Trim(), ward.Trim(), StringComparison.Ordinal) &&
-        string.Equals(entity.District.Trim(), district.Trim(), StringComparison.Ordinal) &&
         string.Equals(entity.City.Trim(), city.Trim(), StringComparison.Ordinal);
 
     private static void EnsureAdmin(bool isAdmin)
@@ -787,8 +794,8 @@ public class PropertyService : IPropertyService
     private static PRN232.Domain.Entities.Property ConvertToEntity(
         CreatePropertyDto dto,
         int ownerId,
-        string wardName,
-        string provinceName,
+        AdministrativeDivisionReadModel commune,
+        AdministrativeDivisionReadModel province,
         AddressCoordinates coordinates,
         string? imageUrl)
     {
@@ -797,9 +804,11 @@ public class PropertyService : IPropertyService
             OwnerId = ownerId,
             PropertyName = dto.PropertyName.Trim(),
             AddressText = dto.AddressText.Trim(),
-            Ward = wardName,
+            Ward = commune.Name,
             District = string.Empty,
-            City = provinceName,
+            City = province.Name,
+            ProvinceCode = province.Code,
+            WardCode = commune.Code,
             Latitude = coordinates.Latitude,
             Longitude = coordinates.Longitude,
             PrimaryImageUrl = imageUrl,
@@ -810,6 +819,8 @@ public class PropertyService : IPropertyService
     private static void ApplyUpdateToEntity(
         UpdatePropertyDto dto,
         PRN232.Domain.Entities.Property entity,
+        string provinceCode,
+        string wardCode,
         string wardName,
         string districtName,
         string provinceName,
@@ -818,12 +829,16 @@ public class PropertyService : IPropertyService
         string? imageUrl)
     {
         entity.PropertyName = dto.PropertyName.Trim();
+        // Mã và tên đơn vị hành chính luôn được ghi (không gửi mã thì đây là giá trị đang lưu), để
+        // khu trọ cũ được gán mã ngay khi Admin chọn lại tỉnh/phường mà không phải đổi vị trí.
+        entity.ProvinceCode = provinceCode;
+        entity.WardCode = wardCode;
+        entity.Ward = wardName;
+        entity.District = districtName;
+        entity.City = provinceName;
         if (updateLocation)
         {
             entity.AddressText = dto.AddressText.Trim();
-            entity.Ward = wardName;
-            entity.District = districtName;
-            entity.City = provinceName;
             entity.Latitude = coordinates.Latitude;
             entity.Longitude = coordinates.Longitude;
         }
@@ -846,7 +861,9 @@ public class PropertyService : IPropertyService
             readModel.Longitude,
             readModel.RoomCount,
             readModel.PrimaryImageUrl,
-            readModel.Description);
+            readModel.Description,
+            readModel.ProvinceCode,
+            readModel.WardCode);
     }
 
     private static string? NormalizeOptional(string? value)

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using PRN232.Api.Validation;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Services;
@@ -92,7 +93,20 @@ public class BookingsController : ControllerBase
         catch (BookingRoomUnavailableException exception)
         {
             return Conflict(new ProblemDetails { Title = "Room unavailable", Detail = exception.Message });
-        }        catch (PhoneNumberRequiredException exception)
+        }
+        catch (BookingOccupancyExceededException exception)
+        {
+            return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                ["occupantCount"] = [exception.Message]
+            })
+            {
+                Title = FluentValidationFilter.Title,
+                Detail = exception.Message,
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+        catch (PhoneNumberRequiredException exception)
         {
             return BadRequest(new ProblemDetails { Title = "Phone number required", Detail = exception.Message });
         }
@@ -190,6 +204,34 @@ public class BookingsController : ControllerBase
         catch (BookingStatusConflictException exception)
         {
             return Conflict(new ProblemDetails { Title = "Booking cannot be cancelled", Detail = exception.Message });
+        }
+    }
+
+    // Rebuild 3.2b: quản lý xác nhận đã trả lại tiền cọc cho khách ngoài hệ thống (không chuyển tiền).
+    [HttpPost("{id:int}/deposit-returned")]
+    [Authorize(Roles = RoleNames.Manager + "," + RoleNames.Admin)]
+    public async Task<ActionResult<BookingDto>> ConfirmDepositReturned(int id)
+    {
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            return Ok(await _bookingService.ConfirmDepositReturnedAsync(id, userId, role));
+        }
+        catch (BookingNotFoundException exception)
+        {
+            return NotFound(new ProblemDetails { Title = "Booking not found", Detail = exception.Message });
+        }
+        catch (BookingAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
+        catch (BookingStatusConflictException exception)
+        {
+            return Conflict(new ProblemDetails { Title = "Deposit return cannot be confirmed", Detail = exception.Message });
         }
     }
 

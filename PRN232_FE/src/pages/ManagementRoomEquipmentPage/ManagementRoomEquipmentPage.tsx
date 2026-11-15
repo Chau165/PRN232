@@ -23,6 +23,7 @@ import {
 import { getManagementRoom } from "@/services/roomService"
 import type { EquipmentDto, EquipmentWriteRequest } from "@/types/equipment"
 import type { ManagementRoomDto } from "@/types/managementRoom"
+import { formatEquipmentSummary } from "@/utils/equipmentValidation"
 
 const equipmentPageSize = 50
 const maintenanceHistoryMessage =
@@ -37,10 +38,6 @@ function errorMessage(cause: unknown, fallback: string): string {
     return "Bạn không có quyền thực hiện thao tác này."
   }
   if (cause.status === 404) return fallback
-  if (cause.status === 400) {
-    const messages = Object.values(cause.validationErrors ?? {}).flat()
-    return messages.length > 0 ? messages.join(" ") : cause.message
-  }
   return cause.message || fallback
 }
 
@@ -100,6 +97,8 @@ export default function ManagementRoomEquipmentPage() {
     null,
   )
   const [saving, setSaving] = useState(false)
+  const [equipmentSubmitError, setEquipmentSubmitError] =
+    useState<unknown>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const detailController = useRef<AbortController | null>(null)
 
@@ -273,6 +272,7 @@ export default function ManagementRoomEquipmentPage() {
     if (!accessToken || !currentRoom) return false
     setSaving(true)
     setError("")
+    setEquipmentSubmitError(null)
     try {
       if (dialog === "edit" && editingEquipment) {
         if (editingEquipment.roomId !== currentRoom.roomId) {
@@ -299,7 +299,7 @@ export default function ManagementRoomEquipmentPage() {
       setReload((value) => value + 1)
       return true
     } catch (cause) {
-      setError(errorMessage(cause, "Không thể lưu thiết bị."))
+      setEquipmentSubmitError(cause)
       return false
     } finally {
       setSaving(false)
@@ -535,7 +535,7 @@ export default function ManagementRoomEquipmentPage() {
                       className="grid gap-3 px-5 py-5 lg:grid-cols-[1.3fr_1fr_1fr_1.2fr_.9fr_1.5fr] lg:items-center"
                     >
                       <strong className="text-[13px] text-slate-800">
-                        {item.name}
+                        {formatEquipmentSummary(item)}
                       </strong>
                       <span className="text-[13px] text-slate-600">
                         {formatDate(item.installDate)}
@@ -630,8 +630,10 @@ export default function ManagementRoomEquipmentPage() {
               initialEquipment={editingEquipment}
               room={currentRoom}
               saving={saving}
+              serverError={equipmentSubmitError}
               onClose={() => {
                 if (!saving) {
+                  setEquipmentSubmitError(null)
                   setDialog(null)
                   setEditingEquipment(null)
                 }

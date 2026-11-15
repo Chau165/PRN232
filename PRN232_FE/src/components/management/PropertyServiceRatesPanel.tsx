@@ -4,7 +4,28 @@ import { useAuth } from "@/auth/AuthContext"
 import StatusBadge from "@/components/customer/StatusBadge"
 import { createPropertyServiceRate, getPropertyServiceRates, getServiceCatalog } from "@/services/serviceRateService"
 import type { PropertyServiceRateDto, ServiceCatalogItem } from "@/types/serviceRate"
+import {
+  parseServiceRatePriceInput,
+  serviceIdError,
+  serviceRatePriceError,
+} from "@/utils/propertyValidation"
+import { splitValidationErrors } from "@/utils/roomValidation"
 import { formatVnd } from "@/utils/publicFormatting"
+
+type RateFormField =
+  | "serviceId"
+  | "billing"
+  | "price"
+  | "effectiveFrom"
+  | "effectiveTo"
+
+const RATE_FORM_FIELDS: readonly RateFormField[] = [
+  "serviceId",
+  "billing",
+  "price",
+  "effectiveFrom",
+  "effectiveTo",
+]
 
 // Chỉ đưa ra các cách tính mà hoá đơn hiện tính được. BE còn nhận person_month/vehicle_month,
 // nhưng InvoiceService chưa hỗ trợ nên tạo giá kiểu đó sẽ làm việc lập hoá đơn bị lỗi.
@@ -139,25 +160,58 @@ function AddRateForm({ accessToken, propertyId, catalog, defaultMonth, onCreated
   // input type="month" dùng dạng yyyy-MM; gửi lên BE thêm "-01".
   const [from, setFrom] = useState(defaultMonth.slice(0, 7))
   const [to, setTo] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<RateFormField, string>>
+  >({})
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const locked = useRef(false)
 
+  function clearFieldError(field: RateFormField) {
+    setFieldErrors((current) => {
+      if (!current[field]) return current
+      const next = { ...current }
+      delete next[field]
+      return next
+    })
+    setError(null)
+  }
+
   const submit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (locked.current) return
     const option = billingOptions.find((item) => item.key === billing)
-    const amount = Number(price)
     setSuccess(null)
-    if (!serviceId) return setError("Vui lòng chọn dịch vụ.")
-    if (!option) return setError("Vui lòng chọn cách tính tiền.")
-    if (price.trim() === "" || !Number.isSafeInteger(amount) || amount < 0) return setError("Đơn giá phải là số nguyên VND không âm.")
-    if (!/^\d{4}-\d{2}$/.test(from)) return setError("Vui lòng chọn tháng bắt đầu áp dụng.")
-    if (to && to <= from) return setError("Tháng kết thúc phải sau tháng bắt đầu.")
+    setError(null)
 
+    const svcErr = serviceIdError(serviceId)
+    if (svcErr) {
+      setFieldErrors({ serviceId: svcErr })
+      return
+    }
+    if (!option) {
+      setFieldErrors({ billing: "Vui lòng chọn cách tính tiền." })
+      return
+    }
+    const priceErr = serviceRatePriceError(price)
+    if (priceErr) {
+      setFieldErrors({ price: priceErr })
+      return
+    }
+    if (!/^\d{4}-\d{2}$/.test(from)) {
+      setFieldErrors({ effectiveFrom: "Vui lòng chọn tháng bắt đầu áp dụng." })
+      return
+    }
+    if (to && to <= from) {
+      setFieldErrors({ effectiveTo: "Tháng kết thúc phải sau tháng bắt đầu." })
+      return
+    }
+
+    const amount = parseServiceRatePriceInput(price)
     locked.current = true
     setPending(true)
+    setFieldErrors({})
     setError(null)
     try {
       const created = await createPropertyServiceRate(accessToken, propertyId, {
@@ -175,7 +229,28 @@ function AddRateForm({ accessToken, propertyId, catalog, defaultMonth, onCreated
       setTo("")
       onCreated()
     } catch (createError) {
-      setError(rateErrorMessage(createError))
+      if (createError instanceof ApiError && createError.status === 400) {
+        const normalizedErrors = createError.validationErrors
+          ? Object.fromEntries(
+              Object.entries(createError.validationErrors).map(([key, msgs]) => {
+                const lower = key.toLowerCase()
+                if (lower === "unitcode" || lower === "billingbasis") {
+                  return ["billing", msgs]
+                }
+                return [key, msgs]
+              }),
+            )
+          : undefined
+        const { fieldErrors: mapped, generalError } = splitValidationErrors(
+          normalizedErrors,
+          RATE_FORM_FIELDS,
+          createError.message,
+        )
+        setFieldErrors(mapped)
+        setError(generalError || null)
+      } else {
+        setError(rateErrorMessage(createError))
+      }
     } finally {
       locked.current = false
       setPending(false)
@@ -186,32 +261,110 @@ function AddRateForm({ accessToken, propertyId, catalog, defaultMonth, onCreated
     <form onSubmit={submit} noValidate className="mt-4 space-y-3 rounded-xl bg-slate-50 p-4">
       <h4 className="text-sm font-bold text-slate-800">Thêm mức giá</h4>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block text-xs font-semibold text-slate-600">
-          Dịch vụ
-          <select value={serviceId} onChange={(event) => { setServiceId(event.target.value); setError(null) }} className={inputClass}>
-            <option value="" disabled>Chọn dịch vụ</option>
-            {catalog.map((service) => <option key={service.serviceId} value={service.serviceId}>{service.name}</option>)}
-          </select>
-        </label>
-        <label className="block text-xs font-semibold text-slate-600">
-          Cách tính tiền
-          <select value={billing} onChange={(event) => { setBilling(event.target.value); setError(null) }} className={inputClass}>
-            <option value="" disabled>Chọn cách tính</option>
-            {billingOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
-          </select>
-        </label>
-        <label className="block text-xs font-semibold text-slate-600">
-          Đơn giá (VND)
-          <input value={price} inputMode="numeric" onChange={(event) => { setPrice(event.target.value.replace(/\D/g, "")); setError(null) }} className={inputClass} />
-        </label>
-        <label className="block text-xs font-semibold text-slate-600">
-          Áp dụng từ tháng
-          <input type="month" value={from} onChange={(event) => { setFrom(event.target.value); setError(null) }} className={inputClass} />
-        </label>
-        <label className="block text-xs font-semibold text-slate-600 sm:col-span-2">
-          Ngừng áp dụng từ tháng (để trống nếu không thời hạn)
-          <input type="month" value={to} onChange={(event) => { setTo(event.target.value); setError(null) }} className={inputClass} />
-        </label>
+        <div>
+          <label className="block text-xs font-semibold text-slate-600">
+            Dịch vụ
+            <select
+              aria-invalid={Boolean(fieldErrors.serviceId)}
+              value={serviceId}
+              onChange={(event) => {
+                setServiceId(event.target.value)
+                clearFieldError("serviceId")
+              }}
+              className={inputClass}
+            >
+              <option value="" disabled>Chọn dịch vụ</option>
+              {catalog.map((service) => <option key={service.serviceId} value={service.serviceId}>{service.name}</option>)}
+            </select>
+          </label>
+          {fieldErrors.serviceId && (
+            <p role="alert" className="mt-1 text-xs text-rose-600">
+              {fieldErrors.serviceId}
+            </p>
+          )}
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-600">
+            Cách tính tiền
+            <select
+              aria-invalid={Boolean(fieldErrors.billing)}
+              value={billing}
+              onChange={(event) => {
+                setBilling(event.target.value)
+                clearFieldError("billing")
+              }}
+              className={inputClass}
+            >
+              <option value="" disabled>Chọn cách tính</option>
+              {billingOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+            </select>
+          </label>
+          {fieldErrors.billing && (
+            <p role="alert" className="mt-1 text-xs text-rose-600">
+              {fieldErrors.billing}
+            </p>
+          )}
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-600">
+            Đơn giá (VND)
+            <input
+              aria-invalid={Boolean(fieldErrors.price)}
+              value={price}
+              inputMode="numeric"
+              onChange={(event) => {
+                setPrice(event.target.value)
+                clearFieldError("price")
+              }}
+              className={inputClass}
+            />
+          </label>
+          {fieldErrors.price && (
+            <p role="alert" className="mt-1 text-xs text-rose-600">
+              {fieldErrors.price}
+            </p>
+          )}
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-600">
+            Áp dụng từ tháng
+            <input
+              type="month"
+              aria-invalid={Boolean(fieldErrors.effectiveFrom)}
+              value={from}
+              onChange={(event) => {
+                setFrom(event.target.value)
+                clearFieldError("effectiveFrom")
+              }}
+              className={inputClass}
+            />
+          </label>
+          {fieldErrors.effectiveFrom && (
+            <p role="alert" className="mt-1 text-xs text-rose-600">
+              {fieldErrors.effectiveFrom}
+            </p>
+          )}
+        </div>
+        <div className="sm:col-span-2">
+          <label className="block text-xs font-semibold text-slate-600">
+            Ngừng áp dụng từ tháng (để trống nếu không thời hạn)
+            <input
+              type="month"
+              aria-invalid={Boolean(fieldErrors.effectiveTo)}
+              value={to}
+              onChange={(event) => {
+                setTo(event.target.value)
+                clearFieldError("effectiveTo")
+              }}
+              className={inputClass}
+            />
+          </label>
+          {fieldErrors.effectiveTo && (
+            <p role="alert" className="mt-1 text-xs text-rose-600">
+              {fieldErrors.effectiveTo}
+            </p>
+          )}
+        </div>
       </div>
       <p className="text-xs leading-5 text-slate-500">
         Giá đã tạo không sửa hoặc xoá được để giữ đúng các hoá đơn cũ. Muốn đổi giá theo thời gian, hãy đặt tháng ngừng áp dụng cho giá cũ ngay khi tạo.

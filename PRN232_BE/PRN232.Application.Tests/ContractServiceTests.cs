@@ -494,6 +494,14 @@ public class ContractServiceTests
             CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<bool> ExistsAsync(int contractId) => Task.FromResult(ExistingContractId == contractId);
+
+        // Rebuild 3.6a: move-out notice is covered against the real repository (MoveOutNoticeApiTests).
+        public Task<bool> SaveMoveOutNoticeAsync(int contractId, DateOnly? plannedMoveOutDate, DateTime? noticeAtUtc,
+            int? noticeById, IReadOnlyList<Notifications> notifications, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<List<int>> GetActiveManagerIdsAsync(int propertyId, CancellationToken cancellationToken) =>
+            Task.FromResult(new List<int>());
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider

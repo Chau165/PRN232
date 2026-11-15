@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { ApiError } from "@/api/apiClient"
-import { cancelBooking, createBooking, getBooking, getBookings, payBooking } from "@/services/bookingService"
+import { cancelBooking, createBooking, getBooking, getBookings, markBookingDepositReturned, payBooking } from "@/services/bookingService"
 import { bookingErrorMessage, bookingStatusDisplay, isBookingExpired } from "@/utils/bookingDisplay"
 
 function response(body: unknown, status = 200) {
@@ -24,13 +24,15 @@ describe("Booking API client", () => {
     await createBooking("customer-token", 501)
     await payBooking("customer-token", 7, "MoMo")
     await cancelBooking("customer-token", 7)
+    await markBookingDepositReturned("manager-token", 7)
     expect(fetchMock.mock.calls.map(([url]) => String(url).replace(/^.*\/api/, "/api"))).toEqual([
-      "/api/bookings", "/api/bookings/7/pay", "/api/bookings/7/cancel",
+      "/api/bookings", "/api/bookings/7/pay", "/api/bookings/7/cancel", "/api/bookings/7/deposit-returned",
     ])
     expect(fetchMock.mock.calls.every(([, init]) => init?.method === "POST")).toBe(true)
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ roomId: 501 })
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ paymentMethod: "MoMo" })
     expect(fetchMock.mock.calls[2][1]?.body).toBeUndefined()
+    expect(fetchMock.mock.calls[3][1]?.body).toBeUndefined()
   })
 })
 

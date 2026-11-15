@@ -38,7 +38,9 @@ public class PropertyRepository : IPropertyRepository
             p.Longitude,
             p.Rooms.Count,
             p.PrimaryImageUrl,
-            p.Description))
+            p.Description,
+            p.ProvinceCode,
+            p.WardCode))
             .ToListAsync();
     }
 
@@ -69,7 +71,9 @@ public class PropertyRepository : IPropertyRepository
             p.Longitude,
             p.Rooms.Count,
             p.PrimaryImageUrl,
-            p.Description))
+            p.Description,
+            p.ProvinceCode,
+            p.WardCode))
             .FirstOrDefaultAsync();
     }
 

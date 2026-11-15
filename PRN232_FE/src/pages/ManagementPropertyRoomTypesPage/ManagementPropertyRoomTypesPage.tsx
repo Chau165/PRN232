@@ -22,6 +22,26 @@ import type {
 } from "@/types/propertyRoomType"
 import type { PropertyDto } from "@/types/user"
 import { formatVnd } from "@/utils/publicFormatting"
+import {
+  MONTHLY_RENT_MAX,
+  MONTHLY_RENT_MIN,
+  MONTHLY_RENT_STEP,
+  monthlyRentError,
+  splitValidationErrors,
+  validatePropertyRoomTypeForm,
+  type PropertyRoomTypeFormField,
+} from "@/utils/roomValidation"
+
+const PROPERTY_ROOM_TYPE_FIELDS: readonly PropertyRoomTypeFormField[] = [
+  "roomTypeId",
+  "monthlyRent",
+]
+
+type CatalogRoomTypeFormField = "typeName" | "monthlyRent"
+const CATALOG_ROOM_TYPE_FIELDS: readonly CatalogRoomTypeFormField[] = [
+  "typeName",
+  "monthlyRent",
+]
 
 type ResourceState = {
   loading: boolean
@@ -35,10 +55,6 @@ function errorMessage(error: unknown): string {
     }
     if (error.status === 403) {
       return error.message || "Bạn không có quyền cấu hình giá khu trọ."
-    }
-    if (error.status === 400) {
-      const messages = Object.values(error.validationErrors ?? {}).flat()
-      return messages.length ? messages.join(" ") : error.message
     }
     return error.message
   }
@@ -124,6 +140,13 @@ export default function ManagementPropertyRoomTypesPage() {
   const [newCatalogMonthlyRent, setNewCatalogMonthlyRent] = useState("")
   const [saving, setSaving] = useState(false)
   const [creatingCatalogType, setCreatingCatalogType] = useState(false)
+  const [addFieldErrors, setAddFieldErrors] = useState<
+    Partial<Record<PropertyRoomTypeFormField, string>>
+  >({})
+  const [catalogFieldErrors, setCatalogFieldErrors] = useState<
+    Partial<Record<CatalogRoomTypeFormField, string>>
+  >({})
+  const [rowErrors, setRowErrors] = useState<Record<number, string>>({})
   const [actionError, setActionError] = useState("")
   const [success, setSuccess] = useState("")
   const [partialWarning, setPartialWarning] = useState("")
@@ -236,23 +259,28 @@ export default function ManagementPropertyRoomTypesPage() {
     setActionError("")
     setSuccess("")
     setPartialWarning("")
+    setAddFieldErrors({})
+    setCatalogFieldErrors({})
+    setRowErrors({})
   }
 
   async function addConfiguration(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!accessToken || propertyId === null || actionInProgress) return
 
-    const roomTypeId = Number(newRoomTypeId)
-    const monthlyRent = Number(newMonthlyRent)
-    if (
-      !Number.isSafeInteger(roomTypeId) ||
-      roomTypeId < 1 ||
-      !Number.isFinite(monthlyRent) ||
-      monthlyRent <= 0
-    ) {
-      setActionError("Chọn loại phòng và nhập giá thuê lớn hơn 0.")
+    const nextFieldErrors = validatePropertyRoomTypeForm({
+      mode: "create",
+      roomTypeId: newRoomTypeId,
+      monthlyRent: newMonthlyRent,
+    })
+    if (Object.keys(nextFieldErrors).length > 0) {
+      resetActionMessages()
+      setAddFieldErrors(nextFieldErrors)
       return
     }
+
+    const roomTypeId = Number(newRoomTypeId)
+    const monthlyRent = Number(newMonthlyRent)
 
     setSaving(true)
     resetActionMessages()
@@ -266,7 +294,17 @@ export default function ManagementPropertyRoomTypesPage() {
       setSuccess("Đã thêm loại phòng cho khu trọ.")
       setConfigurationReload((value) => value + 1)
     } catch (cause) {
-      setActionError(errorMessage(cause))
+      if (cause instanceof ApiError && cause.status === 400) {
+        const { fieldErrors: mapped, generalError } = splitValidationErrors(
+          cause.validationErrors,
+          PROPERTY_ROOM_TYPE_FIELDS,
+          cause.message,
+        )
+        setAddFieldErrors(mapped)
+        setActionError(generalError)
+      } else {
+        setActionError(errorMessage(cause))
+      }
     } finally {
       setSaving(false)
     }
@@ -283,25 +321,33 @@ export default function ManagementPropertyRoomTypesPage() {
     }
 
     const typeName = normalizeRoomTypeName(newCatalogName)
-    const monthlyRent = Number(newCatalogMonthlyRent)
+    const nextCatalogErrors: Partial<Record<CatalogRoomTypeFormField, string>> =
+      {}
     if (!typeName) {
-      setActionError("Nhập tên loại phòng mới.")
-      return
+      nextCatalogErrors.typeName = "Nhập tên loại phòng mới."
+    } else {
+      const duplicate = catalog.find(
+        (item) =>
+          normalizedRoomTypeKey(item.typeName) ===
+          normalizedRoomTypeKey(typeName),
+      )
+      if (duplicate) {
+        nextCatalogErrors.typeName = `Loại phòng "${duplicate.typeName}" đã có trong danh mục. Hãy chọn loại phòng đó ở ô bên trên.`
+      }
     }
-    if (!Number.isFinite(monthlyRent) || monthlyRent <= 0) {
-      setActionError("Giá thuê của loại phòng mới phải lớn hơn 0.")
+
+    const rentErr = monthlyRentError(newCatalogMonthlyRent)
+    if (rentErr) {
+      nextCatalogErrors.monthlyRent = rentErr
+    }
+
+    if (Object.keys(nextCatalogErrors).length > 0) {
+      resetActionMessages()
+      setCatalogFieldErrors(nextCatalogErrors)
       return
     }
 
-    const duplicate = catalog.find(
-      (item) => normalizedRoomTypeKey(item.typeName) === normalizedRoomTypeKey(typeName),
-    )
-    if (duplicate) {
-      setActionError(
-        `Loại phòng "${duplicate.typeName}" đã có trong danh mục. Hãy chọn loại phòng đó ở ô bên trên.`,
-      )
-      return
-    }
+    const monthlyRent = Number(newCatalogMonthlyRent)
 
     setCreatingCatalogType(true)
     resetActionMessages()
@@ -350,7 +396,17 @@ export default function ManagementPropertyRoomTypesPage() {
         setConfigurationReload((value) => value + 1)
       }
     } catch (cause) {
-      setActionError(catalogErrorMessage(cause))
+      if (cause instanceof ApiError && cause.status === 400) {
+        const { fieldErrors: mapped, generalError } = splitValidationErrors(
+          cause.validationErrors,
+          CATALOG_ROOM_TYPE_FIELDS,
+          cause.message,
+        )
+        setCatalogFieldErrors(mapped)
+        setActionError(generalError)
+      } else {
+        setActionError(catalogErrorMessage(cause))
+      }
     } finally {
       setCreatingCatalogType(false)
     }
@@ -359,11 +415,15 @@ export default function ManagementPropertyRoomTypesPage() {
   async function savePrice(item: PropertyRoomTypeDto) {
     if (!accessToken || actionInProgress) return
 
-    const monthlyRent = Number(priceDrafts[item.roomTypeId])
-    if (!Number.isFinite(monthlyRent) || monthlyRent <= 0) {
-      setActionError("Giá thuê phải lớn hơn 0.")
+    const draftValue = priceDrafts[item.roomTypeId] ?? ""
+    const rentErr = monthlyRentError(draftValue)
+    if (rentErr) {
+      resetActionMessages()
+      setRowErrors({ [item.roomTypeId]: rentErr })
       return
     }
+
+    const monthlyRent = Number(draftValue)
 
     setSaving(true)
     resetActionMessages()
@@ -377,7 +437,19 @@ export default function ManagementPropertyRoomTypesPage() {
       setSuccess(`Đã cập nhật giá ${item.roomTypeName}.`)
       setConfigurationReload((value) => value + 1)
     } catch (cause) {
-      setActionError(errorMessage(cause))
+      if (cause instanceof ApiError && cause.status === 400) {
+        const { fieldErrors: mapped, generalError } = splitValidationErrors(
+          cause.validationErrors,
+          ["monthlyRent"] as const,
+          cause.message,
+        )
+        if (mapped.monthlyRent) {
+          setRowErrors({ [item.roomTypeId]: mapped.monthlyRent })
+        }
+        setActionError(generalError)
+      } else {
+        setActionError(errorMessage(cause))
+      }
     } finally {
       setSaving(false)
     }
@@ -481,41 +553,75 @@ export default function ManagementPropertyRoomTypesPage() {
 
         <form
           onSubmit={addConfiguration}
-          className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto]"
+          noValidate
+          className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-start"
         >
-          <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
-            Danh mục loại phòng
-            <select
-              aria-label="Danh mục loại phòng"
-              value={newRoomTypeId}
-              onChange={(event) => setNewRoomTypeId(event.target.value)}
-              disabled={!catalogIsReady}
-              className="h-11 rounded-lg border border-slate-200 px-3 font-normal disabled:bg-slate-50 disabled:text-slate-400"
-            >
-              <option value="">Chọn loại phòng</option>
-              {availableCatalogItems.map((item) => (
-                <option key={item.roomTypeId} value={item.roomTypeId}>
-                  {item.typeName}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
-            Giá thuê / tháng (VND)
-            <input
-              aria-label="Giá thuê mới"
-              type="number"
-              min="1"
-              step="1"
-              value={newMonthlyRent}
-              onChange={(event) => setNewMonthlyRent(event.target.value)}
-              className="h-11 rounded-lg border border-slate-200 px-3 font-normal"
-            />
-          </label>
+          <div>
+            <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+              Danh mục loại phòng
+              <select
+                aria-label="Danh mục loại phòng"
+                aria-invalid={Boolean(addFieldErrors.roomTypeId)}
+                value={newRoomTypeId}
+                onChange={(event) => {
+                  setNewRoomTypeId(event.target.value)
+                  setAddFieldErrors((current) => {
+                    if (!current.roomTypeId) return current
+                    const next = { ...current }
+                    delete next.roomTypeId
+                    return next
+                  })
+                }}
+                disabled={!catalogIsReady}
+                className="h-11 rounded-lg border border-slate-200 px-3 font-normal disabled:bg-slate-50 disabled:text-slate-400"
+              >
+                <option value="">Chọn loại phòng</option>
+                {availableCatalogItems.map((item) => (
+                  <option key={item.roomTypeId} value={item.roomTypeId}>
+                    {item.typeName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {addFieldErrors.roomTypeId && (
+              <p role="alert" className="mt-1 text-xs text-rose-600">
+                {addFieldErrors.roomTypeId}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+              Giá thuê / tháng (VND)
+              <input
+                aria-label="Giá thuê mới"
+                aria-invalid={Boolean(addFieldErrors.monthlyRent)}
+                type="number"
+                min={MONTHLY_RENT_MIN}
+                max={MONTHLY_RENT_MAX}
+                step={MONTHLY_RENT_STEP}
+                value={newMonthlyRent}
+                onChange={(event) => {
+                  setNewMonthlyRent(event.target.value)
+                  setAddFieldErrors((current) => {
+                    if (!current.monthlyRent) return current
+                    const next = { ...current }
+                    delete next.monthlyRent
+                    return next
+                  })
+                }}
+                className="h-11 rounded-lg border border-slate-200 px-3 font-normal"
+              />
+            </label>
+            {addFieldErrors.monthlyRent && (
+              <p role="alert" className="mt-1 text-xs text-rose-600">
+                {addFieldErrors.monthlyRent}
+              </p>
+            )}
+          </div>
           <button
             type="submit"
             disabled={!catalogIsReady || actionInProgress || propertyId === null}
-            className="self-end rounded-lg bg-[#087775] px-5 py-3 text-sm font-bold text-white disabled:opacity-50"
+            className="md:mt-6 rounded-lg bg-[#087775] px-5 py-3 text-sm font-bold text-white disabled:opacity-50"
           >
             {saving ? "Đang lưu..." : "Thêm cấu hình"}
           </button>
@@ -532,37 +638,69 @@ export default function ManagementPropertyRoomTypesPage() {
           </p>
           <form
             onSubmit={createCatalogTypeAndConfiguration}
-            className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto]"
+            noValidate
+            className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-start"
           >
-            <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
-              Tên loại phòng mới
-              <input
-                aria-label="Tên loại phòng mới"
-                value={newCatalogName}
-                onChange={(event) => setNewCatalogName(event.target.value)}
-                className="h-11 rounded-lg border border-slate-200 px-3 font-normal"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
-              Giá thuê / tháng (VND)
-              <input
-                aria-label="Giá thuê loại phòng mới"
-                type="number"
-                min="1"
-                step="1"
-                value={newCatalogMonthlyRent}
-                onChange={(event) =>
-                  setNewCatalogMonthlyRent(event.target.value)
-                }
-                className="h-11 rounded-lg border border-slate-200 px-3 font-normal"
-              />
-            </label>
+            <div>
+              <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                Tên loại phòng mới
+                <input
+                  aria-label="Tên loại phòng mới"
+                  aria-invalid={Boolean(catalogFieldErrors.typeName)}
+                  value={newCatalogName}
+                  onChange={(event) => {
+                    setNewCatalogName(event.target.value)
+                    setCatalogFieldErrors((current) => {
+                      if (!current.typeName) return current
+                      const next = { ...current }
+                      delete next.typeName
+                      return next
+                    })
+                  }}
+                  className="h-11 rounded-lg border border-slate-200 px-3 font-normal"
+                />
+              </label>
+              {catalogFieldErrors.typeName && (
+                <p role="alert" className="mt-1 text-xs text-rose-600">
+                  {catalogFieldErrors.typeName}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                Giá thuê / tháng (VND)
+                <input
+                  aria-label="Giá thuê loại phòng mới"
+                  aria-invalid={Boolean(catalogFieldErrors.monthlyRent)}
+                  type="number"
+                  min={MONTHLY_RENT_MIN}
+                  max={MONTHLY_RENT_MAX}
+                  step={MONTHLY_RENT_STEP}
+                  value={newCatalogMonthlyRent}
+                  onChange={(event) => {
+                    setNewCatalogMonthlyRent(event.target.value)
+                    setCatalogFieldErrors((current) => {
+                      if (!current.monthlyRent) return current
+                      const next = { ...current }
+                      delete next.monthlyRent
+                      return next
+                    })
+                  }}
+                  className="h-11 rounded-lg border border-slate-200 px-3 font-normal"
+                />
+              </label>
+              {catalogFieldErrors.monthlyRent && (
+                <p role="alert" className="mt-1 text-xs text-rose-600">
+                  {catalogFieldErrors.monthlyRent}
+                </p>
+              )}
+            </div>
             <button
               type="submit"
               disabled={
                 !catalogIsReady || actionInProgress || propertyId === null
               }
-              className="self-end rounded-lg border border-[#087775] bg-white px-5 py-3 text-sm font-bold text-[#087775] disabled:opacity-50"
+              className="md:mt-6 rounded-lg border border-[#087775] bg-white px-5 py-3 text-sm font-bold text-[#087775] disabled:opacity-50"
             >
               {creatingCatalogType ? "Đang tạo..." : "Tạo và cấu hình"}
             </button>
@@ -615,23 +753,38 @@ export default function ManagementPropertyRoomTypesPage() {
                     có thể thuê
                   </p>
                 </div>
-                <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
-                  Giá thuê / tháng
-                  <input
-                    aria-label={`Giá thuê ${item.roomTypeName}`}
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={priceDrafts[item.roomTypeId] ?? ""}
-                    onChange={(event) =>
-                      setPriceDrafts((current) => ({
-                        ...current,
-                        [item.roomTypeId]: event.target.value,
-                      }))
-                    }
-                    className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-normal text-slate-800"
-                  />
-                </label>
+                <div>
+                  <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
+                    Giá thuê / tháng
+                    <input
+                      aria-label={`Giá thuê ${item.roomTypeName}`}
+                      aria-invalid={Boolean(rowErrors[item.roomTypeId])}
+                      type="number"
+                      min={MONTHLY_RENT_MIN}
+                      max={MONTHLY_RENT_MAX}
+                      step={MONTHLY_RENT_STEP}
+                      value={priceDrafts[item.roomTypeId] ?? ""}
+                      onChange={(event) => {
+                        setPriceDrafts((current) => ({
+                          ...current,
+                          [item.roomTypeId]: event.target.value,
+                        }))
+                        setRowErrors((current) => {
+                          if (!current[item.roomTypeId]) return current
+                          const next = { ...current }
+                          delete next[item.roomTypeId]
+                          return next
+                        })
+                      }}
+                      className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-normal text-slate-800"
+                    />
+                  </label>
+                  {rowErrors[item.roomTypeId] && (
+                    <p role="alert" className="mt-1 text-xs text-rose-600">
+                      {rowErrors[item.roomTypeId]}
+                    </p>
+                  )}
+                </div>
                 <p className="text-sm font-bold text-[#087775]">
                   {formatVnd(item.monthlyRent)} / tháng
                 </p>

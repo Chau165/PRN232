@@ -601,7 +601,8 @@ public class ContractRepository : IContractRepository
                 invoice.ContractId,
                 invoice.BookingId,
                 invoice.CustomerId,
-                DepositAmount = invoice.Booking == null ? invoice.DepositAmount : invoice.Booking.DepositAmount
+                DepositAmount = invoice.Booking == null ? invoice.DepositAmount : invoice.Booking.DepositAmount,
+                DepositAppliesToFirstMonth = invoice.Booking != null && invoice.Booking.DepositAppliesToFirstMonth
             })
             .ToListAsync(cancellationToken);
         var bookingIds = bookingRows
@@ -637,11 +638,15 @@ public class ContractRepository : IContractRepository
                         .Sum(payment => payment.Amount))
                 : 0m;
             appliedByContract.TryGetValue(contract.ContractId, out var applied);
+            // Rebuild 3.3: cùng số tiền cọc đã đóng, luật cũ coi là tiền phòng trả trước, luật mới coi là
+            // tiền đảm bảo giữ đến khi trả phòng.
+            var prepaid = booking?.DepositAppliesToFirstMonth == true;
             return contract with
             {
-                PrepaidRentAmount = eligiblePaid,
+                PrepaidRentAmount = prepaid ? eligiblePaid : 0m,
                 PrepaidRentApplied = applied,
-                RemainingPrepaidCredit = Math.Max(0m, eligiblePaid - applied)
+                RemainingPrepaidCredit = prepaid ? Math.Max(0m, eligiblePaid - applied) : 0m,
+                SecurityDepositAmount = prepaid ? 0m : eligiblePaid
             };
         }).ToList();
     }
@@ -685,5 +690,37 @@ public class ContractRepository : IContractRepository
         contract.InitialWaterReading,
         contract.MeterHandoverDate,
         contract.UtilityReadings.Any(),
-        contract.Invoices.Any());
+        contract.Invoices.Any(),
+        0m,
+        contract.PlannedMoveOutDate,
+        contract.MoveOutNoticeAtUtc);
+
+    public async Task<bool> SaveMoveOutNoticeAsync(int contractId, DateOnly? plannedMoveOutDate, DateTime? noticeAtUtc,
+        int? noticeById, IReadOnlyList<Notifications> notifications, CancellationToken cancellationToken)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        var updated = await _context.Contracts
+            .Where(contract => contract.ContractId == contractId && contract.Status == ContractStatuses.Active)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(contract => contract.PlannedMoveOutDate, plannedMoveOutDate)
+                .SetProperty(contract => contract.MoveOutNoticeAtUtc, noticeAtUtc)
+                .SetProperty(contract => contract.MoveOutNoticeById, noticeById), cancellationToken);
+        if (updated == 0)
+        {
+            return false;
+        }
+        _context.Notifications.AddRange(notifications);
+        await _context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    public Task<List<int>> GetActiveManagerIdsAsync(int propertyId, CancellationToken cancellationToken) =>
+        _context.PropertyManagerAssignments
+            .AsNoTracking()
+            .Where(assignment => assignment.PropertyId == propertyId &&
+                assignment.Manager!.IsActive &&
+                assignment.Manager.Role!.RoleName == RoleNames.Manager)
+            .Select(assignment => assignment.ManagerId)
+            .ToListAsync(cancellationToken);
 }

@@ -42,4 +42,7 @@ public sealed record ContractReadModel(
     decimal? InitialWaterReading = null,
     DateOnly? MeterHandoverDate = null,
     bool HasUtilityReadings = false,
-    bool HasInvoices = false);
+    bool HasInvoices = false,
+    decimal SecurityDepositAmount = 0m,
+    DateOnly? PlannedMoveOutDate = null,
+    DateTime? MoveOutNoticeAtUtc = null);

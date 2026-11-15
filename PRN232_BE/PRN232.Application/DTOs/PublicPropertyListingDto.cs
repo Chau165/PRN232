@@ -233,7 +233,10 @@ public sealed record PublicRoomDetailDto(
     IReadOnlyList<string> Images,
     IReadOnlyList<PublicAmenitySummaryDto> Amenities,
     IReadOnlyList<PublicRoomServiceDto> Services,
-    IReadOnlyList<PublicRoomEquipmentDto> Equipments);
+    IReadOnlyList<PublicRoomEquipmentDto> Equipments,
+    int MaxOccupants = 1,
+    int? Floor = null,
+    string? Description = null);
 
 public sealed record PublicRoomTypeDto(int RoomTypeId, string RoomTypeName);
 
@@ -247,4 +250,4 @@ public sealed record PublicRoomPropertyDto(
 
 public sealed record PublicRoomServiceDto(int ServiceId, string Name, decimal Price);
 
-public sealed record PublicRoomEquipmentDto(int EquipmentId, string Name);
+public sealed record PublicRoomEquipmentDto(int EquipmentId, string Name, int Quantity);

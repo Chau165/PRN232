@@ -612,6 +612,9 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 candidate.RoomId,
                 candidate.RoomCode,
                 candidate.AreaSqm,
+                candidate.MaxOccupants,
+                candidate.Floor,
+                candidate.Description,
                 RoomTypeId = candidate.RoomType!.RoomTypeId,
                 RoomType = new PublicRoomTypeReadModel(candidate.RoomType.RoomTypeId, candidate.RoomType.TypeName),
                 BaseRent = candidate.PropertyRoomType!.MonthlyRent,
@@ -655,6 +658,15 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 link.Service.Price))
             .ToListAsync(cancellationToken);
 
+        // Rebuild 2.4: khách thuê cần biết phòng có gì. Chỉ công khai tên + số lượng; nhà cung cấp,
+        // bảo hành, trạng thái và giá trị bồi thường là thông tin nội bộ của chủ trọ.
+        var equipments = await _context.Equipments
+            .AsNoTracking()
+            .Where(equipment => equipment.RoomId == roomId)
+            .OrderBy(equipment => equipment.EquipmentId)
+            .Select(equipment => new PublicRoomEquipmentReadModel(equipment.EquipmentId, equipment.Name, equipment.Quantity))
+            .ToListAsync(cancellationToken);
+
         var images = await GetPublicRoomImagesAsync([roomId], cancellationToken);
         if (transaction is not null)
         {
@@ -671,7 +683,10 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             images.Select(image => image.ImageUrl).ToArray(),
             amenities,
             services,
-            Array.Empty<PublicRoomEquipmentReadModel>());
+            equipments,
+            room.MaxOccupants,
+            room.Floor,
+            room.Description);
     }
 
     private async Task<List<RoomImageReadModel>> GetPublicRoomImagesAsync(int[] roomIds, CancellationToken cancellationToken)

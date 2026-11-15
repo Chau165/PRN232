@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router"
+import { ApiError } from "@/api/apiClient"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
 import { useAuth } from "@/auth/AuthContext"
 import { createBooking, getBooking, createBookingPaymentLink } from "@/services/bookingService"
@@ -9,9 +10,23 @@ import { openPayOSCheckout, positiveId, validPayOSCheckout } from "@/utils/invoi
 import { publicApi } from "@/services/publicBrowsingService"
 import { usePublicApiResource } from "@/hooks/usePublicApiResource"
 import { parsePositiveRouteId, routes } from "@/constants/routes"
-import { bookingErrorMessage, formatDateTime, isBookingExpired } from "@/utils/bookingDisplay"
+import {
+  BOOKING_MAX_MOVE_IN_DAYS,
+  BOOKING_OCCUPANTS_MAX,
+  BOOKING_OCCUPANTS_MIN,
+  bookingErrorMessage,
+  bookingMoveInDateError,
+  bookingOccupantCountError,
+  formatBookingDepositTermText,
+  formatBookingMoveInSummary,
+  formatDateTime,
+  formatMoveInHoldEndDate,
+  getVietnamIsoDateOffset,
+  isBookingExpired,
+} from "@/utils/bookingDisplay"
 import { publicApiErrorMessage } from "@/utils/publicApiDisplay"
 import { formatVnd } from "@/utils/publicFormatting"
+import { splitValidationErrors } from "@/utils/roomValidation"
 
 
 // Bước 1 (?roomId=): giữ phòng bằng một booking Pending. Bước 2 (?bookingId=): thanh toán cọc
@@ -20,6 +35,7 @@ export default function DepositPage() {
   const [params] = useSearchParams()
   const bookingId = parsePositiveRouteId(params.get("bookingId") ?? undefined)
   const roomId = parsePositiveRouteId(params.get("roomId") ?? undefined)
+  const viewingId = parsePositiveRouteId(params.get("viewingId") ?? undefined)
 
   return (
     <CustomerPageShell centerHeader title="Đặt cọc giữ phòng" description="Tiền cọc tương đương 1 tháng tiền thuê.">
@@ -27,7 +43,7 @@ export default function DepositPage() {
         {bookingId ? (
           <PayDepositStep key={bookingId} bookingId={bookingId} />
         ) : roomId ? (
-          <HoldRoomStep roomId={roomId} />
+          <HoldRoomStep roomId={roomId} viewingId={viewingId} />
         ) : (
           <Notice message="Không tìm thấy phòng cần đặt cọc." />
         )}
@@ -36,10 +52,13 @@ export default function DepositPage() {
   )
 }
 
-function HoldRoomStep({ roomId }: { roomId: number }) {
+function HoldRoomStep({ roomId, viewingId }: { roomId: number; viewingId?: number | null }) {
   const { accessToken, user } = useAuth()
   const navigate = useNavigate()
   const resource = usePublicApiResource(String(roomId), (signal) => publicApi.getRoom(roomId, signal))
+  const [moveInDate, setMoveInDate] = useState<string>(() => getVietnamIsoDateOffset(0))
+  const [occupantCount, setOccupantCount] = useState<string>("1")
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<"moveInDate" | "occupantCount", string>>>({})
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -53,14 +72,48 @@ function HoldRoomStep({ roomId }: { roomId: number }) {
   }
 
   const room = resource.data
+  const minMoveInDate = getVietnamIsoDateOffset(0)
+  const maxMoveInDate = getVietnamIsoDateOffset(BOOKING_MAX_MOVE_IN_DAYS)
+  const maxOccupantsLimit = room.maxOccupants ?? BOOKING_OCCUPANTS_MAX
+  const holdEndDateLabel = formatMoveInHoldEndDate(moveInDate)
+
   const holdRoom = async () => {
     if (!accessToken || pending) return
+    const nextFieldErrors: Partial<Record<"moveInDate" | "occupantCount", string>> = {}
+    const moveInErr = bookingMoveInDateError(moveInDate)
+    if (moveInErr) nextFieldErrors.moveInDate = moveInErr
+    const occupantErr = bookingOccupantCountError(occupantCount, room)
+    if (occupantErr) nextFieldErrors.occupantCount = occupantErr
+
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      setError(null)
+      return
+    }
+
     setPending(true)
+    setFieldErrors({})
     setError(null)
     try {
-      const booking = await createBooking(accessToken, room.roomId)
+      const booking = await createBooking(accessToken, {
+        roomId: room.roomId,
+        ...(viewingId ? { viewingId } : {}),
+        moveInDate: moveInDate.trim() || undefined,
+        occupantCount: occupantCount.trim() ? Number(occupantCount) : undefined,
+      })
       navigate(`${routes.deposit}?bookingId=${booking.bookingId}`, { replace: true })
     } catch (holdError) {
+      if (holdError instanceof ApiError && holdError.status === 400 && holdError.validationErrors) {
+        const { fieldErrors: mapped, generalError } = splitValidationErrors(
+          holdError.validationErrors,
+          ["moveInDate", "occupantCount"] as const,
+          holdError.message,
+        )
+        setFieldErrors(mapped)
+        setError(generalError || null)
+        setPending(false)
+        return
+      }
       setError(bookingErrorMessage(holdError, "Phòng vừa được người khác giữ hoặc không còn trống."))
       setPending(false)
     }
@@ -76,10 +129,65 @@ function HoldRoomStep({ roomId }: { roomId: number }) {
         ]}
         amount={room.baseRent}
       />
+
+      <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-2">
+        <label className="block space-y-1.5 text-sm">
+          <span className="font-medium text-slate-700">Ngày dọn vào dự kiến</span>
+          <input
+            type="date"
+            aria-label="Ngày dọn vào"
+            min={minMoveInDate}
+            max={maxMoveInDate}
+            value={moveInDate}
+            onChange={(e) => {
+              setMoveInDate(e.target.value)
+              setFieldErrors((prev) => ({ ...prev, moveInDate: undefined }))
+            }}
+            disabled={pending}
+            className={`w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 ${
+              fieldErrors.moveInDate ? "border-rose-400" : "border-slate-300"
+            }`}
+          />
+          <span className="block text-xs text-slate-500">Tối đa 14 ngày kể từ hôm nay</span>
+          {fieldErrors.moveInDate && <span className="block text-xs text-rose-600">{fieldErrors.moveInDate}</span>}
+        </label>
+
+        <label className="block space-y-1.5 text-sm">
+          <span className="font-medium text-slate-700">Số người ở</span>
+          <input
+            type="number"
+            aria-label="Số người ở"
+            min={BOOKING_OCCUPANTS_MIN}
+            max={maxOccupantsLimit}
+            step={1}
+            value={occupantCount}
+            onChange={(e) => {
+              setOccupantCount(e.target.value)
+              setFieldErrors((prev) => ({ ...prev, occupantCount: undefined }))
+            }}
+            disabled={pending}
+            className={`w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 ${
+              fieldErrors.occupantCount ? "border-rose-400" : "border-slate-300"
+            }`}
+          />
+          <span className="block text-xs text-slate-500">
+            {room.maxOccupants != null
+              ? `Tối đa ${room.maxOccupants} người cho phòng ${room.roomCode}`
+              : `Từ ${BOOKING_OCCUPANTS_MIN} đến ${BOOKING_OCCUPANTS_MAX} người`}
+          </span>
+          {fieldErrors.occupantCount && <span className="block text-xs text-rose-600">{fieldErrors.occupantCount}</span>}
+        </label>
+      </div>
+
       <p className="text-sm text-slate-500">Sau khi giữ phòng, bạn có 15 phút để thanh toán tiền cọc.</p>
       <p className="text-sm text-slate-500">
-        Tiền cọc được trừ vào tiền phòng tháng đầu tiên khi lập hợp đồng. Sau khi đặt cọc, phòng được giữ 7 ngày để
-        lập hợp đồng; quá hạn mà chưa lập hợp đồng thì phòng có thể được mở lại và tiền cọc không được hoàn.
+        Tiền cọc được giữ làm tiền đảm bảo trong suốt thời gian thuê và hoàn lại khi trả phòng, sau khi trừ tiền phòng còn
+        nợ và hư hỏng thiết bị (nếu có). Tháng đầu tiên bạn đóng đủ tiền phòng.{" "}
+        {holdEndDateLabel
+          ? `Phòng được giữ đến hết ngày ${holdEndDateLabel}.`
+          : "Phòng được giữ đến hết ngày dọn vào + 3 ngày."}{" "}
+        Nếu bạn hủy hoặc không đến nhận phòng trước hạn đó, tiền cọc không được hoàn. Nếu chủ trọ hủy, bạn được hoàn
+        100% (liên hệ trực tiếp quản lý để nhận lại tiền).
       </p>
       {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
       <button
@@ -155,10 +263,12 @@ function PayDepositStep({ bookingId }: { bookingId: number }) {
         rows={[
           ["Khu trọ", booking.propertyName],
           ["Phòng", booking.roomCode],
-          ["Giữ phòng đến", formatDateTime(booking.expiryDate)],
+          ["Dự kiến nhận phòng", formatBookingMoveInSummary(booking) ?? ""],
+          ["Hạn thanh toán cọc", formatDateTime(booking.expiryDate)],
         ]}
         amount={booking.depositAmount}
       />
+      <p className="text-sm text-slate-500">{formatBookingDepositTermText(booking)}</p>
       <div className="rounded-xl border border-teal-100 bg-teal-50/50 p-4 text-sm text-slate-700"><strong>Thanh toán cọc qua payOS</strong>
         <p className="mt-2">Mở trang thanh toán để quét mã hoặc chuyển khoản. Booking chỉ được xác nhận sau khi hệ thống nhận kết quả thanh toán.</p></div>
       {recent?.bookingId === bookingId && <Link to={`${routes.paymentResult}?requestId=${recent.requestId}`} className="block text-sm font-semibold text-[#087775]">Kiểm tra giao dịch cọc gần nhất</Link>}

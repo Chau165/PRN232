@@ -28,7 +28,16 @@ public record ContractDto(
     decimal? InitialWaterReading = null,
     DateOnly? MeterHandoverDate = null,
     bool HasUtilityReadings = false,
-    bool HasInvoices = false)
+    bool HasInvoices = false,
+    // Rebuild 3.3: tiền cọc đang giữ làm tiền đảm bảo (hoàn khi trả phòng). 0 với hợp đồng theo luật cũ
+    // (cọc đã/sẽ trừ vào tháng đầu, xem PrepaidRent*).
+    decimal SecurityDepositAmount = 0m,
+    // Rebuild 3.6a: báo trả phòng. MoveOutNoticeDays = số ngày từ lúc báo (giờ VN) đến ngày dự kiến trả.
+    // MoveOutForfeitsDeposit = true khi trả trước ngày kết thúc mà báo trước dưới 30 ngày (FE cảnh báo khách).
+    DateOnly? PlannedMoveOutDate = null,
+    DateTime? MoveOutNoticeAtUtc = null,
+    int? MoveOutNoticeDays = null,
+    bool MoveOutForfeitsDeposit = false)
 {
     public bool HasMeterHandover => InitialElectricReading.HasValue &&
         InitialWaterReading.HasValue && MeterHandoverDate.HasValue;
@@ -48,6 +57,9 @@ public record SaveContractMeterHandoverDto(
 public record CreateContractDto(int BookingId, DateOnly StartDate, DateOnly EndDate);
 
 public record ExtendContractRequestDto(DateOnly NewEndDate);
+
+// Rebuild 3.6a: khách hoặc quản lý báo ngày dự kiến trả phòng.
+public record MoveOutNoticeDto(DateOnly PlannedMoveOutDate);
 
 public record TerminateContractRequestDto(
     bool CheckoutConfirmed,

@@ -18,6 +18,7 @@ export interface ContractDto {
   prepaidRentAmount: number
   prepaidRentApplied: number
   remainingPrepaidCredit: number
+  securityDepositAmount?: number
   propertyAddress: string | null
   lessorUserId: number | null
   lessorName: string | null
@@ -29,6 +30,16 @@ export interface ContractDto {
   hasMeterHandover?: boolean
   hasUtilityReadings?: boolean
   hasInvoices?: boolean
+  plannedMoveOutDate?: string | null
+  moveOutNoticeAtUtc?: string | null
+  moveOutNoticeDays?: number | null
+  moveOutForfeitsDeposit?: boolean
+  hasDepositSettlement?: boolean
+  isDepositSettled?: boolean
+}
+
+export interface SaveMoveOutNoticeRequest {
+  plannedMoveOutDate: string
 }
 
 export interface ContractMeterHandoverValues {
@@ -68,4 +79,112 @@ export interface ContractBillingTimelineDto {
   issuedInvoices: import("@/types/invoice").InvoiceDto[]
   plannedBillingPeriods: PlannedBillingPeriodDto[]
   hasMorePlannedPeriods: boolean
+}
+
+export type HandoverKind = "MoveIn" | "MoveOut"
+export type EquipmentCondition = "Good" | "Worn" | "Damaged" | "Missing"
+
+export interface HandoverItemDto {
+  handoverItemId: number
+  equipmentId: number
+  equipmentName: string
+  quantity: number
+  compensationValue: number
+  condition: EquipmentCondition | string
+  chargeAmount: number
+  note: string | null
+  moveInCondition: EquipmentCondition | string | null
+}
+
+export interface HandoverRecordDto {
+  handoverRecordId: number
+  kind: HandoverKind | string
+  handoverDate: string
+  note: string | null
+  recordedByName: string | null
+  recordedAtUtc: string
+  totalCharge: number
+  items: HandoverItemDto[]
+}
+
+export interface HandoverRoomEquipmentDto {
+  equipmentId: number
+  name: string
+  quantity: number
+  compensationValue: number
+}
+
+export interface ContractHandoversDto {
+  contractId: number
+  moveIn: HandoverRecordDto | null
+  moveOut: HandoverRecordDto | null
+  roomEquipments: HandoverRoomEquipmentDto[]
+}
+
+export interface SaveHandoverItemRequest {
+  equipmentId: number
+  condition: EquipmentCondition
+  chargeAmount: number
+  note?: string | null
+}
+
+export interface SaveHandoverRecordRequest {
+  handoverDate: string
+  note?: string | null
+  items: SaveHandoverItemRequest[]
+}
+
+export type ContractEvidenceKind = "MoveIn" | "MoveOut" | "SignedContract"
+
+export interface ContractEvidenceFileDto {
+  contractEvidenceFileId: number
+  kind: ContractEvidenceKind | string
+  fileName: string
+  contentType: string
+  sizeBytes: number
+  uploadedByName: string
+  uploadedByRole: string
+  uploadedAtUtc: string
+  canDelete: boolean
+  url: string | null
+  isHidden: boolean
+  hiddenReason: string | null
+}
+
+export interface ContractEvidenceListDto {
+  contractId: number
+  moveInUploadDeadline: string | null
+  canUploadMoveIn: boolean
+  canUploadMoveOut: boolean
+  canUploadSignedContract: boolean
+  files: ContractEvidenceFileDto[]
+}
+
+export interface DepositSettlementDto {
+  contractId: number
+  isSettled: boolean
+  moveOutDate: string
+  contractEndDate: string
+  depositAmount: number
+  damageCharges: number
+  damageCoveredByDeposit: number
+  outstandingDebt: number
+  retainedForDebt: number
+  forfeitedAmount: number
+  refundAmount: number
+  amountDue: number
+  earlyWithoutNotice: boolean
+  noticeDays: number | null
+  note: string | null
+  settledByName: string | null
+  settledAtUtc: string | null
+  refundConfirmedAtUtc: string | null
+  refundConfirmedByName: string | null
+  dueCollectedAtUtc: string | null
+  dueCollectedByName: string | null
+}
+
+export interface ConfirmDepositSettlementRequest {
+  outstandingDebtAcknowledged: boolean
+  note?: string | null
 }

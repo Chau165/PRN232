@@ -58,6 +58,79 @@ namespace PRN232.Infrastructure.Migrations
                     b.ToTable("Amenities");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.AuditLogs", b =>
+                {
+                    b.Property<long>("AuditLogId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("AuditLogId"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EntityId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("HttpMethod")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("NewValues")
+                        .HasColumnType("text");
+
+                    b.Property<string>("OldValues")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Role")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("StatusCode")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Succeeded")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("AuditLogId");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.HasIndex("EntityType", "EntityId");
+
+                    b.HasIndex("UserId", "CreatedAtUtc");
+
+                    b.ToTable("AuditLogs");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.BookingRefundRequests", b =>
                 {
                     b.Property<int>("BookingRefundRequestId")
@@ -240,14 +313,35 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<decimal?>("AgreedMonthlyRent")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<string>("CancellationReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("CustomerId")
                         .HasColumnType("integer");
 
                     b.Property<decimal>("DepositAmount")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<bool>("DepositAppliesToFirstMonth")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("DepositReturnedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("DepositReturnedById")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("ExpiryDate")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly?>("MoveInDate")
+                        .HasColumnType("date");
+
+                    b.Property<int?>("OccupantCount")
+                        .HasColumnType("integer");
 
                     b.Property<int>("RoomId")
                         .HasColumnType("integer");
@@ -263,6 +357,8 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.HasIndex("CustomerId");
 
+                    b.HasIndex("DepositReturnedById");
+
                     b.HasIndex("RoomId");
 
                     b.HasIndex("ViewingId")
@@ -273,6 +369,127 @@ namespace PRN232.Infrastructure.Migrations
                     b.ToTable("Bookings", null, t =>
                         {
                             t.HasCheckConstraint("CK_Bookings_AgreedMonthlyRent_Positive", "\"AgreedMonthlyRent\" IS NULL OR \"AgreedMonthlyRent\" > 0");
+
+                            t.HasCheckConstraint("CK_Bookings_OccupantCount_Range", "\"OccupantCount\" IS NULL OR \"OccupantCount\" BETWEEN 1 AND 10");
+                        });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.ContractEvidenceFiles", b =>
+                {
+                    b.Property<int>("ContractEvidenceFileId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ContractEvidenceFileId"));
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("HiddenAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("HiddenById")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("HiddenReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ObjectPath")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("UploadedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UploadedById")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ContractEvidenceFileId");
+
+                    b.HasIndex("HiddenById");
+
+                    b.HasIndex("ObjectPath")
+                        .IsUnique();
+
+                    b.HasIndex("UploadedById");
+
+                    b.HasIndex("ContractId", "Kind");
+
+                    b.ToTable("ContractEvidenceFiles", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ContractEvidenceFiles_Kind", "\"Kind\" IN ('MoveIn', 'MoveOut', 'SignedContract')");
+                        });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.ContractOccupants", b =>
+                {
+                    b.Property<int>("ContractOccupantId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ContractOccupantId"));
+
+                    b.Property<int>("AddedById")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("IdentityNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateOnly>("MoveInDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("MoveOutDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("ContractOccupantId");
+
+                    b.HasIndex("AddedById");
+
+                    b.HasIndex("ContractId");
+
+                    b.ToTable("ContractOccupants", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ContractOccupants_MoveOutAfterMoveIn", "\"MoveOutDate\" IS NULL OR \"MoveOutDate\" >= \"MoveInDate\"");
                         });
                 });
 
@@ -308,6 +525,15 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<decimal>("MonthlyRent")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<DateTime?>("MoveOutNoticeAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("MoveOutNoticeById")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly?>("PlannedMoveOutDate")
+                        .HasColumnType("date");
+
                     b.Property<int?>("ProcessedByStaffId")
                         .HasColumnType("integer");
 
@@ -328,11 +554,103 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.HasIndex("CustomerId");
 
+                    b.HasIndex("MoveOutNoticeById");
+
                     b.HasIndex("ProcessedByStaffId");
 
                     b.HasIndex("RoomId");
 
                     b.ToTable("Contracts");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.DepositSettlements", b =>
+                {
+                    b.Property<int>("DepositSettlementId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("DepositSettlementId"));
+
+                    b.Property<decimal>("AmountDue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("DamageCharges")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("DepositAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("DueCollectedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("DueCollectedById")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("EarlyWithoutNotice")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("ForfeitedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateOnly>("MoveOutDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int?>("NoticeDays")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("OutstandingDebt")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("RefundAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("RefundConfirmedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("RefundConfirmedById")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("RetainedForDebt")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("SettledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("SettledById")
+                        .HasColumnType("integer");
+
+                    b.HasKey("DepositSettlementId");
+
+                    b.HasIndex("ContractId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_DepositSettlements_ContractId");
+
+                    b.HasIndex("DueCollectedById");
+
+                    b.HasIndex("RefundConfirmedById");
+
+                    b.HasIndex("SettledById");
+
+                    b.ToTable("DepositSettlements", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_DepositSettlements_Balanced", "\"DamageCharges\" - \"AmountDue\" + \"RetainedForDebt\" + \"ForfeitedAmount\" + \"RefundAmount\" = \"DepositAmount\"");
+
+                            t.HasCheckConstraint("CK_DepositSettlements_NonNegative", "\"DepositAmount\" >= 0 AND \"DamageCharges\" >= 0 AND \"OutstandingDebt\" >= 0 AND \"RetainedForDebt\" >= 0 AND \"ForfeitedAmount\" >= 0 AND \"RefundAmount\" >= 0 AND \"AmountDue\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Equipments", b =>
@@ -343,12 +661,19 @@ namespace PRN232.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("EquipmentId"));
 
+                    b.Property<decimal>("CompensationValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<DateOnly>("InstallDate")
                         .HasColumnType("date");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
 
                     b.Property<int>("RoomId")
                         .HasColumnType("integer");
@@ -368,7 +693,110 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.HasIndex("RoomId");
 
-                    b.ToTable("Equipments");
+                    b.ToTable("Equipments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Equipments_CompensationValue_NonNegative", "\"CompensationValue\" >= 0");
+
+                            t.HasCheckConstraint("CK_Equipments_Quantity_Range", "\"Quantity\" BETWEEN 1 AND 20");
+                        });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.HandoverItems", b =>
+                {
+                    b.Property<int>("HandoverItemId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("HandoverItemId"));
+
+                    b.Property<decimal>("ChargeAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("CompensationValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Condition")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int?>("EquipmentId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("EquipmentName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("HandoverRecordId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.HasKey("HandoverItemId");
+
+                    b.HasIndex("EquipmentId");
+
+                    b.HasIndex("HandoverRecordId");
+
+                    b.ToTable("HandoverItems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_HandoverItems_Charge", "\"ChargeAmount\" >= 0 AND \"ChargeAmount\" <= \"CompensationValue\" * \"Quantity\"");
+
+                            t.HasCheckConstraint("CK_HandoverItems_Condition", "\"Condition\" IN ('Good', 'Worn', 'Damaged', 'Missing')");
+
+                            t.HasCheckConstraint("CK_HandoverItems_Quantity_Range", "\"Quantity\" BETWEEN 1 AND 20");
+                        });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.HandoverRecords", b =>
+                {
+                    b.Property<int>("HandoverRecordId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("HandoverRecordId"));
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("HandoverDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("RecordedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("RecordedById")
+                        .HasColumnType("integer");
+
+                    b.HasKey("HandoverRecordId");
+
+                    b.HasIndex("RecordedById");
+
+                    b.HasIndex("ContractId", "Kind")
+                        .IsUnique()
+                        .HasDatabaseName("UX_HandoverRecords_ContractId_Kind");
+
+                    b.ToTable("HandoverRecords", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_HandoverRecords_Kind", "\"Kind\" IN ('MoveIn', 'MoveOut')");
+                        });
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.IdentityDocuments", b =>
@@ -1212,7 +1640,15 @@ namespace PRN232.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("ProvinceCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Ward")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("WardCode")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -1439,6 +1875,15 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<decimal>("AreaSqm")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("Floor")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MaxOccupants")
+                        .HasColumnType("integer");
+
                     b.Property<int>("PropertyId")
                         .HasColumnType("integer");
 
@@ -1457,7 +1902,10 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.HasIndex("RoomTypeId");
 
-                    b.ToTable("Rooms");
+                    b.ToTable("Rooms", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Rooms_MaxOccupants_Range", "\"MaxOccupants\" BETWEEN 1 AND 10");
+                        });
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Service", b =>
@@ -1705,6 +2153,11 @@ namespace PRN232.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("PRN232.Domain.Entities.Users", "DepositReturnedBy")
+                        .WithMany()
+                        .HasForeignKey("DepositReturnedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PRN232.Domain.Entities.Rooms", "Room")
                         .WithMany("Bookings")
                         .HasForeignKey("RoomId")
@@ -1718,9 +2171,56 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.Navigation("Customer");
 
+                    b.Navigation("DepositReturnedBy");
+
                     b.Navigation("Room");
 
                     b.Navigation("Viewing");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.ContractEvidenceFiles", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Contracts", "Contract")
+                        .WithMany()
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "HiddenBy")
+                        .WithMany()
+                        .HasForeignKey("HiddenById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "UploadedBy")
+                        .WithMany()
+                        .HasForeignKey("UploadedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Contract");
+
+                    b.Navigation("HiddenBy");
+
+                    b.Navigation("UploadedBy");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.ContractOccupants", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Users", "AddedBy")
+                        .WithMany()
+                        .HasForeignKey("AddedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Contracts", "Contract")
+                        .WithMany()
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AddedBy");
+
+                    b.Navigation("Contract");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Contracts", b =>
@@ -1735,6 +2235,11 @@ namespace PRN232.Infrastructure.Migrations
                         .HasForeignKey("CustomerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "MoveOutNoticeBy")
+                        .WithMany()
+                        .HasForeignKey("MoveOutNoticeById")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("PRN232.Domain.Entities.Users", "ProcessedByStaff")
                         .WithMany("ContractsProcessed")
@@ -1751,9 +2256,44 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.Navigation("Customer");
 
+                    b.Navigation("MoveOutNoticeBy");
+
                     b.Navigation("ProcessedByStaff");
 
                     b.Navigation("Room");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.DepositSettlements", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Contracts", "Contract")
+                        .WithMany()
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "DueCollectedBy")
+                        .WithMany()
+                        .HasForeignKey("DueCollectedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "RefundConfirmedBy")
+                        .WithMany()
+                        .HasForeignKey("RefundConfirmedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "SettledBy")
+                        .WithMany()
+                        .HasForeignKey("SettledById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Contract");
+
+                    b.Navigation("DueCollectedBy");
+
+                    b.Navigation("RefundConfirmedBy");
+
+                    b.Navigation("SettledBy");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Equipments", b =>
@@ -1765,6 +2305,43 @@ namespace PRN232.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Room");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.HandoverItems", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Equipments", "Equipment")
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("PRN232.Domain.Entities.HandoverRecords", "HandoverRecord")
+                        .WithMany("Items")
+                        .HasForeignKey("HandoverRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Equipment");
+
+                    b.Navigation("HandoverRecord");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.HandoverRecords", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Contracts", "Contract")
+                        .WithMany()
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "RecordedBy")
+                        .WithMany()
+                        .HasForeignKey("RecordedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Contract");
+
+                    b.Navigation("RecordedBy");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.IdentityDocuments", b =>
@@ -2329,6 +2906,11 @@ namespace PRN232.Infrastructure.Migrations
             modelBuilder.Entity("PRN232.Domain.Entities.Equipments", b =>
                 {
                     b.Navigation("MaintenanceRequests");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.HandoverRecords", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Invoices", b =>

@@ -9,4 +9,5 @@ public interface IBookingService
     Task<BookingDto?> GetByIdAsync(int id, int userId, string role);
     Task<BookingDto> PayAsync(int id, PayBookingDto dto, int customerId);
     Task<BookingDto> CancelAsync(int id, int userId, string role);
+    Task<BookingDto> ConfirmDepositReturnedAsync(int id, int userId, string role);
 }

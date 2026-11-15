@@ -19,7 +19,20 @@ public class Bookings
         get; set;
     }
     public decimal? AgreedMonthlyRent { get; set; }
+    // Rebuild 3.3 (PLAN D3 bước 4): điều khoản cọc khách được báo LÚC ĐẶT CỌC. true = luật cũ (cọc trừ vào
+    // tiền phòng tháng đầu, mọi booking trước rebuild); false = cọc là tiền đảm bảo, hoàn khi trả phòng.
+    public bool DepositAppliesToFirstMonth { get; set; }
     public int? ViewingId { get; set; }
+    // Rebuild 3.1 (PLAN D3 bước 2). NULL ở booking tạo trước rebuild.
+    public DateOnly? MoveInDate { get; set; }
+    public int? OccupantCount { get; set; }
+    // Rebuild 3.2 (PLAN D3 bước 3): ai hủy quyết định cọc mất hay phải hoàn. NULL ở booking hủy trước rebuild.
+    public string? CancellationReason { get; set; }
+    public DateTime? CancelledAtUtc { get; set; }
+    // Rebuild 3.2b: hệ thống không chuyển tiền hoàn; quản lý trả tiền ngoài hệ thống rồi xác nhận ở đây.
+    public DateTime? DepositReturnedAtUtc { get; set; }
+    public int? DepositReturnedById { get; set; }
+    public Users? DepositReturnedBy { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime ExpiryDate
     {

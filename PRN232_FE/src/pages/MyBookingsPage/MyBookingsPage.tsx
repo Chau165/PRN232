@@ -10,10 +10,21 @@ import { availableRoomsPath, routes } from "@/constants/routes"
 import { useBookings } from "@/hooks/useBookings"
 import { useViewingSchedules } from "@/hooks/useViewingSchedules"
 import { useAuth } from "@/auth/AuthContext"
-import { createBooking } from "@/services/bookingService"
-import { bookingErrorMessage, bookingStatusDisplay, formatDateTime, isBookingExpired } from "@/utils/bookingDisplay"
+import {
+  bookingErrorMessage,
+  bookingStatusDisplay,
+  formatBookingCancellationReason,
+  formatBookingDepositTermText,
+  formatBookingMoveInSummary,
+  formatDateTime,
+  formatHoldUntilDate,
+  isBookingExpired,
+} from "@/utils/bookingDisplay"
 import { formatVnd } from "@/utils/publicFormatting"
 import { viewingStatusDisplay, viewingTimeLabel } from "@/utils/viewingDisplay"
+
+// C10: Ẩn chức năng xin hoàn cọc qua hệ thống (giữ nguyên code để có thể bật lại khi cần).
+const ONLINE_REFUND_REQUESTS_ENABLED = false
 
 export default function MyBookingsPage() {
   const { bookings, loading, error, retry, cancel: cancelById, cancellingId } = useBookings()
@@ -22,10 +33,18 @@ export default function MyBookingsPage() {
 
   const cancel = async (booking: BookingDto) => {
     if (cancellingId !== null) return
-    if (!window.confirm(`Huỷ giữ phòng ${booking.roomCode}?`)) return
+    const isDeposited = booking.status === "Deposited"
+    const confirmMessage = isDeposited
+      ? `Nếu hủy, bạn sẽ mất tiền cọc ${formatVnd(booking.depositAmount)}. Bạn chắc chắn?`
+      : `Huỷ giữ phòng ${booking.roomCode}?`
+    if (!window.confirm(confirmMessage)) return
     try {
       const cancelled = await cancelById(booking.bookingId)
-      setToast(`Đã huỷ giữ phòng ${cancelled.roomCode}.`)
+      setToast(
+        isDeposited
+          ? `Đã hủy đặt cọc phòng ${cancelled.roomCode}.`
+          : `Đã huỷ giữ phòng ${cancelled.roomCode}.`,
+      )
     } catch (cancelError) {
       setToast(bookingErrorMessage(cancelError, "Booking vừa đổi trạng thái, vui lòng tải lại trang."))
     }
@@ -75,6 +94,9 @@ export default function MyBookingsPage() {
                       {booking.propertyName}
                     </h2>
                     <p className="mt-1 text-[13px] text-slate-500">Phòng {booking.roomCode}</p>
+                    {formatBookingMoveInSummary(booking) && (
+                      <p className="mt-1 text-[12px] font-medium text-slate-600">{formatBookingMoveInSummary(booking)}</p>
+                    )}
                   </div>
                   <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
                 </div>
@@ -95,17 +117,84 @@ export default function MyBookingsPage() {
                 )}
                 {booking.status === "Deposited" && booking.contractId === null && (
                   <p className="mt-3 text-[13px] text-slate-500">
-                    {booking.holdUntilUtc ? `Phòng được giữ đến ${formatDateTime(booking.holdUntilUtc)}` : "Phòng được giữ"} (7 ngày kể từ khi đặt cọc).
+                    {booking.holdUntilUtc
+                      ? `Phòng được giữ đến ${formatDateTime(booking.holdUntilUtc)} (${formatHoldUntilDate(booking.holdUntilUtc)}).`
+                      : "Phòng được giữ để lập hợp đồng."}{" "}
                     Nếu chưa lập hợp đồng khi hết hạn, chủ trọ có thể mở lại phòng và tiền cọc không được hoàn.
                   </p>
                 )}
+                {(booking.status === "Pending" || booking.status === "Deposited") && (
+                  <p className="mt-2 text-[13px] text-slate-500">
+                    {formatBookingDepositTermText(booking)}
+                  </p>
+                )}
+                {booking.status === "Cancelled" && formatBookingCancellationReason(booking.cancellationReason) && (
+                  <p className="mt-3 text-[13px] font-medium text-slate-600">
+                    Lý do hủy: {formatBookingCancellationReason(booking.cancellationReason)}
+                  </p>
+                )}
+                {booking.depositReturnedAtUtc ? (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 text-[13px] text-slate-800">
+                    <p className="font-semibold text-emerald-800">
+                      Quản lý đã xác nhận hoàn {formatVnd(booking.depositAmount)} lúc {formatDateTime(booking.depositReturnedAtUtc)}
+                      {booking.depositReturnedByName ? ` — ${booking.depositReturnedByName}` : ""}.
+                    </p>
+                    <p className="mt-1 text-slate-600">Nếu bạn chưa nhận được, hãy liên hệ quản lý khu trọ.</p>
+                  </div>
+                ) : booking.depositRefundDue ? (
+                  <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50/70 p-4 text-[13px] text-slate-800">
+                    <p className="font-semibold text-[#087775]">
+                      Bạn được hoàn 100% tiền cọc {formatVnd(booking.depositAmount)}. Liên hệ để nhận lại tiền:
+                    </p>
+                    {booking.contacts && booking.contacts.length > 0 && (
+                      <ul className="mt-2 space-y-1.5">
+                        {booking.contacts.map((contact, idx) => (
+                          <li key={`${contact.fullName}-${idx}`} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span className="font-semibold text-slate-900">
+                              {contact.fullName}
+                              {contact.role === "Manager" ? " (Quản lý)" : contact.role === "Owner" ? " (Chủ trọ)" : ""}
+                            </span>
+                            {contact.phoneNumber && (
+                              <a
+                                href={`tel:${contact.phoneNumber}`}
+                                className="font-medium text-[#087775] underline underline-offset-2"
+                              >
+                                Gọi/Zalo: {contact.phoneNumber}
+                              </a>
+                            )}
+                            {contact.email && (
+                              <a
+                                href={`mailto:${contact.email}`}
+                                className="font-medium text-[#087775] underline underline-offset-2"
+                              >
+                                {contact.email}
+                              </a>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ) : null}
                 {booking.refundStatus && <div className="mt-3"><StatusBadge tone={refundDisplay(booking.refundStatus).tone}>{refundDisplay(booking.refundStatus).label}</StatusBadge></div>}
-                {(booking.status === "Deposited" && booking.contractId === null || booking.refundStatus) && <button type="button"
+                {(Boolean(booking.refundStatus) || (ONLINE_REFUND_REQUESTS_ENABLED && booking.status === "Deposited" && booking.contractId === null)) && <button type="button"
                   onClick={() => setOpenedRefund(value => value === booking.bookingId ? null : booking.bookingId)}
                   aria-expanded={openedRefund === booking.bookingId} className="mt-4 rounded-lg border border-[#087775] px-4 py-2.5 text-sm font-semibold text-[#087775]">
-                  {openedRefund === booking.bookingId ? "Đóng hoàn cọc" : booking.canRequestRefund ? "Xin hoàn cọc" : "Theo dõi hoàn cọc"}
+                  {openedRefund === booking.bookingId ? "Đóng hoàn cọc" : (ONLINE_REFUND_REQUESTS_ENABLED && booking.canRequestRefund) ? "Xin hoàn cọc" : "Theo dõi hoàn cọc"}
                 </button>}
-                {openedRefund === booking.bookingId && <BookingRefundPanel booking={booking} onChanged={retry} />}
+                {openedRefund === booking.bookingId && <BookingRefundPanel booking={{ ...booking, canRequestRefund: ONLINE_REFUND_REQUESTS_ENABLED && booking.canRequestRefund }} onChanged={retry} />}
+                {booking.status === "Deposited" && booking.contractId === null && !refundBlocksContract(booking.refundStatus) && (
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => cancel(booking)}
+                      disabled={cancellingId !== null}
+                      className="rounded-lg bg-rose-50 px-4 py-2.5 text-[13px] font-bold text-rose-700 disabled:opacity-60"
+                    >
+                      {cancellingId === booking.bookingId ? "Đang hủy..." : "Hủy đặt cọc"}
+                    </button>
+                  </div>
+                )}
                 {booking.contractId !== null && (
                   <Link to={routes.myContracts} className="mt-4 inline-block text-[13px] font-semibold text-[#087775] hover:underline">
                     Đã lập hợp đồng — xem trong Hợp đồng của tôi
@@ -153,21 +242,11 @@ function MyViewings() {
     ? Number(requestedViewingId)
     : null
 
-  async function bookSelectedRoom(viewing: (typeof viewings)[number]) {
+  function bookSelectedRoom(viewing: (typeof viewings)[number]) {
     if (!accessToken || viewing.roomId === null || bookingViewingId !== null) return
     setBookingViewingId(viewing.viewingId)
     setBookingError("")
-    try {
-      const booking = await createBooking(accessToken, {
-        roomId: viewing.roomId,
-        viewingId: viewing.viewingId,
-      })
-      navigate(`${routes.deposit}?bookingId=${booking.bookingId}`)
-    } catch (cause) {
-      setBookingError(bookingErrorMessage(cause, "Phòng vừa thay đổi trạng thái; hãy tải lại lịch trước khi đặt cọc."))
-    } finally {
-      setBookingViewingId(null)
-    }
+    navigate(`${routes.deposit}?roomId=${viewing.roomId}&viewingId=${viewing.viewingId}`)
   }
 
   useEffect(() => {

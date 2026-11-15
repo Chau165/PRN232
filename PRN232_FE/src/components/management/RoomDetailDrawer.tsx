@@ -1,6 +1,7 @@
 import ManagementDetailDrawer from "@/components/management/ManagementDetailDrawer"
 import RoomImagesManager from "@/components/management/RoomImagesManager"
 import type { ManagementRoomDto } from "@/types/managementRoom"
+import { formatRoomFloor } from "@/utils/roomValidation"
 
 type RoomDetailDrawerProps = {
   room: ManagementRoomDto
@@ -42,6 +43,24 @@ export default function RoomDetailDrawer({
         <p>
           <span className="text-slate-400">Diện tích:</span>{" "}
           <strong>{room.areaSqm} m²</strong>
+        </p>
+        <p>
+          <span className="text-slate-400">Số người tối đa:</span>{" "}
+          <strong>
+            {room.maxOccupants !== undefined && room.maxOccupants !== null
+              ? `${room.maxOccupants} người`
+              : "Chưa cập nhật"}
+          </strong>
+        </p>
+        <p>
+          <span className="text-slate-400">Tầng:</span>{" "}
+          <strong>{formatRoomFloor(room.floor) ?? "Chưa cập nhật"}</strong>
+        </p>
+        <p>
+          <span className="text-slate-400">Mô tả:</span>{" "}
+          <strong className="whitespace-pre-line">
+            {room.description?.trim() ? room.description : "Chưa có mô tả"}
+          </strong>
         </p>
         <p>
           <span className="text-slate-400">Trạng thái:</span>{" "}

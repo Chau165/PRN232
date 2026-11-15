@@ -107,10 +107,6 @@ public sealed class PropertyCreationTests
             new UpdatePropertyDto(
                 "Nhà trọ mới",
                 "12 Đường số 5",
-                "Phường Ba Đình",
-                string.Empty,
-                "Thành phố Hà Nội",
-                null,
                 "01",
                 "00004"),
             requestingUserId: 10,

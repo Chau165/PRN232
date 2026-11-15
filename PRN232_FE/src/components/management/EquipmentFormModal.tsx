@@ -1,12 +1,36 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { ApiError } from "@/api/apiClient"
 import type { ManagementRoomDto } from "@/types/managementRoom"
 import type { EquipmentDto, EquipmentWriteRequest } from "@/types/equipment"
+import {
+  EQUIPMENT_COMPENSATION_MAX,
+  EQUIPMENT_COMPENSATION_MIN,
+  EQUIPMENT_COMPENSATION_STEP,
+  EQUIPMENT_QUANTITY_MAX,
+  EQUIPMENT_QUANTITY_MIN,
+  getVietnamTodayIsoDate,
+  validateEquipmentForm,
+  type EquipmentFormField,
+} from "@/utils/equipmentValidation"
+import { splitValidationErrors } from "@/utils/roomValidation"
+
+const EQUIPMENT_FORM_FIELDS: readonly EquipmentFormField[] = [
+  "roomId",
+  "name",
+  "quantity",
+  "compensationValue",
+  "installDate",
+  "warrantyExpiry",
+  "supplier",
+  "status",
+]
 
 type EquipmentFormModalProps = {
   mode: "create" | "edit"
   initialEquipment?: EquipmentDto | null
   room: ManagementRoomDto
   saving: boolean
+  serverError?: unknown
   onClose: () => void
   onSubmit: (
     request: Omit<EquipmentWriteRequest, "roomId">,
@@ -15,6 +39,8 @@ type EquipmentFormModalProps = {
 
 type FormValues = {
   name: string
+  quantity: string
+  compensationValue: string
   installDate: string
   warrantyExpiry: string
   supplier: string
@@ -26,6 +52,15 @@ function valuesFromEquipment(
 ): FormValues {
   return {
     name: equipment?.name ?? "",
+    quantity:
+      equipment?.quantity !== undefined && equipment?.quantity !== null
+        ? String(equipment.quantity)
+        : "",
+    compensationValue:
+      equipment?.compensationValue !== undefined &&
+      equipment?.compensationValue !== null
+        ? String(equipment.compensationValue)
+        : "",
     installDate: equipment?.installDate ?? "",
     warrantyExpiry: equipment?.warrantyExpiry ?? "",
     supplier: equipment?.supplier ?? "",
@@ -38,54 +73,119 @@ export default function EquipmentFormModal({
   initialEquipment,
   room,
   saving,
+  serverError,
   onClose,
   onSubmit,
 }: EquipmentFormModalProps) {
   const [values, setValues] = useState<FormValues>(() =>
     valuesFromEquipment(initialEquipment),
   )
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<EquipmentFormField, string>>
+  >({})
   const [formError, setFormError] = useState("")
+  const today = getVietnamTodayIsoDate()
+
+  const applyServerError = useCallback((cause: unknown) => {
+    if (!cause) return
+    if (cause instanceof ApiError && cause.status === 400) {
+      const { fieldErrors: mapped, generalError } = splitValidationErrors(
+        cause.validationErrors,
+        EQUIPMENT_FORM_FIELDS,
+        cause.message,
+      )
+      setFieldErrors(mapped)
+      setFormError(generalError)
+      return
+    }
+    setFieldErrors({})
+    if (cause instanceof ApiError) {
+      if (cause.status === 403) {
+        setFormError("Bạn không có quyền thực hiện thao tác này.")
+        return
+      }
+      setFormError(cause.message || "Không thể lưu thiết bị.")
+      return
+    }
+    setFormError(
+      cause instanceof Error ? cause.message : "Không thể lưu thiết bị.",
+    )
+  }, [])
 
   useEffect(() => {
     setValues(valuesFromEquipment(initialEquipment))
+    setFieldErrors({})
     setFormError("")
   }, [initialEquipment, mode])
 
+  useEffect(() => {
+    if (serverError) {
+      applyServerError(serverError)
+    }
+  }, [applyServerError, serverError])
+
   function updateValue(field: keyof FormValues, value: string) {
     setValues((current) => ({ ...current, [field]: value }))
+    setFieldErrors((current) => {
+      if (!current[field] && !(field === "installDate" && current.warrantyExpiry)) {
+        return current
+      }
+      const next = { ...current }
+      delete next[field]
+      if (field === "installDate") delete next.warrantyExpiry
+      return next
+    })
+    setFormError("")
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const nextFieldErrors = validateEquipmentForm(
+      {
+        mode,
+        roomId: room.roomId,
+        name: values.name,
+        quantity: values.quantity,
+        compensationValue: values.compensationValue,
+        installDate: values.installDate,
+        warrantyExpiry: values.warrantyExpiry,
+        supplier: values.supplier,
+        status: values.status,
+      },
+      today,
+    )
+
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      setFormError("")
+      return
+    }
+
     const name = values.name.trim()
     const supplier = values.supplier.trim()
+    const quantity =
+      values.quantity.trim() === "" ? null : Number(values.quantity)
+    const compensationValue =
+      values.compensationValue.trim() === ""
+        ? null
+        : Number(values.compensationValue)
 
-    if (!name) {
-      setFormError("Tên thiết bị không được để trống.")
-      return
-    }
-    if (!values.installDate || !values.warrantyExpiry) {
-      setFormError("Vui lòng nhập ngày lắp đặt và hạn bảo hành.")
-      return
-    }
-    if (values.warrantyExpiry < values.installDate) {
-      setFormError("Hạn bảo hành phải từ ngày lắp đặt trở đi.")
-      return
-    }
-    if (!supplier) {
-      setFormError("Nhà cung cấp không được để trống.")
-      return
-    }
-
+    setFieldErrors({})
     setFormError("")
     const request: Omit<EquipmentWriteRequest, "roomId"> = {
       name,
+      ...(quantity !== null ? { quantity } : {}),
+      ...(compensationValue !== null ? { compensationValue } : {}),
       installDate: values.installDate,
       warrantyExpiry: values.warrantyExpiry,
       supplier,
       status: values.status,
     }
-    await onSubmit(request)
+    try {
+      await onSubmit(request)
+    } catch (cause) {
+      applyServerError(cause)
+    }
   }
 
   const title =
@@ -123,75 +223,176 @@ export default function EquipmentFormModal({
           </button>
         </div>
 
-        <form onSubmit={submit} className="mt-6 space-y-4">
+        <form onSubmit={submit} noValidate className="mt-6 space-y-4">
             {formError && (
               <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
                 {formError}
               </p>
             )}
-            <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
-              Phòng
-              <input
-                aria-label="Phòng"
-                value={room.roomCode}
-                readOnly
-                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-normal"
-              />
-              <span className="text-xs font-normal text-slate-500">
-                {room.propertyName}
-              </span>
-            </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
-              Tên thiết bị
-              <input
-                aria-label="Tên thiết bị"
-                value={values.name}
-                onChange={(event) => updateValue("name", event.target.value)}
-                className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
-              />
-            </label>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div>
               <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
-                Ngày lắp đặt
+                Phòng
                 <input
-                  aria-label="Ngày lắp đặt"
-                  type="date"
-                  value={values.installDate}
-                  onChange={(event) => updateValue("installDate", event.target.value)}
-                  className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                  aria-label="Phòng"
+                  value={room.roomCode}
+                  readOnly
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-normal"
                 />
+                <span className="text-xs font-normal text-slate-500">
+                  {room.propertyName}
+                </span>
               </label>
-              <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
-                Hạn bảo hành
-                <input
-                  aria-label="Hạn bảo hành"
-                  type="date"
-                  value={values.warrantyExpiry}
-                  onChange={(event) => updateValue("warrantyExpiry", event.target.value)}
-                  className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
-                />
-              </label>
+              {fieldErrors.roomId && (
+                <p role="alert" className="mt-1 text-xs text-rose-600">
+                  {fieldErrors.roomId}
+                </p>
+              )}
             </div>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
-              Nhà cung cấp
-              <input
-                aria-label="Nhà cung cấp"
-                value={values.supplier}
-                onChange={(event) => updateValue("supplier", event.target.value)}
-                className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
-              Trạng thái
-              <select
-                aria-label="Trạng thái"
-                value={values.status}
-                onChange={(event) => updateValue("status", event.target.value)}
-                className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
-              >
-                <option value="Operational">Đang hoạt động</option>
-              </select>
-            </label>
+            <div>
+              <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                Tên thiết bị
+                <input
+                  aria-label="Tên thiết bị"
+                  aria-invalid={Boolean(fieldErrors.name)}
+                  value={values.name}
+                  onChange={(event) => updateValue("name", event.target.value)}
+                  className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                />
+              </label>
+              {fieldErrors.name && (
+                <p role="alert" className="mt-1 text-xs text-rose-600">
+                  {fieldErrors.name}
+                </p>
+              )}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                  Số lượng
+                  <input
+                    aria-label="Số lượng"
+                    aria-invalid={Boolean(fieldErrors.quantity)}
+                    type="number"
+                    min={EQUIPMENT_QUANTITY_MIN}
+                    max={EQUIPMENT_QUANTITY_MAX}
+                    step={1}
+                    placeholder="1"
+                    value={values.quantity}
+                    onChange={(event) =>
+                      updateValue("quantity", event.target.value)
+                    }
+                    className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                  />
+                </label>
+                {fieldErrors.quantity && (
+                  <p role="alert" className="mt-1 text-xs text-rose-600">
+                    {fieldErrors.quantity}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                  Giá trị bồi thường (đ/cái)
+                  <input
+                    aria-label="Giá trị bồi thường (đ/cái)"
+                    aria-invalid={Boolean(fieldErrors.compensationValue)}
+                    type="number"
+                    min={EQUIPMENT_COMPENSATION_MIN}
+                    max={EQUIPMENT_COMPENSATION_MAX}
+                    step={EQUIPMENT_COMPENSATION_STEP}
+                    placeholder="0"
+                    value={values.compensationValue}
+                    onChange={(event) =>
+                      updateValue("compensationValue", event.target.value)
+                    }
+                    className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                  />
+                </label>
+                <p className="mt-1 text-xs text-slate-500">
+                  Giá trị ghi trong biên bản bàn giao; không áp dụng cho hao mòn tự nhiên.
+                </p>
+                {fieldErrors.compensationValue && (
+                  <p role="alert" className="mt-1 text-xs text-rose-600">
+                    {fieldErrors.compensationValue}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                  Ngày lắp đặt
+                  <input
+                    aria-label="Ngày lắp đặt"
+                    aria-invalid={Boolean(fieldErrors.installDate)}
+                    type="date"
+                    max={today}
+                    value={values.installDate}
+                    onChange={(event) => updateValue("installDate", event.target.value)}
+                    className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                  />
+                </label>
+                {fieldErrors.installDate && (
+                  <p role="alert" className="mt-1 text-xs text-rose-600">
+                    {fieldErrors.installDate}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                  Hạn bảo hành
+                  <input
+                    aria-label="Hạn bảo hành"
+                    aria-invalid={Boolean(fieldErrors.warrantyExpiry)}
+                    type="date"
+                    value={values.warrantyExpiry}
+                    onChange={(event) => updateValue("warrantyExpiry", event.target.value)}
+                    className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                  />
+                </label>
+                {fieldErrors.warrantyExpiry && (
+                  <p role="alert" className="mt-1 text-xs text-rose-600">
+                    {fieldErrors.warrantyExpiry}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                Nhà cung cấp
+                <input
+                  aria-label="Nhà cung cấp"
+                  aria-invalid={Boolean(fieldErrors.supplier)}
+                  value={values.supplier}
+                  onChange={(event) => updateValue("supplier", event.target.value)}
+                  className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                />
+              </label>
+              {fieldErrors.supplier && (
+                <p role="alert" className="mt-1 text-xs text-rose-600">
+                  {fieldErrors.supplier}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+                Trạng thái
+                <select
+                  aria-label="Trạng thái"
+                  aria-invalid={Boolean(fieldErrors.status)}
+                  value={values.status}
+                  onChange={(event) => updateValue("status", event.target.value)}
+                  className="rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                >
+                  <option value="Operational">Đang hoạt động</option>
+                </select>
+              </label>
+              {fieldErrors.status && (
+                <p role="alert" className="mt-1 text-xs text-rose-600">
+                  {fieldErrors.status}
+                </p>
+              )}
+            </div>
             <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
               <button
                 type="button"

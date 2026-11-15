@@ -124,6 +124,12 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         }
     }
     public DbSet<PropertyRoomTypes> PropertyRoomTypes => Set<PropertyRoomTypes>();
+    public DbSet<HandoverRecords> HandoverRecords => Set<HandoverRecords>();
+    public DbSet<HandoverItems> HandoverItems => Set<HandoverItems>();
+    public DbSet<ContractEvidenceFiles> ContractEvidenceFiles => Set<ContractEvidenceFiles>();
+    public DbSet<DepositSettlements> DepositSettlements => Set<DepositSettlements>();
+    public DbSet<AuditLogs> AuditLogs => Set<AuditLogs>();
+    public DbSet<ContractOccupants> ContractOccupants => Set<ContractOccupants>();
     public DbSet<Equipments> Equipments
     {
         get
@@ -285,6 +291,9 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         });
         modelBuilder.Entity<Service>().HasKey(x => x.ServiceId);
         modelBuilder.Entity<Rooms>().HasKey(x => x.RoomId);
+        modelBuilder.Entity<Rooms>().ToTable("Rooms", table => table.HasCheckConstraint(
+            "CK_Rooms_MaxOccupants_Range",
+            "\"MaxOccupants\" BETWEEN 1 AND 10"));
         modelBuilder.Entity<Rooms>()
             .HasAlternateKey(room => new { room.PropertyId, room.RoomTypeId, room.RoomId });
         modelBuilder.Entity<Rooms>()
@@ -295,6 +304,15 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         modelBuilder.Entity<RoomImages>().HasKey(x => x.RoomImageId);
         modelBuilder.Entity<Amenities>().HasKey(x => x.AmenityId);
         modelBuilder.Entity<Equipments>().HasKey(x => x.EquipmentId);
+        modelBuilder.Entity<Equipments>(entity =>
+        {
+            entity.Property(equipment => equipment.CompensationValue).HasPrecision(18, 2);
+            entity.ToTable("Equipments", table =>
+            {
+                table.HasCheckConstraint("CK_Equipments_Quantity_Range", "\"Quantity\" BETWEEN 1 AND 20");
+                table.HasCheckConstraint("CK_Equipments_CompensationValue_NonNegative", "\"CompensationValue\" >= 0");
+            });
+        });
         modelBuilder.Entity<Bookings>().HasKey(x => x.BookingId);
         modelBuilder.Entity<Bookings>(entity =>
         {
@@ -302,13 +320,141 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
                 .IsUnique()
                 .HasDatabaseName("UX_Bookings_ViewingId")
                 .HasFilter("\"ViewingId\" IS NOT NULL");
-            entity.ToTable("Bookings", table => table.HasCheckConstraint(
-                "CK_Bookings_AgreedMonthlyRent_Positive",
-                "\"AgreedMonthlyRent\" IS NULL OR \"AgreedMonthlyRent\" > 0"));
+            entity.ToTable("Bookings", table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_Bookings_AgreedMonthlyRent_Positive",
+                    "\"AgreedMonthlyRent\" IS NULL OR \"AgreedMonthlyRent\" > 0");
+                table.HasCheckConstraint(
+                    "CK_Bookings_OccupantCount_Range",
+                    "\"OccupantCount\" IS NULL OR \"OccupantCount\" BETWEEN 1 AND 10");
+            });
             entity.HasOne(booking => booking.Viewing).WithMany()
                 .HasForeignKey(booking => booking.ViewingId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(booking => booking.DepositReturnedBy).WithMany()
+                .HasForeignKey(booking => booking.DepositReturnedById).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<Contracts>().HasKey(x => x.ContractId);
+        modelBuilder.Entity<Contracts>()
+            .HasOne(contract => contract.MoveOutNoticeBy).WithMany()
+            .HasForeignKey(contract => contract.MoveOutNoticeById).OnDelete(DeleteBehavior.Restrict);
+        // Rebuild 3.5: biên bản bàn giao. Không cho xóa hợp đồng/người lập khi còn biên bản (giữ bằng chứng).
+        modelBuilder.Entity<HandoverRecords>(entity =>
+        {
+            entity.HasKey(record => record.HandoverRecordId);
+            entity.Property(record => record.Kind).HasMaxLength(20);
+            entity.Property(record => record.Note).HasMaxLength(1000);
+            entity.HasIndex(record => new { record.ContractId, record.Kind })
+                .IsUnique()
+                .HasDatabaseName("UX_HandoverRecords_ContractId_Kind");
+            entity.HasOne(record => record.Contract).WithMany()
+                .HasForeignKey(record => record.ContractId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(record => record.RecordedBy).WithMany()
+                .HasForeignKey(record => record.RecordedById).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("HandoverRecords", table => table.HasCheckConstraint(
+                "CK_HandoverRecords_Kind", "\"Kind\" IN ('MoveIn', 'MoveOut')"));
+        });
+        // Rebuild 4.1: người ở cùng. CCCD mã hóa bằng cùng khóa với IdentityDocuments.CCCDNumber.
+        modelBuilder.Entity<ContractOccupants>(entity =>
+        {
+            entity.HasKey(occupant => occupant.ContractOccupantId);
+            entity.Property(occupant => occupant.FullName).HasMaxLength(100);
+            entity.Property(occupant => occupant.PhoneNumber).HasMaxLength(20);
+            entity.Property(occupant => occupant.IdentityNumber)
+                .HasConversion(CccdProtection.CreateConverter(_dataProtectionProvider));
+            entity.Property(occupant => occupant.Note).HasMaxLength(500);
+            entity.HasIndex(occupant => occupant.ContractId);
+            entity.HasOne(occupant => occupant.Contract).WithMany()
+                .HasForeignKey(occupant => occupant.ContractId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(occupant => occupant.AddedBy).WithMany()
+                .HasForeignKey(occupant => occupant.AddedById).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("ContractOccupants", table => table.HasCheckConstraint(
+                "CK_ContractOccupants_MoveOutAfterMoveIn", "\"MoveOutDate\" IS NULL OR \"MoveOutDate\" >= \"MoveInDate\""));
+        });
+        // Rebuild 5.1: nhật ký thao tác. Chỉ mục theo các bộ lọc của trang Admin (mới nhất trước).
+        modelBuilder.Entity<AuditLogs>(entity =>
+        {
+            entity.HasKey(log => log.AuditLogId);
+            entity.Property(log => log.Role).HasMaxLength(50);
+            entity.Property(log => log.Action).HasMaxLength(150);
+            entity.Property(log => log.HttpMethod).HasMaxLength(10);
+            entity.Property(log => log.Path).HasMaxLength(300);
+            entity.Property(log => log.EntityType).HasMaxLength(100);
+            entity.Property(log => log.EntityId).HasMaxLength(50);
+            entity.Property(log => log.IpAddress).HasMaxLength(64);
+            entity.Property(log => log.CorrelationId).HasMaxLength(100);
+            entity.HasIndex(log => log.CreatedAtUtc);
+            entity.HasIndex(log => new { log.UserId, log.CreatedAtUtc });
+            entity.HasIndex(log => new { log.EntityType, log.EntityId });
+        });
+        modelBuilder.Entity<DepositSettlements>(entity =>
+        {
+            entity.HasKey(settlement => settlement.DepositSettlementId);
+            entity.HasIndex(settlement => settlement.ContractId).IsUnique()
+                .HasDatabaseName("UX_DepositSettlements_ContractId");
+            foreach (var amount in new[] { "DepositAmount", "DamageCharges", "OutstandingDebt", "RetainedForDebt",
+                         "ForfeitedAmount", "RefundAmount", "AmountDue" })
+            {
+                entity.Property<decimal>(amount).HasPrecision(18, 2);
+            }
+            entity.Property(settlement => settlement.Note).HasMaxLength(1000);
+            entity.HasOne(settlement => settlement.Contract).WithMany()
+                .HasForeignKey(settlement => settlement.ContractId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(settlement => settlement.SettledBy).WithMany()
+                .HasForeignKey(settlement => settlement.SettledById).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(settlement => settlement.RefundConfirmedBy).WithMany()
+                .HasForeignKey(settlement => settlement.RefundConfirmedById).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(settlement => settlement.DueCollectedBy).WithMany()
+                .HasForeignKey(settlement => settlement.DueCollectedById).OnDelete(DeleteBehavior.Restrict);
+            // Mọi đồng cọc đều có chỗ đi: bù bồi thường + giữ bù nợ + mất + hoàn = cọc.
+            entity.ToTable("DepositSettlements", table =>
+            {
+                table.HasCheckConstraint("CK_DepositSettlements_NonNegative",
+                    "\"DepositAmount\" >= 0 AND \"DamageCharges\" >= 0 AND \"OutstandingDebt\" >= 0 AND \"RetainedForDebt\" >= 0 AND \"ForfeitedAmount\" >= 0 AND \"RefundAmount\" >= 0 AND \"AmountDue\" >= 0");
+                table.HasCheckConstraint("CK_DepositSettlements_Balanced",
+                    "\"DamageCharges\" - \"AmountDue\" + \"RetainedForDebt\" + \"ForfeitedAmount\" + \"RefundAmount\" = \"DepositAmount\"");
+            });
+        });
+        modelBuilder.Entity<ContractEvidenceFiles>(entity =>
+        {
+            entity.HasKey(file => file.ContractEvidenceFileId);
+            entity.Property(file => file.Kind).HasMaxLength(20);
+            entity.Property(file => file.ObjectPath).HasMaxLength(300);
+            entity.Property(file => file.ContentType).HasMaxLength(50);
+            entity.Property(file => file.FileName).HasMaxLength(255);
+            entity.Property(file => file.HiddenReason).HasMaxLength(500);
+            entity.HasIndex(file => new { file.ContractId, file.Kind });
+            entity.HasIndex(file => file.ObjectPath).IsUnique();
+            entity.HasOne(file => file.Contract).WithMany()
+                .HasForeignKey(file => file.ContractId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(file => file.UploadedBy).WithMany()
+                .HasForeignKey(file => file.UploadedById).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(file => file.HiddenBy).WithMany()
+                .HasForeignKey(file => file.HiddenById).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("ContractEvidenceFiles", table => table.HasCheckConstraint(
+                "CK_ContractEvidenceFiles_Kind", "\"Kind\" IN ('MoveIn', 'MoveOut', 'SignedContract')"));
+        });
+        modelBuilder.Entity<HandoverItems>(entity =>
+        {
+            entity.HasKey(item => item.HandoverItemId);
+            entity.Property(item => item.EquipmentName).HasMaxLength(200);
+            entity.Property(item => item.Condition).HasMaxLength(20);
+            entity.Property(item => item.Note).HasMaxLength(500);
+            entity.Property(item => item.CompensationValue).HasPrecision(18, 2);
+            entity.Property(item => item.ChargeAmount).HasPrecision(18, 2);
+            entity.HasOne(item => item.HandoverRecord).WithMany(record => record.Items)
+                .HasForeignKey(item => item.HandoverRecordId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(item => item.Equipment).WithMany()
+                .HasForeignKey(item => item.EquipmentId).OnDelete(DeleteBehavior.SetNull);
+            entity.ToTable("HandoverItems", table =>
+            {
+                table.HasCheckConstraint("CK_HandoverItems_Condition",
+                    "\"Condition\" IN ('Good', 'Worn', 'Damaged', 'Missing')");
+                table.HasCheckConstraint("CK_HandoverItems_Quantity_Range", "\"Quantity\" BETWEEN 1 AND 20");
+                table.HasCheckConstraint("CK_HandoverItems_Charge",
+                    "\"ChargeAmount\" >= 0 AND \"ChargeAmount\" <= \"CompensationValue\" * \"Quantity\"");
+            });
+        });
         modelBuilder.Entity<UtilityReadings>().HasKey(x => x.ReadingId);
         modelBuilder.Entity<Invoices>().HasKey(x => x.InvoiceId);
         modelBuilder.Entity<InvoiceDetails>().HasKey(x => x.InvoiceDetailId);

@@ -57,9 +57,13 @@ export interface PropertyDto {
 
   ward: string
 
-  district: string
+  district?: string | null
 
   city: string
+
+  provinceCode?: string | null
+
+  wardCode?: string | null
 
   roomCount: number
 

@@ -51,7 +51,10 @@ public class RoomRepository : IRoomRepository
             r.RoomCode,
             r.AreaSqm,
             r.Status,
-            r.RoomImages.Where(i => i.IsPrimary).Select(i => i.ImageUrl).FirstOrDefault()))
+            r.RoomImages.Where(i => i.IsPrimary).Select(i => i.ImageUrl).FirstOrDefault(),
+            r.MaxOccupants,
+            r.Floor,
+            r.Description))
             .ToListAsync();
     }
 
@@ -74,7 +77,10 @@ public class RoomRepository : IRoomRepository
             r.RoomCode,
             r.AreaSqm,
             r.Status,
-            r.RoomImages.Where(i => i.IsPrimary).Select(i => i.ImageUrl).FirstOrDefault()))
+            r.RoomImages.Where(i => i.IsPrimary).Select(i => i.ImageUrl).FirstOrDefault(),
+            r.MaxOccupants,
+            r.Floor,
+            r.Description))
             .FirstOrDefaultAsync();
     }
 

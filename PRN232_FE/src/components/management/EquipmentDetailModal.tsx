@@ -31,6 +31,18 @@ export default function EquipmentDetailModal({
           <strong>{equipment.roomCode || equipment.roomId}</strong>
         </p>
         <p>
+          <span className="text-slate-400">Số lượng:</span>{" "}
+          <strong>{equipment.quantity ?? 1}</strong>
+        </p>
+        <p>
+          <span className="text-slate-400">Giá trị bồi thường:</span>{" "}
+          <strong>
+            {equipment.compensationValue && equipment.compensationValue > 0
+              ? `${new Intl.NumberFormat("vi-VN").format(equipment.compensationValue)}đ/cái`
+              : "Chưa định giá"}
+          </strong>
+        </p>
+        <p>
           <span className="text-slate-400">Ngày lắp đặt:</span>{" "}
           <strong>{equipment.installDate}</strong>
         </p>

@@ -956,7 +956,7 @@ public sealed class PublicPropertyListingApiTests
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var detail = document.RootElement;
         Assert.Equal(
-            new[] { "amenities", "areaSqm", "baseRent", "equipments", "images", "property", "roomCode", "roomId", "roomType", "services" },
+            new[] { "amenities", "areaSqm", "baseRent", "description", "equipments", "floor", "images", "maxOccupants", "property", "roomCode", "roomId", "roomType", "services" },
             detail.EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
         Assert.Equal(102, detail.GetProperty("roomId").GetInt32());
         Assert.Equal("R102", detail.GetProperty("roomCode").GetString());
@@ -985,7 +985,14 @@ public sealed class PublicPropertyListingApiTests
         Assert.Equal(new[] { "name", "price", "serviceId" },
             service.EnumerateObject().Select(item => item.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
         Assert.Empty(detail.GetProperty("images").EnumerateArray());
-        Assert.Empty(detail.GetProperty("equipments").EnumerateArray());
+        // Rebuild 2.4: renters see what the room contains, but only name and quantity.
+        var equipment = Assert.Single(detail.GetProperty("equipments").EnumerateArray());
+        Assert.Equal("Máy lạnh", equipment.GetProperty("name").GetString());
+        Assert.Equal(2, equipment.GetProperty("quantity").GetInt32());
+        Assert.Equal(new[] { "equipmentId", "name", "quantity" },
+            equipment.EnumerateObject().Select(item => item.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+        Assert.DoesNotContain("compensation", detail.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Private supplier", detail.GetRawText(), StringComparison.Ordinal);
         Assert.DoesNotContain("private-token", detail.GetRawText(), StringComparison.Ordinal);
         Assert.DoesNotContain("Private Owner Name", detail.GetRawText(), StringComparison.Ordinal);
         Assert.DoesNotContain("Private Tenant Name", detail.GetRawText(), StringComparison.Ordinal);
@@ -1290,11 +1297,13 @@ public sealed class PublicPropertyListingApiTests
                 {
                     EquipmentId = 1,
                     RoomId = 102,
-                    Name = "Private equipment name",
+                    Name = "Máy lạnh",
                     InstallDate = new DateOnly(2024, 1, 1),
                     WarrantyExpiry = new DateOnly(2027, 1, 1),
                     Supplier = "Private supplier",
-                    Status = "Available"
+                    Status = "Available",
+                    Quantity = 2,
+                    CompensationValue = 8_500_000m
                 });
             context.SaveChanges();
 

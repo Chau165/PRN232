@@ -74,6 +74,48 @@ public sealed class PropertyRoomCrudTests
         Assert.Equal(RoomStatuses.Occupied, updated.Status);
     }
 
+    // Rebuild 2.1: occupancy defaults to what the area allows (8 m² per person).
+    [Fact]
+    public async Task CreateRoom_without_occupancy_uses_the_area_limit_and_keeps_floor_and_description()
+    {
+        await using var context = await CreateContextAsync();
+        var service = new RoomService(new RoomRepository(context), new PropertyRoomTypeRepository(context));
+
+        var created = await service.CreateAsync(
+            new CreateRoomDto(1, 1, "A-201", 25m, Floor: 2, Description: "  Ban công hướng đông  "),
+            requestingUserId: 10,
+            isAdmin: true);
+
+        Assert.Equal(3, created.MaxOccupants);
+        Assert.Equal(2, created.Floor);
+        Assert.Equal("Ban công hướng đông", created.Description);
+    }
+
+    [Theory]
+    [InlineData(25, 2)]   // area still allows 3 -> the stored 2 is kept
+    [InlineData(12, 1)]   // area now allows only 1 -> lowered
+    public async Task UpdateRoom_without_occupancy_keeps_it_unless_the_new_area_is_too_small(
+        decimal newArea, int expected)
+    {
+        await using var context = await CreateContextAsync();
+        context.Rooms.Add(new Rooms
+        {
+            RoomId = 1,
+            PropertyId = 1,
+            RoomTypeId = 1,
+            RoomCode = "A-101",
+            AreaSqm = 25,
+            MaxOccupants = 2,
+            Status = RoomStatuses.Available
+        });
+        await context.SaveChangesAsync();
+
+        var updated = await new RoomService(new RoomRepository(context)).UpdateAsync(
+            1, new UpdateRoomDto(1, "A-101", newArea), requestingUserId: 10, isAdmin: true);
+
+        Assert.Equal(expected, updated!.MaxOccupants);
+    }
+
     [Fact]
     public async Task DeleteRoom_rejects_an_occupied_room_even_without_rows_in_child_tables()
     {
