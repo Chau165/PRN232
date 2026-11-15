@@ -805,8 +805,7 @@ export default function PropertyFormModal({
 
             <PropertyLocationPicker
               key={locationKey}
-              address={locationAddress}
-              accessToken={accessToken}
+              address={{ ...locationAddress, provinceName: selectedProvince?.provinceName, wardName: selectedWard?.wardName }}
               disabled={saving}
               initialPoint={
                 unchangedLocation &&

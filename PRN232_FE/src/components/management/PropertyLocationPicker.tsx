@@ -6,13 +6,12 @@ import type { LocationPoint } from "./PropertyLocationMap"
 const LocationMap = lazy(() => import("./PropertyLocationMap"))
 type Props = {
   address: LocationAddress
-  accessToken: string
   initialPoint?: LocationPoint
   disabled: boolean
   onChange: (point: LocationPoint | null) => void
 }
 
-export default function PropertyLocationPicker({ address, accessToken, initialPoint, disabled, onChange }: Props) {
+export default function PropertyLocationPicker({ address, initialPoint, disabled, onChange }: Props) {
   const key = JSON.stringify(address)
   const currentKey = useRef(key)
   currentKey.current = key
@@ -59,7 +58,7 @@ export default function PropertyLocationPicker({ address, accessToken, initialPo
     setPreview(null)
     // Looking up the same address does not discard a pin already chosen by the Admin.
     try {
-      const result = await previewPropertyLocation(accessToken, address, controller.signal)
+      const result = await previewPropertyLocation(address, controller.signal)
       if (!controller.signal.aborted && currentKey.current === started) setPreview(result)
     } catch (cause) {
       if (!controller.signal.aborted && currentKey.current === started)
@@ -70,14 +69,14 @@ export default function PropertyLocationPicker({ address, accessToken, initialPo
   }
 
   return <section className="space-y-3 sm:col-span-2" aria-label="Vị trí khu trọ">
-    <button type="button" disabled={disabled || busy || !ready} onClick={search}
+    <button type="button" disabled={disabled || busy || !ready || !address.provinceName || !address.wardName} onClick={search}
       className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
       {busy ? "Đang tìm vị trí…" : "Tìm thử"}
     </button>
     <p className="text-xs text-slate-600">Chọn gợi ý hoặc bấm/kéo ghim đến đúng nhà trọ rồi lưu. Kéo ghim không đổi địa chỉ đã nhập. Hệ thống chưa tự xác minh ranh giới phường.</p>
     {!ready && <p className="text-xs text-slate-500">Nhập địa chỉ và chọn tỉnh/phường để chọn vị trí.</p>}
     {preview?.candidates.length === 0 && <p role="status" className="text-sm text-amber-800">
-      {preview.status === "Unavailable" ? "Dịch vụ tìm vị trí đang không khả dụng. Bạn vẫn có thể chọn ghim thủ công." : "Chưa có kết quả phù hợp. Hãy kiểm tra địa chỉ hoặc chọn ghim thủ công."}
+      {(preview.status === "Unavailable" || preview.status === "RateLimited") ? "Dịch vụ tìm vị trí đang không khả dụng. Bạn vẫn có thể chọn ghim thủ công." : "Chưa có kết quả phù hợp. Hãy kiểm tra địa chỉ hoặc chọn ghim thủ công."}
     </p>}
     {preview && preview.candidates.length > 0 && <ul className="max-h-52 space-y-2 overflow-auto">
       {preview.candidates.map((candidate, index) => <li key={index}>
@@ -90,6 +89,7 @@ export default function PropertyLocationPicker({ address, accessToken, initialPo
         </button>
       </li>)}
     </ul>}
+    <p className="text-xs text-slate-500">Gợi ý địa chỉ: <a href="https://photon.komoot.io" target="_blank" rel="noreferrer">Photon</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>. Gợi ý có thể khác số nhà hoặc phường đã nhập; hãy kiểm tra ghim.</p>
     <Suspense fallback={<p>Đang tải bản đồ…</p>}>
       <LocationMap point={point} initialPoint={initialPoint} disabled={disabled || !ready} onPick={next => pick(next)} />
     </Suspense>
