@@ -112,14 +112,20 @@ describe("DepositPage", () => {
     expect(screen.queryByText("payment success page")).toBeNull()
   })
 
-  it("explains before the hold that the deposit is the first month's rent and holds the room until moveInDate + 3 days", async () => {
+  it("explains before the hold that the deposit is the first month's rent and holds the room until moveInDate + 3 days, updating dynamically and validating empty moveInDate (C10 items 7 & 9)", async () => {
     renderAt("/deposit?roomId=501")
     await screen.findByText("A101 · Studio")
 
+    fireEvent.change(screen.getByLabelText("Ngày dọn vào"), { target: { value: "2026-11-20" } })
     const rules = screen.getByText(/được trừ vào tiền phòng tháng đầu tiên/)
-    expect(rules.textContent).toContain("Phòng được giữ đến hết ngày")
+    expect(rules.textContent).toContain("Phòng được giữ đến hết ngày 23/11/2026.")
     expect(rules.textContent).toContain("không được hoàn")
     expect(rules.textContent).toContain("Nếu chủ trọ hủy, bạn được hoàn 100%")
+
+    fireEvent.change(screen.getByLabelText("Ngày dọn vào"), { target: { value: "" } })
+    fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
+    expect(await screen.findByText("Vui lòng chọn ngày dọn vào.")).toBeTruthy()
+    expect(mocks.createBooking).not.toHaveBeenCalled()
   })
 
   it("validates occupantCount against room.maxOccupants and displays move-in summary (C9)", async () => {
@@ -303,6 +309,40 @@ describe("MyBookingsPage", () => {
     expect(screen.getByText(/Giá tham khảo hiện tại: 3\.000\.000/)).toBeTruthy()
     expect(screen.getByText("Thời gian: Chờ Admin phân lịch")).toBeTruthy()
     expect(screen.getByText("Chờ xác nhận")).toBeTruthy()
+  })
+
+  it("navigates from an approved viewing to DepositPage with viewingId so the customer can choose moveInDate and occupantCount (C10 item 6)", async () => {
+    mocks.getViewingSchedules.mockResolvedValue([
+      {
+        viewingId: 3,
+        roomId: 501,
+        roomCode: "A101",
+        propertyId: 1,
+        propertyName: "Sunrise",
+        roomTypeId: 2,
+        roomTypeName: "Studio",
+        currentMonthlyRent: 3_000_000,
+        customerId: 10,
+        customerName: "Customer A",
+        customerPhone: "0900",
+        scheduledAt: "2026-11-16T03:00:00Z",
+        status: "Approved",
+      },
+    ])
+    renderAt("/my-bookings")
+
+    fireEvent.click(await screen.findByRole("button", { name: "Đặt cọc phòng này" }))
+    await screen.findByText("A101 · Studio")
+    fireEvent.change(screen.getByLabelText("Số người ở"), { target: { value: "2" } })
+    fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
+
+    await screen.findByText("Thanh toán cọc qua payOS")
+    expect(mocks.createBooking).toHaveBeenCalledWith("customer-token", {
+      roomId: 501,
+      viewingId: 3,
+      moveInDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      occupantCount: 2,
+    })
   })
 
   it("retries after a failed load", async () => {
