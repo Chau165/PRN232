@@ -192,7 +192,7 @@ Giữ Supabase Storage. Bổ sung:
 | ID | Việc | Owner | Phụ thuộc | Size | Người |
 |----|------|-------|-----------|------|-------|
 | 2.1 | ✅ Thêm `MaxOccupants` (8 m²/người, 1–10), `Floor`, `Description` vào phòng; hiển thị cả ở chi tiết phòng công khai | Claude | 1.2 | S | |
-| 2.2 | Thiết bị: `Quantity`, `CompensationValue`, `Condition` | Claude | — | S | |
+| 2.2 | ✅ Thiết bị: `Quantity` (1–20), `CompensationValue` (0–50 triệu/cái). **Bỏ `Condition`** khỏi thiết bị: tình trạng lúc nhận/trả phòng thuộc biên bản bàn giao (việc 3.5), tránh trùng nghĩa với `Status` | Claude | — | S | |
 | 2.3 | FE: form phòng và thiết bị mới | AG | 2.1, 2.2 | S | |
 
 ### WS3 — Đặt cọc, hợp đồng, quyết toán (LUỒNG CHÍNH)

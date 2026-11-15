@@ -10,4 +10,6 @@ public sealed record EquipmentReadModel(
     DateOnly InstallDate,
     DateOnly WarrantyExpiry,
     string Supplier,
-    string Status);
+    string Status,
+    int Quantity = 1,
+    decimal CompensationValue = 0m);

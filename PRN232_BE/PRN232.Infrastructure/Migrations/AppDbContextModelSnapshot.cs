@@ -343,12 +343,19 @@ namespace PRN232.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("EquipmentId"));
 
+                    b.Property<decimal>("CompensationValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<DateOnly>("InstallDate")
                         .HasColumnType("date");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
 
                     b.Property<int>("RoomId")
                         .HasColumnType("integer");
@@ -368,7 +375,12 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.HasIndex("RoomId");
 
-                    b.ToTable("Equipments");
+                    b.ToTable("Equipments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Equipments_CompensationValue_NonNegative", "\"CompensationValue\" >= 0");
+
+                            t.HasCheckConstraint("CK_Equipments_Quantity_Range", "\"Quantity\" BETWEEN 1 AND 20");
+                        });
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.IdentityDocuments", b =>

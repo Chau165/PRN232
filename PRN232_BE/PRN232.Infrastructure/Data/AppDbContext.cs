@@ -298,6 +298,15 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         modelBuilder.Entity<RoomImages>().HasKey(x => x.RoomImageId);
         modelBuilder.Entity<Amenities>().HasKey(x => x.AmenityId);
         modelBuilder.Entity<Equipments>().HasKey(x => x.EquipmentId);
+        modelBuilder.Entity<Equipments>(entity =>
+        {
+            entity.Property(equipment => equipment.CompensationValue).HasPrecision(18, 2);
+            entity.ToTable("Equipments", table =>
+            {
+                table.HasCheckConstraint("CK_Equipments_Quantity_Range", "\"Quantity\" BETWEEN 1 AND 20");
+                table.HasCheckConstraint("CK_Equipments_CompensationValue_NonNegative", "\"CompensationValue\" >= 0");
+            });
+        });
         modelBuilder.Entity<Bookings>().HasKey(x => x.BookingId);
         modelBuilder.Entity<Bookings>(entity =>
         {

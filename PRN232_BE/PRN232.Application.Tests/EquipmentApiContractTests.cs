@@ -187,6 +187,36 @@ public sealed class EquipmentApiContractTests
         Assert.Equal(HttpStatusCode.BadRequest, invalidStatus.StatusCode);
     }
 
+    // Rebuild 2.2: an old client (FE/mobile without the new fields) must not wipe quantity or value.
+    [Fact]
+    public async Task Quantity_and_compensation_value_survive_an_update_that_omits_them()
+    {
+        await using var api = await CreateApiAsync();
+        using var client = api.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", "Admin");
+
+        using var created = await client.PostAsJsonAsync("/api/equipments", new
+        {
+            roomId = 1,
+            name = "Máy lạnh Daikin 1 HP",
+            installDate = "2026-01-15",
+            warrantyExpiry = "2028-01-15",
+            supplier = "Điện máy Xanh",
+            status = "Operational",
+            quantity = 2,
+            compensationValue = 8_500_000
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("equipmentId").GetInt32();
+
+        using var updated = await client.PutAsJsonAsync($"/api/equipments/{id}", UpdateRequest());
+
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+        var body = await updated.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(2, body.GetProperty("quantity").GetInt32());
+        Assert.Equal(8_500_000m, body.GetProperty("compensationValue").GetDecimal());
+    }
+
     [Fact]
     public async Task Delete_returns_conflict_when_maintenance_history_references_equipment()
     {

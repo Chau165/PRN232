@@ -180,7 +180,9 @@ public class EquipmentService : IEquipmentService
             InstallDate = dto.InstallDate,
             WarrantyExpiry = dto.WarrantyExpiry,
             Supplier = dto.Supplier?.Trim() ?? string.Empty,
-            Status = dto.Status.Trim()
+            Status = dto.Status.Trim(),
+            Quantity = dto.Quantity ?? 1,
+            CompensationValue = dto.CompensationValue ?? 0m
         };
     }
 
@@ -191,6 +193,8 @@ public class EquipmentService : IEquipmentService
         entity.WarrantyExpiry = dto.WarrantyExpiry;
         entity.Supplier = dto.Supplier?.Trim() ?? string.Empty;
         entity.Status = dto.Status.Trim();
+        entity.Quantity = dto.Quantity ?? entity.Quantity;
+        entity.CompensationValue = dto.CompensationValue ?? entity.CompensationValue;
     }
 
     private static EquipmentDto ConvertToDto(EquipmentReadModel equipment)
@@ -205,7 +209,9 @@ public class EquipmentService : IEquipmentService
             equipment.Status,
             equipment.RoomCode,
             equipment.PropertyId,
-            equipment.PropertyName);
+            equipment.PropertyName,
+            equipment.Quantity,
+            equipment.CompensationValue);
     }
 
     private static void EnsureManagementRole(string role)

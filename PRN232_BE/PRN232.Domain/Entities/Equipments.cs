@@ -21,6 +21,13 @@ public class Equipments
     }
     public string Supplier { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+    public int Quantity { get; set; } = 1;
+    // Giá trị bồi thường MỖI cái, ghi vào biên bản bàn giao. Là mức trần khi quyết toán cọc: khách chỉ
+    // bồi thường hư hỏng do mình gây ra, không bồi thường hao mòn tự nhiên (BLDS 2015, Điều 479).
+    public decimal CompensationValue
+    {
+        get; set;
+    }
 
     public Rooms? Room
     {

@@ -11,6 +11,7 @@ Mục lục
 - [C4 — Địa chỉ chỉ còn 2 cấp (việc 1.4)](#c4)
 - C5 — Thông báo nhắc hạn hợp đồng (việc 3.4)
 - C6 — Phòng: số người tối đa, tầng, mô tả (việc 2.1)
+- C7 — Thiết bị: số lượng, giá trị bồi thường (việc 2.2)
 - [Việc FE cần làm (task 1.5)](#fe)
 
 ---
@@ -163,6 +164,28 @@ Migration `AddRoomOccupancyFloorAndDescription`. Phòng đã có được điề
 Căn cứ 8 m²/người: Luật Nhà ở 2023 + Nghị định 100/2024 + Thông tư 05/2024 (dãy nhà trọ) và Luật Cư trú 2020; xem PLAN.md mục D2.
 
 Việc FE gợi ý: trong `RoomFormModal` thêm 3 ô; ô số người dùng `min=1`, `max = min(10, floor(diện tích/8))`, cập nhật khi đổi diện tích và hiện gợi ý "Tối đa N người cho phòng X m²". Trang chi tiết phòng (quản lý và công khai) hiển thị số người tối đa, tầng ("Tầng trệt" khi 0), mô tả.
+
+---
+
+## C7 — Thiết bị: số lượng, giá trị bồi thường · ✅ đã có (việc 2.2)
+
+Migration `AddEquipmentQuantityAndCompensationValue`. Thiết bị đã có: `quantity = 1`, `compensationValue = 0` (chưa định giá, Admin/Manager cập nhật dần).
+
+**Response** `EquipmentDto` (`GET /api/equipments`, `/api/equipments/{id}`) thêm: `quantity: number`, `compensationValue: number`.
+
+**Request** `POST /api/equipments`, `PUT /api/equipments/{id}` thêm 2 field **không bắt buộc**:
+
+| Field | Quy tắc | Câu báo lỗi |
+|---|---|---|
+| `quantity` | 1 ≤ x ≤ 20 | Số lượng phải từ 1 đến 20. |
+| `compensationValue` (đ, **mỗi cái**) | 0 ≤ x ≤ 50.000.000 | Giá trị bồi thường phải từ 0đ đến 50.000.000đ. |
+| | bội số 1.000 | Giá trị bồi thường phải là bội số của 1.000đ. |
+
+Không gửi (null): tạo mới thì `1` cái, `0đ`; sửa thì **giữ** giá trị đang lưu. Mobile (`equipment_service.dart`) không cần sửa gấp.
+
+Ý nghĩa `compensationValue`: giá trị ghi trong biên bản bàn giao, là **mức trần** khi quyết toán cọc. Khách chỉ bồi thường hư hỏng do mình gây ra, **không** bồi thường hao mòn tự nhiên (BLDS 2015, Điều 479). FE nên ghi chú điều này cạnh ô nhập, ví dụ: "Giá trị ghi trong biên bản bàn giao; không áp dụng cho hao mòn tự nhiên".
+
+Việc FE gợi ý: thêm 2 ô vào form thiết bị; danh sách thiết bị hiển thị "Máy lạnh × 2 — 8.500.000đ/cái".
 
 ---
 

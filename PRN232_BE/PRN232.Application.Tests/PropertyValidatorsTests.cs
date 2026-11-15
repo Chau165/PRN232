@@ -123,6 +123,29 @@ public sealed class PropertyValidatorsTests
         Assert.Equal("Trạng thái thiết bị không được hỗ trợ.", update.Errors.Single().ErrorMessage);
     }
 
+    // Rebuild 2.2: quantity and the per-item compensation value written in the handover record.
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData(1, 0)]
+    [InlineData(20, 50_000_000)]
+    [InlineData(2, 8_500_000)]
+    public void Realistic_quantity_and_value_pass(int? quantity, int? value) =>
+        Assert.Empty(CreateEquipment.Validate(Equipment(new DateOnly(2026, 1, 1), new DateOnly(2027, 1, 1))
+            with { Quantity = quantity, CompensationValue = (decimal?)value }).Errors.Select(e => e.ErrorMessage));
+
+    [Theory]
+    [InlineData(0, 0, "Số lượng phải từ 1 đến 20.")]
+    [InlineData(21, 0, "Số lượng phải từ 1 đến 20.")]
+    [InlineData(1, -1_000, "Giá trị bồi thường phải từ 0đ đến 50.000.000đ.")]
+    [InlineData(1, 50_001_000, "Giá trị bồi thường phải từ 0đ đến 50.000.000đ.")]
+    [InlineData(1, 8_500_500, "Giá trị bồi thường phải là bội số của 1.000đ.")]
+    public void Quantity_and_value_out_of_range_are_rejected(int quantity, double value, string expected)
+    {
+        var update = new UpdateEquipmentDto("Máy lạnh", new DateOnly(2026, 1, 1), new DateOnly(2027, 1, 1),
+            "Điện máy Xanh", "Operational", quantity, (decimal)value);
+        Assert.Equal(expected, UpdateEquipment.Validate(update).Errors.Single().ErrorMessage);
+    }
+
     [Fact]
     public void Validators_are_registered_for_the_api()
     {
