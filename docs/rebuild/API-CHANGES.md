@@ -583,3 +583,28 @@ Khách nhận thông báo: *"Đã xác nhận hoàn 1.800.000đ tiền cọc ph�
 1. `refundAmount > 0`: nhãn **"Chờ hoàn {refundAmount}"** + nút **"Đã hoàn cọc"** → cửa sổ xác nhận giống C11 (tên khách, SĐT, số tiền lớn, ghi chú "Chỉ xác nhận sau khi bạn ĐÃ chuyển tiền cho khách. Hệ thống không chuyển tiền.", nút "Xác nhận đã hoàn" / "Hủy"). Sau đó: "Đã hoàn lúc … — {refundConfirmedByName}".
 2. `amountDue > 0`: nhãn **"Khách cần nộp thêm {amountDue}"** + nút **"Đã thu"** → cửa sổ tương tự ("Chỉ xác nhận sau khi bạn ĐÃ nhận tiền của khách."). Sau đó: "Đã thu lúc … — {dueCollectedByName}".
 3. Phía khách: hiện trạng thái tương ứng ("Quản lý đã xác nhận hoàn … lúc …" / "Chờ quản lý hoàn …").
+
+---
+
+## C19 — Nhật ký thao tác (audit log) · ✅ đã có (việc 5.1, lớp 1)
+
+Migration `AddAuditLogs` (1 bảng mới). Theo PLAN D7.
+
+**Ghi tự động** mọi request `POST/PUT/PATCH/DELETE` (kể cả thất bại: 400, 404, 409, 500): ai (`userId`, `role`), thao tác (`action` = `"{Controller}.{Action}"`, vd. `Bookings.Cancel`), đường dẫn, đối tượng (`entityType` = controller, `entityId` = id trên đường dẫn hoặc id vừa tạo), mã HTTP, IP, `correlationId`. **Không lưu nội dung request/response** (mật khẩu, CCCD, tài khoản ngân hàng không bao giờ vào nhật ký). Không ghi: request bị chặn quyền (401/403 trước khi vào action), `POST /api/invoices/preview`, đánh dấu thông báo đã đọc. Lỗi ghi nhật ký không làm hỏng thao tác của người dùng.
+
+Lớp 2 (việc 5.2, sắp có): `oldValues`/`newValues` (JSON) cho nghiệp vụ quan trọng (đặt cọc, hủy, ký HĐ, quyết toán, trả phòng, đổi giá).
+
+### `GET /api/audit-logs` — chỉ Admin
+Query (đều không bắt buộc): `userId`, `entityType` (vd. `Bookings`, `Contracts`, `Invoices`, `Rooms`…), `entityId`, `succeeded` (`true`/`false`), `from`, `to` (`yyyy-MM-dd`, giờ VN, gồm cả 2 đầu, tối đa 366 ngày), `page` (≥ 1), `pageSize` (1–100, mặc định 50). Mới nhất trước.
+
+```json
+{ "items": [ { "auditLogId": 1201, "createdAtUtc": "2026-11-15T03:12:44Z", "userId": 10, "userName": "Nguyễn Văn A",
+               "role": "Customer", "action": "Bookings.Cancel", "httpMethod": "POST", "path": "/api/bookings/12/cancel",
+               "entityType": "Bookings", "entityId": "12", "statusCode": 200, "succeeded": true,
+               "ipAddress": "203.0.113.5", "correlationId": "0HN…", "oldValues": null, "newValues": null } ],
+  "totalCount": 1, "page": 1, "pageSize": 50 }
+```
+Bộ lọc sai (`pageSize` > 100, `to` < `from`…) → 400. Không phải Admin → 403.
+
+### Việc FE gợi ý (task 5.3)
+Trang Admin **"Nhật ký thao tác"** (sidebar nhóm Hệ thống): bảng Thời gian (giờ VN) / Người thực hiện (tên + vai trò) / Thao tác / Đối tượng (`entityType #entityId`) / Kết quả (nhãn xanh "Thành công" hoặc đỏ "Thất bại {statusCode}") / IP. Bộ lọc: người dùng, loại đối tượng (dropdown), mã đối tượng, kết quả, khoảng ngày; phân trang. Bấm một dòng mở chi tiết (đường dẫn, correlationId, và oldValues/newValues dạng JSON khi có). Nên có bảng dịch `action` sang tiếng Việt cho các thao tác chính (vd. `Bookings.Cancel` → "Hủy đặt cọc", `DepositSettlements.Settle` → "Quyết toán cọc").

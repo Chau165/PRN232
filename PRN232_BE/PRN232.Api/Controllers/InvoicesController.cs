@@ -67,6 +67,7 @@ public class InvoicesController : ControllerBase
     }
 
     [HttpPost("preview")]
+    [PRN232.Api.Auditing.SkipAudit] // Rebuild 5.1: chỉ xem trước, không ghi dữ liệu.
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<InvoiceDto>> Preview(CreateInvoiceDto dto)
     {

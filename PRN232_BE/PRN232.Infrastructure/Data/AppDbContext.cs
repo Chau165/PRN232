@@ -128,6 +128,7 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<HandoverItems> HandoverItems => Set<HandoverItems>();
     public DbSet<ContractEvidenceFiles> ContractEvidenceFiles => Set<ContractEvidenceFiles>();
     public DbSet<DepositSettlements> DepositSettlements => Set<DepositSettlements>();
+    public DbSet<AuditLogs> AuditLogs => Set<AuditLogs>();
     public DbSet<Equipments> Equipments
     {
         get
@@ -351,6 +352,22 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
                 .HasForeignKey(record => record.RecordedById).OnDelete(DeleteBehavior.Restrict);
             entity.ToTable("HandoverRecords", table => table.HasCheckConstraint(
                 "CK_HandoverRecords_Kind", "\"Kind\" IN ('MoveIn', 'MoveOut')"));
+        });
+        // Rebuild 5.1: nhật ký thao tác. Chỉ mục theo các bộ lọc của trang Admin (mới nhất trước).
+        modelBuilder.Entity<AuditLogs>(entity =>
+        {
+            entity.HasKey(log => log.AuditLogId);
+            entity.Property(log => log.Role).HasMaxLength(50);
+            entity.Property(log => log.Action).HasMaxLength(150);
+            entity.Property(log => log.HttpMethod).HasMaxLength(10);
+            entity.Property(log => log.Path).HasMaxLength(300);
+            entity.Property(log => log.EntityType).HasMaxLength(100);
+            entity.Property(log => log.EntityId).HasMaxLength(50);
+            entity.Property(log => log.IpAddress).HasMaxLength(64);
+            entity.Property(log => log.CorrelationId).HasMaxLength(100);
+            entity.HasIndex(log => log.CreatedAtUtc);
+            entity.HasIndex(log => new { log.UserId, log.CreatedAtUtc });
+            entity.HasIndex(log => new { log.EntityType, log.EntityId });
         });
         modelBuilder.Entity<DepositSettlements>(entity =>
         {

@@ -377,6 +377,9 @@ builder.Services.AddScoped<IContractExpiryReminderService, ContractExpiryReminde
 builder.Services.AddHostedService<PRN232.Api.Workers.ContractExpiryReminderWorker>();
 builder.Services.AddScoped<IHandoverRepository, HandoverRepository>();
 builder.Services.AddScoped<IHandoverService, HandoverService>();
+builder.Services.AddScoped<IAuditLogWriter, AuditLogWriter>();
+builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IDepositSettlementRepository, DepositSettlementRepository>();
 builder.Services.AddScoped<IDepositSettlementService, DepositSettlementService>();
 builder.Services.AddScoped<IContractEvidenceRepository, ContractEvidenceRepository>();
@@ -436,6 +439,8 @@ builder.Services.AddControllers(options =>
 {
     options.Conventions.Add(new RouteTokenTransformerConvention(
         new SlugifyParameterTransformer()));
+    // Rebuild 5.1: ngoài cùng (Order nhỏ nhất) để ghi cả kết quả 400 của FluentValidationFilter.
+    options.Filters.Add<PRN232.Api.Auditing.AuditLogFilter>(PRN232.Api.Auditing.AuditLogFilter.FilterOrder);
     options.Filters.Add<FluentValidationFilter>();
 });
 builder.Services.AddEndpointsApiExplorer();

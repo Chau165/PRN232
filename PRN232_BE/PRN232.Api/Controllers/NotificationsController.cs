@@ -36,6 +36,7 @@ public class NotificationsController : ControllerBase
     }
 
     [HttpPatch("{id:int}")]
+    [PRN232.Api.Auditing.SkipAudit] // Rebuild 5.1: đánh dấu đã đọc, không phải thao tác nghiệp vụ.
     public async Task<IActionResult> Update(int id, UpdateNotificationDto dto)
     {
         if (!TryGetCurrentUser(out var userId))

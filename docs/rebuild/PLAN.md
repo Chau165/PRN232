@@ -225,7 +225,7 @@ Giữ Supabase Storage. Bổ sung:
 ### WS5 — Audit log
 | ID | Việc | Owner | Phụ thuộc | Size | Người |
 |----|------|-------|-----------|------|-------|
-| 5.1 | Bảng `AuditLogs` + action filter (lớp 1) | Claude | — | M | |
+| 5.1 | ✅ Bảng `AuditLogs` + action filter (lớp 1) + API Admin `GET /api/audit-logs` (C19) | Claude | — | M | |
 | 5.2 | Ghi chủ động có trước/sau cho nghiệp vụ quan trọng (lớp 2) | Claude | 5.1, WS3 | M | |
 | 5.3 | FE: trang Admin xem log có bộ lọc | AG | 5.1 | M | |
 | 5.4 | Test: không lộ dữ liệu nhạy cảm, đủ log cho thao tác ghi | Codex | 5.1 | S | |
