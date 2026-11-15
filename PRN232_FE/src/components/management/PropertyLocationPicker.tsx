@@ -4,6 +4,8 @@ import { isSupportedPropertyLocation } from "@/utils/propertyLocation"
 import type { LocationPoint } from "./PropertyLocationMap"
 
 const LocationMap = lazy(() => import("./PropertyLocationMap"))
+// Search on its own once the Admin stops typing; the "Tìm thử" button still works at any time.
+export const AUTO_SEARCH_DELAY_MS = 1000
 type Props = {
   address: LocationAddress
   initialPoint?: LocationPoint
@@ -84,12 +86,23 @@ export default function PropertyLocationPicker({ address, initialPoint, disabled
     }
   }
 
+  const searchRef = useRef(search)
+  searchRef.current = search
+  const hasInitialPointForSearch = Boolean(initialPoint)
+  const canAutoSearch = ready && Boolean(address.provinceName?.trim() && address.wardName?.trim())
+  useEffect(() => {
+    // A stored location is shown as is; only a new or edited address is looked up automatically.
+    if (disabled || hasInitialPointForSearch || !canAutoSearch) return
+    const timer = setTimeout(() => { void searchRef.current() }, AUTO_SEARCH_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [key, canAutoSearch, disabled, hasInitialPointForSearch])
+
   return <section className="space-y-3 sm:col-span-2" aria-label="Vị trí khu trọ">
     <button type="button" disabled={disabled || busy || !ready || !address.provinceName || !address.wardName} onClick={search}
       className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
       {busy ? "Đang tìm vị trí…" : "Tìm thử"}
     </button>
-    <p className="text-xs text-slate-600">Chọn gợi ý hoặc bấm/kéo ghim đến đúng nhà trọ rồi lưu. Kéo ghim không đổi địa chỉ đã nhập. Hệ thống chưa tự xác minh ranh giới phường.</p>
+    <p className="text-xs text-slate-600">Hệ thống tự tìm khi bạn ngừng gõ. Chọn gợi ý hoặc bấm/kéo ghim đến đúng nhà trọ rồi lưu. Kéo ghim không đổi địa chỉ đã nhập. Hệ thống chưa tự xác minh ranh giới phường.</p>
     {!ready && <p className="text-xs text-slate-500">Nhập địa chỉ và chọn tỉnh/phường để chọn vị trí.</p>}
     {preview?.candidates.length === 0 && <p role="status" className="text-sm text-amber-800">
       {(preview.status === "Unavailable" || preview.status === "RateLimited") ? "Dịch vụ tìm vị trí đang không khả dụng. Bạn vẫn có thể chọn ghim thủ công." : "Chưa có kết quả phù hợp. Hãy kiểm tra địa chỉ hoặc chọn ghim thủ công."}

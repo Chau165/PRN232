@@ -47,7 +47,7 @@ public class BookingRepository : IBookingRepository
             .FirstOrDefaultAsync();
     }
 
-    public async Task<bool> AddIfRoomRentableAsync(
+    public async Task<BookingAddResult> AddIfRoomRentableAsync(
         Bookings booking, Func<int, Notifications> notificationFactory, DateTimeOffset asOfUtc)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
@@ -63,6 +63,25 @@ public class BookingRepository : IBookingRepository
             // Locking Room serializes direct bookings and bookings originating from separate viewings.
             await _context.Database.ExecuteSqlInterpolatedAsync(
                 $"SELECT 1 FROM \"Rooms\" WHERE \"RoomId\" = {booking.RoomId} FOR UPDATE");
+            // B4: lock the customer last, so two parallel requests for different rooms by the
+            // same customer are serialized and the second one sees the first Pending booking.
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"Users\" WHERE \"UserId\" = {booking.CustomerId} FOR UPDATE");
+        }
+
+        // B4: one live unpaid booking per customer. Expired Pending holds no longer lock a room
+        // (same rule as RoomRentabilityPolicy), and Deposited/Cancelled bookings do not count.
+        var instantUtc = asOfUtc.UtcDateTime;
+        var pendingBookingId = await _context.Bookings
+            .Where(item => item.CustomerId == booking.CustomerId &&
+                item.Status == BookingStatuses.Pending &&
+                item.ExpiryDate > instantUtc)
+            .OrderBy(item => item.BookingId)
+            .Select(item => (int?)item.BookingId)
+            .FirstOrDefaultAsync();
+        if (pendingBookingId is not null)
+        {
+            return new BookingAddResult(BookingAddOutcome.CustomerHasPendingBooking, pendingBookingId);
         }
 
         if (booking.ViewingId.HasValue)
@@ -75,13 +94,13 @@ public class BookingRepository : IBookingRepository
             var alreadyBookedFromViewing = await _context.Bookings.AnyAsync(item => item.ViewingId == booking.ViewingId);
             if (!viewingIsValid || alreadyBookedFromViewing)
             {
-                return false;
+                return BookingAddResult.RoomUnavailable;
             }
         }
 
         var isRentable = await RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc)
             .AnyAsync(room => room.RoomId == booking.RoomId);
-        if (!isRentable) return false;
+        if (!isRentable) return BookingAddResult.RoomUnavailable;
 
         if (_context.Database.IsNpgsql())
         {
@@ -96,7 +115,7 @@ public class BookingRepository : IBookingRepository
             .FirstOrDefaultAsync();
         if (agreedMonthlyRent is not > 0m)
         {
-            return false;
+            return BookingAddResult.RoomUnavailable;
         }
         booking.AgreedMonthlyRent = agreedMonthlyRent.Value;
         booking.DepositAmount = agreedMonthlyRent.Value;
@@ -106,7 +125,7 @@ public class BookingRepository : IBookingRepository
         await _context.Notifications.AddAsync(notificationFactory(booking.BookingId));
         await _context.SaveChangesAsync();
         await transaction.CommitAsync();
-        return true;
+        return BookingAddResult.Added;
     }
 
     public Task<List<BookingReadModel>> GetAllAsync(int? customerId, int? managerId, string? status)

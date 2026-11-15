@@ -1,3 +1,4 @@
+using PRN232.Application.Policies;
 using Microsoft.EntityFrameworkCore;
 using PRN232.Application.Interfaces;
 using PRN232.Application.ReadModels;
@@ -249,16 +250,27 @@ public class InvoiceRepository : IInvoiceRepository
         }
     }
 
-    public async Task<List<InvoiceReadModel>> GetAllAsync(int? customerId, int? managerId, int? contractId, string? status)
+    public async Task<List<InvoiceReadModel>> GetAllAsync(
+        int? customerId, int? managerId, int? contractId, string? status, DateOnly today)
     {
-        var invoices = await Project(InScope(customerId, managerId)
-                .Where(invoice => contractId == null || invoice.ContractId == contractId)
-                .Where(invoice => status == null || invoice.Status == status)
+        var invoices = await Project(WhereStatus(InScope(customerId, managerId)
+                .Where(invoice => contractId == null || invoice.ContractId == contractId), status, today)
                 .OrderByDescending(invoice => invoice.InvoiceMonth)
              .ThenByDescending(invoice => invoice.InvoiceId))
             .ToListAsync();
         return await WithTotalsAndPaymentsAsync(invoices);
     }
+
+    // B5: Overdue also covers Unpaid rows past their due date, and Unpaid excludes them. Applied in
+    // SQL so paging and counts stay correct; stored rows are never rewritten.
+    private static IQueryable<Invoices> WhereStatus(IQueryable<Invoices> invoices, string? status, DateOnly today) =>
+        status switch
+        {
+            null => invoices,
+            InvoiceStatuses.Overdue => invoices.Where(InvoiceOverduePolicy.IsOverdue(today)),
+            InvoiceStatuses.Unpaid => invoices.Where(InvoiceOverduePolicy.IsUnpaidNotOverdue(today)),
+            _ => invoices.Where(invoice => invoice.Status == status)
+        };
 
     public async Task<InvoiceReadModel?> GetByIdAsync(int invoiceId, int? customerId, int? managerId)
     {

@@ -90,13 +90,18 @@ public class BookingService : IBookingService
         booking.DepositAppliesToFirstMonth = _depositSettings.AppliesToFirstMonth;
         Notifications? pendingNotification = null;
 
-        if (!await _repository.AddIfRoomRentableAsync(booking, bookingId => pendingNotification = new Notifications
+        var addResult = await _repository.AddIfRoomRentableAsync(booking, bookingId => pendingNotification = new Notifications
             {
                 UserId = room.OwnerId,
                 Title = $"Booking #{bookingId} - Phòng {room.RoomCode} đang chờ thanh toán cọc",
                 Type = NotificationTypes.Booking,
                 IsRead = false
-            }, now))
+            }, now);
+        if (addResult.Outcome == BookingAddOutcome.CustomerHasPendingBooking)
+        {
+            throw new BookingCustomerHasPendingBookingException(addResult.PendingBookingId!.Value);
+        }
+        if (addResult.Outcome != BookingAddOutcome.Added)
         {
             throw new BookingRoomUnavailableException("Room is not available for booking.");
         }
@@ -439,6 +444,17 @@ public class BookingService : IBookingService
 public sealed class BookingNotFoundException(string message) : Exception(message);
 
 public sealed class BookingRoomUnavailableException(string message) : Exception(message);
+
+// B4: a customer may hold only one unpaid booking at a time. Mapped to 409 with the id of the
+// pending booking so the web app can link to it.
+public sealed class BookingCustomerHasPendingBookingException(int pendingBookingId)
+    : Exception(DefaultMessage)
+{
+    public const string DefaultMessage =
+        "Bạn đang có một đặt phòng chờ thanh toán. Hãy thanh toán hoặc hủy trước khi đặt phòng khác.";
+
+    public int PendingBookingId { get; } = pendingBookingId;
+}
 
 // Controller trả 400 với lỗi gắn vào field occupantCount, như lỗi FluentValidation.
 public sealed class BookingOccupancyExceededException(string message) : Exception(message);

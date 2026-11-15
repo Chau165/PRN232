@@ -36,7 +36,8 @@ public class IdentityDocumentRepository : IIdentityDocumentRepository
             d.CCCDNumber,
             d.Status,
             d.ReviewedBy,
-            d.ReviewedByUser == null ? null : d.ReviewedByUser.FullName))
+            d.ReviewedByUser == null ? null : d.ReviewedByUser.FullName,
+            d.ReviewNote))
             .ToListAsync();
     }
 
@@ -53,7 +54,8 @@ public class IdentityDocumentRepository : IIdentityDocumentRepository
             d.CCCDNumber,
             d.Status,
             d.ReviewedBy,
-            d.ReviewedByUser == null ? null : d.ReviewedByUser.FullName))
+            d.ReviewedByUser == null ? null : d.ReviewedByUser.FullName,
+            d.ReviewNote))
             .ToListAsync();
     }
 
@@ -69,7 +71,8 @@ public class IdentityDocumentRepository : IIdentityDocumentRepository
             d.CCCDNumber,
             d.Status,
             d.ReviewedBy,
-            d.ReviewedByUser == null ? null : d.ReviewedByUser.FullName))
+            d.ReviewedByUser == null ? null : d.ReviewedByUser.FullName,
+            d.ReviewNote))
             .FirstOrDefaultAsync();
     }
 

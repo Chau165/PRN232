@@ -141,6 +141,7 @@ export default function PropertyFormModal({
   const imageClose = useRef<HTMLButtonElement>(null)
   const imageTrigger = useRef<HTMLButtonElement>(null)
   const errorRef = useRef<HTMLParagraphElement>(null)
+  const streetInputRef = useRef<HTMLInputElement>(null)
   const previewImage =
     imageUrl ?? (!values.primaryImage ? initialProperty?.primaryImageUrl : null)
   useEffect(() => {
@@ -772,6 +773,7 @@ export default function PropertyFormModal({
                   <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
                     Số nhà, tên đường
                     <input
+                      ref={streetInputRef}
                       aria-label="Số nhà, tên đường"
                       aria-invalid={Boolean(fieldErrors.addressText)}
                       required
@@ -791,14 +793,23 @@ export default function PropertyFormModal({
                 </div>
 
                 <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700 sm:col-span-2">
-                  Địa chỉ đầy đủ
+                  Địa chỉ đầy đủ (tự tạo)
                   <input
                     aria-label="Địa chỉ đầy đủ"
+                    aria-describedby="property-full-address-hint"
                     readOnly
+                    tabIndex={-1}
                     value={fullAddressPreview}
                     placeholder="Chọn tỉnh/thành phố và phường/xã để xem địa chỉ"
-                    className="min-h-11 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-normal text-slate-600"
+                    title="Sửa ở ô Số nhà, tên đường hoặc chọn lại phường/xã"
+                    // Read-only preview: clicking it sends the cursor to the field that is actually edited.
+                    onClick={() => streetInputRef.current?.focus()}
+                    className="min-h-11 cursor-pointer rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 font-normal text-slate-600"
                   />
+                  <span id="property-full-address-hint" className="text-xs font-normal text-slate-500">
+                    Ghép từ số nhà, tên đường và phường/xã, tỉnh/thành phố đã chọn. Muốn đổi địa chỉ, sửa ô
+                    "Số nhà, tên đường" ở trên hoặc chọn lại phường/xã.
+                  </span>
                 </label>
               </div>
             </section>

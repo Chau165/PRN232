@@ -68,7 +68,7 @@ public class MaintenanceFlowApiTests
             Assert.True(user.IsActive);
             Assert.True(BCrypt.Net.BCrypt.Verify(Password, user.PasswordHash));
             Assert.Equal(1, user.RoleId);
-            context.Contracts.Add(new Contracts { ContractId = 100, CustomerId = userId, RoomId = 1, StartDate = new DateOnly(2020, 1, 1), EndDate = new DateOnly(2100, 1, 1) });
+            context.Contracts.Add(new Contracts { ContractId = 100, CustomerId = userId, RoomId = 1, StartDate = new DateOnly(2020, 1, 1), EndDate = new DateOnly(2100, 1, 1), Status = "Active" });
             await context.SaveChangesAsync();
         }
         var response = await client.PostAsJsonAsync("/api/maintenance-requests", new
@@ -898,7 +898,7 @@ internal sealed class MaintenanceApiFactory : WebApplicationFactory<MaintenanceR
         }
     }
     private static Users User(int id, int roleId, string name, string email, string hash, bool active = true) => new() { UserId = id, RoleId = roleId, FullName = name, Email = email, PasswordHash = hash, IsActive = active };
-    private static Contracts Contract(int id, int customerId, int roomId) => new() { ContractId = id, CustomerId = customerId, RoomId = roomId, StartDate = new DateOnly(2020, 1, 1), EndDate = new DateOnly(2100, 1, 1) };
+    private static Contracts Contract(int id, int customerId, int roomId) => new() { ContractId = id, CustomerId = customerId, RoomId = roomId, StartDate = new DateOnly(2020, 1, 1), EndDate = new DateOnly(2100, 1, 1), Status = "Active" };
     private static MaintenanceRequests Request(int id, int contractId, int? managerId, string status) => new() { RequestId = id, ContractId = contractId, AssignedTo = managerId, Description = "Broken fixture", Status = status };
 }
 

@@ -741,11 +741,10 @@ public class ContractService : IContractService
 
     private static InvoiceDto ConvertToDto(InvoiceReadModel invoice, DateOnly today)
     {
-        var displayStatus = invoice.Status switch
+        var displayStatus = InvoiceOverduePolicy.EffectiveStatus(invoice.Status, invoice.DueDate, today) switch
         {
             InvoiceStatuses.Paid => "Paid",
             InvoiceStatuses.Overdue => "Overdue",
-            InvoiceStatuses.Unpaid when invoice.DueDate < today => "Overdue",
             _ => "Unpaid"
         };
 

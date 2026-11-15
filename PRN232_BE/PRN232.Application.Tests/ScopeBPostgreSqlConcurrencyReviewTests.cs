@@ -288,6 +288,34 @@ public class ScopeBPostgreSqlConcurrencyReviewTests
 
     private static CreateUtilityReadingDto Reading() => new(1, Month, 150, 14, 100, 10);
     private static Notifications Notice(int userId) => new() { UserId = userId, Title = "Concurrency review", Type = "Invoice", IsRead = false };
+    // B4: the same customer booking two different rooms at once. The second request waits on the
+    // customer row lock and then sees the first Pending booking.
+    [ScopeBPostgreSqlFact]
+    public async Task Same_customer_booking_two_rooms_in_parallel_keeps_one_pending_booking()
+    {
+        await using var db = await ScopeBReviewPostgres.CreateAsync();
+        await using (var seed = db.Context())
+        {
+            seed.Rooms.Add(new Rooms { RoomId = 2, PropertyId = 1, RoomTypeId = 1, RoomCode = "R2", Status = "Available" });
+            await seed.SaveChangesAsync();
+        }
+        var gate = new ScopeBSqlPause("INSERT INTO \"Bookings\"");
+        await using var first = db.Context(gate);
+        await using var second = db.Context();
+        var winner = Attempt(() => new BookingService(new BookingRepository(first), new CountingGateway(), TimeProvider.System)
+            .CreateAsync(new CreateBookingDto(1), 10));
+        await gate.Entered.WaitAsync(Deadline);
+        var loser = Attempt(() => new BookingService(new BookingRepository(second), new CountingGateway(), TimeProvider.System)
+            .CreateAsync(new CreateBookingDto(2), 10));
+        try { await db.AssertBlockedByAsync(first); }
+        finally { gate.Release(); }
+        Assert.Null(await winner.WaitAsync(Deadline));
+        Assert.IsType<BookingCustomerHasPendingBookingException>(await loser.WaitAsync(Deadline));
+        await using var verify = db.Context();
+        var booking = await verify.Bookings.SingleAsync();
+        Assert.Equal((1, 10, "Pending"), (booking.RoomId, booking.CustomerId, booking.Status));
+    }
+
     private static async Task<Exception?> Attempt(Func<Task> action)
     {
         try { await action(); return null; }

@@ -1,15 +1,18 @@
 export class ApiError extends Error {
   readonly status?: number
   readonly validationErrors?: Record<string, string[]>
+  // Raw error body (ProblemDetails), for endpoints that add extra fields such as pendingBookingId.
+  readonly body?: unknown
 
   constructor(
     message: string,
-    options: { status?: number; validationErrors?: Record<string, string[]> } = {},
+    options: { status?: number; validationErrors?: Record<string, string[]>; body?: unknown } = {},
   ) {
     super(message)
     this.name = "ApiError"
     this.status = options.status
     this.validationErrors = options.validationErrors
+    this.body = options.body
   }
 }
 
@@ -123,7 +126,7 @@ export async function apiRequest<T>(
   if (!response.ok) {
     throw new ApiError(
       responseBody?.detail || responseBody?.title || responseBody?.message || "Yêu cầu không thành công.",
-      { status: response.status, validationErrors: getValidationErrors(responseBody) },
+      { status: response.status, validationErrors: getValidationErrors(responseBody), body: responseBody },
     )
   }
   if (requireJson && responseBody === undefined) {

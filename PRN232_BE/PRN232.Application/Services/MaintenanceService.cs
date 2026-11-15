@@ -76,11 +76,20 @@ public class MaintenanceService : IMaintenanceService
         return ConvertToDto(request);
     }
 
+    // V4: the create path has no description limit of its own; the 1000-character cap matches
+    // the assignment note limit used when a request is assigned.
+    public const int DescriptionMaxLength = 1000;
+
     public async Task<MaintenanceRequestDto> CreateAsync(CreateMaintenanceRequestDto dto, int customerId)
     {
         if (string.IsNullOrWhiteSpace(dto.Description))
         {
-            throw new MaintenanceBusinessRuleException("Description is required.");
+            throw new MaintenanceBusinessRuleException("Vui lòng mô tả sự cố cần sửa chữa.");
+        }
+        if (dto.Description.Trim().Length > DescriptionMaxLength)
+        {
+            throw new MaintenanceBusinessRuleException(
+                $"Mô tả sự cố tối đa {DescriptionMaxLength} ký tự.");
         }
 
         var contract = await _repository.GetContractAsync(dto.ContractId);
@@ -91,6 +100,12 @@ public class MaintenanceService : IMaintenanceService
         if (contract.CustomerId != customerId)
         {
             throw new MaintenanceAuthorizationException("You cannot create a request for another customer's contract.");
+        }
+        // V4: only a running contract can receive repair requests (Terminated and any other
+        // non-active status are refused), before the date-range check.
+        if (contract.Status != ContractStatuses.Active)
+        {
+            throw new MaintenanceContractException("Hợp đồng đã kết thúc, không thể gửi yêu cầu sửa chữa.");
         }
         ValidateContractDate(contract);
         if (dto.EquipmentId is int equipmentId)
@@ -418,7 +433,7 @@ public class MaintenanceService : IMaintenanceService
         {
             ContractId = dto.ContractId,
             EquipmentId = dto.EquipmentId,
-            Description = dto.Description,
+            Description = dto.Description.Trim(),
             Status = initialStatus,
             AssignedTo = null
         };

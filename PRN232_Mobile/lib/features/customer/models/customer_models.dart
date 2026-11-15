@@ -299,7 +299,8 @@ class InvoiceModel {
     required this.details,
   });
 
-  bool get isUnpaid => status == 'Unpaid';
+  // The API reports an unpaid invoice past its due date as 'Overdue' (B5); it is still unpaid.
+  bool get isUnpaid => status == 'Unpaid' || status == 'Overdue';
   bool get isPaid => status == 'Paid';
 
   factory InvoiceModel.fromJson(Map<String, dynamic> json) {

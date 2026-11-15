@@ -162,6 +162,16 @@ export function formatBookingDepositTermText(
 }
 
 // 409 nghĩa là trạng thái phòng/booking vừa đổi; mỗi màn hình tự giải thích bằng câu phù hợp.
+// B4: POST /bookings answers 409 with pendingBookingId when the customer already holds an unpaid
+// booking. Returns that id, or null for any other error.
+export function pendingBookingIdFromError(error: unknown): number | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null
+  const body = error.body
+  if (typeof body !== "object" || body === null || !("pendingBookingId" in body)) return null
+  const id = (body as { pendingBookingId?: unknown }).pendingBookingId
+  return typeof id === "number" && Number.isInteger(id) && id > 0 ? id : null
+}
+
 export function bookingErrorMessage(error: unknown, conflictMessage: string) {
   if (error instanceof ApiError && error.status === 409) return conflictMessage
   return error instanceof Error ? error.message : "Yêu cầu không thành công. Vui lòng thử lại."

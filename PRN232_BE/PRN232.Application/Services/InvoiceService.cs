@@ -94,7 +94,8 @@ public class InvoiceService : IInvoiceService
         }
 
         var (customerId, managerId) = GetScope(userId, role);
-        var invoices = await _repository.GetAllAsync(customerId, managerId, contractId, status);
+        var today = InvoiceOverduePolicy.Today(_timeProvider);
+        var invoices = await _repository.GetAllAsync(customerId, managerId, contractId, status, today);
         return invoices.Select(ConvertToDto).ToList();
     }
 
@@ -473,8 +474,10 @@ public class InvoiceService : IInvoiceService
             netPayable);
     }
 
-    private static InvoiceDto ConvertToDto(InvoiceReadModel invoice)
+    // B5: every invoice read goes through here, so the Overdue rule applies everywhere.
+    private InvoiceDto ConvertToDto(InvoiceReadModel invoice)
     {
+        var today = InvoiceOverduePolicy.Today(_timeProvider);
         return new InvoiceDto(
             invoice.InvoiceId,
             invoice.ContractId,
@@ -483,7 +486,7 @@ public class InvoiceService : IInvoiceService
             invoice.CustomerName,
             invoice.InvoiceMonth,
             invoice.DueDate,
-            invoice.Status,
+            InvoiceOverduePolicy.EffectiveStatus(invoice.Status, invoice.DueDate, today),
             invoice.Total,
             invoice.Lines.Select(ConvertToDto).ToList(),
             invoice.PrepaidRentApplied,

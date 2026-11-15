@@ -670,7 +670,7 @@ public class MaintenanceServiceTests
     };
 
     private static MaintenanceContractDto ValidContract(DateOnly start, DateOnly end) =>
-        new(10, 12, "A-12", 42, start, end, "Unfinalized status");
+        new(10, 12, "A-12", 42, start, end, ContractStatuses.Active);
 
     private sealed class FakeNotificationService : INotificationService
     {

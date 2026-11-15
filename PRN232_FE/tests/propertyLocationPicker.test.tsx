@@ -64,3 +64,22 @@ it("keeps a stored location's view until another ward is chosen",async()=>{
   view.rerender(<PropertyLocationPicker address={{...address,wardCode:"02",wardName:"Phường Long Bình"}} initialPoint={{latitude:10.8,longitude:106.7}} disabled={false} onChange={vi.fn()}/>)
   await waitFor(()=>expect(mocks.locate).toHaveBeenCalledTimes(1))
 })
+it("searches by itself once typing stops, but not for a stored location",async()=>{
+  vi.useFakeTimers()
+  try{
+    mocks.preview.mockResolvedValue({status:"Suggestions",candidates:[candidate],providers:[]})
+    const view=render(<PropertyLocationPicker address={address} disabled={false} onChange={vi.fn()}/>)
+    await vi.advanceTimersByTimeAsync(900)
+    expect(mocks.preview).not.toHaveBeenCalled()
+    view.rerender(<PropertyLocationPicker address={{...address,addressText:"121 Lê Văn Việt, Q9"}} disabled={false} onChange={vi.fn()}/>)
+    await vi.advanceTimersByTimeAsync(900)
+    expect(mocks.preview).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(200)
+    expect(mocks.preview).toHaveBeenCalledTimes(1)
+    expect(mocks.preview.mock.calls[0][0].addressText).toBe("121 Lê Văn Việt, Q9")
+    view.unmount()
+    render(<PropertyLocationPicker address={address} initialPoint={{latitude:10.8,longitude:106.7}} disabled={false} onChange={vi.fn()}/>)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(mocks.preview).toHaveBeenCalledTimes(1)
+  }finally{vi.useRealTimers()}
+})
