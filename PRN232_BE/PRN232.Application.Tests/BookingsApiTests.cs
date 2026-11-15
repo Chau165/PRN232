@@ -410,6 +410,7 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
 {
     private readonly SqliteConnection _connection = new("Data Source=:memory:");
     public bool RefundRequestsEnabled { get; init; } = true;
+    public bool LegacyDepositTerms { get; init; } = true;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -441,6 +442,10 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
             // tiếp tục được kiểm tra. BookingRefundLockTests kiểm tra trạng thái khóa.
             services.RemoveAll<PRN232.Application.Settings.BookingRefundSettings>();
             services.AddSingleton(new PRN232.Application.Settings.BookingRefundSettings { RequestsEnabled = RefundRequestsEnabled });
+            // Rebuild 3.3: các test thanh toán/hóa đơn có sẵn được viết theo luật cũ (cọc trừ tháng đầu);
+            // test của luật mới đặt LegacyDepositTerms = false (BookingDepositTermsTests).
+            services.RemoveAll<PRN232.Application.Settings.BookingDepositSettings>();
+            services.AddSingleton(new PRN232.Application.Settings.BookingDepositSettings { AppliesToFirstMonth = LegacyDepositTerms });
         });
     }
 

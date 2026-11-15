@@ -420,6 +420,10 @@ builder.Services.AddSingleton(
 builder.Services.AddSingleton(
     builder.Configuration.GetSection("BookingRefunds").Get<PRN232.Application.Settings.BookingRefundSettings>()
         ?? new PRN232.Application.Settings.BookingRefundSettings());
+// Rebuild 3.3: điều khoản cọc cho booking mới (false = cọc là tiền đảm bảo, hoàn khi trả phòng).
+builder.Services.AddSingleton(
+    builder.Configuration.GetSection("BookingDeposits").Get<PRN232.Application.Settings.BookingDepositSettings>()
+        ?? new PRN232.Application.Settings.BookingDepositSettings());
 
 builder.Services.AddControllers(options =>
 {

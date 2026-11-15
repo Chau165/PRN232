@@ -318,6 +318,34 @@ Job nền chạy mỗi giờ; mỗi thông báo chỉ gửi một lần. Tiêu �
 
 Việc FE nhỏ (gom khi rảnh): `DepositPage` bước thanh toán, dòng "Giữ phòng đến" đang hiện **hạn thanh toán 15 phút** (`expiryDate`) → đổi nhãn thành "Hạn thanh toán cọc".
 
+---
+
+## C13 — Cọc thành tiền đảm bảo, không trừ vào tháng đầu · ✅ đã có (việc 3.3)
+
+Migration `AddBookingDepositTerms`: cột `Bookings.DepositAppliesToFirstMonth`. **Mọi booking đã có = `true`** (giữ đúng lời hứa "trừ vào tháng đầu" khách đã đọc lúc cọc). Booking mới lấy theo cấu hình `BookingDeposits:AppliesToFirstMonth` (mặc định `false` = luật mới).
+
+| | Luật cũ (`true`) | Luật mới (`false`) |
+|---|---|---|
+| Lúc cọc | 1 tháng tiền phòng | 1 tháng tiền phòng |
+| Hóa đơn tháng đầu | Có dòng âm `PrepaidRentCredit` trừ cọc | **Đủ tiền phòng**, không có dòng trừ |
+| Cọc trong hợp đồng | `prepaidRentAmount` | `securityDepositAmount` — giữ đến khi trả phòng (quyết toán ở việc 3.6) |
+
+**Response thêm:**
+- `BookingDto.depositAppliesToFirstMonth: boolean` — điều khoản của **booking đó**.
+- `ContractDto.securityDepositAmount: number` — tiền cọc đang giữ (0 với hợp đồng luật cũ).
+
+Hóa đơn đã phát hành **không đổi**.
+
+### Việc FE gợi ý
+1. **`DepositPage`, bước giữ phòng** — thay câu "Tiền cọc được trừ vào tiền phòng tháng đầu tiên khi lập hợp đồng" bằng: *"Tiền cọc được giữ làm tiền đảm bảo trong suốt thời gian thuê và hoàn lại khi trả phòng, sau khi trừ tiền phòng còn nợ và hư hỏng thiết bị (nếu có). Tháng đầu tiên bạn đóng đủ tiền phòng."* Giữ phần hạn giữ phòng / mất cọc của C10.
+2. Chỗ nào đang nói "cọc trừ tháng đầu" cho một booking cụ thể (`MyBookingsPage`, `CreateContractPage`…): hiển thị theo `booking.depositAppliesToFirstMonth` — `true` giữ câu cũ, `false` dùng câu mới.
+3. Chi tiết hợp đồng (quản lý + khách): nếu `securityDepositAmount > 0` hiện dòng **"Tiền cọc (hoàn lại khi trả phòng): {securityDepositAmount}"**; nếu `prepaidRentAmount > 0` giữ cách hiển thị cũ.
+
+### Thứ tự deploy (quan trọng)
+Câu điều khoản trên FE phải khớp với điều khoản BE ghi vào booking:
+- **Deploy BE + FE cùng lúc**: để `BookingDeposits:AppliesToFirstMonth = false` (mặc định).
+- **Deploy BE trước FE**: đặt biến môi trường `BookingDeposits__AppliesToFirstMonth = true` trên Railway (BE vẫn chạy luật cũ, khớp câu FE cũ). Khi FE có câu mới đã lên → đổi thành `false` (không cần deploy lại).
+
 Nút "Đã hoàn cọc": xem C11.
 
 ---

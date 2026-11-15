@@ -28,6 +28,7 @@ public class BookingService : IBookingService
     private readonly ILogger<BookingService> _logger;
     private readonly IUserContactLookup? _contactLookup;
     private readonly BookingRefundSettings _refundSettings;
+    private readonly BookingDepositSettings _depositSettings;
 
     public BookingService(
         IBookingRepository repository,
@@ -36,10 +37,12 @@ public class BookingService : IBookingService
         INotificationRealtimePublisher? realtimePublisher = null,
         ILogger<BookingService>? logger = null,
         IUserContactLookup? contactLookup = null,
-        BookingRefundSettings? refundSettings = null)
+        BookingRefundSettings? refundSettings = null,
+        BookingDepositSettings? depositSettings = null)
     {
         _contactLookup = contactLookup;
         _refundSettings = refundSettings ?? new BookingRefundSettings();
+        _depositSettings = depositSettings ?? new BookingDepositSettings();
         _repository = repository;
         _paymentGateway = paymentGateway;
         _timeProvider = timeProvider;
@@ -81,6 +84,7 @@ public class BookingService : IBookingService
         var booking = CreateBookingEntity(room, customerId, now, dto.ViewingId);
         booking.MoveInDate = dto.MoveInDate ?? BookingRules.Today(_timeProvider);
         booking.OccupantCount = occupantCount;
+        booking.DepositAppliesToFirstMonth = _depositSettings.AppliesToFirstMonth;
         Notifications? pendingNotification = null;
 
         if (!await _repository.AddIfRoomRentableAsync(booking, bookingId => pendingNotification = new Notifications
@@ -414,7 +418,8 @@ public class BookingService : IBookingService
             booking.MoveInDate, booking.OccupantCount,
             booking.CancellationReason, UtcTimestamp.ForResponse(booking.CancelledAtUtc), depositRefundDue,
             contacts.Select(contact => new BookingContactDto(contact.FullName, contact.PhoneNumber, contact.Email, contact.Role)).ToArray(),
-            UtcTimestamp.ForResponse(booking.DepositReturnedAtUtc), booking.DepositReturnedByName);
+            UtcTimestamp.ForResponse(booking.DepositReturnedAtUtc), booking.DepositReturnedByName,
+            booking.DepositAppliesToFirstMonth);
     }
 }
 

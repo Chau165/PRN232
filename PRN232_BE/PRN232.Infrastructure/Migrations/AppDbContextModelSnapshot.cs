@@ -252,6 +252,9 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<decimal>("DepositAmount")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<bool>("DepositAppliesToFirstMonth")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime?>("DepositReturnedAtUtc")
                         .HasColumnType("timestamp with time zone");
 

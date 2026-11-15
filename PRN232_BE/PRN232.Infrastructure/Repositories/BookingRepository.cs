@@ -318,7 +318,8 @@ public class BookingRepository : IBookingRepository
         booking.Payments.Any(payment => payment.Status == PaymentStatuses.Success && payment.InvoiceId == null &&
             payment.ContractId == null && payment.ReadingId == null),
         booking.DepositReturnedAtUtc,
-        booking.DepositReturnedBy != null ? booking.DepositReturnedBy.FullName : null);
+        booking.DepositReturnedBy != null ? booking.DepositReturnedBy.FullName : null,
+        booking.DepositAppliesToFirstMonth);
 
     public async Task<bool> ConfirmDepositReturnedAsync(
         int bookingId, int confirmedById, DateTimeOffset asOfUtc, Notifications customerNotification)

@@ -177,8 +177,10 @@ public class ScopeBPrepaidRentReviewTests
                 context.PropertyRoomTypes.Add(new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 1, MonthlyRent = rent, IsActive = true });
                 context.Rooms.Add(new Rooms { RoomId = 1, PropertyId = 1, RoomTypeId = 1, RoomCode = "R1", Status = "Occupied" });
                 context.PropertyManagerAssignments.Add(new PropertyManagerAssignment { PropertyId = 1, ManagerId = 7 });
+                // Rebuild 3.3: these tests cover the legacy terms (deposit credited to the first month).
                 context.Bookings.Add(new Bookings { BookingId = 1, RoomId = 1, CustomerId = 10, DepositAmount = deposit,
-                    Status = "Deposited", ExpiryDate = new DateTime(2026, 11, 20, 0, 0, 0, DateTimeKind.Utc) });
+                    Status = "Deposited", ExpiryDate = new DateTime(2026, 11, 20, 0, 0, 0, DateTimeKind.Utc),
+                    DepositAppliesToFirstMonth = true });
                 context.Payments.Add(new Payments { BookingId = 1, UserId = 10, Amount = deposit, Status = "Success", PaymentMethod = "MoMo" });
                 context.Contracts.Add(new Contracts { ContractId = 1, BookingId = 1, RoomId = 1, CustomerId = 10,
                     ProcessedByStaffId = 7, StartDate = StartMonth, EndDate = new DateOnly(2027, 10, 31),

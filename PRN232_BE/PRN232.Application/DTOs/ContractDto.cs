@@ -28,7 +28,10 @@ public record ContractDto(
     decimal? InitialWaterReading = null,
     DateOnly? MeterHandoverDate = null,
     bool HasUtilityReadings = false,
-    bool HasInvoices = false)
+    bool HasInvoices = false,
+    // Rebuild 3.3: tiền cọc đang giữ làm tiền đảm bảo (hoàn khi trả phòng). 0 với hợp đồng theo luật cũ
+    // (cọc đã/sẽ trừ vào tháng đầu, xem PrepaidRent*).
+    decimal SecurityDepositAmount = 0m)
 {
     public bool HasMeterHandover => InitialElectricReading.HasValue &&
         InitialWaterReading.HasValue && MeterHandoverDate.HasValue;

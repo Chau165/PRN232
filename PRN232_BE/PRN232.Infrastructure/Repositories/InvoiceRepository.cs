@@ -58,11 +58,13 @@ public class InvoiceRepository : IInvoiceRepository
                 BookingId = item.BookingId!.Value,
                 item.CustomerId,
                 DepositAmount = item.Booking!.DepositAmount,
-                BookingStatus = item.Booking.Status
+                BookingStatus = item.Booking.Status,
+                item.Booking.DepositAppliesToFirstMonth
             })
             .FirstOrDefaultAsync();
 
-        if (contract is null || contract.BookingStatus != BookingStatuses.Deposited)
+        // Rebuild 3.3: booking theo điều khoản mới giữ cọc làm tiền đảm bảo, không trừ vào tháng đầu.
+        if (contract is null || contract.BookingStatus != BookingStatuses.Deposited || !contract.DepositAppliesToFirstMonth)
         {
             return null;
         }

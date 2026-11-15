@@ -19,6 +19,9 @@ public class Bookings
         get; set;
     }
     public decimal? AgreedMonthlyRent { get; set; }
+    // Rebuild 3.3 (PLAN D3 bước 4): điều khoản cọc khách được báo LÚC ĐẶT CỌC. true = luật cũ (cọc trừ vào
+    // tiền phòng tháng đầu, mọi booking trước rebuild); false = cọc là tiền đảm bảo, hoàn khi trả phòng.
+    public bool DepositAppliesToFirstMonth { get; set; }
     public int? ViewingId { get; set; }
     // Rebuild 3.1 (PLAN D3 bước 2). NULL ở booking tạo trước rebuild.
     public DateOnly? MoveInDate { get; set; }

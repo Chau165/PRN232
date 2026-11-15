@@ -312,7 +312,9 @@ public sealed class InvoiceRepositoryTests
             CustomerId = 10,
             DepositAmount = 700m,
             Status = BookingStatuses.Deposited,
-            ExpiryDate = DateTime.UtcNow.AddDays(7)
+            ExpiryDate = DateTime.UtcNow.AddDays(7),
+            // Rebuild 3.3: legacy terms (deposit credited to the first month).
+            DepositAppliesToFirstMonth = true
         });
         context.Contracts.Add(new Contracts
         {

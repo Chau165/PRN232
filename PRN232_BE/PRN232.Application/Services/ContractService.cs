@@ -475,7 +475,8 @@ public class ContractService : IContractService
             contract.InitialWaterReading,
             contract.MeterHandoverDate,
             contract.HasUtilityReadings,
-            contract.HasInvoices);
+            contract.HasInvoices,
+            contract.SecurityDepositAmount);
     }
 
     private static InvoiceDto ConvertToDto(InvoiceReadModel invoice, DateOnly today)

@@ -322,7 +322,7 @@ public class InvoicesApiTests
 
     // Hợp đồng bắt đầu hôm nay; chỉ số tháng này 100 -> 150 kWh và 10 -> 14 m3. Kết thúc ở tài khoản chủ khu trọ.
 
-    private static async Task<int> CreateContractWithReadingAsync(HttpClient client)
+    internal static async Task<int> CreateContractWithReadingAsync(HttpClient client)
     {
         var bookingId = await CreatePaidBookingAsync(client);
         await LoginAsync(client, "manager@example.test");

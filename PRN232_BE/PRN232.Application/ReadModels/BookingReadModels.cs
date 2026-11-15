@@ -32,7 +32,8 @@ public sealed record BookingReadModel(
     DateTime? CancelledAtUtc = null,
     bool DepositPaid = false,
     DateTime? DepositReturnedAtUtc = null,
-    string? DepositReturnedByName = null);
+    string? DepositReturnedByName = null,
+    bool DepositAppliesToFirstMonth = false);
 
 // Người khách liên hệ để nhận lại tiền cọc (hệ thống không chuyển tiền hoàn). UserId không trả ra API,
 // chỉ dùng để gửi thông báo cho đúng người.
