@@ -3,6 +3,11 @@ import { useAuth } from "@/auth/AuthContext"
 import { ApiError } from "@/api/apiClient"
 import ManagementPage from "@/components/management/ManagementPage"
 import ManagementStatCard from "@/components/management/ManagementStatCard"
+import {
+  ManagementEmptyState,
+  ManagementErrorState,
+  ManagementLoadingState,
+} from "@/components/management/ManagementState"
 import DepositReportPanel from "@/components/management/DepositReportPanel"
 import { getReceivablesReport, getRevenueReport, type ReceivablesReport, type RevenueReport } from "@/services/reportService"
 import { formatVnd } from "@/utils/publicFormatting"
@@ -58,8 +63,20 @@ export default function ManagementReportsPage() {
       <button onClick={() => setVersion(value => value + 1)} disabled={loading} className="rounded-lg bg-[#087775] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Tải lại báo cáo</button>
     </div>
     <DepositReportPanel token={accessToken} month={month} version={version} />
-    {loading && <p role="status">Đang tải báo cáo...</p>}
-    {error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-700">{error}</p>}
+    {loading && (
+      <ManagementLoadingState
+        variant="cards"
+        rows={4}
+        message="Đang tải báo cáo..."
+      />
+    )}
+    {error && (
+      <ManagementErrorState
+        message={error}
+        retryLabel="Thử lại"
+        onRetry={() => setVersion((value) => value + 1)}
+      />
+    )}
     {data && <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <ManagementStatCard label="Doanh thu tháng" value={formatVnd(data.revenue.totalCollected)} hint={`${data.revenue.paymentCount} giao dịch đã ghi nhận`} />
@@ -71,7 +88,13 @@ export default function ManagementReportsPage() {
         <h3 className="mb-4 text-lg font-bold text-slate-900">Doanh thu theo khu trọ · {month}</h3>
         <table className="w-full text-left text-sm"><thead><tr className="border-b border-slate-100 text-slate-500"><th className="p-3">Khu trọ</th><th className="p-3">Doanh thu</th><th className="p-3">Giao dịch</th><th className="p-3">Chưa xác định thời gian</th></tr></thead>
           <tbody>{data.revenue.byProperty.map(property => <tr key={property.propertyId} className="border-b border-slate-100"><td className="p-3">{property.propertyName}</td><td className="p-3 font-bold text-[#087775]">{formatVnd(property.collectedAmount)}</td><td className="p-3">{property.paymentCount}</td><td className="p-3">{formatVnd(property.unknownDateAmount)} · {property.unknownDatePaymentCount} giao dịch</td></tr>)}</tbody></table>
-        {!data.revenue.byProperty.length && <p className="mt-4 text-sm text-slate-500">Chưa có doanh thu thuộc phạm vi được xem.</p>}
+        {!data.revenue.byProperty.length && (
+          <ManagementEmptyState
+            compact
+            icon="chart"
+            message="Chưa có doanh thu thuộc phạm vi được xem."
+          />
+        )}
       </section>
     </>}
   </ManagementPage>

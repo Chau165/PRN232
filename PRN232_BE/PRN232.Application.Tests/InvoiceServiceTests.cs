@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.Policies;
 using PRN232.Application.ReadModels;
 using PRN232.Application.Services;
 using PRN232.Application.States;
@@ -18,6 +19,8 @@ public class InvoiceServiceTests
     private static readonly BillableServiceReadModel Electricity = new(1, "Electricity - per kWh", 11, 3_500m, "kwh", "usage");
     private static readonly BillableServiceReadModel Water = new(2, "Water - per m3", 12, 20_000m, "m3", "usage");
     private static readonly BillableServiceReadModel Internet = new(3, "Internet - monthly", 13, 100_000m, "room_month", "fixed_room");
+    // Người đứng tên của hợp đồng đã hiệu lực từ trước và chưa kết thúc: tính trọn tháng.
+    private static readonly OccupantStayReadModel FullHolder = new(new DateOnly(2020, 1, 1), null);
 
     [Fact]
     public async Task PreviewAsync_bills_rent_metered_usage_and_fixed_services_without_saving()
@@ -103,12 +106,62 @@ public class InvoiceServiceTests
     public async Task A_service_without_a_price_or_with_an_unsupported_basis_is_never_silently_skipped()
     {
         var noPrice = new FakeInvoiceRepository { Services = [Internet with { RateId = null, Price = null }] };
-        var perPerson = new FakeInvoiceRepository { Services = [Internet with { UnitCode = "person_month", BillingBasis = "occupant" }] };
+        var perVehicle = new FakeInvoiceRepository { Services = [Internet with { UnitCode = "vehicle_month", BillingBasis = "vehicle" }] };
 
         await Assert.ThrowsAsync<InvoiceConflictException>(() =>
             CreateService(noPrice).PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 7, RoleNames.Manager));
         await Assert.ThrowsAsync<InvoiceBusinessRuleException>(() =>
-            CreateService(perPerson).PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 7, RoleNames.Manager));
+            CreateService(perVehicle).PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 7, RoleNames.Manager));
+    }
+
+    [Fact]
+    public async Task A_per_person_service_is_billed_by_person_months_of_the_holder_and_co_occupants()
+    {
+        // Người đứng tên (1) + một người ở cùng vào ngày 21/10 (11 đêm trong tháng 31 ngày) = 1 + 11/31 = 1,35.
+        var repository = new FakeInvoiceRepository
+        {
+            Services = [Internet with { Price = 50_000m, UnitCode = "person_month", BillingBasis = "occupant" }],
+            Stays = [new OccupantStayReadModel(new DateOnly(2026, 10, 21), null)]
+        };
+
+        var preview = await CreateService(repository).PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 7, RoleNames.Manager);
+
+        var line = Assert.Single(preview.Lines, item => item.ItemType == InvoiceItemTypes.Service);
+        Assert.Equal(((decimal?)1.35m, (decimal?)50_000m, "person_month", 67_500m),
+            (line.Quantity, line.UnitPrice, line.UnitCode, line.Amount));
+    }
+
+    [Fact]
+    public void Occupant_billing_counts_days_from_move_in_through_move_out_and_ignores_other_months()
+    {
+        var month = new DateOnly(2026, 10, 1);
+        Assert.Equal(1.00m, OccupantBilling.PersonMonths(month, FullHolder, []));
+        // ở cả tháng → 2 người
+        Assert.Equal(2.00m, OccupantBilling.PersonMonths(month, FullHolder, [new(new DateOnly(2026, 1, 1), null)]));
+        // dọn ra ngày 11/10 → tính cả ngày dọn ra: 11 ngày (1–11) → 1 + 11/31
+        Assert.Equal(1.35m, OccupantBilling.PersonMonths(month, FullHolder, [new(new DateOnly(2026, 1, 1), new DateOnly(2026, 10, 11))]));
+        // dọn ra ngày 1/10 → vẫn ở 1 ngày trong tháng 10 → 1 + 1/31
+        Assert.Equal(1.03m, OccupantBilling.PersonMonths(month, FullHolder, [new(new DateOnly(2026, 1, 1), new DateOnly(2026, 10, 1))]));
+        // dọn ra 30/9 → không tính cho tháng 10; vào ngày 1/11 → chưa tính
+        Assert.Equal(1.00m, OccupantBilling.PersonMonths(month, FullHolder, [
+            new(new DateOnly(2026, 1, 1), new DateOnly(2026, 9, 30)),
+            new(new DateOnly(2026, 11, 1), null)]));
+        // vào và dọn ra cùng một ngày → 1 ngày
+        Assert.Equal(1.03m, OccupantBilling.PersonMonths(month, FullHolder, [new(new DateOnly(2026, 10, 20), new DateOnly(2026, 10, 20))]));
+        // tháng 2/2027 có 28 ngày: vào ngày 15 → 14 ngày (15–28) = 0,5 người
+        Assert.Equal(1.50m, OccupantBilling.PersonMonths(new DateOnly(2027, 2, 1), FullHolder, [new(new DateOnly(2027, 2, 15), null)]));
+    }
+
+    // Chuyển người đứng tên (4.2) đóng người ở cùng ở HĐ cũ với ngày dọn ra = ngày cuối HĐ cũ (họ vẫn ở hôm đó),
+    // rồi chuyển họ sang HĐ mới từ ngày 1 tháng sau. Tháng cuối của HĐ cũ phải tính đủ, không mất ngày nào.
+    [Fact]
+    public void A_roommate_closed_on_the_last_day_of_the_old_contract_is_billed_for_the_whole_month()
+    {
+        var november = new DateOnly(2026, 11, 1);
+        Assert.Equal(2.00m, OccupantBilling.PersonMonths(november, FullHolder, [new(new DateOnly(2026, 3, 1), new DateOnly(2026, 11, 30))]));
+        // HĐ mới bắt đầu 1/12: người đó vào ngày 1/12 → tháng 12 tính đủ ở HĐ mới, không trùng với HĐ cũ.
+        Assert.Equal(2.00m, OccupantBilling.PersonMonths(november.AddMonths(1), FullHolder, [new(new DateOnly(2026, 12, 1), null)]));
+        Assert.Equal(1.00m, OccupantBilling.PersonMonths(november.AddMonths(1), FullHolder, [new(new DateOnly(2026, 3, 1), new DateOnly(2026, 11, 30))]));
     }
 
     [Theory]
@@ -343,6 +396,55 @@ public class InvoiceServiceTests
         public Task PrepareAsync(int invoiceId, int? ownerId, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
+    // Hợp đồng 15/10/2026–14/10/2027: tháng đầu và tháng cuối tính theo số ngày ở, tổng đúng 12 tháng tiền phòng.
+    [Fact]
+    public async Task A_contract_starting_mid_month_pays_rent_and_room_fees_for_the_days_it_covers()
+    {
+        var repository = new FakeInvoiceRepository
+        {
+            Contract = SampleContract() with { MonthlyRent = 3_100_000m, StartDate = new DateOnly(2026, 10, 15), EndDate = new DateOnly(2027, 10, 14) },
+            Services = [Internet with { Price = 62_000m }, Internet with { ServiceId = 4, ServiceName = "Rác", Price = 31_000m, UnitCode = "person_month", BillingBasis = "occupant" }]
+        };
+
+        var preview = await CreateService(repository).PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 7, RoleNames.Manager);
+
+        var rent = Assert.Single(preview.Lines, line => line.ItemType == InvoiceItemTypes.Rent);
+        Assert.Equal(("Tiền phòng tháng 10/2026 (17/31 ngày)", 1_700_000m), (rent.Description, rent.Amount));
+        // Wifi theo phòng: 17/31 = 0,55 phòng × 62.000 = 34.100; rác theo người: người đứng tên 17/31 = 0,55 người.
+        Assert.Equal([(0.55m, 34_100m), (0.55m, 17_050m)],
+            preview.Lines.Where(line => line.ItemType == InvoiceItemTypes.Service).Select(line => (line.Quantity!.Value, line.Amount)));
+    }
+
+    [Fact]
+    public void Rent_is_prorated_by_days_in_the_first_and_last_month_and_stops_at_an_earlier_move_out()
+    {
+        var start = new DateOnly(2026, 10, 15);
+        var end = new DateOnly(2027, 10, 14);
+        Assert.Equal((17, 31), RentProration.BilledDays(new DateOnly(2026, 10, 1), start, end));
+        Assert.Equal((30, 30), RentProration.BilledDays(new DateOnly(2026, 11, 1), start, end));
+        Assert.Equal((14, 31), RentProration.BilledDays(new DateOnly(2027, 10, 1), start, end));
+        Assert.Equal(1_700_000m + 1_400_000m, RentProration.Rent(3_100_000m, 17, 31) + RentProration.Rent(3_100_000m, 14, 31));
+        Assert.Equal(3_100_000m, RentProration.Rent(3_100_000m, 30, 30));
+        // Báo trả phòng ngày 20/3/2027: tháng 3 tính 20 ngày, tháng 4 không còn ngày nào.
+        var lastDay = RentProration.LastBilledDay(end, new DateOnly(2027, 3, 20));
+        Assert.Equal((20, 31), RentProration.BilledDays(new DateOnly(2027, 3, 1), start, lastDay));
+        Assert.Equal(0, RentProration.BilledDays(new DateOnly(2027, 4, 1), start, lastDay).Days);
+        // Ngày trả phòng sau ngày kết thúc thì vẫn dừng ở ngày kết thúc.
+        Assert.Equal(end, RentProration.LastBilledDay(end, end.AddDays(5)));
+    }
+
+    [Fact]
+    public async Task No_invoice_for_a_month_after_the_announced_move_out()
+    {
+        var repository = new FakeInvoiceRepository
+        {
+            Contract = SampleContract() with { PlannedMoveOutDate = new DateOnly(2026, 9, 20) }
+        };
+
+        await Assert.ThrowsAsync<InvoiceBusinessRuleException>(() =>
+            CreateService(repository).PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 7, RoleNames.Manager));
+    }
+
     private static InvoicePaymentReadModel SamplePaymentTarget() =>
         new(5, 10, 7, "A-101", October, InvoiceStatuses.Unpaid, 3_207_500m, 1);
 
@@ -386,6 +488,10 @@ public class InvoiceServiceTests
             Task.FromResult(Services);
 
         public Task<MonthUsageReadModel?> GetUsageAsync(int contractId, DateOnly month) => Task.FromResult(Usage);
+
+        public List<OccupantStayReadModel> Stays { get; init; } = [];
+
+        public Task<List<OccupantStayReadModel>> GetOccupantStaysAsync(int contractId, DateOnly month) => Task.FromResult(Stays);
 
         public Task<bool> ExistsForMonthAsync(int contractId, DateOnly month) => Task.FromResult(InvoiceExists);
 

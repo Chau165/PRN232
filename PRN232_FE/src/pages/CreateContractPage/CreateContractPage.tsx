@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 import ManagementPage from "@/components/management/ManagementPage"
+import { ManagementLoadingState } from "@/components/management/ManagementState"
 import { useAuth } from "@/auth/AuthContext"
 import { getBooking } from "@/services/bookingService"
 import { createContract } from "@/services/contractService"
@@ -22,7 +23,14 @@ export default function CreateContractPage() {
   const bookingId = parsePositiveRouteId(params.get("bookingId") ?? undefined)
 
   return (
-    <ManagementPage title="Tạo hợp đồng" description="Kiểm tra thông tin booking đã đặt cọc và chọn thời hạn hợp đồng.">
+    <ManagementPage
+      title="Tạo hợp đồng"
+      description="Kiểm tra thông tin booking đã đặt cọc và chọn thời hạn hợp đồng."
+      breadcrumbs={[
+        { label: "Đặt phòng & Đặt cọc", to: routes.managementBookings },
+        { label: "Tạo hợp đồng" },
+      ]}
+    >
       <div className="mx-auto w-full max-w-3xl">
         <Link to={routes.managementBookings} className="mb-5 inline-block text-sm font-semibold text-[#087775] hover:underline">
           ← Về Đặt phòng & Đặt cọc
@@ -58,7 +66,7 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
   }, [accessToken, bookingId])
 
   if (loadError) return <Warning message={loadError} />
-  if (!booking) return <p role="status" className="text-sm text-slate-500">Đang tải booking...</p>
+  if (!booking) return <ManagementLoadingState variant="inline" message="Đang tải booking..." />
   if (booking.contractId !== null) return <Warning message="Booking này đã được lập hợp đồng." />
   if (booking.status !== "Deposited") return <Warning message="Chỉ booking đã đặt cọc mới lập được hợp đồng." />
   if (refundBlocksContract(booking.refundStatus)) return <Warning message="Booking đang có yêu cầu hoàn cọc hoặc đã hoàn cọc, chưa thể lập hợp đồng." />

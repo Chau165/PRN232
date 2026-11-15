@@ -328,6 +328,8 @@ public class InvoicesApiTests
         await LoginAsync(client, "manager@example.test");
         var contract = await PostContractAsync(client, bookingId, VietnamToday, VietnamToday.AddYears(1));
         var contractId = (await contract.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("contractId").GetInt32();
+        // Hóa đơn tháng này đủ tháng, không phụ thuộc ngày chạy test (tiền phòng tháng đầu tính theo ngày).
+        await TestContractStartFilter.StartAtMonthStartAsync(client, contractId);
         var handover = await client.PutAsJsonAsync($"/api/contracts/{contractId}/meter-handover", new
         {
             meterHandoverDate = VietnamToday, initialElectricReading = 100m, initialWaterReading = 10m

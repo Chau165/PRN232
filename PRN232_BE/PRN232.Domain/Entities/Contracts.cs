@@ -49,6 +49,9 @@ public class Contracts
     public DateTime? MoveOutNoticeAtUtc { get; set; }
     public int? MoveOutNoticeById { get; set; }
     public Users? MoveOutNoticeBy { get; set; }
+    // Rebuild 4.2: hợp đồng được tạo do chuyển người đứng tên; DepositAmount là số cọc được chuyển sang.
+    public int? TransferredFromContractId { get; set; }
+    public Contracts? TransferredFromContract { get; set; }
 
     public Rooms? Room
     {

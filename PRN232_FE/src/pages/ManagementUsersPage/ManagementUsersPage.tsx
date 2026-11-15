@@ -14,6 +14,11 @@ import { DEFAULT_PAGE_SIZE, totalPages } from "@/types/pagination"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import { registrationError } from "@/utils/accountValidation"
 import ManagementPage from "@/components/management/ManagementPage"
+import {
+  ManagementEmptyState,
+  ManagementErrorState,
+  ManagementLoadingState,
+} from "@/components/management/ManagementState"
 import StatusBadge from "@/components/customer/StatusBadge"
 
 const emptyForm = { fullName: "", email: "", phoneNumber: "", password: "", roleId: "" }
@@ -138,7 +143,7 @@ export default function ManagementUsersPage() {
 
   return (
     <ManagementPage title="Người dùng" description="Quản lý tài khoản và quyền truy cập theo chính sách Backend.">
-      {error && <p role="alert" className="mb-4 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
+      {error && <ManagementErrorState variant="banner" message={error} />}
       <section className="mb-6 rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_3px_18px_rgba(16,65,67,.05)]">
         <h2 className="font-display text-lg font-bold text-slate-900">Tạo tài khoản</h2>
         <form onSubmit={submitCreate} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -170,9 +175,9 @@ export default function ManagementUsersPage() {
 
       <ManagementDataTable headers={["Người dùng", "Email", "Role", "Trạng thái", "Thao tác"]}>
         {loading ? (
-          <p role="status" className="px-5 py-8 text-sm text-slate-500">Đang tải người dùng...</p>
+          <ManagementLoadingState message="Đang tải người dùng..." />
         ) : users.length === 0 ? (
-          <p className="px-5 py-8 text-sm text-slate-500">Chưa có người dùng.</p>
+          <ManagementEmptyState icon="user" message="Chưa có người dùng." />
         ) : (
           <div className="divide-y divide-slate-100">
             {users.map((row) => {

@@ -109,3 +109,18 @@ export {
   confirmDepositSettlementRefund,
   getContractDepositSettlement,
 } from "@/services/contractSettlementService"
+
+export {
+  addContractOccupant,
+  getContractOccupants,
+  recordContractOccupantMoveOut,
+  revealContractOccupantIdentity,
+} from "@/services/contractOccupantsService"
+
+export {
+  cancelContractTransfer,
+  completeContractTransfer,
+  confirmContractTransfer,
+  createContractTransfer,
+  getContractTransfers,
+} from "@/services/contractTransferService"

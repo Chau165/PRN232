@@ -51,6 +51,8 @@ export const routes = {
 
   managementUsers: "/management/users",
 
+  managementAuditLogs: "/management/audit-logs",
+
   login: "/login",
 
   register: "/register",

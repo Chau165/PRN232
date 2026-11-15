@@ -12,6 +12,22 @@ export interface UtilityReadingDto {
   waterStart: number
   waterEnd: number
   waterUsage: number
+  warnings?: string[] | null
+}
+
+export interface UtilityReadingPreviewDto {
+  contractId: number
+  readingMonth: string
+  electricStart: number
+  electricEnd: number
+  electricUsage: number
+  waterStart: number
+  waterEnd: number
+  waterUsage: number
+  averageElectricUsage: number | null
+  averageWaterUsage: number | null
+  monthsAveraged: number
+  warnings: string[]
 }
 
 export interface CreateUtilityReadingRequest {

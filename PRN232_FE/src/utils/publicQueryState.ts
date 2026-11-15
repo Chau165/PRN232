@@ -6,7 +6,6 @@ import type {
 export interface PropertySearchDraft {
   keyword: string
   city: string
-  district: string
   ward: string
   minPrice: string
   maxPrice: string
@@ -34,7 +33,6 @@ export function propertyQueryFromSearch(
   return {
     keyword: params.get("keyword") ?? undefined,
     city: params.get("city") ?? undefined,
-    district: params.get("district") ?? undefined,
     ward: params.get("ward") ?? undefined,
     minPrice: params.get("minPrice") ?? undefined,
     maxPrice: params.get("maxPrice") ?? undefined,
@@ -52,7 +50,6 @@ export function propertySearchDraft(
   return {
     keyword: String(query.keyword ?? ""),
     city: String(query.city ?? ""),
-    district: String(query.district ?? ""),
     ward: String(query.ward ?? ""),
     minPrice: String(query.minPrice ?? ""),
     maxPrice: String(query.maxPrice ?? ""),
@@ -69,7 +66,6 @@ export function propertySearchParams(
   const fields: Array<[string, string]> = [
     ["keyword", draft.keyword],
     ["city", draft.city],
-    ["district", draft.district],
     ["ward", draft.ward],
     ["minPrice", draft.minPrice],
     ["maxPrice", draft.maxPrice],

@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
   getRentalHistory: vi.fn(),
   getContracts: vi.fn(),
   getContractBillingTimeline: vi.fn(),
+  getContractTransfers: vi.fn(),
+  confirmContractTransfer: vi.fn(),
+  cancelContractTransfer: vi.fn(),
   getMaintenanceRequests: vi.fn(),
   getMaintenanceRequest: vi.fn(),
   getMaintenanceLogs: vi.fn(),
@@ -81,6 +84,27 @@ vi.mock("@/services/contractSettlementService", () => ({
   confirmContractDepositSettlement: vi.fn(),
   confirmDepositSettlementRefund: vi.fn(),
   confirmDepositSettlementDueCollected: vi.fn(),
+}))
+vi.mock("@/services/contractOccupantsService", () => ({
+  getContractOccupants: vi.fn().mockResolvedValue({
+    contractId: 123,
+    holderName: "Khách",
+    maxOccupants: 2,
+    currentCount: 1,
+    canManage: true,
+    canRevealIdentity: false,
+    occupants: [],
+  }),
+  addContractOccupant: vi.fn(),
+  recordContractOccupantMoveOut: vi.fn(),
+  revealContractOccupantIdentity: vi.fn(),
+}))
+vi.mock("@/services/contractTransferService", () => ({
+  getContractTransfers: mocks.getContractTransfers,
+  createContractTransfer: vi.fn(),
+  confirmContractTransfer: mocks.confirmContractTransfer,
+  cancelContractTransfer: mocks.cancelContractTransfer,
+  completeContractTransfer: vi.fn(),
 }))
 vi.mock("@/services/maintenanceService", () => ({
   getMaintenanceRequests: mocks.getMaintenanceRequests,
@@ -184,6 +208,7 @@ beforeEach(() => {
   mocks.getContractBillingTimeline.mockImplementation(async (_token, contractId) =>
     billingTimeline(contract({ contractId })),
   )
+  mocks.getContractTransfers.mockResolvedValue([])
   mocks.getMaintenanceRequests.mockResolvedValue([])
   mocks.getMaintenanceRequest.mockImplementation(async (_token, id) => request({ requestId: id, status: "Approved" }))
   mocks.getMaintenanceLogs.mockResolvedValue([{ logId: 1, requestId: 42, oldStatus: null, newStatus: "Pending", changedBy: 10, changedByName: "Customer", changedAt: "2026-02-01T10:00:00Z" }])
@@ -354,5 +379,93 @@ describe("Customer room and notification pages", () => {
     fireEvent.click(screen.getByRole("button", { name: "Thông báo" }))
     expect(screen.getByText("Unread one")).toBeTruthy()
     expect(screen.getByText("Unread two")).toBeTruthy()
+  })
+
+  it("shows incoming contract transfer card at top of MyContractsPage and allows accepting (C21)", async () => {
+    mocks.getContracts.mockResolvedValue([
+      contract({ contractId: 123, transferredToContractId: 188 }),
+    ])
+    mocks.getContractTransfers.mockResolvedValue([
+      {
+        contractTransferId: 9,
+        status: "Pending",
+        fromContractId: 77,
+        roomCode: "B302",
+        propertyName: "Nhà trọ Bình An",
+        oldHolderId: 55,
+        oldHolderName: "Lê Minh",
+        newHolderId: 10,
+        newHolderName: "Customer",
+        newHolderEmail: "customer@example.com",
+        becomingHolderOccupantName: "Customer",
+        effectiveDate: "2026-12-01",
+        monthlyRent: 3_500_000,
+        contractEndDate: "2027-06-01",
+        depositCarriedOver: 3_500_000,
+        requestedByName: "Lê Minh",
+        createdAtUtc: "2026-11-15T07:00:00Z",
+        oldHolderConfirmedAtUtc: "2026-11-15T07:00:00Z",
+        newHolderConfirmedAtUtc: null,
+        completedAtUtc: null,
+        newContractId: null,
+        cancelledAtUtc: null,
+        cancelReason: null,
+        canConfirm: true,
+        canCancel: true,
+        canComplete: false,
+        blockers: [],
+      },
+    ])
+    mocks.confirmContractTransfer.mockResolvedValue({
+      contractTransferId: 9,
+      status: "Pending",
+      fromContractId: 77,
+      roomCode: "B302",
+      propertyName: "Nhà trọ Bình An",
+      oldHolderId: 55,
+      oldHolderName: "Lê Minh",
+      newHolderId: 10,
+      newHolderName: "Customer",
+      newHolderEmail: "customer@example.com",
+      becomingHolderOccupantName: "Customer",
+      effectiveDate: "2026-12-01",
+      monthlyRent: 3_500_000,
+      contractEndDate: "2027-06-01",
+      depositCarriedOver: 3_500_000,
+      requestedByName: "Lê Minh",
+      createdAtUtc: "2026-11-15T07:00:00Z",
+      oldHolderConfirmedAtUtc: "2026-11-15T07:00:00Z",
+      newHolderConfirmedAtUtc: "2026-11-15T09:00:00Z",
+      completedAtUtc: null,
+      newContractId: null,
+      cancelledAtUtc: null,
+      cancelReason: null,
+      canConfirm: false,
+      canCancel: true,
+      canComplete: false,
+      blockers: [],
+    })
+
+    renderPage(<MyContractsPage />)
+
+    expect(
+      await screen.findByText("Đề nghị chuyển hợp đồng dành cho bạn"),
+    ).toBeTruthy()
+    expect(screen.getByText("Nhà trọ Bình An · Phòng B302")).toBeTruthy()
+    expect(screen.getByText("Đã chuyển sang hợp đồng #188")).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "Đồng ý nhận" }))
+
+    await waitFor(() =>
+      expect(mocks.confirmContractTransfer).toHaveBeenCalledWith(
+        "customer-token",
+        9,
+      ),
+    )
+    expect(
+      await screen.findByText(
+        "Đã đồng ý nhận chuyển hợp đồng phòng B302 (Nhà trọ Bình An).",
+      ),
+    ).toBeTruthy()
   })
 })

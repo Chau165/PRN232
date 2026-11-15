@@ -1,7 +1,12 @@
 import type { InvoiceDto, InvoiceLineDto } from "@/types/invoice"
 import { formatVnd } from "@/utils/publicFormatting"
 
-const unitLabels: Record<string, string> = { kwh: "kWh", m3: "m³", room_month: "phòng" }
+const unitLabels: Record<string, string> = {
+  kwh: "kWh",
+  m3: "m³",
+  room_month: "phòng",
+  person_month: "người",
+}
 
 // "2026-10-01" -> "10/2026"
 export function formatMonth(month: string) {
@@ -24,6 +29,7 @@ export function invoiceLineLabel(line: InvoiceLineDto) {
   if (line.itemType === "PrepaidRentCredit") return "Tiền cọc đã khấu trừ vào tiền phòng"
   if (line.itemType === "Electricity") return `Điện${usage}`
   if (line.itemType === "Water") return `Nước${usage}`
+  if (line.unitCode === "person_month" && usage) return `${line.description}${usage}`
   return line.description
 }
 

@@ -27,12 +27,12 @@ const RATE_FORM_FIELDS: readonly RateFormField[] = [
   "effectiveTo",
 ]
 
-// Chỉ đưa ra các cách tính mà hoá đơn hiện tính được. BE còn nhận person_month/vehicle_month,
-// nhưng InvoiceService chưa hỗ trợ nên tạo giá kiểu đó sẽ làm việc lập hoá đơn bị lỗi.
+// Chỉ đưa ra các cách tính mà hoá đơn hiện tính được. Giá theo xe (vehicle_month) chưa được hỗ trợ.
 const billingOptions = [
   { key: "kwh", unitCode: "kwh", billingBasis: "usage", label: "Theo số điện (kWh)", unit: "kWh" },
   { key: "m3", unitCode: "m3", billingBasis: "usage", label: "Theo số nước (m³)", unit: "m³" },
   { key: "room", unitCode: "room_month", billingBasis: "fixed_room", label: "Cố định mỗi phòng/tháng", unit: "phòng/tháng" },
+  { key: "person", unitCode: "person_month", billingBasis: "occupant", label: "Theo đầu người/tháng", unit: "người/tháng" },
 ] as const
 
 const inputClass =
@@ -299,6 +299,11 @@ function AddRateForm({ accessToken, propertyId, catalog, defaultMonth, onCreated
               {billingOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
             </select>
           </label>
+          {billing === "person" && (
+            <p className="mt-1 text-xs text-slate-500">
+              Tính theo số người trong danh sách người ở cùng, người vào/ra giữa tháng tính theo số ngày.
+            </p>
+          )}
           {fieldErrors.billing && (
             <p role="alert" className="mt-1 text-xs text-rose-600">
               {fieldErrors.billing}

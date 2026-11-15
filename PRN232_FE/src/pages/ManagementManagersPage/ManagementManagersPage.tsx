@@ -19,6 +19,12 @@ import AssignManagerPropertiesModal from "@/components/management/AssignManagerP
 import CreateManagerModal from "@/components/management/CreateManagerModal"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementPage from "@/components/management/ManagementPage"
+import {
+  ManagementEmptyState,
+  ManagementErrorState,
+  ManagementLoadingState,
+  ManagementSuccessBanner,
+} from "@/components/management/ManagementState"
 import StatusBadge from "@/components/customer/StatusBadge"
 
 export default function ManagementManagersPage() {
@@ -115,12 +121,21 @@ export default function ManagementManagersPage() {
   }
 
   return (
-    <ManagementPage title="Quản lý Manager" description="Danh sách và trạng thái tài khoản Manager trên hệ thống.">
-      {error && <p role="alert" className="mb-4 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
-      {success && <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{success}</p>}
-      <div className="mb-5 flex justify-end">
-        <button disabled={managerRoleId === null} onClick={() => setShowCreate(true)} className="rounded-lg bg-[#087775] px-4 py-2.5 text-[13px] font-bold text-white disabled:opacity-50">+ Thêm Manager</button>
-      </div>
+    <ManagementPage
+      title="Quản lý Manager"
+      description="Danh sách và trạng thái tài khoản Manager trên hệ thống."
+      actions={
+        <button
+          disabled={managerRoleId === null}
+          onClick={() => setShowCreate(true)}
+          className="rounded-lg bg-[#087775] px-4 py-2.5 text-[13px] font-bold text-white hover:bg-[#066a68] disabled:opacity-50"
+        >
+          + Thêm Manager
+        </button>
+      }
+    >
+      {error && <ManagementErrorState variant="banner" message={error} />}
+      {success && <ManagementSuccessBanner message={success} />}
       {selectedManager && (
         <section aria-label="Chi tiết Manager" className="mb-5 rounded-xl border border-teal-100 bg-teal-50/50 p-4 text-sm">
           <div className="flex items-start justify-between gap-3">
@@ -135,9 +150,9 @@ export default function ManagementManagersPage() {
       )}
       <ManagementDataTable headers={["Manager", "Liên hệ", "Khu trọ được phân công", "Trạng thái", "Thao tác"]}>
         {loading ? (
-          <p role="status" className="px-5 py-8 text-sm text-slate-500">Đang tải Manager...</p>
+          <ManagementLoadingState message="Đang tải Manager..." />
         ) : managers.length === 0 ? (
-          <p className="px-5 py-8 text-sm text-slate-500">Chưa có tài khoản Manager.</p>
+          <ManagementEmptyState icon="users" message="Chưa có tài khoản Manager." />
         ) : (
           <div className="divide-y divide-slate-100">
             {managers.map((manager) => {

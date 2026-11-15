@@ -95,12 +95,12 @@ function renderMapSection() {
 }
 
 describe("public area map section", () => {
-  it("shows Quận 7 properties as map markers using local data even while geocoding is unavailable", async () => {
+  it("shows Phường Tân Thuận properties as map markers using local data even while geocoding is unavailable", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input) => {
       const url = new URL(String(input), window.location.origin)
-      if (url.pathname === "/api/public/properties/by-area" && url.searchParams.get("district") === "Quận 7") {
+      if (url.pathname === "/api/public/properties/by-area" && url.searchParams.get("ward") === "Phường Tân Thuận" && !url.searchParams.has("district")) {
         return jsonResponse([property(42, {
-          propertyName: "Tân Thuận Residence", district: "Khu vực Quận 7 cũ",
+          propertyName: "Tân Thuận Residence", ward: "Phường Tân Thuận", district: "",
           latitude: 10.738, longitude: 106.728,
         })])
       }
@@ -108,10 +108,10 @@ describe("public area map section", () => {
     })
     vi.stubGlobal("fetch", fetchMock)
     renderMapSection()
-    fireEvent.change(screen.getByLabelText("Bạn muốn tìm khu trọ ở đâu?"), { target: { value: "Quận 7" } })
+    fireEvent.change(screen.getByLabelText("Bạn muốn tìm khu trọ ở đâu?"), { target: { value: "Phường Tân Thuận" } })
     fireEvent.click(screen.getByRole("button", { name: "Tìm trên bản đồ" }))
 
-    expect(await screen.findByRole("heading", { name: "Khu trọ tại Quận 7" })).toBeTruthy()
+    expect(await screen.findByRole("heading", { name: "Khu trọ tại Phường Tân Thuận" })).toBeTruthy()
     expect(await screen.findByRole("button", { name: "Bản đồ: Tân Thuận Residence" })).toBeTruthy()
     expect(screen.getByTestId("area-map").getAttribute("data-property-count")).toBe("1")
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -133,6 +133,7 @@ describe("public area map section", () => {
 
               properties: {
                 name: "Hồ Hoàn Kiếm",
+                suburb: "Phường Hàng Trống",
                 district: "Hoàn Kiếm",
                 city: "Hà Nội",
               },
@@ -160,7 +161,7 @@ describe("public area map section", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tìm trên bản đồ" }))
 
     expect(
-      await screen.findByRole("heading", { name: "Khu trọ tại Hoàn Kiếm" }),
+      await screen.findByRole("heading", { name: "Khu trọ tại Phường Hàng Trống" }),
     ).toBeTruthy()
 
     expect(getCurrentPosition).not.toHaveBeenCalled()
@@ -174,8 +175,8 @@ describe("public area map section", () => {
       window.location.origin,
     )
 
-    expect(request.searchParams.get("district")).toBe("Hoàn Kiếm")
-
+    expect(request.searchParams.has("district")).toBe(false)
+    expect(request.searchParams.get("ward")).toBe("Phường Hàng Trống")
     expect(request.searchParams.get("city")).toBe("Hà Nội")
   })
 
@@ -201,7 +202,7 @@ describe("public area map section", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it("loads district properties and keeps marker selection synchronized", async () => {
+  it("loads ward properties without district and keeps marker selection synchronized", async () => {
     grantLocationPermission()
     const properties = [property(42), property(43)]
     const fetchMock = vi
@@ -225,7 +226,7 @@ describe("public area map section", () => {
     )
 
     expect(
-      await screen.findByRole("heading", { name: "Khu trọ tại Quận Gò Vấp" }),
+      await screen.findByRole("heading", { name: "Khu trọ tại Phường Sáu" }),
     ).toBeTruthy()
     expect((await screen.findByTestId("area-map")).getAttribute("data-property-count",
       ),
@@ -237,7 +238,8 @@ describe("public area map section", () => {
     const areaRequest = new URL(String(fetchMock.mock.calls[1][0]), window.location.origin,
     )
     expect(areaRequest.pathname).toBe("/api/public/properties/by-area")
-    expect(areaRequest.searchParams.get("district")).toBe("Quận Gò Vấp")
+    expect(areaRequest.searchParams.has("district")).toBe(false)
+    expect(areaRequest.searchParams.get("ward")).toBe("Phường Sáu")
     expect(areaRequest.searchParams.get("city")).toBe("TP. Hồ Chí Minh")
     expect(areaRequest.searchParams.has("radius")).toBe(false)
 
@@ -360,7 +362,7 @@ describe("public area map section", () => {
       vi.fn<typeof fetch>()
         .mockResolvedValueOnce(jsonResponse({
           address: {
-            city_district: "Quận Gò Vấp",
+            suburb: "Phường Sáu",
             city: "TP.HCM",
           },
         }),

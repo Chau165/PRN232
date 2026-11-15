@@ -146,6 +146,58 @@ public class UtilityReadingServiceTests
     private static ReadingContractReadModel SampleContract() =>
         new(1, 7, ContractStatuses.Active, new DateOnly(2026, 10, 1), new DateOnly(2027, 5, 31), 1, 100m, 10m, new DateOnly(2026, 10, 2));
 
+    // Rebuild 4.4: tháng 9 kết thúc ở 1320 kWh / 104 m³; ba tháng trước dùng trung bình 100 kWh và 5 m³.
+    private static readonly List<MonthUsageReadModel> UsualMonths = [new(90m, 5m), new(100m, 4m), new(110m, 6m)];
+
+    [Fact]
+    public async Task PreviewAsync_warns_when_usage_is_far_from_the_recent_average_and_saves_nothing()
+    {
+        var repository = new FakeReadingRepository
+        {
+            Latest = new LatestReadingReadModel(new DateOnly(2026, 9, 1), 1320m, 104m),
+            Recent = UsualMonths
+        };
+
+        // Điện 1320 → 1500 = 180 kWh (+80%); nước 104 → 109 = 5 m³ (bình thường).
+        var preview = await CreateService(repository).PreviewAsync(new CreateUtilityReadingDto(1, October, 1500m, 109m), 7, RoleNames.Manager);
+
+        Assert.Empty(repository.Added);
+        Assert.Equal((180m, 5m, (decimal?)100m, (decimal?)5m, 3), (preview.ElectricUsage, preview.WaterUsage,
+            preview.AverageElectricUsage, preview.AverageWaterUsage, preview.MonthsAveraged));
+        var warning = Assert.Single(preview.Warnings);
+        Assert.Equal("Điện tháng này 180 kWh, cao hơn 80% so với trung bình 3 tháng gần nhất (100 kWh). Hãy kiểm tra lại chỉ số trước khi lưu.", warning);
+    }
+
+    [Fact]
+    public async Task CreateAsync_still_saves_an_unusual_reading_and_returns_the_warning()
+    {
+        var repository = new FakeReadingRepository
+        {
+            Latest = new LatestReadingReadModel(new DateOnly(2026, 9, 1), 1320m, 104m),
+            Recent = UsualMonths
+        };
+
+        // Nước 104 → 105 = 1 m³: giảm 80% và chênh 4 m³ ≥ 2 → cảnh báo "thấp hơn".
+        var created = await CreateService(repository).CreateAsync(new CreateUtilityReadingDto(1, October, 1420m, 105m), 7, RoleNames.Manager);
+
+        Assert.Single(repository.Added);
+        Assert.Contains("Nước tháng này 1 m³, thấp hơn 80%", Assert.Single(created.Warnings!));
+    }
+
+    [Theory]
+    [InlineData(125, 6.9)]  // +25% điện, nước +1,9 m³ (dưới mức chênh tối thiểu 2 m³)
+    [InlineData(75, 4)]     // -25% điện
+    public void Usage_within_thirty_percent_or_a_tiny_absolute_change_is_not_flagged(decimal electric, decimal water)
+    {
+        Assert.Empty(PRN232.Application.Policies.UnusualUsagePolicy.Warnings(electric, water, UsualMonths));
+    }
+
+    [Fact]
+    public void The_first_reading_has_no_history_to_compare_with()
+    {
+        Assert.Empty(PRN232.Application.Policies.UnusualUsagePolicy.Warnings(5000m, 300m, []));
+    }
+
     private sealed class FakeReadingRepository : IUtilityReadingRepository
     {
         public ReadingContractReadModel? Contract { get; init; } = SampleContract();
@@ -167,6 +219,11 @@ public class UtilityReadingServiceTests
             Task.FromResult(propertyId == 1 && managerId == 7);
 
         public Task<LatestReadingReadModel?> GetLatestAsync(int contractId) => Task.FromResult(Latest);
+
+        public List<MonthUsageReadModel> Recent { get; init; } = [];
+
+        public Task<List<MonthUsageReadModel>> GetRecentUsageAsync(int contractId, DateOnly beforeMonth, int count) =>
+            Task.FromResult(Recent.Take(count).ToList());
 
         public Task<bool> AddIfLatestAsync(UtilityReadings reading, int managerId = 0)
         {

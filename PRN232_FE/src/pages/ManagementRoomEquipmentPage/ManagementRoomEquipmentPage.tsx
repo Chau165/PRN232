@@ -5,7 +5,14 @@ import { useAuth } from "@/auth/AuthContext"
 import EquipmentDetailModal from "@/components/management/EquipmentDetailModal"
 import EquipmentFormModal from "@/components/management/EquipmentFormModal"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
-import ManagementPage from "@/components/management/ManagementPage"
+import ManagementPage, {
+  type ManagementBreadcrumb,
+} from "@/components/management/ManagementPage"
+import {
+  ManagementEmptyState,
+  ManagementErrorState,
+  ManagementLoadingState,
+} from "@/components/management/ManagementState"
 import Toast from "@/components/customer/Toast"
 import StatusBadge from "@/components/customer/StatusBadge"
 import {
@@ -347,46 +354,44 @@ export default function ManagementRoomEquipmentPage() {
       "."
     : "Quản lý thiết bị trong từng phòng."
 
+  const breadcrumbs: ManagementBreadcrumb[] | undefined = currentRoom
+    ? [
+        { label: "Khu trọ", to: routes.managementProperties },
+        { label: currentRoom.propertyName, to: roomListPath },
+        { label: "Phòng " + currentRoom.roomCode, to: roomListPath },
+        { label: "Thiết bị" },
+      ]
+    : undefined
+
   return (
-    <ManagementPage title={title} description={description}>
+    <ManagementPage
+      title={title}
+      description={description}
+      breadcrumbs={breadcrumbs}
+      actions={
+        currentRoom ? (
+          <button
+            type="button"
+            onClick={() => {
+              setEditingEquipment(null)
+              setDialog("create")
+            }}
+            className="rounded-lg bg-[#087775] px-4 py-2.5 text-[13px] font-bold text-white"
+          >
+            + Thêm thiết bị
+          </button>
+        ) : undefined
+      }
+    >
       {currentRoom && (
         <>
-          <nav
-            aria-label="Đường dẫn"
-            className="mb-3 flex flex-wrap items-center gap-2 text-sm text-slate-500"
-          >
-            <Link
-              to={routes.managementProperties}
-              className="hover:text-[#087775]"
-            >
-              {currentRoom.propertyName}
-            </Link>
-            <span aria-hidden="true">›</span>
-            <Link to={roomListPath} className="hover:text-[#087775]">
-              Phòng {currentRoom.roomCode}
-            </Link>
-            <span aria-hidden="true">›</span>
-            <span aria-current="page" className="font-semibold text-slate-800">
-              Thiết bị
-            </span>
-          </nav>
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="mb-4">
             <Link
               to={roomListPath}
               className="text-sm font-semibold text-[#087775] hover:underline"
             >
               ← Quay lại danh sách phòng
             </Link>
-            <button
-              type="button"
-              onClick={() => {
-                setEditingEquipment(null)
-                setDialog("create")
-              }}
-              className="rounded-lg bg-[#087775] px-4 py-2.5 text-[13px] font-bold text-white"
-            >
-              + Thêm thiết bị
-            </button>
           </div>
           <section
             aria-label="Thông tin phòng"
@@ -426,9 +431,11 @@ export default function ManagementRoomEquipmentPage() {
         </div>
       )}
       {routeIsValid && roomLoading && (
-        <p role="status" className="mb-4 text-sm text-slate-500">
-          Đang kiểm tra phòng...
-        </p>
+        <ManagementLoadingState
+          variant="inline"
+          message="Đang kiểm tra phòng..."
+          className="mb-4"
+        />
       )}
       {routeIsValid && !roomLoading && !currentRoom && contextError && (
         <div
@@ -448,19 +455,12 @@ export default function ManagementRoomEquipmentPage() {
       {currentRoom && (
         <>
           {error && (
-            <div
-              role="alert"
-              className="mb-4 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700"
-            >
-              <p>{error}</p>
-              <button
-                type="button"
-                onClick={reloadEquipment}
-                className="mt-2 font-bold underline"
-              >
-                Tải lại
-              </button>
-            </div>
+            <ManagementErrorState
+              variant="banner"
+              message={error}
+              retryLabel="Tải lại"
+              onRetry={reloadEquipment}
+            />
           )}
 
           <div className="mb-5 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
@@ -507,25 +507,28 @@ export default function ManagementRoomEquipmentPage() {
             ]}
           >
             {loading && equipment.length === 0 ? (
-              <p role="status" className="px-5 py-8 text-sm text-slate-500">
-                Đang tải thiết bị...
-              </p>
+              <ManagementLoadingState
+                variant="table"
+                message="Đang tải thiết bị..."
+                className="p-4"
+              />
             ) : error && equipment.length === 0 ? (
-              <p
+              <ManagementEmptyState
+                compact
                 role="status"
-                className="px-5 py-8 text-center text-sm text-slate-500"
-              >
-                Không thể tải danh sách thiết bị.
-              </p>
+                message="Không thể tải danh sách thiết bị."
+              />
             ) : equipment.length === 0 ? (
-              <div
+              <ManagementEmptyState
+                compact
+                icon="wrench"
                 role="status"
-                className="px-5 py-8 text-center text-sm text-slate-500"
-              >
-                {search || statusFilter
-                  ? "Không có thiết bị khớp bộ lọc."
-                  : "Phòng này chưa có thiết bị nào."}
-              </div>
+                message={
+                  search || statusFilter
+                    ? "Không có thiết bị khớp bộ lọc."
+                    : "Phòng này chưa có thiết bị nào."
+                }
+              />
             ) : (
               <>
                 <div className="divide-y divide-slate-100">

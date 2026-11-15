@@ -590,9 +590,9 @@ Khách nhận thông báo: *"Đã xác nhận hoàn 1.800.000đ tiền cọc ph�
 
 Migration `AddAuditLogs` (1 bảng mới). Theo PLAN D7.
 
-**Ghi tự động** mọi request `POST/PUT/PATCH/DELETE` (kể cả thất bại: 400, 404, 409, 500): ai (`userId`, `role`), thao tác (`action` = `"{Controller}.{Action}"`, vd. `Bookings.Cancel`), đường dẫn, đối tượng (`entityType` = controller, `entityId` = id trên đường dẫn hoặc id vừa tạo), mã HTTP, IP, `correlationId`. **Không lưu nội dung request/response** (mật khẩu, CCCD, tài khoản ngân hàng không bao giờ vào nhật ký). Không ghi: request bị chặn quyền (401/403 trước khi vào action), `POST /api/invoices/preview`, đánh dấu thông báo đã đọc. Lỗi ghi nhật ký không làm hỏng thao tác của người dùng.
+**Ghi tự động** mọi request `POST/PUT/PATCH/DELETE` (kể cả thất bại: 400, 404, 409, 500): ai (`userId`, `role`), thao tác (`action` = `"{Controller}.{Action}"`, vd. `Bookings.Cancel`), đường dẫn, đối tượng (`entityType` = controller, `entityId` = id trên đường dẫn hoặc id vừa tạo), mã HTTP, IP, `correlationId`. **Không lưu nội dung request/response** (mật khẩu, CCCD, tài khoản ngân hàng không bao giờ vào nhật ký). Không ghi: request bị chặn quyền (401/403 trước khi vào action), `POST /api/invoices/preview`, `POST /api/utility-readings/preview`, đánh dấu thông báo đã đọc. Lỗi ghi nhật ký không làm hỏng thao tác của người dùng.
 
-Lớp 2 (việc 5.2, sắp có): `oldValues`/`newValues` (JSON) cho nghiệp vụ quan trọng (đặt cọc, hủy, ký HĐ, quyết toán, trả phòng, đổi giá).
+Lớp 2 (việc 5.2): `oldValues`/`newValues` (JSON) cho nghiệp vụ quan trọng — ✅ đã có, xem **C24**.
 
 ### `GET /api/audit-logs` — chỉ Admin
 Query (đều không bắt buộc): `userId`, `entityType` (vd. `Bookings`, `Contracts`, `Invoices`, `Rooms`…), `entityId`, `succeeded` (`true`/`false`), `from`, `to` (`yyyy-MM-dd`, giờ VN, gồm cả 2 đầu, tối đa 366 ngày), `page` (≥ 1), `pageSize` (1–100, mặc định 50). Mới nhất trước.
@@ -655,3 +655,178 @@ GET/POST/PUT trả về:
 2. Cột CCCD hiện `maskedIdentityNumber`; nếu `canRevealIdentity` có icon con mắt → gọi reveal → hiện số đầy đủ tạm thời, có chú thích nhỏ "Lần xem này được ghi lại".
 3. `canManage`: nút "Thêm người ở cùng" (form: họ tên, SĐT, CCCD 12 số, ngày dọn vào) và nút "Ghi ngày dọn ra" cho người đang ở. Người đã dọn ra hiện mờ + "Đã dọn ra {moveOutDate}".
 4. Khi `currentCount >= maxOccupants`: vô hiệu nút thêm, ghi "Phòng đã đủ người".
+
+---
+
+## C21 — Chuyển người đứng tên hợp đồng · ✅ đã có (việc 4.2)
+
+Migration `AddContractTransfers` (1 cột NULL `Contracts.TransferredFromContractId` + 1 bảng mới).
+
+Tình huống: người đứng tên chuyển đi, một người ở cùng ở lại. Nhóm đã chốt (PLAN mục 6, câu 13):
+- **Cọc chuyển nguyên** sang hợp đồng mới; hai người tự thanh toán phần cọc với nhau ngoài hệ thống.
+- Hiệu lực từ **ngày 1 của một tháng** (điện nước, hóa đơn chốt theo tháng).
+- Người nhận phải có **tài khoản khách** (và số điện thoại); quản lý/người cũ nhập **email** tài khoản đó.
+- **Ba bên xác nhận**: người đứng tên cũ đồng ý, người nhận đồng ý, rồi **quản lý bấm hoàn tất**.
+- Biên bản kiểm tra thiết bị có món **hư hỏng/mất** → không chuyển được (đi đường trả phòng thường).
+- Hợp đồng mới **kế thừa** tiền phòng và ngày kết thúc.
+
+Khi hoàn tất: hợp đồng cũ kết thúc vào ngày trước ngày hiệu lực; hợp đồng mới bắt đầu ngày hiệu lực, chỉ số điện nước đầu = chỉ số cuối của hợp đồng cũ, biên bản kiểm tra thành biên bản nhận phòng, những người ở cùng còn lại chuyển sang. Phòng vẫn "Đang thuê".
+
+### API (`/api/contract-transfers`) — đi theo id đề nghị (người nhận không xem được hợp đồng cũ)
+| | Quyền | Body |
+|---|---|---|
+| `GET` | Mọi vai trò (khách: đề nghị mình là người cũ **hoặc** người nhận; quản lý: khu phụ trách; Admin: tất cả) | — |
+| `POST` | Người đứng tên, quản lý phụ trách | `{ "contractId", "newHolderEmail", "effectiveDate": "2026-12-01", "occupantId"? }` |
+| `POST /{id}/confirm` | Người đứng tên cũ, người nhận (mỗi người xác nhận phần mình) | — |
+| `POST /{id}/cancel` | Người cũ, người nhận, quản lý phụ trách | `{ "reason"? }` (≤ 500 ký tự) |
+| `POST /{id}/complete` | Quản lý phụ trách | — |
+
+`occupantId`: người ở cùng (trong danh sách C20) sẽ đứng tên — họ được đưa ra khỏi danh sách người ở cùng. Người đứng tên tự tạo đề nghị thì coi như **đã đồng ý**.
+
+Mọi API trả `ContractTransferDto`:
+```json
+{ "contractTransferId": 4, "status": "Pending", "fromContractId": 12, "roomCode": "A101", "propertyName": "Sunrise",
+  "oldHolderId": 10, "oldHolderName": "Nguyễn Văn A", "newHolderId": 20, "newHolderName": "Trần Thị B",
+  "newHolderEmail": "b@example.com", "becomingHolderOccupantName": "Trần Thị B",
+  "effectiveDate": "2026-12-01", "monthlyRent": 3000000, "contractEndDate": "2027-11-15", "depositCarriedOver": 3000000,
+  "requestedByName": "Nguyễn Văn A", "createdAtUtc": "...", "oldHolderConfirmedAtUtc": "...", "newHolderConfirmedAtUtc": null,
+  "completedAtUtc": null, "newContractId": null, "cancelledAtUtc": null, "cancelReason": null,
+  "canConfirm": false, "canCancel": true, "canComplete": false,
+  "blockers": ["Người nhận chưa xác nhận.", "Cần lập hóa đơn tháng 11/2026 cho hợp đồng cũ."] }
+```
+`status`: `Pending` / `Completed` / `Cancelled`. **`blockers`** = các điều kiện còn thiếu để hoàn tất — **chỉ có cho quản lý/Admin** (khách nhận mảng rỗng vì có thể chứa công nợ của người khác). Các điều kiện: hai bên đã xác nhận; đã tới ngày hiệu lực; hợp đồng cũ đã chốt điện nước và lập hóa đơn tháng cuối, đã trả hết nợ; có biên bản kiểm tra thiết bị (biên bản trả phòng C14) và không có món hư hỏng/mất; chưa quyết toán cọc; số người sau khi chuyển không vượt `maxOccupants`.
+
+| Lỗi tạo đề nghị | HTTP | |
+|---|---|---|
+| Ngày hiệu lực không phải ngày 1 | 400 | `errors.effectiveDate`: "Ngày hiệu lực phải là ngày 1 của một tháng (điện nước và hóa đơn chốt theo tháng)." |
+| Email sai định dạng | 400 | `errors.newHolderEmail` |
+| Không có tài khoản khách với email | 400 | "Chưa có tài khoản khách đang hoạt động với email này. Hãy nhờ người ở lại đăng ký tài khoản khách trước." |
+| Người nhận chưa có SĐT / trùng người đang đứng tên / ngày ngoài thời hạn HĐ | 400 | |
+| Hợp đồng đã có đề nghị đang chờ | 409 | |
+| Hoàn tất khi còn điều kiện thiếu | 409 | `detail` = các câu trong `blockers` |
+
+`ContractDto` thêm: `transferredFromContractId` (HĐ mới: chuyển từ HĐ nào), `transferredToContractId` (HĐ cũ: đã chuyển sang HĐ nào). HĐ mới có `securityDepositAmount` = số cọc được chuyển; HĐ cũ = 0.
+
+### Việc FE gợi ý (task 4.5)
+1. **Chi tiết hợp đồng** (người đứng tên + quản lý, HĐ đang hiệu lực): mục **"Chuyển người đứng tên"**.
+   - Chưa có đề nghị: nút "Đề nghị chuyển" → form: email người nhận, ngày hiệu lực (chỉ cho chọn ngày 1 của tháng, từ tháng hiện tại đến trước `endDate`), chọn người ở cùng sẽ đứng tên (dropdown từ C20, không bắt buộc). Ghi chú: "Tiền cọc {securityDepositAmount} chuyển nguyên sang hợp đồng mới; phần cọc giữa hai bạn tự thanh toán với nhau."
+   - Có đề nghị (lấy từ `GET /api/contract-transfers`, lọc `fromContractId`): hiện trạng thái từng bên (✅ đã đồng ý / ⏳ chờ), nút "Đồng ý" (`canConfirm`), "Hủy đề nghị" (`canCancel`, hỏi lý do).
+   - **Quản lý**: danh sách `blockers` dạng checklist; nút **"Hoàn tất chuyển"** chỉ bật khi `canComplete`, hộp xác nhận nêu rõ ngày kết thúc HĐ cũ và ngày bắt đầu HĐ mới.
+2. **Người nhận** — đầu trang "Hợp đồng của tôi": khung **"Đề nghị chuyển hợp đồng dành cho bạn"** (các đề nghị `Pending` có `newHolderId` = mình): phòng, khu trọ, tiền phòng/tháng, ngày hiệu lực, ngày kết thúc, tiền cọc được chuyển, người đề nghị; nút **"Đồng ý nhận"** và **"Từ chối"** (= hủy, có lý do).
+3. HĐ có `transferredFromContractId`: nhãn "Chuyển từ hợp đồng #…"; HĐ có `transferredToContractId`: nhãn "Đã chuyển sang hợp đồng #…".
+
+---
+
+## C22 — Dịch vụ tính theo đầu người · ✅ đã có (việc 4.3)
+
+Không có migration, không đổi API. Trước đây khu trọ đặt giá kiểu `person_month` / `occupant` thì **lập hóa đơn bị lỗi** ("not supported yet"), nên FE ẩn lựa chọn này. Giờ hóa đơn đã tính được.
+
+**Cách tính số lượng** (cột `quantity` của dòng hóa đơn, làm tròn 2 chữ số):
+- Người đứng tên luôn tính **1** (tiền phòng cũng không chia theo ngày).
+- Mỗi người ở cùng (C20) tính theo **số ngày ở trong tháng ÷ số ngày của tháng**, tính **cả ngày `moveInDate` lẫn ngày `moveOutDate`** (ngày dọn ra là ngày cuối còn ở, giống ngày kết thúc hợp đồng). Nhóm đã chốt cách chia theo ngày (công bằng: ở bao nhiêu ngày trả bấy nhiêu), không dùng "tính tròn cả tháng" hay "chỉ tính người có mặt ngày 1".
+- Ví dụ tháng 10 (31 ngày), giá 50.000đ/người: người đứng tên + bạn B vào ngày 21/10 (11 ngày: 21–31) → `quantity` = 1 + 11/31 = **1,35** → `amount` = **67.500đ**. Bạn C dọn ra ngày 11/10 → 11 ngày (1–11).
+
+Dòng hóa đơn trả về như các dịch vụ khác: `{ "itemType": "Service", "quantity": 1.35, "unitPrice": 50000, "unitCode": "person_month", "amount": 67500 }`.
+
+Giá **theo xe** (`vehicle_month` / `vehicle`) vẫn **chưa** tính được (hệ thống chưa lưu xe của khách) → vẫn ẩn trên FE.
+
+### Việc FE
+1. `PropertyServiceRatesPanel.tsx`: thêm lựa chọn `{ unitCode: "person_month", billingBasis: "occupant", label: "Theo đầu người/tháng", unit: "người/tháng" }`; sửa lại chú thích phía trên `billingOptions` (chỉ còn `vehicle_month` chưa hỗ trợ). Gợi ý ghi chú dưới lựa chọn: "Tính theo số người trong danh sách người ở cùng, người vào/ra giữa tháng tính theo số ngày."
+2. Hóa đơn (quản lý và khách): dòng có `unitCode = "person_month"` hiển thị số lượng dạng **"1,35 người"** để khách hiểu vì sao số tiền lẻ.
+
+---
+
+## C23 — Cảnh báo chỉ số điện nước bất thường · ✅ đã có (việc 4.4)
+
+Không có migration. **API cũ không đổi hành vi** (app mobile vẫn chạy như trước).
+
+Chỉ số đã lưu thì **không sửa được**, nên cảnh báo phải hiện **trước khi lưu**. BE thêm API xem trước, kiểm tra giống hệt khi lưu nhưng không ghi gì:
+
+`POST /api/utility-readings/preview` (Manager, Admin; body **giống** `POST /api/utility-readings`)
+```json
+{ "contractId": 12, "readingMonth": "2026-11-01", "electricStart": 1320, "electricEnd": 1500, "electricUsage": 180,
+  "waterStart": 104, "waterEnd": 109, "waterUsage": 5,
+  "averageElectricUsage": 100, "averageWaterUsage": 5, "monthsAveraged": 3,
+  "warnings": ["Điện tháng này 180 kWh, cao hơn 80% so với trung bình 3 tháng gần nhất (100 kWh). Hãy kiểm tra lại chỉ số trước khi lưu."] }
+```
+- Lỗi (400/403/404/409) giống hệt khi lưu → FE hiện lỗi ngay ở bước xem trước.
+- `averageElectricUsage` / `averageWaterUsage` = `null` và `monthsAveraged` = 0 khi đây là lần ghi đầu tiên (chưa có gì để so).
+- `POST /api/utility-readings` vẫn **lưu được** khi bất thường (chỉ cảnh báo, không chặn) và trả thêm `warnings` (mảng). Các API `GET` trả `warnings: null` (không tính lại).
+
+**Luật cảnh báo:** lượng dùng tháng này lệch (cao hơn **hoặc** thấp hơn) **quá 30%** so với trung bình tối đa 3 tháng gần nhất **và** chênh ít nhất **20 kWh** (điện) / **2 m³** (nước). 30% là mốc ngành điện dùng để rà soát, phúc tra chỉ số tăng/giảm đột biến. Mức chênh tối thiểu để phòng dùng ít không bị cảnh báo vô ích (nước 2 → 3 m³ đã là +50%).
+
+### Việc FE
+Ở form nhập chỉ số (`ContractMeterHandover.tsx` / `CreateInvoiceModal.tsx`, nơi gọi `createUtilityReading`):
+1. Bấm "Lưu" → gọi `preview` trước.
+2. `warnings` rỗng → lưu luôn như cũ.
+3. Có `warnings` → hộp xác nhận: từng câu cảnh báo, bảng nhỏ "Tháng này / Trung bình {monthsAveraged} tháng", nút **"Nhập lại"** (đóng hộp, giữ form) và **"Vẫn lưu"** (gọi `POST /api/utility-readings`).
+
+---
+
+## C24 — Nhật ký có giá trị trước/sau (lớp 2) · ✅ đã có (việc 5.2)
+
+Không có migration (cột đã có từ C19), **không đổi API**. Các thao tác dưới đây giờ có thêm `oldValues` / `newValues` trên **chính dòng nhật ký** của request đó (trang Admin C19 hiện ngay, không cần sửa FE). Chỉ ghi khi thao tác **thành công**; thao tác thất bại vẫn có dòng nhật ký nhưng hai cột này `null`.
+
+Giá trị là chuỗi JSON (camelCase, giữ nguyên chữ tiếng Việt). Chỉ gồm các trường nghiệp vụ được chọn sẵn — **không bao giờ** có mật khẩu, CCCD, token, số tài khoản ngân hàng.
+
+| `action` | `oldValues` | `newValues` |
+|---|---|---|
+| `Bookings.Create` | — | `roomCode, status, depositAmount, agreedMonthlyRent, moveInDate, occupantCount` |
+| `Bookings.Cancel` | `status, depositAmount` | `status, cancellationReason` |
+| `Bookings.ConfirmDepositReturned` | `depositAmount, depositReturnedAtUtc` (null) | `depositAmount, depositReturnedAtUtc` |
+| `Contracts.Create` | — | `bookingId, roomCode, customerName, startDate, endDate, monthlyRent, securityDepositAmount, status` |
+| `Contracts.Terminate` | `status, endDate` | `status, endDate, outstandingDebt, roomReadyForRental` |
+| `Contracts.GiveMoveOutNotice` | `plannedMoveOutDate` | `plannedMoveOutDate, noticeDays, forfeitsDeposit` |
+| `Contracts.CancelMoveOutNotice` | `plannedMoveOutDate` | `plannedMoveOutDate` (null) |
+| `ContractTransfers.Complete` | `contractId, holderId, status, endDate` (HĐ cũ) | `contractId, holderId, effectiveDate, oldContractEndDate, depositCarriedOver` (HĐ mới) |
+| `DepositSettlements.Settle` | — | `depositAmount, damageCharges, outstandingDebt, retainedForDebt, forfeitedAmount, refundAmount, amountDue, earlyWithoutNotice, noticeDays` |
+| `DepositSettlements.ConfirmRefund` / `ConfirmDueCollected` | `refundAmount, amountDue, refundConfirmedAtUtc, dueCollectedAtUtc` | như cột trái, sau khi xác nhận |
+| `Invoices.Create` | — | `roomCode, invoiceMonth, dueDate, total, lines[itemType, quantity, unitPrice, amount]` |
+| `Invoices.RecordCash` | `status, total` | `status, total, paymentMethod` |
+| `PropertyRoomTypes.Update` (giá thuê) | `monthlyRent` | `monthlyRent` |
+| `Properties.CreateServiceRate` (giá dịch vụ) | kỳ giá liền trước của dịch vụ đó (nếu có): `serviceName, price, unitCode, billingBasis, effectiveFrom, effectiveTo` | kỳ giá mới, cùng các trường |
+| `Users.UpdateRole` | `roleId` | `roleId` |
+| `Users.UpdateStatus` (khóa/mở khóa) | `isActive` | `isActive` |
+
+### Việc FE (nhỏ, không bắt buộc)
+Trang "Nhật ký thao tác" đã hiện JSON thô trong ngăn chi tiết. Nếu có thời gian: hiện dạng bảng 3 cột **Trường / Trước / Sau** (gộp key của hai object), tô vàng dòng có giá trị khác nhau; dịch tên trường phổ biến sang tiếng Việt (`status` → "Trạng thái", `monthlyRent` → "Tiền phòng/tháng", `isActive` → "Đang hoạt động"…).
+
+---
+
+## C25 — Tiền phòng tháng đầu/tháng cuối tính theo số ngày ở · ✅ đã có
+
+Không có migration, **không đổi cấu trúc API** (chỉ đổi số tiền và mô tả dòng hóa đơn).
+
+**Lỗi cũ:** hợp đồng bắt đầu giữa tháng bị thu đủ tháng ở cả tháng đầu lẫn tháng cuối. Ví dụ HĐ 15/10/2026–14/10/2027 bị thu **13 tháng** tiền phòng cho 12 tháng ở.
+
+**Cách tính mới** (hóa đơn và chỉ số điện nước vẫn chốt theo tháng dương lịch):
+- Tháng không trọn: **tiền phòng × số ngày ở ÷ số ngày của tháng**, làm tròn đến đồng. Ngày ở tính **cả ngày bắt đầu lẫn ngày cuối** (giống C22).
+- **Ngày cuối** = ngày kết thúc hợp đồng, hoặc **ngày trả phòng đã báo** (C16) nếu sớm hơn. Khách trả phòng sớm không trả tiền những ngày không ở; báo trước không đủ 30 ngày đã bị xử lý bằng cọc khi quyết toán (C17).
+- **Phí cố định theo phòng** (wifi, rác theo phòng…) và **người đứng tên** trong phí theo đầu người cũng tính theo cùng tỷ lệ ngày đó.
+- Ví dụ HĐ trên, 3.100.000đ/tháng: tháng 10/2026 = 17/31 ngày = **1.700.000đ**; tháng 10/2027 = 14/31 ngày = **1.400.000đ** → tổng đúng 12 tháng.
+- Dòng tiền phòng tháng không trọn có mô tả: `"Tiền phòng tháng 10/2026 (17/31 ngày)"`. Wifi theo phòng: `quantity` = 0,55 (phòng-tháng).
+- Lập hóa đơn cho tháng **sau** ngày trả phòng đã báo → 400 "Khách đã trả phòng trước tháng này nên không còn ngày thuê nào để lập hóa đơn."
+- **Hợp đồng theo luật cọc cũ** (cọc trừ vào tiền phòng, trước C13): tháng đầu không trọn thì tiền phòng ít hơn tiền cọc → phần cọc còn lại **được trừ tiếp vào hóa đơn tháng sau** cho tới khi hết (trước đây chỉ trừ ở tháng đầu nên phần dư sẽ bị mất). Vẫn giữ quy tắc cũ: hóa đơn tháng sau chỉ được trừ khi **hóa đơn tháng đầu đã lập**, để lập tháng sau trước không "ăn" mất phần cọc của tháng đầu.
+- Lịch thanh toán dự kiến (`GET /api/contracts/{id}/billing-timeline`): `monthlyRent` của tháng không trọn là số đã chia theo ngày, `note` = "Tháng không trọn: tiền phòng tính 17/31 ngày." (thay cho câu cũ "…chưa hỗ trợ prorate"). Lịch dừng ở tháng của ngày trả phòng đã báo.
+
+### Việc FE
+1. `ManagementContractsPage.tsx` (dòng ~485): câu "…hệ thống không tự tạo hóa đơn hoặc tính prorate" đã sai → sửa thành "…hệ thống không tự tạo hóa đơn; tiền phòng tháng cuối được tính theo số ngày ở đến ngày kết thúc (hoặc ngày trả phòng đã báo)."
+2. Không bắt buộc: chỗ nào FE tự tính "tiền phòng × số tháng" thì ghi chú "tháng đầu/tháng cuối tính theo số ngày ở".
+
+---
+
+## Bảo mật: bật RLS cho các bảng mới của rebuild · ✅ đã có
+
+Migration `SecureRebuildTables`. 7 bảng tạo trong đợt rebuild (`HandoverRecords`, `HandoverItems`, `ContractEvidenceFiles`, `DepositSettlements`, `AuditLogs`, `ContractOccupants`, `ContractTransfers`) chưa bật Row Level Security. Trên Supabase, bảng ở schema `public` không bật RLS thì ai có anon key cũng đọc được qua Data API (vd. họ tên, SĐT người ở cùng, IP trong nhật ký). Migration bật RLS (không policy) và thu hồi quyền của `anon`/`authenticated`/`service_role`, giống `SecurePaymentTables`. API .NET không bị ảnh hưởng (kết nối bằng role chủ bảng). Có test chặn: mọi bảng tạo mới từ đợt rebuild phải nằm trong danh sách được bảo vệ.
+
+---
+
+## C26 — Bỏ "Quận/Huyện" khỏi giao diện (địa chỉ 2 cấp) · việc FE
+
+Không đổi API. Khu trọ mới đã lưu địa chỉ **2 cấp** (tỉnh/thành → phường/xã, C4); trường `district` luôn rỗng với khu trọ mới. Cột `District` **được giữ lại** trong DB (không xóa) vì app mobile còn gửi/đọc trường này — xóa cột sẽ làm hỏng mobile mà người dùng không thấy khác gì.
+
+### Việc FE
+1. `components/home/FilterChips.tsx`: bỏ cấp **"Quận/Huyện"** — chỉ còn Tỉnh/Thành → Phường/Xã (đổi tỉnh thì xóa phường).
+2. `services/publicBrowsingService.ts`: không gửi `district` khi lọc.
+3. `formatAddress(...)` (AreaPropertyMap, HorizontalPropertyCard, RoomDetailModal, AvailableRoomsPage, PropertyDetailPage): **không hiển thị** quận/huyện nữa, kể cả khi dữ liệu cũ còn giá trị — chỉ "số nhà đường, phường/xã, tỉnh/thành".
+4. `MapSection.tsx`: bỏ nhánh `matchedLevel === "district"`.

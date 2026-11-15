@@ -377,8 +377,12 @@ builder.Services.AddScoped<IContractExpiryReminderService, ContractExpiryReminde
 builder.Services.AddHostedService<PRN232.Api.Workers.ContractExpiryReminderWorker>();
 builder.Services.AddScoped<IHandoverRepository, HandoverRepository>();
 builder.Services.AddScoped<IHandoverService, HandoverService>();
+builder.Services.AddScoped<IContractTransferRepository, ContractTransferRepository>();
+builder.Services.AddScoped<IContractTransferService, ContractTransferService>();
 builder.Services.AddScoped<IContractOccupantRepository, ContractOccupantRepository>();
 builder.Services.AddScoped<IContractOccupantService, ContractOccupantService>();
+builder.Services.AddScoped<AuditTrail>();
+builder.Services.AddScoped<IAuditTrail>(provider => provider.GetRequiredService<AuditTrail>());
 builder.Services.AddScoped<IAuditLogWriter, AuditLogWriter>();
 builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();

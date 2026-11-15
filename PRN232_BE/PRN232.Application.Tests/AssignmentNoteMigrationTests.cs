@@ -48,6 +48,13 @@ public sealed class AssignmentNoteMigrationTests
             await using (var connection = new NpgsqlConnection(database.ConnectionString))
             {
                 await connection.OpenAsync();
+                // The legacy rows only need to survive the migration; building the whole user/property/room/contract
+                // chain of the October schema is not the point. Skip FK triggers for this seeding session only
+                // (the isolated test server runs as superuser).
+                await using (var replica = new NpgsqlCommand("SET session_replication_role = replica", connection))
+                {
+                    await replica.ExecuteNonQueryAsync();
+                }
                 await using var seed = new NpgsqlCommand("INSERT INTO public.\"MaintenanceRequests\" (\"ContractId\", \"Description\", \"Status\") VALUES (1, 'legacy', 'Pending') RETURNING \"RequestId\"", connection);
                 var requestId = (int)(await seed.ExecuteScalarAsync())!;
                 await using var log = new NpgsqlCommand("INSERT INTO public.\"MaintenanceLogs\" (\"RequestId\", \"OldStatus\", \"NewStatus\", \"ChangedAt\") VALUES (@id, NULL, 'Pending', CURRENT_TIMESTAMP)", connection);

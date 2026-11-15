@@ -32,6 +32,15 @@ const mocks = vi.hoisted(() => ({
   confirmContractDepositSettlement: vi.fn(),
   confirmDepositSettlementRefund: vi.fn(),
   confirmDepositSettlementDueCollected: vi.fn(),
+  getContractOccupants: vi.fn(),
+  addContractOccupant: vi.fn(),
+  recordContractOccupantMoveOut: vi.fn(),
+  revealContractOccupantIdentity: vi.fn(),
+  getContractTransfers: vi.fn(),
+  createContractTransfer: vi.fn(),
+  confirmContractTransfer: vi.fn(),
+  cancelContractTransfer: vi.fn(),
+  completeContractTransfer: vi.fn(),
   role: "MANAGER" as string,
 }))
 
@@ -71,6 +80,19 @@ vi.mock("@/services/contractSettlementService", () => ({
   confirmDepositSettlementRefund: mocks.confirmDepositSettlementRefund,
   confirmDepositSettlementDueCollected:
     mocks.confirmDepositSettlementDueCollected,
+}))
+vi.mock("@/services/contractOccupantsService", () => ({
+  getContractOccupants: mocks.getContractOccupants,
+  addContractOccupant: mocks.addContractOccupant,
+  recordContractOccupantMoveOut: mocks.recordContractOccupantMoveOut,
+  revealContractOccupantIdentity: mocks.revealContractOccupantIdentity,
+}))
+vi.mock("@/services/contractTransferService", () => ({
+  getContractTransfers: mocks.getContractTransfers,
+  createContractTransfer: mocks.createContractTransfer,
+  confirmContractTransfer: mocks.confirmContractTransfer,
+  cancelContractTransfer: mocks.cancelContractTransfer,
+  completeContractTransfer: mocks.completeContractTransfer,
 }))
 
 const booking = (overrides: Partial<BookingDto> = {}): BookingDto => ({
@@ -173,6 +195,16 @@ beforeEach(() => {
     dueCollectedAtUtc: null,
     dueCollectedByName: null,
   })
+  mocks.getContractOccupants.mockResolvedValue({
+    contractId: 12,
+    holderName: "Nguyễn An",
+    maxOccupants: 2,
+    currentCount: 1,
+    canManage: true,
+    canRevealIdentity: true,
+    occupants: [],
+  })
+  mocks.getContractTransfers.mockResolvedValue([])
 })
 
 describe("CreateContractPage", () => {
@@ -995,6 +1027,260 @@ describe("ManagementContractsPage", () => {
     )
     expect(
       await within(settlementSection).findByText(/Đã thu lúc .* — Manager A/),
+    ).toBeTruthy()
+  })
+
+  it("renders contract occupants, reveals CCCD transiently with audit notice without storing in localStorage, and handles full capacity and move-out (C20)", async () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem")
+
+    mocks.getContractOccupants.mockResolvedValue({
+      contractId: 12,
+      holderName: "Nguyễn An",
+      maxOccupants: 2,
+      currentCount: 2,
+      canManage: true,
+      canRevealIdentity: true,
+      occupants: [
+        {
+          contractOccupantId: 3,
+          fullName: "Trần Thị B",
+          phoneNumber: "0905123456",
+          maskedIdentityNumber: "********1234",
+          moveInDate: "2026-11-15",
+          moveOutDate: null,
+          isActive: true,
+          note: "Em gái",
+          addedByName: "Nguyễn An",
+          createdAtUtc: "2026-11-15T08:00:00Z",
+        },
+      ],
+    })
+    mocks.revealContractOccupantIdentity.mockResolvedValue({
+      contractOccupantId: 3,
+      fullName: "Trần Thị B",
+      identityNumber: "079203001234",
+    })
+    mocks.recordContractOccupantMoveOut.mockResolvedValue({
+      contractId: 12,
+      holderName: "Nguyễn An",
+      maxOccupants: 2,
+      currentCount: 1,
+      canManage: true,
+      canRevealIdentity: true,
+      occupants: [
+        {
+          contractOccupantId: 3,
+          fullName: "Trần Thị B",
+          phoneNumber: "0905123456",
+          maskedIdentityNumber: "********1234",
+          moveInDate: "2026-11-15",
+          moveOutDate: "2026-11-15",
+          isActive: false,
+          note: "Em gái",
+          addedByName: "Nguyễn An",
+          createdAtUtc: "2026-11-15T08:00:00Z",
+        },
+      ],
+    })
+
+    render(
+      <MemoryRouter initialEntries={["/management/contracts"]}>
+        <ManagementContractsPage />
+      </MemoryRouter>,
+    )
+
+    await screen.findByText("HĐ #12")
+    fireEvent.click(screen.getByRole("button", { name: "Xem" }))
+
+    const occupantsSection = await screen.findByRole("region", {
+      name: "Người ở trong phòng hợp đồng 12",
+    })
+
+    expect(within(occupantsSection).getByText("2/2 người")).toBeTruthy()
+    expect(within(occupantsSection).getByText("Người đứng tên")).toBeTruthy()
+    expect(within(occupantsSection).getByText("********1234")).toBeTruthy()
+
+    // Phòng đã đủ 2/2 người -> nút Thêm người ở cùng bị vô hiệu + hiện "Phòng đã đủ người"
+    const addBtn = within(occupantsSection).getByRole("button", {
+      name: "Thêm người ở cùng",
+    }) as HTMLButtonElement
+    expect(addBtn.disabled).toBe(true)
+    expect(within(occupantsSection).getByText("Phòng đã đủ người")).toBeTruthy()
+
+    // Bấm con mắt xem CCCD -> gọi API reveal, hiện số đầy đủ + "Lần xem này được ghi lại", không lưu localStorage
+    fireEvent.click(
+      within(occupantsSection).getByRole("button", {
+        name: "Hiện CCCD Trần Thị B",
+      }),
+    )
+
+    await waitFor(() =>
+      expect(mocks.revealContractOccupantIdentity).toHaveBeenCalledWith(
+        "manager-token",
+        12,
+        3,
+      ),
+    )
+    expect(
+      await within(occupantsSection).findByText("079203001234"),
+    ).toBeTruthy()
+    expect(
+      within(occupantsSection).getByText("Lần xem này được ghi lại"),
+    ).toBeTruthy()
+    expect(setItemSpy).not.toHaveBeenCalled()
+
+    // Bấm lại con mắt -> ẩn ngay về ********1234
+    fireEvent.click(
+      within(occupantsSection).getByRole("button", {
+        name: "Ẩn CCCD Trần Thị B",
+      }),
+    )
+    expect(within(occupantsSection).queryByText("079203001234")).toBeNull()
+    expect(within(occupantsSection).getByText("********1234")).toBeTruthy()
+
+    // Ghi ngày dọn ra
+    fireEvent.click(
+      within(occupantsSection).getByRole("button", { name: "Ghi ngày dọn ra" }),
+    )
+    const moveOutForm = within(occupantsSection).getByRole("form", {
+      name: "Biểu mẫu ghi ngày dọn ra",
+    })
+    fireEvent.change(within(moveOutForm).getByLabelText("Ngày dọn ra *"), {
+      target: { value: "2026-11-15" },
+    })
+    fireEvent.click(
+      within(moveOutForm).getByRole("button", { name: "Lưu ngày dọn ra" }),
+    )
+
+    await waitFor(() =>
+      expect(mocks.recordContractOccupantMoveOut).toHaveBeenCalledWith(
+        "manager-token",
+        12,
+        3,
+        { moveOutDate: "2026-11-15" },
+      ),
+    )
+    expect(
+      await within(occupantsSection).findByText(/Đã dọn ra 15\/11\/2026/),
+    ).toBeTruthy()
+
+    setItemSpy.mockRestore()
+  })
+
+  it("renders contract transfer blockers checklist, confirmation dialog with old/new dates, and transferred labels (C21)", async () => {
+    mocks.getContracts.mockResolvedValue([
+      contract({
+        contractId: 12,
+        securityDepositAmount: 3_000_000,
+        transferredFromContractId: 5,
+      }),
+    ])
+    mocks.getContractTransfers
+      .mockResolvedValueOnce([
+        {
+          contractTransferId: 4,
+          status: "Pending",
+          fromContractId: 12,
+          roomCode: "A101",
+          propertyName: "Sunrise",
+          oldHolderId: 10,
+          oldHolderName: "Nguyễn An",
+          newHolderId: 20,
+          newHolderName: "Trần Thị B",
+          newHolderEmail: "b@example.com",
+          becomingHolderOccupantName: "Trần Thị B",
+          effectiveDate: "2026-12-01",
+          monthlyRent: 3_000_000,
+          contractEndDate: "2027-11-01",
+          depositCarriedOver: 3_000_000,
+          requestedByName: "Nguyễn An",
+          createdAtUtc: "2026-11-15T08:00:00Z",
+          oldHolderConfirmedAtUtc: "2026-11-15T08:00:00Z",
+          newHolderConfirmedAtUtc: "2026-11-15T08:10:00Z",
+          completedAtUtc: null,
+          newContractId: null,
+          cancelledAtUtc: null,
+          cancelReason: null,
+          canConfirm: false,
+          canCancel: true,
+          canComplete: true,
+          blockers: [],
+        },
+      ])
+    mocks.completeContractTransfer.mockResolvedValue({
+      contractTransferId: 4,
+      status: "Completed",
+      fromContractId: 12,
+      roomCode: "A101",
+      propertyName: "Sunrise",
+      oldHolderId: 10,
+      oldHolderName: "Nguyễn An",
+      newHolderId: 20,
+      newHolderName: "Trần Thị B",
+      newHolderEmail: "b@example.com",
+      becomingHolderOccupantName: "Trần Thị B",
+      effectiveDate: "2026-12-01",
+      monthlyRent: 3_000_000,
+      contractEndDate: "2027-11-01",
+      depositCarriedOver: 3_000_000,
+      requestedByName: "Nguyễn An",
+      createdAtUtc: "2026-11-15T08:00:00Z",
+      oldHolderConfirmedAtUtc: "2026-11-15T08:00:00Z",
+      newHolderConfirmedAtUtc: "2026-11-15T08:10:00Z",
+      completedAtUtc: "2026-12-01T08:00:00Z",
+      newContractId: 18,
+      cancelledAtUtc: null,
+      cancelReason: null,
+      canConfirm: false,
+      canCancel: false,
+      canComplete: false,
+      blockers: [],
+    })
+
+    render(
+      <MemoryRouter initialEntries={["/management/contracts"]}>
+        <ManagementContractsPage />
+      </MemoryRouter>,
+    )
+
+    await screen.findByText("HĐ #12")
+    fireEvent.click(screen.getByRole("button", { name: "Xem" }))
+
+    expect(await screen.findByText("Chuyển từ hợp đồng #5")).toBeTruthy()
+
+    const transferSection = await screen.findByRole("region", {
+      name: "Chuyển người đứng tên hợp đồng 12",
+    })
+    expect(within(transferSection).getAllByText("✅ Đã đồng ý")).toHaveLength(2)
+
+    const completeBtn = within(transferSection).getByRole("button", {
+      name: "Hoàn tất chuyển",
+    }) as HTMLButtonElement
+    expect(completeBtn.disabled).toBe(false)
+    fireEvent.click(completeBtn)
+
+    const confirmDialog = await screen.findByRole("dialog", {
+      name: "Xác nhận hoàn tất chuyển người đứng tên",
+    })
+    expect(within(confirmDialog).getByText("30/11/2026")).toBeTruthy()
+    expect(within(confirmDialog).getByText("01/12/2026")).toBeTruthy()
+
+    fireEvent.click(
+      within(confirmDialog).getByRole("button", {
+        name: "Xác nhận hoàn tất chuyển",
+      }),
+    )
+
+    await waitFor(() =>
+      expect(mocks.completeContractTransfer).toHaveBeenCalledWith(
+        "manager-token",
+        4,
+      ),
+    )
+    expect(
+      await within(transferSection).findByText(
+        /Đã chuyển sang hợp đồng #18/,
+      ),
     ).toBeTruthy()
   })
 })

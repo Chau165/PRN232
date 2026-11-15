@@ -2,6 +2,11 @@ import { useEffect, useState } from "react"
 import { Link, useLocation } from "react-router"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementPage from "@/components/management/ManagementPage"
+import {
+  ManagementEmptyState,
+  ManagementErrorState,
+  ManagementLoadingState,
+} from "@/components/management/ManagementState"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
 import { useAuth } from "@/auth/AuthContext"
@@ -197,19 +202,26 @@ export default function ManagementViewingsPage() {
         ? "Xem mọi yêu cầu, phân công Manager và xác nhận hoặc từ chối lịch hẹn."
         : "Các lịch được phân công cho bạn. Chọn phòng cụ thể trước khi khách có thể đặt cọc."}
     >
-      {loading && <p role="status" className="text-[14px] text-slate-500">Đang tải lịch xem phòng...</p>}
+      {loading && (
+        <ManagementLoadingState
+          variant="inline"
+          message="Đang tải lịch xem phòng..."
+        />
+      )}
       {!loading && error && (
-        <div role="alert" className="rounded-2xl bg-white p-6 text-center shadow-[0_3px_18px_rgba(16,65,67,.05)]">
-          <p className="text-[14px] text-slate-700">{error}</p>
-          <button type="button" onClick={retry} className="mt-4 rounded-lg bg-[#087775] px-4 py-2 text-[13px] font-bold text-white">Thử lại</button>
-        </div>
+        <ManagementErrorState message={error} onRetry={retry} />
       )}
       {!loading && !error && (
         <ManagementDataTable headers={["Khách đặt", "Số điện thoại", "Ngày xem", "Khu trọ / phòng", "Trạng thái", ...(isAdmin || isManager ? ["Thao tác"] : [])]}>
           {viewings.length === 0 ? (
-            <p className="px-5 py-8 text-center text-[13px] text-slate-500">
-              {isAdmin ? "Chưa có yêu cầu xem phòng nào." : "Chưa có lịch xem phòng được phân công cho bạn."}
-            </p>
+            <ManagementEmptyState
+              icon="calendar"
+              message={
+                isAdmin
+                  ? "Chưa có yêu cầu xem phòng nào."
+                  : "Chưa có lịch xem phòng được phân công cho bạn."
+              }
+            />
           ) : (
             <div className="divide-y divide-slate-100">
               {viewings.map((viewing) => {

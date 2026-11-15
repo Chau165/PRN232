@@ -316,7 +316,7 @@ export default function MyRoomPage() {
         <button onClick={() => void refreshRequests()} disabled={requestsPending} className="text-[13px] font-semibold text-[#087775] disabled:opacity-50">{requestsPending ? "Đang cập nhật..." : "Cập nhật danh sách"}</button>
       </section>}
 
-      {dataOwnerToken === accessToken && selectedRental && <CustomerRoomDrawer room={selectedRental} onClose={() => setSelectedRental(null)} />}
+      {dataOwnerToken === accessToken && selectedRental && <CustomerRoomDrawer room={selectedRental} onClose={() => setSelectedRental(null)} onReportDamage={(rental) => { setSelectedRental(null); setReportRental(rental); setSubmitError(null) }} />}
       {dataOwnerToken === accessToken && reportRental && <ReportDamageModal roomCode={reportRental.roomCode} equipment={reportRental.equipments} pending={submitPending} error={submitError} onClose={() => { setReportRental(null); setSubmitError(null) }} onSubmit={submitReport} />}
       {submitError && !reportRental && <div role="alert" className="fixed bottom-6 right-6 z-[90] max-w-sm rounded-xl bg-rose-50 px-4 py-3 text-[13px] text-rose-700 shadow-xl">{submitError}</div>}
       {dataOwnerToken === accessToken && selectedRequest && <MaintenanceDetailDrawer request={selectedRequest} logs={logs} loading={detailLoading} error={detailError} onRetry={() => setDetailReload((value) => value + 1)} onClose={() => { detailVersion.current++; setSelectedRequest(null) }} />}

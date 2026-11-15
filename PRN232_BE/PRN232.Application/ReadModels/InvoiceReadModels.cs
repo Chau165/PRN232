@@ -13,7 +13,8 @@ public sealed record InvoiceContractReadModel(
     string Status,
     DateOnly StartDate,
     DateOnly EndDate,
-    int? BookingId = null);
+    int? BookingId = null,
+    DateOnly? PlannedMoveOutDate = null);
 
 public sealed record BillableServiceReadModel(
     int ServiceId,
@@ -24,6 +25,8 @@ public sealed record BillableServiceReadModel(
     string? BillingBasis);
 
 public sealed record MonthUsageReadModel(decimal ElectricUsage, decimal WaterUsage);
+
+public sealed record OccupantStayReadModel(DateOnly MoveInDate, DateOnly? MoveOutDate);
 
 public sealed record PrepaidRentCreditReadModel(decimal AvailableAmount);
 

@@ -602,8 +602,15 @@ public class ContractRepository : IContractRepository
                 invoice.BookingId,
                 invoice.CustomerId,
                 DepositAmount = invoice.Booking == null ? invoice.DepositAmount : invoice.Booking.DepositAmount,
-                DepositAppliesToFirstMonth = invoice.Booking != null && invoice.Booking.DepositAppliesToFirstMonth
+                DepositAppliesToFirstMonth = invoice.Booking != null && invoice.Booking.DepositAppliesToFirstMonth,
+                invoice.TransferredFromContractId
             })
+            .ToListAsync(cancellationToken);
+        // Rebuild 4.2: hợp đồng đã chuyển người đứng tên thì cọc nằm ở hợp đồng kế tiếp.
+        var successors = await _context.Contracts
+            .AsNoTracking()
+            .Where(item => item.TransferredFromContractId != null && contractIds.Contains(item.TransferredFromContractId.Value))
+            .Select(item => new { From = item.TransferredFromContractId!.Value, item.ContractId })
             .ToListAsync(cancellationToken);
         var bookingIds = bookingRows
             .Where(contract => contract.BookingId.HasValue)
@@ -641,12 +648,19 @@ public class ContractRepository : IContractRepository
             // Rebuild 3.3: cùng số tiền cọc đã đóng, luật cũ coi là tiền phòng trả trước, luật mới coi là
             // tiền đảm bảo giữ đến khi trả phòng.
             var prepaid = booking?.DepositAppliesToFirstMonth == true;
+            // Rebuild 4.2: hợp đồng nhận chuyển giữ đúng số cọc được chuyển (DepositAmount); hợp đồng đã chuyển
+            // đi không còn giữ cọc.
+            var successor = successors.FirstOrDefault(item => item.From == contract.ContractId)?.ContractId;
+            var securityDeposit = successor is not null ? 0m
+                : booking?.TransferredFromContractId is not null ? contract.DepositAmount
+                : prepaid ? 0m : eligiblePaid;
             return contract with
             {
                 PrepaidRentAmount = prepaid ? eligiblePaid : 0m,
                 PrepaidRentApplied = applied,
                 RemainingPrepaidCredit = prepaid ? Math.Max(0m, eligiblePaid - applied) : 0m,
-                SecurityDepositAmount = prepaid ? 0m : eligiblePaid
+                SecurityDepositAmount = securityDeposit,
+                TransferredToContractId = successor
             };
         }).ToList();
     }
@@ -693,7 +707,9 @@ public class ContractRepository : IContractRepository
         contract.Invoices.Any(),
         0m,
         contract.PlannedMoveOutDate,
-        contract.MoveOutNoticeAtUtc);
+        contract.MoveOutNoticeAtUtc,
+        contract.TransferredFromContractId,
+        null);
 
     public async Task<bool> SaveMoveOutNoticeAsync(int contractId, DateOnly? plannedMoveOutDate, DateTime? noticeAtUtc,
         int? noticeById, IReadOnlyList<Notifications> notifications, CancellationToken cancellationToken)

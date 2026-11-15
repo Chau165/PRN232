@@ -15,7 +15,7 @@ type HorizontalPropertyCardProps = {
 export default function HorizontalPropertyCard({
   property,
 }: HorizontalPropertyCardProps) {
-  const address = formatAddress(property.addressText, property.ward, property.district, property.city)
+  const address = formatAddress(property.addressText, property.ward, property.city)
 
   return (
     <article className="group grid overflow-hidden rounded-2xl bg-white shadow-[0_2px_16px_rgba(15,54,60,.06)] transition-shadow hover:shadow-[0_8px_28px_rgba(15,54,60,.1)] md:grid-cols-[220px_1fr_190px]">

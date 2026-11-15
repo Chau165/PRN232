@@ -25,6 +25,7 @@ public class InvoiceService : IInvoiceService
 
 
     private readonly ILogger<InvoiceService> _logger;
+    private readonly IAuditTrail? _audit;
 
     public InvoiceService(
         IInvoiceRepository repository,
@@ -32,9 +33,11 @@ public class InvoiceService : IInvoiceService
         TimeProvider timeProvider,
         ICashCheckoutCoordinator cashCheckout,
         INotificationRealtimePublisher? realtimePublisher = null,
-        ILogger<InvoiceService>? logger = null)
+        ILogger<InvoiceService>? logger = null,
+        IAuditTrail? audit = null)
 
     {
+        _audit = audit;
         _repository = repository;
         _paymentGateway = paymentGateway;
         _timeProvider = timeProvider;
@@ -74,7 +77,13 @@ public class InvoiceService : IInvoiceService
         {
             throw new InvalidOperationException("Created invoice was not found.");
         }
-        return ConvertToDto(created);
+        var result = ConvertToDto(created);
+        _audit?.Record(null, new
+        {
+            result.RoomCode, result.InvoiceMonth, result.DueDate, result.Total,
+            Lines = result.Lines.Select(line => new { line.ItemType, line.Quantity, line.UnitPrice, line.Amount })
+        });
+        return result;
     }
 
     public async Task<List<InvoiceDto>> GetAllAsync(int userId, string role, int? contractId, string? status)
@@ -172,6 +181,9 @@ public class InvoiceService : IInvoiceService
             userId);
         _logger.LogInformation("Cash payment of {Amount} recorded for invoice {InvoiceId} by manager {ManagerId}.",
             invoice.Total, id, userId);
+        _audit?.Record(
+            new { invoice.Status, invoice.Total },
+            new { paid.Status, paid.Total, PaymentMethod = PaymentMethods.Cash });
         return paid;
     }
 
@@ -281,13 +293,24 @@ public class InvoiceService : IInvoiceService
         }
 
         var period = Period(dto.InvoiceMonth);
+        // Tháng đầu/tháng cuối không trọn: tiền phòng và phí cố định theo phòng tính theo số ngày ở (RentProration).
+        var lastBilledDay = RentProration.LastBilledDay(contract.EndDate, contract.PlannedMoveOutDate);
+        var (rentDays, daysInMonth) = RentProration.BilledDays(dto.InvoiceMonth, contract.StartDate, lastBilledDay);
+        if (rentDays == 0)
+        {
+            throw new InvoiceBusinessRuleException("Khách đã trả phòng trước tháng này nên không còn ngày thuê nào để lập hóa đơn.");
+        }
+        var partialMonth = rentDays < daysInMonth;
+        var roomMonths = partialMonth ? Math.Round((decimal)rentDays / daysInMonth, 2, MidpointRounding.AwayFromZero) : 1m;
         var details = new List<InvoiceDetails>
         {
             new InvoiceDetails()
             {
                 ItemType = InvoiceItemTypes.Rent,
-                Description = $"Tiền phòng tháng {period}",
-                Amount = contract.MonthlyRent
+                Description = partialMonth
+                    ? $"Tiền phòng tháng {period} ({rentDays}/{daysInMonth} ngày)"
+                    : $"Tiền phòng tháng {period}",
+                Amount = RentProration.Rent(contract.MonthlyRent, rentDays, daysInMonth)
             }
         };
 
@@ -302,13 +325,25 @@ public class InvoiceService : IInvoiceService
             }
         }
 
-        foreach (var service in services)
+        decimal? personMonths = null;
+        if (services.Any(service => service.BillingBasis == "occupant"))
         {
-            details.Add(BuildServiceLine(service, usage, period));
+            var stays = await _repository.GetOccupantStaysAsync(contract.ContractId, dto.InvoiceMonth);
+            personMonths = OccupantBilling.PersonMonths(dto.InvoiceMonth,
+                new OccupantStayReadModel(contract.StartDate, lastBilledDay), stays);
         }
 
-        var invoiceMonth = new DateOnly(contract.StartDate.Year, contract.StartDate.Month, 1);
-        if (dto.InvoiceMonth == invoiceMonth && contract.BookingId.HasValue)
+        foreach (var service in services)
+        {
+            details.Add(BuildServiceLine(service, usage, personMonths, roomMonths, period));
+        }
+
+        // Luật cọc cũ (cọc trừ vào tiền phòng): cọc trừ ở hóa đơn tháng đầu. Tháng đầu không trọn thì tiền phòng ít
+        // hơn tiền cọc; phần còn lại (lũy kế: đã trả − đã trừ) được trừ tiếp vào hóa đơn các tháng sau — nhưng chỉ khi
+        // hóa đơn tháng đầu đã lập, để lập tháng sau trước không "ăn" mất phần cọc của tháng đầu.
+        var firstMonth = new DateOnly(contract.StartDate.Year, contract.StartDate.Month, 1);
+        if (contract.BookingId.HasValue &&
+            (dto.InvoiceMonth == firstMonth || await _repository.ExistsForMonthAsync(contract.ContractId, firstMonth)))
         {
             var credit = await _repository.GetAvailablePrepaidRentCreditAsync(contract.ContractId);
             if (credit is not null)
@@ -342,7 +377,9 @@ public class InvoiceService : IInvoiceService
 
     // Mỗi dòng lưu lại RateId, số lượng, đơn giá và đơn vị lúc lập: khu trọ đổi giá sau này
     // thì hoá đơn cũ vẫn giữ nguyên số tiền đã tính.
-    private static InvoiceDetails BuildServiceLine(BillableServiceReadModel service, MonthUsageReadModel? usage, string period)
+    private static InvoiceDetails BuildServiceLine(
+        BillableServiceReadModel service, MonthUsageReadModel? usage, decimal? personMonths, decimal roomMonths,
+        string period)
     {
         if (service.RateId is null || service.Price is null)
         {
@@ -353,9 +390,10 @@ public class InvoiceService : IInvoiceService
         {
             ("kwh", "usage") => (InvoiceItemTypes.Electricity, usage!.ElectricUsage),
             ("m3", "usage") => (InvoiceItemTypes.Water, usage!.WaterUsage),
-            (_, "fixed_room") => (InvoiceItemTypes.Service, 1m),
+            (_, "fixed_room") => (InvoiceItemTypes.Service, roomMonths),
+            (_, "occupant") => (InvoiceItemTypes.Service, personMonths!.Value),
             _ => throw new InvoiceBusinessRuleException(
-                $"Service \"{service.ServiceName}\" is billed per person or vehicle, which is not supported yet.")
+                $"Service \"{service.ServiceName}\" is billed per vehicle, which is not supported yet.")
         };
 
         return new InvoiceDetails

@@ -159,8 +159,9 @@ describe("public Home browsing", () => {
     expect(await screen.findByText("Residence từ API")).toBeTruthy()
     expect(screen.getByText("7 phòng phù hợp")).toBeTruthy()
     expect(
-      screen.getByText("12 Đường Mẫu, Phường Một, Quận Hai, TP.HCM"),
+      screen.getByText("12 Đường Mẫu, Phường Một, TP.HCM"),
     ).toBeTruthy()
+    expect(screen.queryByText(/Quận Hai/)).toBeNull()
     expect(screen.getByText(/2\.850\.000,5/)).toBeTruthy()
     expect(screen.getByText(/Tiện ích phòng đại diện/)).toBeTruthy()
     expect(
@@ -211,11 +212,9 @@ describe("public Home browsing", () => {
     expect(screen.queryByLabelText("Giá tối đa")).toBeNull()
 
     expect(screen.queryByLabelText("Loại phòng")).toBeNull()
+    expect(screen.queryByLabelText("Quận/Huyện")).toBeNull()
     fireEvent.change(screen.getByLabelText("Thành phố"), {
       target: { value: "TP.HCM" },
-    })
-    fireEvent.change(screen.getByLabelText("Quận/Huyện"), {
-      target: { value: "Quận Hai" },
     })
     fireEvent.change(screen.getByLabelText("Phường/Xã"), {
       target: { value: "Phường Một" },
@@ -230,7 +229,7 @@ describe("public Home browsing", () => {
     const url = requestUrl(fetchMock)
     expect(url.searchParams.has("keyword")).toBe(false)
     expect(url.searchParams.get("city")).toBe("TP.HCM")
-    expect(url.searchParams.get("district")).toBe("Quận Hai")
+    expect(url.searchParams.has("district")).toBe(false)
     expect(url.searchParams.get("ward")).toBe("Phường Một")
     expect(url.searchParams.has("minPrice")).toBe(false)
     expect(url.searchParams.has("maxPrice")).toBe(false)
@@ -239,7 +238,7 @@ describe("public Home browsing", () => {
     expect(url.searchParams.get("page")).toBe("1")
   })
 
-  it("offers city, district and ward lists from areas with rentals, narrowing as the user chooses", async () => {
+  it("offers city and ward lists from areas with rentals without district, narrowing as the user chooses", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValue(jsonResponse(page([property()])))
@@ -248,46 +247,45 @@ describe("public Home browsing", () => {
     renderHome()
     await screen.findByText("Residence từ API")
     await waitFor(() => expect(optionLabels("Thành phố")).toEqual(["Tất cả", "Hà Nội", "TP.HCM"]))
-    expect(optionLabels("Quận/Huyện")).toEqual(["Tất cả", "Ba Đình", "Quận Bảy", "Quận Hai"])
+    expect(screen.queryByLabelText("Quận/Huyện")).toBeNull()
+    expect(optionLabels("Phường/Xã")).toEqual(["Tất cả", "Phúc Xá", "Phường Ba", "Phường Một", "Tân Thuận"])
 
     fireEvent.change(screen.getByLabelText("Thành phố"), { target: { value: "TP.HCM" } })
-    expect(optionLabels("Quận/Huyện")).toEqual(["Tất cả", "Quận Bảy", "Quận Hai"])
-    fireEvent.change(screen.getByLabelText("Quận/Huyện"), { target: { value: "Quận Hai" } })
-    expect(optionLabels("Phường/Xã")).toEqual(["Tất cả", "Phường Ba", "Phường Một"])
+    expect(optionLabels("Phường/Xã")).toEqual(["Tất cả", "Phường Ba", "Phường Một", "Tân Thuận"])
     fireEvent.change(screen.getByLabelText("Phường/Xã"), { target: { value: "Phường Một" } })
 
-    // A different city clears the district and ward that no longer belong to it.
+    // A different city clears the ward that no longer belongs to it.
     fireEvent.change(screen.getByLabelText("Thành phố"), { target: { value: "Hà Nội" } })
-    expect((screen.getByLabelText("Quận/Huyện") as HTMLSelectElement).value).toBe("")
     expect((screen.getByLabelText("Phường/Xã") as HTMLSelectElement).value).toBe("")
-    fireEvent.change(screen.getByLabelText("Quận/Huyện"), { target: { value: "Ba Đình" } })
+    expect(optionLabels("Phường/Xã")).toEqual(["Tất cả", "Phúc Xá"])
+    fireEvent.change(screen.getByLabelText("Phường/Xã"), { target: { value: "Phúc Xá" } })
     fireEvent.click(screen.getByRole("button", { name: "Tìm phòng phù hợp" }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     const url = requestUrl(fetchMock)
     expect(url.searchParams.get("city")).toBe("Hà Nội")
-    expect(url.searchParams.get("district")).toBe("Ba Đình")
-    expect(url.searchParams.has("ward")).toBe(false)
+    expect(url.searchParams.has("district")).toBe(false)
+    expect(url.searchParams.get("ward")).toBe("Phúc Xá")
   })
 
-  it("orders numbered districts the way people count them", async () => {
-    areaMock.listAreas.mockResolvedValue(["Quận 10", "Quận 3", "Quận 1", "Quận 12"]
-      .map((district) => ({ city: "TP.HCM", district, ward: "Một" })))
+  it("orders numbered wards the way people count them", async () => {
+    areaMock.listAreas.mockResolvedValue(["Phường 10", "Phường 3", "Phường 1", "Phường 12"]
+      .map((ward) => ({ city: "TP.HCM", district: "", ward })))
     vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(page([property()]))))
 
     renderHome()
     await screen.findByText("Residence từ API")
 
-    await waitFor(() => expect(optionLabels("Quận/Huyện")).toEqual(["Tất cả", "Quận 1", "Quận 3", "Quận 10", "Quận 12"]))
+    await waitFor(() => expect(optionLabels("Phường/Xã")).toEqual(["Tất cả", "Phường 1", "Phường 3", "Phường 10", "Phường 12"]))
   })
 
   it("keeps an area from the link visible even when it is not in the list", async () => {
     vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(page([property()]))))
 
-    renderHome("/?district=quan%201")
+    renderHome("/?ward=phuong%201")
     await screen.findByText("Residence từ API")
 
-    await waitFor(() => expect((screen.getByLabelText("Quận/Huyện") as HTMLSelectElement).value).toBe("quan 1"))
+    await waitFor(() => expect((screen.getByLabelText("Phường/Xã") as HTMLSelectElement).value).toBe("phuong 1"))
   })
 
   it("falls back to typing the area when the area list cannot load", async () => {

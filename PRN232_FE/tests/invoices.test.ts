@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { createInvoice, getInvoices, previewInvoice, recordCashPayment } from "@/services/invoiceService"
 import { createInvoicePaymentLink, getPaymentRequest } from "@/services/invoicePaymentService"
-import { createUtilityReading, getUtilityReadings } from "@/services/utilityReadingService"
+import { createUtilityReading, getUtilityReadings, previewUtilityReading } from "@/services/utilityReadingService"
 import { defaultDueDate, formatMonth, invoiceLineLabel, invoiceStatusDisplay } from "@/utils/invoiceDisplay"
 
 function response(body: unknown) {
@@ -16,6 +16,9 @@ describe("Invoice and meter reading API clients", () => {
     await previewInvoice("token", request)
     await createInvoice("token", request)
     await getUtilityReadings("token", 5)
+    await previewUtilityReading("token", {
+      contractId: 5, readingMonth: "2026-10-01", electricEnd: 150, waterEnd: 14, electricStart: null, waterStart: null,
+    })
     await createUtilityReading("token", {
       contractId: 5, readingMonth: "2026-10-01", electricEnd: 150, waterEnd: 14, electricStart: null, waterStart: null,
     })
@@ -25,10 +28,11 @@ describe("Invoice and meter reading API clients", () => {
       "POST /api/invoices/preview",
       "POST /api/invoices",
       "GET /api/utility-readings?contractId=5",
+      "POST /api/utility-readings/preview",
       "POST /api/utility-readings",
     ])
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual(request)
-    expect(JSON.parse(String(fetchMock.mock.calls[4][1]?.body))).toEqual({
+    expect(JSON.parse(String(fetchMock.mock.calls[5][1]?.body))).toEqual({
       contractId: 5, readingMonth: "2026-10-01", electricEnd: 150, waterEnd: 14, electricStart: null, waterStart: null,
     })
   })
@@ -65,6 +69,16 @@ describe("Invoice display helpers", () => {
     expect(invoiceLineLabel({ ...line, itemType: "Rent", quantity: null, unitPrice: null, unitCode: null })).toBe("Tiền phòng")
     expect(invoiceLineLabel({ ...line, itemType: "Service", description: "Internet - monthly - tháng 10/2026" }))
       .toBe("Internet - monthly - tháng 10/2026")
+    expect(
+      invoiceLineLabel({
+        itemType: "Service",
+        description: "Phí vệ sinh",
+        quantity: 1.35,
+        unitPrice: 50000,
+        unitCode: "person_month",
+        amount: 67500,
+      }),
+    ).toMatch(/^Phí vệ sinh \(1,35 người × 50\.000/)
     expect(formatMonth("2026-10-01")).toBe("10/2026")
   })
 

@@ -446,6 +446,8 @@ internal sealed class BookingsApiFactory : WebApplicationFactory<BookingsControl
             // test của luật mới đặt LegacyDepositTerms = false (BookingDepositTermsTests).
             services.RemoveAll<PRN232.Application.Settings.BookingDepositSettings>();
             services.AddSingleton(new PRN232.Application.Settings.BookingDepositSettings { AppliesToFirstMonth = LegacyDepositTerms });
+            // Rebuild (tiền phòng tháng đầu tính theo ngày): xem TestContractStartFilter.
+            services.AddTransient<Microsoft.AspNetCore.Hosting.IStartupFilter, TestContractStartFilter>();
         });
     }
 

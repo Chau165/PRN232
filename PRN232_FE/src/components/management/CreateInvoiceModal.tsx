@@ -3,10 +3,10 @@ import { useEffect, useState } from "react"
 import { useAuth } from "@/auth/AuthContext"
 import { getContracts } from "@/services/contractService"
 import { createInvoice, previewInvoice } from "@/services/invoiceService"
-import { createUtilityReading, getUtilityReadings } from "@/services/utilityReadingService"
+import { createUtilityReading, getUtilityReadings, previewUtilityReading } from "@/services/utilityReadingService"
 import type { ContractDto } from "@/types/contract"
 import type { InvoiceDto } from "@/types/invoice"
-import type { UtilityReadingDto } from "@/types/utilityReading"
+import type { UtilityReadingDto, UtilityReadingPreviewDto } from "@/types/utilityReading"
 import { bookingErrorMessage } from "@/utils/bookingDisplay"
 import { defaultDueDate, formatMonth, invoiceLineLabel } from "@/utils/invoiceDisplay"
 import { localToday } from "@/utils/managementContracts"
@@ -45,6 +45,7 @@ export default function CreateInvoiceModal({ onClose, onCreated }: CreateInvoice
   const [readingsContractId, setReadingsContractId] = useState<number | null>(null)
   const [electricEnd, setElectricEnd] = useState("")
   const [waterEnd, setWaterEnd] = useState("")
+  const [readingPreview, setReadingPreview] = useState<UtilityReadingPreviewDto | null>(null)
   const [preview, setPreview] = useState<InvoiceDto | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -105,8 +106,21 @@ export default function CreateInvoiceModal({ onClose, onCreated }: CreateInvoice
   // Đổi bất kỳ thông tin nào thì bản xem trước cũ không còn đúng nữa.
   const change = (apply: () => void) => {
     apply()
+    setReadingPreview(null)
     setPreview(null)
     setError(null)
+  }
+
+  const persistReading = async (endE: number, endW: number) => {
+    if (!accessToken || contractId === null) return
+    const saved = await createUtilityReading(accessToken, {
+      contractId,
+      readingMonth: monthDate,
+      electricEnd: endE,
+      waterEnd: endW,
+    })
+    setReadingPreview(null)
+    setReadings((items) => [saved, ...items])
   }
 
   const saveReading = async () => {
@@ -124,13 +138,30 @@ export default function CreateInvoiceModal({ onClose, onCreated }: CreateInvoice
     setBusy(true)
     setError(null)
     try {
-      const saved = await createUtilityReading(accessToken, {
+      const checked = await previewUtilityReading(accessToken, {
         contractId,
         readingMonth: monthDate,
         electricEnd: endE,
         waterEnd: endW,
       })
-      setReadings((items) => [saved, ...items])
+      if ((checked.warnings?.length ?? 0) > 0) {
+        setReadingPreview(checked)
+        return
+      }
+      await persistReading(endE, endW)
+    } catch (saveError) {
+      setError(bookingErrorMessage(saveError, "Tháng này đã có chỉ số, hoặc đã có chỉ số của tháng sau."))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const confirmSaveReading = async () => {
+    if (!readingPreview || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await persistReading(readingPreview.electricEnd, readingPreview.waterEnd)
     } catch (saveError) {
       setError(bookingErrorMessage(saveError, "Tháng này đã có chỉ số, hoặc đã có chỉ số của tháng sau."))
     } finally {
@@ -250,6 +281,73 @@ export default function CreateInvoiceModal({ onClose, onCreated }: CreateInvoice
                   className="mt-3 rounded-lg bg-slate-800 px-4 py-2.5 text-[13px] font-bold text-white disabled:opacity-50">
                   Lưu chỉ số cuối kỳ
                 </button>
+                {readingPreview && (
+                  <div
+                    role="alertdialog"
+                    aria-label="Xác nhận chỉ số điện nước bất thường"
+                    className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-slate-800"
+                  >
+                    <p className="text-sm font-bold text-amber-900">
+                      Cảnh báo chỉ số điện nước bất thường
+                    </p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-950">
+                      {readingPreview.warnings.map((warning, index) => (
+                        <li key={index}>{warning}</li>
+                      ))}
+                    </ul>
+                    <table className="mt-3 w-full border-collapse rounded-lg bg-white text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-left text-slate-500">
+                          <th className="px-3 py-2 font-semibold">Chỉ số tiêu thụ</th>
+                          <th className="px-3 py-2 font-semibold">Tháng này</th>
+                          <th className="px-3 py-2 font-semibold">
+                            {readingPreview.monthsAveraged > 0
+                              ? `Trung bình ${readingPreview.monthsAveraged} tháng`
+                              : "Trung bình"}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        <tr>
+                          <td className="px-3 py-2 font-medium text-slate-700">Điện (kWh)</td>
+                          <td className="px-3 py-2 font-semibold">{readingPreview.electricUsage.toLocaleString("vi-VN")} kWh</td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {readingPreview.averageElectricUsage !== null
+                              ? `${readingPreview.averageElectricUsage.toLocaleString("vi-VN")} kWh`
+                              : "Chưa có dữ liệu"}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="px-3 py-2 font-medium text-slate-700">Nước (m³)</td>
+                          <td className="px-3 py-2 font-semibold">{readingPreview.waterUsage.toLocaleString("vi-VN")} m³</td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {readingPreview.averageWaterUsage !== null
+                              ? `${readingPreview.averageWaterUsage.toLocaleString("vi-VN")} m³`
+                              : "Chưa có dữ liệu"}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <div className="mt-3 flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setReadingPreview(null)}
+                        className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 disabled:opacity-50"
+                      >
+                        Nhập lại
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={confirmSaveReading}
+                        className="rounded-lg bg-amber-700 px-3.5 py-2 text-xs font-bold text-white disabled:opacity-50"
+                      >
+                        {busy ? "Đang lưu..." : "Vẫn lưu"}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </section>

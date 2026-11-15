@@ -4,9 +4,16 @@ import { useAuth } from "@/auth/AuthContext"
 import { ApiError } from "@/api/apiClient"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementPage from "@/components/management/ManagementPage"
+import {
+  ManagementEmptyState,
+  ManagementErrorState,
+  ManagementLoadingState,
+  ManagementSuccessBanner,
+} from "@/components/management/ManagementState"
 import RoomDetailDrawer from "@/components/management/RoomDetailDrawer"
 import RoomFormModal from "@/components/management/RoomFormModal"
 import StatusBadge from "@/components/customer/StatusBadge"
+import { routes } from "@/constants/routes"
 import { getProperties } from "@/services/propertyService"
 import {
   createRoom,
@@ -208,6 +215,9 @@ export default function ManagementRoomsPage() {
     setSuccess("")
     try {
       await deleteRoom(accessToken, room.roomId)
+      if (detailRoom?.roomId === room.roomId) {
+        setDetailRoom(null)
+      }
       setSuccess(`Đã xóa phòng ${room.roomCode}.`)
       setReload((value) => value + 1)
     } catch (cause) {
@@ -225,44 +235,38 @@ export default function ManagementRoomsPage() {
           ? `Quản lý phòng của ${scopedProperty.propertyName}`
           : "Theo dõi và quản lý cấu hình phòng bằng dữ liệu Backend theo phạm vi được cấp quyền."
       }
-    >
-      {isAdmin && (
-        <div className="mb-5 flex justify-end">
+      breadcrumbs={
+        scopedPropertyId !== null
+          ? [
+              { label: "Khu trọ", to: routes.managementProperties },
+              { label: scopedProperty ? scopedProperty.propertyName : "Phòng" },
+            ]
+          : undefined
+      }
+      actions={
+        isAdmin ? (
           <button
             type="button"
             onClick={() => {
               setEditingRoom(null)
               setRoomDialog("create")
             }}
-            className="rounded-lg bg-[#087775] px-4 py-2.5 text-[13px] font-bold text-white"
+            className="rounded-lg bg-[#087775] px-4 py-2.5 text-[13px] font-bold text-white hover:bg-[#066a68]"
           >
             + Thêm phòng
           </button>
-        </div>
-      )}
+        ) : undefined
+      }
+    >
       {error && (
-        <div
-          role="alert"
-          className="mb-4 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700"
-        >
-          <p>{error}</p>
-          <button
-            type="button"
-            onClick={() => setReload((value) => value + 1)}
-            className="mt-2 font-bold underline"
-          >
-            Tải lại
-          </button>
-        </div>
+        <ManagementErrorState
+          variant="banner"
+          message={error}
+          retryLabel="Tải lại"
+          onRetry={() => setReload((value) => value + 1)}
+        />
       )}
-      {success && (
-        <p
-          role="status"
-          className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
-        >
-          {success}
-        </p>
-      )}
+      {success && <ManagementSuccessBanner message={success} />}
 
       <div className="mb-5 flex flex-wrap gap-2">
         {filters.map((item) => (
@@ -345,29 +349,27 @@ export default function ManagementRoomsPage() {
         ]}
       >
         {loading ? (
-          <p role="status" className="px-5 py-8 text-sm text-slate-500">
-            Đang tải phòng...
-          </p>
+          <ManagementLoadingState message="Đang tải phòng..." />
         ) : visibleRooms.length === 0 ? (
-          <div
-            role="status"
-            className="px-5 py-8 text-center text-sm text-slate-500"
-          >
-            <p>
-              {properties.length === 0
+          <ManagementEmptyState
+            icon="home"
+            message={
+              properties.length === 0
                 ? "Vui lòng tạo khu trọ trước khi thêm phòng."
-                : "Chưa có phòng nào."}
-            </p>
-            {isAdmin && properties.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setRoomDialog("create")}
-                className="mt-4 rounded-lg bg-[#087775] px-4 py-2.5 text-[13px] font-bold text-white"
-              >
-                + Thêm phòng
-              </button>
-            )}
-          </div>
+                : "Chưa có phòng nào."
+            }
+            action={
+              isAdmin && properties.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setRoomDialog("create")}
+                  className="rounded-lg bg-[#087775] px-4 py-2.5 text-[13px] font-bold text-white hover:bg-[#066a68]"
+                >
+                  + Thêm phòng
+                </button>
+              ) : undefined
+            }
+          />
         ) : (
           <div className="divide-y divide-slate-100">
             {visibleRooms.map((room) => (
@@ -445,8 +447,17 @@ export default function ManagementRoomsPage() {
       {detailRoom && accessToken && (
         <RoomDetailDrawer
           room={detailRoom}
+          property={properties.find(
+            (property) => property.propertyId === detailRoom.propertyId,
+          )}
           accessToken={accessToken}
+          deleting={deletingRoomId === detailRoom.roomId}
           onImagesChanged={() => setReload((value) => value + 1)}
+          onEdit={(selected) => {
+            setDetailRoom(null)
+            void openRoomEdit(selected)
+          }}
+          onDelete={(selected) => void removeRoom(selected)}
           onClose={() => setDetailRoom(null)}
         />
       )}

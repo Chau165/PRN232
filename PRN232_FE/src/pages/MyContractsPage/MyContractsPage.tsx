@@ -3,6 +3,9 @@ import ContractEquipmentHandover from "@/components/customer/ContractEquipmentHa
 import ContractEvidenceSection from "@/components/customer/ContractEvidenceSection"
 import ContractMoveOutNotice from "@/components/customer/ContractMoveOutNotice"
 import ContractDepositSettlement from "@/components/customer/ContractDepositSettlement"
+import ContractOccupantsSection from "@/components/customer/ContractOccupantsSection"
+import ContractTransferSection from "@/components/customer/ContractTransferSection"
+import IncomingContractTransfers from "@/components/customer/IncomingContractTransfers"
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { Link } from "react-router"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
@@ -12,7 +15,7 @@ import { getContractBillingTimeline, getContracts } from "@/services/contractSer
 import type { ContractBillingTimelineDto, ContractDto } from "@/types/contract"
 import type { InvoiceDto } from "@/types/invoice"
 import { formatContractDate, localToday } from "@/utils/managementContracts"
-import { formatMonth } from "@/utils/invoiceDisplay"
+import { formatMonth, invoiceLineLabel } from "@/utils/invoiceDisplay"
 import { formatVnd } from "@/utils/publicFormatting"
 import { routes } from "@/constants/routes"
 
@@ -123,23 +126,31 @@ export default function MyContractsPage() {
             Thử lại
           </button>
         </div>
-      ) : contracts.length === 0 ? (
-        <p role="status" className="rounded-xl border border-dashed border-slate-200 bg-white p-8 text-center text-slate-500">
-          Bạn chưa có hợp đồng.
-        </p>
       ) : (
-        <div className="space-y-4">
-          {contracts.map((contract) => (
-            <ContractSummaryCard
-              key={contract.contractId}
-              contract={contract}
-              expanded={expandedContractId === contract.contractId}
-              timelineState={timelines[contract.contractId]}
-              onToggle={() => toggleContract(contract.contractId)}
-              onRetry={() => retryTimeline(contract.contractId)}
-            />
-          ))}
-        </div>
+        <>
+          <IncomingContractTransfers
+            contracts={contracts}
+            onUpdated={() => setRetry((value) => value + 1)}
+          />
+          {contracts.length === 0 ? (
+            <p role="status" className="rounded-xl border border-dashed border-slate-200 bg-white p-8 text-center text-slate-500">
+              Bạn chưa có hợp đồng.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {contracts.map((contract) => (
+                <ContractSummaryCard
+                  key={contract.contractId}
+                  contract={contract}
+                  expanded={expandedContractId === contract.contractId}
+                  timelineState={timelines[contract.contractId]}
+                  onToggle={() => toggleContract(contract.contractId)}
+                  onRetry={() => retryTimeline(contract.contractId)}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </CustomerPageShell>
   )
@@ -187,6 +198,20 @@ function ContractSummaryCard({
           <p className="mt-1 text-[14px] text-slate-500">
             Phòng {contract.roomCode} · {contract.propertyAddress ?? "Địa chỉ chưa có"}
           </p>
+          {(contract.transferredFromContractId || contract.transferredToContractId) && (
+            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+              {contract.transferredFromContractId && (
+                <span className="rounded-full bg-teal-50 px-2.5 py-0.5 font-semibold text-[#087775]">
+                  Chuyển từ hợp đồng #{contract.transferredFromContractId}
+                </span>
+              )}
+              {contract.transferredToContractId && (
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-semibold text-slate-700">
+                  Đã chuyển sang hợp đồng #{contract.transferredToContractId}
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <StatusBadge tone={tone}>{label}</StatusBadge>
       </div>
@@ -299,6 +324,8 @@ function ContractBillingTimeline({
             </>
           )}
         </dl>
+        <ContractOccupantsSection contract={contract} />
+        <ContractTransferSection contract={contract} />
         <ContractMoveOutNotice contract={contract} />
         <ContractMeterHandover contract={contract} />
         <ContractEquipmentHandover
@@ -416,7 +443,7 @@ function IssuedInvoiceItem({ invoice }: { invoice: InvoiceDto }) {
         <ul className="mt-3 space-y-1 border-t border-slate-100 pt-3 text-xs text-slate-600">
           {invoice.lines.map((line, index) => (
             <li key={`${invoice.invoiceId}-${index}`} className="flex justify-between gap-3">
-              <span>{line.description}</span>
+              <span>{invoiceLineLabel(line)}</span>
               <span className="shrink-0">{formatVnd(line.amount)}</span>
             </li>
           ))}

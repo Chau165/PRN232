@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using PRN232.Infrastructure.Data;
 using Xunit;
 using static PRN232.Application.Tests.BookingsApiTests;
 using static PRN232.Application.Tests.ContractsApiTests;
@@ -84,6 +87,40 @@ public class UtilityReadingsApiTests
 
         Assert.Equal((HttpStatusCode.BadRequest, HttpStatusCode.BadRequest, HttpStatusCode.NotFound),
             (lower.StatusCode, noStart.StatusCode, unknown.StatusCode));
+    }
+
+    // Rebuild 4.4: xem trước chỉ số bất thường trả cảnh báo nhưng không lưu; khách không được gọi.
+    [Fact]
+    public async Task Preview_flags_an_unusual_reading_without_saving_it()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        var contractId = await CreateContractAsync(client);
+        var twoMonthsAgo = ThisMonth.AddMonths(-2);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var contract = await db.Contracts.SingleAsync(item => item.ContractId == contractId);
+            (contract.StartDate, contract.MeterHandoverDate) = (twoMonthsAgo, twoMonthsAgo);
+            (contract.InitialElectricReading, contract.InitialWaterReading) = (100m, 10m);
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(HttpStatusCode.Created, (await PostReadingAsync(client, contractId, twoMonthsAgo, 150m, 14m, null, null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await PostReadingAsync(client, contractId, ThisMonth.AddMonths(-1), 200m, 18m, null, null)).StatusCode);
+        var body = new { contractId, readingMonth = ThisMonth, electricEnd = 400m, waterEnd = 22m };
+
+        using var preview = await client.PostAsJsonAsync("/api/utility-readings/preview", body);
+        await LoginAsync(client, "customer@example.test");
+        using var byCustomer = await client.PostAsJsonAsync("/api/utility-readings/preview", body);
+        var saved = await client.GetFromJsonAsync<JsonElement>($"/api/utility-readings?contractId={contractId}");
+
+        Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
+        var result = await preview.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal((200m, 50m, 2), (result.GetProperty("electricUsage").GetDecimal(),
+            result.GetProperty("averageElectricUsage").GetDecimal(), result.GetProperty("monthsAveraged").GetInt32()));
+        Assert.StartsWith("Điện tháng này 200 kWh, cao hơn 300%", Assert.Single(result.GetProperty("warnings").EnumerateArray()).GetString());
+        Assert.Equal(HttpStatusCode.Forbidden, byCustomer.StatusCode);
+        Assert.Equal(2, saved.GetArrayLength());
     }
 
     private static async Task SaveHandoverAsync(HttpClient client, int contractId)

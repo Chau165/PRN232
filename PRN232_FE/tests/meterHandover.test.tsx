@@ -11,7 +11,7 @@ import { localToday } from "@/utils/managementContracts"
 
 const mocks = vi.hoisted(() => ({
   getContracts: vi.fn(), getContract: vi.fn(), saveContractMeterHandover: vi.fn(),
-  getUtilityReadings: vi.fn(), createUtilityReading: vi.fn(), previewInvoice: vi.fn(), createInvoice: vi.fn(),
+  getUtilityReadings: vi.fn(), previewUtilityReading: vi.fn(), createUtilityReading: vi.fn(), previewInvoice: vi.fn(), createInvoice: vi.fn(),
   role: "MANAGER",
 }))
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ accessToken: "token", user: { role: mocks.role } }) }))
@@ -19,7 +19,11 @@ vi.mock("@/services/contractService", () => ({
   getContracts: mocks.getContracts, getContract: mocks.getContract, saveContractMeterHandover: mocks.saveContractMeterHandover,
   getContractBillingTimeline: vi.fn(), extendContract: vi.fn(), terminateContract: vi.fn(), markTerminatedRoomReady: vi.fn(),
 }))
-vi.mock("@/services/utilityReadingService", () => ({ getUtilityReadings: mocks.getUtilityReadings, createUtilityReading: mocks.createUtilityReading }))
+vi.mock("@/services/utilityReadingService", () => ({
+  getUtilityReadings: mocks.getUtilityReadings,
+  previewUtilityReading: mocks.previewUtilityReading,
+  createUtilityReading: mocks.createUtilityReading,
+}))
 vi.mock("@/services/invoiceService", () => ({ previewInvoice: mocks.previewInvoice, createInvoice: mocks.createInvoice }))
 vi.mock("@/components/management/ManagementPage", () => ({ default: ({ children }: { children: React.ReactNode }) => <main>{children}</main> }))
 

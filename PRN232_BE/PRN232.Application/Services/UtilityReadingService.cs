@@ -23,6 +23,40 @@ public class UtilityReadingService : IUtilityReadingService
 
     public async Task<UtilityReadingDto> CreateAsync(CreateUtilityReadingDto dto, int userId, string role)
     {
+        var (reading, warnings, _) = await PrepareAsync(dto, userId, role);
+        // Repository kiểm tra lại "chưa có tháng này hoặc tháng sau" ngay lúc ghi,
+        // phòng khi hai người cùng nhập chỉ số cho một hợp đồng.
+        if (!await _repository.AddIfLatestAsync(reading, userId))
+        {
+            throw new UtilityReadingConflictException("Dữ liệu hợp đồng, phân công, chỉ số hoặc hóa đơn đã thay đổi. Vui lòng tải lại.");
+        }
+
+        var created = await _repository.GetByIdAsync(reading.ReadingId, null, null);
+        if (created is null)
+        {
+            throw new InvalidOperationException("Created reading was not found.");
+        }
+        // Lưu vẫn thành công khi bất thường (cảnh báo không chặn); trả kèm cảnh báo cho client không gọi preview.
+        return ConvertToDto(created) with { Warnings = warnings };
+    }
+
+    // Rebuild 4.4: kiểm tra giống hệt khi lưu nhưng không ghi gì, để quản lý thấy cảnh báo bất thường TRƯỚC khi lưu
+    // (chỉ số đã lưu không sửa được).
+    public async Task<UtilityReadingPreviewDto> PreviewAsync(CreateUtilityReadingDto dto, int userId, string role)
+    {
+        var (reading, warnings, recent) = await PrepareAsync(dto, userId, role);
+        return new UtilityReadingPreviewDto(
+            reading.ContractId, reading.ReadingMonth,
+            reading.ElectricStart, reading.ElectricEnd, reading.ElectricEnd - reading.ElectricStart,
+            reading.WaterStart, reading.WaterEnd, reading.WaterEnd - reading.WaterStart,
+            recent.Count == 0 ? null : Math.Round(recent.Average(month => month.ElectricUsage), 2, MidpointRounding.AwayFromZero),
+            recent.Count == 0 ? null : Math.Round(recent.Average(month => month.WaterUsage), 2, MidpointRounding.AwayFromZero),
+            recent.Count, warnings);
+    }
+
+    private async Task<(UtilityReadings Reading, List<string> Warnings, List<MonthUsageReadModel> Recent)> PrepareAsync(
+        CreateUtilityReadingDto dto, int userId, string role)
+    {
         if (role != RoleNames.Manager)
         {
             throw new UtilityReadingAuthorizationException("Only an assigned property manager can record meter readings.");
@@ -68,19 +102,11 @@ public class UtilityReadingService : IUtilityReadingService
         }
 
         var reading = ConvertToEntity(dto, contract.ContractId, electricStart, waterStart);
-        // Repository kiểm tra lại "chưa có tháng này hoặc tháng sau" ngay lúc ghi,
-        // phòng khi hai người cùng nhập chỉ số cho một hợp đồng.
-        if (!await _repository.AddIfLatestAsync(reading, userId))
-        {
-            throw new UtilityReadingConflictException("Dữ liệu hợp đồng, phân công, chỉ số hoặc hóa đơn đã thay đổi. Vui lòng tải lại.");
-        }
-
-        var created = await _repository.GetByIdAsync(reading.ReadingId, null, null);
-        if (created is null)
-        {
-            throw new InvalidOperationException("Created reading was not found.");
-        }
-        return ConvertToDto(created);
+        var recent = await _repository.GetRecentUsageAsync(
+            contract.ContractId, dto.ReadingMonth, UnusualUsagePolicy.MonthsToAverage);
+        var warnings = UnusualUsagePolicy.Warnings(
+            reading.ElectricEnd - reading.ElectricStart, reading.WaterEnd - reading.WaterStart, recent);
+        return (reading, warnings, recent);
     }
 
     public async Task<List<UtilityReadingDto>> GetAllAsync(int userId, string role, int? contractId)

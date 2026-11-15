@@ -188,12 +188,10 @@ export function buildPropertyListParams(
   const params = new URLSearchParams()
   const keyword = optionalText(query.keyword)
   const city = optionalText(query.city)
-  const district = optionalText(query.district)
   const ward = optionalText(query.ward)
 
   if (keyword) params.set("keyword", keyword)
   if (city) params.set("city", city)
-  if (district) params.set("district", district)
   if (ward) params.set("ward", ward)
 
   appendPricesAndRoomType(params, query)

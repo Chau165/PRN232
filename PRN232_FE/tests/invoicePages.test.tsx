@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   createInvoicePaymentLink: vi.fn(),
   recordCashPayment: vi.fn(),
   getUtilityReadings: vi.fn(),
+  previewUtilityReading: vi.fn(),
   createUtilityReading: vi.fn(),
   getInvoiceComplaints: vi.fn(),
   createInvoiceComplaint: vi.fn(),
@@ -53,7 +54,9 @@ vi.mock("@/services/invoiceComplaintService", async (importOriginal) => ({
   updateInvoiceComplaintStatus: mocks.updateInvoiceComplaintStatus,
 }))
 vi.mock("@/services/utilityReadingService", () => ({
-  getUtilityReadings: mocks.getUtilityReadings, createUtilityReading: mocks.createUtilityReading,
+  getUtilityReadings: mocks.getUtilityReadings,
+  previewUtilityReading: mocks.previewUtilityReading,
+  createUtilityReading: mocks.createUtilityReading,
 }))
 
 const today = localToday()
@@ -92,6 +95,20 @@ const invoice = (overrides: Partial<InvoiceDto> = {}): InvoiceDto => ({
 beforeEach(() => {
   mocks.getContracts.mockResolvedValue([contract(), contract({ contractId: 2, roomCode: "B202", status: "Terminated" })])
   mocks.getUtilityReadings.mockResolvedValue([])
+  mocks.previewUtilityReading.mockResolvedValue({
+    contractId: 1,
+    readingMonth: thisMonth,
+    electricStart: 100,
+    electricEnd: 150,
+    electricUsage: 50,
+    waterStart: 10,
+    waterEnd: 14,
+    waterUsage: 4,
+    averageElectricUsage: 50,
+    averageWaterUsage: 4,
+    monthsAveraged: 3,
+    warnings: [],
+  })
   mocks.createUtilityReading.mockResolvedValue(reading())
   mocks.previewInvoice.mockResolvedValue(invoice({ invoiceId: 0, status: "Preview" }))
   mocks.createInvoice.mockResolvedValue(invoice())
@@ -152,6 +169,60 @@ describe("CreateInvoiceModal", () => {
 
     expect(screen.getByRole("alert").textContent).toBe("Chỉ số tháng này không được nhỏ hơn chỉ số đầu kỳ.")
     expect(mocks.createUtilityReading).not.toHaveBeenCalled()
+  })
+
+  it("shows confirmation dialog when previewUtilityReading returns warnings and only saves on Vẫn lưu (C23)", async () => {
+    mocks.previewUtilityReading.mockResolvedValue({
+      contractId: 1,
+      readingMonth: thisMonth,
+      electricStart: 100,
+      electricEnd: 280,
+      electricUsage: 180,
+      waterStart: 10,
+      waterEnd: 14,
+      waterUsage: 4,
+      averageElectricUsage: 100,
+      averageWaterUsage: 5,
+      monthsAveraged: 3,
+      warnings: [
+        "Điện tháng này 180 kWh, cao hơn 80% so với trung bình 3 tháng gần nhất (100 kWh). Hãy kiểm tra lại chỉ số trước khi lưu.",
+      ],
+    })
+    mocks.createUtilityReading.mockResolvedValue(reading({ electricEnd: 280, electricUsage: 180 }))
+
+    render(<CreateInvoiceModal onClose={vi.fn()} onCreated={vi.fn()} />)
+    await screen.findByRole("option", { name: /Phòng A101/ })
+    fireEvent.change(screen.getByLabelText("Hợp đồng / phòng"), { target: { value: "1" } })
+    await screen.findByText("Chỉ số đầu kỳ được lấy từ dữ liệu bàn giao phòng.")
+
+    fireEvent.change(screen.getByLabelText("Chỉ số điện cuối kỳ"), { target: { value: "280" } })
+    fireEvent.change(screen.getByLabelText("Chỉ số nước cuối kỳ"), { target: { value: "14" } })
+    fireEvent.click(screen.getByRole("button", { name: "Lưu chỉ số cuối kỳ" }))
+
+    const dialog = await screen.findByRole("alertdialog", { name: "Xác nhận chỉ số điện nước bất thường" })
+    expect(dialog.textContent).toContain("Điện tháng này 180 kWh, cao hơn 80% so với trung bình 3 tháng gần nhất (100 kWh)")
+    expect(dialog.textContent).toContain("Tháng này")
+    expect(dialog.textContent).toContain("Trung bình 3 tháng")
+    expect(dialog.textContent).toContain("180 kWh")
+    expect(dialog.textContent).toContain("100 kWh")
+    expect(mocks.createUtilityReading).not.toHaveBeenCalled()
+
+    // Bấm "Nhập lại" -> đóng hộp xác nhận và giữ nguyên giá trị đang nhập
+    fireEvent.click(screen.getByRole("button", { name: "Nhập lại" }))
+    expect(screen.queryByRole("alertdialog", { name: "Xác nhận chỉ số điện nước bất thường" })).toBeNull()
+    expect((screen.getByLabelText("Chỉ số điện cuối kỳ") as HTMLInputElement).value).toBe("280")
+    expect((screen.getByLabelText("Chỉ số nước cuối kỳ") as HTMLInputElement).value).toBe("14")
+    expect(mocks.createUtilityReading).not.toHaveBeenCalled()
+
+    // Bấm lưu lại -> mở hộp xác nhận -> bấm "Vẫn lưu"
+    fireEvent.click(screen.getByRole("button", { name: "Lưu chỉ số cuối kỳ" }))
+    await screen.findByRole("alertdialog", { name: "Xác nhận chỉ số điện nước bất thường" })
+    fireEvent.click(screen.getByRole("button", { name: "Vẫn lưu" }))
+
+    await screen.findByText(/Đã ghi: điện 100 → 280 \(180 kWh\)/)
+    expect(mocks.createUtilityReading).toHaveBeenCalledWith("token", {
+      contractId: 1, readingMonth: thisMonth, electricEnd: 280, waterEnd: 14,
+    })
   })
 })
 
