@@ -608,3 +608,50 @@ Bộ lọc sai (`pageSize` > 100, `to` < `from`…) → 400. Không phải Admin
 
 ### Việc FE gợi ý (task 5.3)
 Trang Admin **"Nhật ký thao tác"** (sidebar nhóm Hệ thống): bảng Thời gian (giờ VN) / Người thực hiện (tên + vai trò) / Thao tác / Đối tượng (`entityType #entityId`) / Kết quả (nhãn xanh "Thành công" hoặc đỏ "Thất bại {statusCode}") / IP. Bộ lọc: người dùng, loại đối tượng (dropdown), mã đối tượng, kết quả, khoảng ngày; phân trang. Bấm một dòng mở chi tiết (đường dẫn, correlationId, và oldValues/newValues dạng JSON khi có). Nên có bảng dịch `action` sang tiếng Việt cho các thao tác chính (vd. `Bookings.Cancel` → "Hủy đặt cọc", `DepositSettlements.Settle` → "Quyết toán cọc").
+
+---
+
+## C20 — Người ở cùng (CCCD che, "con mắt" có ghi nhật ký) · ✅ đã có (việc 4.1)
+
+Migration `AddContractOccupants` (1 bảng mới). Theo PLAN D4: **1 người đứng tên** (khách của hợp đồng, chịu tiền phòng và cọc) + danh sách người ở cùng. Người đứng tên **tính 1 người** khi so với `maxOccupants` của phòng.
+
+Nhóm đã chốt: CCCD người ở cùng **bắt buộc** (đăng ký tạm trú), **mã hóa khi lưu**; người đứng tên **và** quản lý phụ trách đều thêm người / ghi ngày dọn ra (không cần duyệt, bên kia nhận thông báo). Người ở cùng chuyển đi: **ghi ngày dọn ra, không xóa**; tiền phòng và tiền cọc **không đổi**.
+
+### Bảo mật CCCD (quan trọng — làm đúng ở FE)
+- API danh sách **chỉ** trả `maskedIdentityNumber` = `********1234`. **Không có** số đầy đủ trong bất kỳ API danh sách nào.
+- Số đầy đủ chỉ lấy qua `POST …/reveal-identity` khi người dùng **bấm icon con mắt**; mỗi lần bấm được ghi nhật ký (C19, action `ContractOccupants.RevealIdentity`). Phản hồi có `Cache-Control: no-store`.
+- FE **không lưu** số đầy đủ vào state lâu dài / localStorage; hiện trong vài chục giây hoặc tới khi bấm lại con mắt thì ẩn.
+- Chỉ hiện con mắt khi `canRevealIdentity = true` (quản lý phụ trách, Admin là chủ khu trọ). Người đứng tên **không** có con mắt.
+
+### API (`/api/contracts/{contractId}/occupants`)
+| | Quyền | Body |
+|---|---|---|
+| `GET` | Khách của HĐ, quản lý phụ trách, Admin | — |
+| `POST` | Người đứng tên, quản lý phụ trách (HĐ đang hiệu lực) | `{ "fullName", "phoneNumber"?, "identityNumber", "moveInDate", "note"? }` |
+| `PUT /{occupantId}/move-out` | như trên | `{ "moveOutDate": "2026-12-01" }` |
+| `POST /{occupantId}/reveal-identity` | Quản lý phụ trách, Admin là chủ | — → `{ "contractOccupantId", "fullName", "identityNumber" }` |
+
+GET/POST/PUT trả về:
+```json
+{ "contractId": 12, "holderName": "Nguyễn Văn A", "maxOccupants": 2, "currentCount": 2,
+  "canManage": true, "canRevealIdentity": false,
+  "occupants": [ { "contractOccupantId": 3, "fullName": "Trần Thị B", "phoneNumber": "0905123456",
+                   "maskedIdentityNumber": "********1234", "moveInDate": "2026-11-15", "moveOutDate": null,
+                   "isActive": true, "note": null, "addedByName": "Nguyễn Văn A", "createdAtUtc": "..." } ] }
+```
+
+| Lỗi | HTTP | |
+|---|---|---|
+| CCCD không đủ 12 chữ số | 400 | `errors.identityNumber`: "Số CCCD phải gồm đúng 12 chữ số." |
+| Họ tên / SĐT sai | 400 | `errors.fullName` / `errors.phoneNumber` (giống form tài khoản) |
+| Quá sức chứa | 400 | "Phòng A101 chỉ được ở tối đa 2 người. Hãy ghi ngày dọn ra cho người đã chuyển đi trước." |
+| Ngày dọn vào ngoài thời hạn HĐ / quá 14 ngày tới; ngày dọn ra sai | 400 | |
+| CCCD trùng người đang ở | 400 | |
+| Đã ghi ngày dọn ra rồi / HĐ không còn hiệu lực | 409 | |
+| Không có quyền | 403 | |
+
+### Việc FE gợi ý (task 4.5)
+1. Chi tiết hợp đồng: mục **"Người ở trong phòng"** — dòng đầu là người đứng tên (nhãn "Người đứng tên"), sau đó danh sách người ở cùng; tiêu đề ghi "{currentCount}/{maxOccupants} người".
+2. Cột CCCD hiện `maskedIdentityNumber`; nếu `canRevealIdentity` có icon con mắt → gọi reveal → hiện số đầy đủ tạm thời, có chú thích nhỏ "Lần xem này được ghi lại".
+3. `canManage`: nút "Thêm người ở cùng" (form: họ tên, SĐT, CCCD 12 số, ngày dọn vào) và nút "Ghi ngày dọn ra" cho người đang ở. Người đã dọn ra hiện mờ + "Đã dọn ra {moveOutDate}".
+4. Khi `currentCount >= maxOccupants`: vô hiệu nút thêm, ghi "Phòng đã đủ người".

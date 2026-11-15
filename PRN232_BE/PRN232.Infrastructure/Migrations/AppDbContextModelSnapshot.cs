@@ -441,6 +441,58 @@ namespace PRN232.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.ContractOccupants", b =>
+                {
+                    b.Property<int>("ContractOccupantId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ContractOccupantId"));
+
+                    b.Property<int>("AddedById")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("IdentityNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateOnly>("MoveInDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("MoveOutDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("ContractOccupantId");
+
+                    b.HasIndex("AddedById");
+
+                    b.HasIndex("ContractId");
+
+                    b.ToTable("ContractOccupants", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ContractOccupants_MoveOutAfterMoveIn", "\"MoveOutDate\" IS NULL OR \"MoveOutDate\" >= \"MoveInDate\"");
+                        });
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.Contracts", b =>
                 {
                     b.Property<int>("ContractId")
@@ -2150,6 +2202,25 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("HiddenBy");
 
                     b.Navigation("UploadedBy");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.ContractOccupants", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Users", "AddedBy")
+                        .WithMany()
+                        .HasForeignKey("AddedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Contracts", "Contract")
+                        .WithMany()
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AddedBy");
+
+                    b.Navigation("Contract");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Contracts", b =>

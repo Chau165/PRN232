@@ -129,6 +129,7 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<ContractEvidenceFiles> ContractEvidenceFiles => Set<ContractEvidenceFiles>();
     public DbSet<DepositSettlements> DepositSettlements => Set<DepositSettlements>();
     public DbSet<AuditLogs> AuditLogs => Set<AuditLogs>();
+    public DbSet<ContractOccupants> ContractOccupants => Set<ContractOccupants>();
     public DbSet<Equipments> Equipments
     {
         get
@@ -352,6 +353,23 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
                 .HasForeignKey(record => record.RecordedById).OnDelete(DeleteBehavior.Restrict);
             entity.ToTable("HandoverRecords", table => table.HasCheckConstraint(
                 "CK_HandoverRecords_Kind", "\"Kind\" IN ('MoveIn', 'MoveOut')"));
+        });
+        // Rebuild 4.1: người ở cùng. CCCD mã hóa bằng cùng khóa với IdentityDocuments.CCCDNumber.
+        modelBuilder.Entity<ContractOccupants>(entity =>
+        {
+            entity.HasKey(occupant => occupant.ContractOccupantId);
+            entity.Property(occupant => occupant.FullName).HasMaxLength(100);
+            entity.Property(occupant => occupant.PhoneNumber).HasMaxLength(20);
+            entity.Property(occupant => occupant.IdentityNumber)
+                .HasConversion(CccdProtection.CreateConverter(_dataProtectionProvider));
+            entity.Property(occupant => occupant.Note).HasMaxLength(500);
+            entity.HasIndex(occupant => occupant.ContractId);
+            entity.HasOne(occupant => occupant.Contract).WithMany()
+                .HasForeignKey(occupant => occupant.ContractId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(occupant => occupant.AddedBy).WithMany()
+                .HasForeignKey(occupant => occupant.AddedById).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("ContractOccupants", table => table.HasCheckConstraint(
+                "CK_ContractOccupants_MoveOutAfterMoveIn", "\"MoveOutDate\" IS NULL OR \"MoveOutDate\" >= \"MoveInDate\""));
         });
         // Rebuild 5.1: nhật ký thao tác. Chỉ mục theo các bộ lọc của trang Admin (mới nhất trước).
         modelBuilder.Entity<AuditLogs>(entity =>

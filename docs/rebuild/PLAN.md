@@ -215,7 +215,7 @@ Giữ Supabase Storage. Bổ sung:
 ### WS4 — Người ở cùng & điện nước
 | ID | Việc | Owner | Phụ thuộc | Size | Người |
 |----|------|-------|-----------|------|-------|
-| 4.1 | Bảng `ContractOccupants` + API thêm/ghi ngày ra | Claude | 3.3 | M | |
+| 4.1 | ✅ Bảng `ContractOccupants` + API thêm/ghi ngày ra; CCCD bắt buộc, mã hóa, che, "con mắt" có ghi nhật ký (C20) | Claude | 3.3 | M | |
 | 4.2 | Chuyển người đứng tên (D4) | Claude | 4.1, 3.6 | L | |
 | 4.3 | Hóa đơn dịch vụ theo đầu người, tính theo tỷ lệ ngày | Claude | 4.1 | M | |
 | 4.4 | Trần giá điện/nước + cảnh báo chỉ số bất thường | Claude | 1.2 | S | |
