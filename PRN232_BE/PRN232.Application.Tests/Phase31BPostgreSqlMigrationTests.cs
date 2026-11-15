@@ -70,7 +70,10 @@ public sealed class Phase31BPostgreSqlMigrationTests
 
         var firstProperty = CreateProperty(owner.UserId, "Phase 3.1B property A");
         var secondProperty = CreateProperty(owner.UserId, "Phase 3.1B property B");
-        context.Properties.AddRange(firstProperty, secondProperty);
+        // Same reason as the owner above: saving a Property entity would include ProvinceCode/WardCode,
+        // which a later migration adds, so insert with the columns that exist at this migration.
+        await InsertLegacyPropertyAsync(context, firstProperty);
+        await InsertLegacyPropertyAsync(context, secondProperty);
 
         var amenity = new Amenities { Name = "Phase 3.1B isolated amenity" };
         var services = Enumerable.Range(1, 7)
@@ -315,6 +318,16 @@ public sealed class Phase31BPostgreSqlMigrationTests
         Assert.False(await MaintenanceIndexExistsAsync(connectionString, "IX_MaintenanceReportImages_ReportId"));
     }
 
+    private static async Task InsertLegacyPropertyAsync(AppDbContext context, Property property) =>
+        property.PropertyId = (await context.Database.SqlQuery<int>($"""
+            INSERT INTO "Properties"
+                ("OwnerId", "PropertyName", "AddressText", "Ward", "District", "City", "Latitude", "Longitude")
+            VALUES
+                ({property.OwnerId}, {property.PropertyName}, {property.AddressText}, {property.Ward},
+                 {property.District}, {property.City}, {property.Latitude}, {property.Longitude})
+            RETURNING "PropertyId" AS "Value"
+            """).ToListAsync()).Single();
+
     private static Property CreateProperty(int ownerId, string name) => new()
     {
         OwnerId = ownerId,
@@ -409,12 +422,14 @@ public sealed class Phase31BPostgreSqlMigrationTests
             .Options;
         await using var context = new AppDbContext(options);
 
+        // Project only what this check needs: reading whole Room entities would select MaxOccupants, Floor and
+        // Description, which migrations after this one add.
         var rooms = await context.Rooms
             .AsNoTracking()
-            .Include(room => room.PropertyRoomType)
+            .Select(room => new { room.RoomId, HasConfiguration = room.PropertyRoomType != null })
             .ToListAsync();
         Assert.Equal(legacyRooms.RoomIds.Order(), rooms.Select(room => room.RoomId).Order());
-        Assert.All(rooms, room => Assert.NotNull(room.PropertyRoomType));
+        Assert.All(rooms, room => Assert.True(room.HasConfiguration));
 
         var configurations = await context.PropertyRoomTypes
             .AsNoTracking()

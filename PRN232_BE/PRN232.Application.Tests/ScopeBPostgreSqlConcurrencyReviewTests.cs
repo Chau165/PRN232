@@ -407,8 +407,10 @@ internal sealed class ScopeBReviewPostgres : IAsyncDisposable
     public async Task SeedPaidBookingAsync()
     {
         await using var context = Context();
+        // Rebuild 3.3: these tests cover the legacy terms (deposit credited to the first month).
         context.Bookings.Add(new Bookings { BookingId = 1, RoomId = 1, CustomerId = 10,
-            DepositAmount = 700, Status = "Deposited", ExpiryDate = DateTime.UtcNow.AddDays(7) });
+            DepositAmount = 700, Status = "Deposited", ExpiryDate = DateTime.UtcNow.AddDays(7),
+            DepositAppliesToFirstMonth = true });
         context.Payments.Add(new Payments { UserId = 10, BookingId = 1, Amount = 700, Status = "Success", PaymentMethod = "MoMo" });
         await context.SaveChangesAsync();
     }
