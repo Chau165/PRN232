@@ -96,11 +96,18 @@ public class PaymentTableSecurityMigrationTests
                     }
                 }
             }
-            await transaction.SaveAsync("column_grant");
+            // A column-level grant is removed by REVOKE ALL ON TABLE (PostgreSQL revokes column privileges with the
+            // table's), so reapplying cleans it up instead of failing.
             await Execute("GRANT SELECT (secret) ON public.\"PaymentRequests\" TO anon");
+            await Execute(operations[0].Sql);
+            Assert.False(await Scalar<bool>("SELECT has_any_column_privilege('anon', 'public.\"PaymentRequests\"', 'SELECT')"));
+            // Access inherited through another role cannot be revoked from anon itself: the migration must refuse
+            // to claim success.
+            await transaction.SaveAsync("inherited_grant");
+            await Execute("CREATE ROLE prn232_leaky_role NOLOGIN; GRANT SELECT ON public.\"PaymentRequests\" TO prn232_leaky_role; GRANT prn232_leaky_role TO anon;");
             var residual = await Assert.ThrowsAsync<PostgresException>(() => Execute(operations[0].Sql));
             Assert.Equal("P0001", residual.SqlState);
-            await transaction.RollbackAsync("column_grant");
+            await transaction.RollbackAsync("inherited_grant");
             // Any roles created above are transactional too, never retained on the local cluster.
             await transaction.RollbackAsync();
         }

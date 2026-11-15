@@ -21,6 +21,7 @@ public class ContractService : IContractService
     private readonly ILogger<ContractService>? _logger;
     private readonly IUserContactLookup? _contactLookup;
     private readonly IDepositSettlementRepository? _settlements;
+    private readonly IAuditTrail? _audit;
 
     public ContractService(
         IContractRepository repository,
@@ -28,8 +29,10 @@ public class ContractService : IContractService
         INotificationRealtimePublisher? realtimePublisher = null,
         ILogger<ContractService>? logger = null,
         IUserContactLookup? contactLookup = null,
-        IDepositSettlementRepository? settlements = null)
+        IDepositSettlementRepository? settlements = null,
+        IAuditTrail? audit = null)
     {
+        _audit = audit;
         _contactLookup = contactLookup;
         _settlements = settlements;
         _repository = repository;
@@ -147,6 +150,11 @@ public class ContractService : IContractService
         {
             throw new InvalidOperationException("Created contract was not found.");
         }
+        _audit?.Record(null, new
+        {
+            created.BookingId, created.RoomCode, created.CustomerName, created.StartDate, created.EndDate,
+            created.MonthlyRent, created.SecurityDepositAmount, created.Status
+        });
         return ConvertToDto(created);
     }
 
@@ -203,7 +211,9 @@ public class ContractService : IContractService
             .ToHashSet();
         var plannedPeriods = new List<PlannedBillingPeriodDto>();
         var currentMonth = FirstDayOfMonth(contractReadModel.StartDate);
-        var endMonth = FirstDayOfMonth(contractReadModel.EndDate);
+        // Tháng cuối: tháng của ngày kết thúc, hoặc của ngày trả phòng đã báo nếu sớm hơn (giống hóa đơn).
+        var lastBilledDay = RentProration.LastBilledDay(contractReadModel.EndDate, contractReadModel.PlannedMoveOutDate);
+        var endMonth = FirstDayOfMonth(lastBilledDay);
         var hasMorePlannedPeriods = false;
 
         while (contractReadModel.Status != ContractStatuses.Terminated && currentMonth <= endMonth)
@@ -216,15 +226,18 @@ public class ContractService : IContractService
                     break;
                 }
 
+                var (days, daysInMonth) = RentProration.BilledDays(currentMonth, contractReadModel.StartDate, lastBilledDay);
                 plannedPeriods.Add(new PlannedBillingPeriodDto(
                     currentMonth,
-                    contractReadModel.MonthlyRent,
+                    RentProration.Rent(contractReadModel.MonthlyRent, days, daysInMonth),
                     "NotIssued",
                     null,
                     null,
                     null,
                     "Chưa có dữ liệu",
-                    GetProrationNote(contractReadModel.StartDate, contractReadModel.EndDate, currentMonth)));
+                    days < daysInMonth
+                        ? $"Tháng không trọn: tiền phòng tính {days}/{daysInMonth} ngày."
+                        : null));
             }
 
             currentMonth = currentMonth.AddMonths(1);
@@ -347,6 +360,9 @@ public class ContractService : IContractService
         }
 
         var terminatedContract = GetUpdatedContract(result);
+        _audit?.Record(
+            new { contract.Status, contract.EndDate },
+            new { terminatedContract.Status, terminatedContract.EndDate, result.OutstandingDebt, request.RoomReadyForRental });
         await PublishContractNotificationAsync(notification);
         return new TerminateContractResponseDto(
             ConvertToDto(terminatedContract),
@@ -489,7 +505,9 @@ public class ContractService : IContractService
             contract.PlannedMoveOutDate,
             UtcTimestamp.ForResponse(contract.MoveOutNoticeAtUtc),
             NoticeDays(contract),
-            ForfeitsDeposit(contract.PlannedMoveOutDate, contract.EndDate, NoticeDays(contract)));
+            ForfeitsDeposit(contract.PlannedMoveOutDate, contract.EndDate, NoticeDays(contract)),
+            contract.TransferredFromContractId,
+            contract.TransferredToContractId);
     }
 
     // Rebuild 3.6a (PLAN D3 bước 6). Trả phòng TRƯỚC ngày kết thúc hợp đồng mà báo trước dưới 30 ngày thì
@@ -536,6 +554,9 @@ public class ContractService : IContractService
         {
             throw new ContractConflictException("Hợp đồng vừa thay đổi. Vui lòng tải lại.");
         }
+        _audit?.Record(
+            new { contract.PlannedMoveOutDate },
+            new { PlannedMoveOutDate = planned, NoticeDays = noticeDays, ForfeitsDeposit = warning.Length > 0 });
         return await ReloadAfterNoticeAsync(contractId, notifications);
     }
 
@@ -554,6 +575,7 @@ public class ContractService : IContractService
         {
             throw new ContractConflictException("Hợp đồng vừa thay đổi. Vui lòng tải lại.");
         }
+        _audit?.Record(new { contract.PlannedMoveOutDate }, new { PlannedMoveOutDate = (DateOnly?)null });
         return await ReloadAfterNoticeAsync(contractId, notifications);
     }
 
@@ -649,22 +671,6 @@ public class ContractService : IContractService
     private static DateOnly FirstDayOfMonth(DateOnly date)
     {
         return new DateOnly(date.Year, date.Month, 1);
-    }
-
-    private static string? GetProrationNote(
-        DateOnly startDate,
-        DateOnly endDate,
-        DateOnly invoiceMonth)
-    {
-        var isFirstMonth = invoiceMonth.Year == startDate.Year && invoiceMonth.Month == startDate.Month;
-        var isFinalMonth = invoiceMonth.Year == endDate.Year && invoiceMonth.Month == endDate.Month;
-        if ((isFirstMonth && startDate.Day != 1) ||
-            (isFinalMonth && endDate.Day != DateTime.DaysInMonth(endDate.Year, endDate.Month)))
-        {
-            return "Chính sách tính tiền khi bắt đầu/kết thúc giữa tháng chưa hỗ trợ prorate.";
-        }
-
-        return null;
     }
 
     private DateOnly TodayInBusinessTimeZone()

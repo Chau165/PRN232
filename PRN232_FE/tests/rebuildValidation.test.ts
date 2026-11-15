@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest"
 import {
+  formatAuditActionLabel,
+  formatAuditJsonPayload,
+  validateAuditLogFilter,
+} from "@/utils/auditLogValidation"
+import {
+  getAvailableTransferEffectiveDates,
+  getOldContractEndDateOnTransfer,
+  transferCancelReasonError,
+  transferEffectiveDateError,
+  transferEmailError,
+} from "@/utils/contractTransferValidation"
+import {
+  occupantFullNameError,
+  occupantIdentityNumberError,
+  occupantMoveInDateError,
+  occupantMoveOutDateError,
+  occupantPhoneNumberError,
+} from "@/utils/occupantsValidation"
+import {
   canConfirmSettlementDueCollected,
   canConfirmSettlementPayment,
   canConfirmSettlementRefund,
@@ -687,6 +706,117 @@ describe("rebuild validation rules (C2 & C3)", () => {
           dueCollectedAtUtc: "2026-11-15T12:00:00Z",
         }),
       ).toBe(false)
+    })
+
+    it("validates contract co-occupants fields and dates (C20)", () => {
+      expect(occupantFullNameError("")).toBe(
+        "Vui lòng nhập họ tên người ở cùng.",
+      )
+      expect(occupantFullNameError("Trần Thị B")).toBeNull()
+
+      expect(occupantPhoneNumberError("")).toBeNull()
+      expect(occupantPhoneNumberError("12345")).toBe(
+        "Số điện thoại phải gồm 10 chữ số và bắt đầu bằng số 0.",
+      )
+      expect(occupantPhoneNumberError("0905123456")).toBeNull()
+
+      expect(occupantIdentityNumberError("123456789")).toBe(
+        "Số CCCD phải gồm đúng 12 chữ số.",
+      )
+      expect(occupantIdentityNumberError("079203001234")).toBeNull()
+
+      expect(
+        occupantMoveInDateError({
+          moveInDate: "2026-10-20",
+          contractStartDate: "2026-11-01",
+          contractEndDate: "2027-11-01",
+          today: "2026-11-15",
+        }),
+      ).toBe("Ngày dọn vào không được trước ngày bắt đầu hợp đồng.")
+
+      expect(
+        occupantMoveInDateError({
+          moveInDate: "2026-12-05",
+          contractStartDate: "2026-11-01",
+          contractEndDate: "2027-11-01",
+          today: "2026-11-15",
+        }),
+      ).toBe("Ngày dọn vào không được quá 14 ngày tới.")
+
+      expect(
+        occupantMoveOutDateError({
+          moveOutDate: "2026-11-10",
+          moveInDate: "2026-11-15",
+          contractEndDate: "2027-11-01",
+          today: "2026-11-20",
+        }),
+      ).toBe("Ngày dọn ra không được trước ngày dọn vào.")
+    })
+
+    it("validates audit log filter rules and translates actions (C19)", () => {
+      expect(formatAuditActionLabel("Bookings.Cancel")).toBe("Hủy đặt cọc")
+      expect(formatAuditActionLabel("DepositSettlements.Settle")).toBe(
+        "Quyết toán cọc",
+      )
+      expect(formatAuditActionLabel("ContractOccupants.RevealIdentity")).toBe(
+        "Xem số CCCD người ở cùng",
+      )
+
+      expect(
+        validateAuditLogFilter({ from: "2026-11-15", to: "2026-11-10" }),
+      ).toBe("Ngày kết thúc không được nhỏ hơn ngày bắt đầu.")
+
+      expect(
+        validateAuditLogFilter({ from: "2025-01-01", to: "2026-06-01" }),
+      ).toBe("Khoảng thời gian tra cứu tối đa 366 ngày.")
+
+      expect(validateAuditLogFilter({ pageSize: 101 })).toBe(
+        "Số dòng mỗi trang phải từ 1 đến 100.",
+      )
+
+      expect(formatAuditJsonPayload('{"amount":3000000}')).toBe(
+        '{\n  "amount": 3000000\n}',
+      )
+    })
+
+    it("validates contract transfer effective dates (1st of month), email, and cancel reason (C21)", () => {
+      expect(
+        getAvailableTransferEffectiveDates({
+          contractStartDate: "2026-10-01",
+          contractEndDate: "2027-02-15",
+          today: "2026-11-15",
+        }),
+      ).toEqual(["2026-11-01", "2026-12-01", "2027-01-01", "2027-02-01"])
+
+      expect(transferEmailError("khach-sai")).toBe(
+        "Email người nhận không đúng định dạng.",
+      )
+      expect(transferEmailError("b@example.com")).toBeNull()
+
+      expect(
+        transferEffectiveDateError({
+          effectiveDate: "2026-12-15",
+          contractStartDate: "2026-10-01",
+          contractEndDate: "2027-11-01",
+          today: "2026-11-15",
+        }),
+      ).toBe(
+        "Ngày hiệu lực phải là ngày 1 của một tháng (điện nước và hóa đơn chốt theo tháng).",
+      )
+
+      expect(
+        transferEffectiveDateError({
+          effectiveDate: "2026-12-01",
+          contractStartDate: "2026-10-01",
+          contractEndDate: "2027-11-01",
+          today: "2026-11-15",
+        }),
+      ).toBeNull()
+
+      expect(getOldContractEndDateOnTransfer("2026-12-01")).toBe("2026-11-30")
+      expect(transferCancelReasonError("a".repeat(501))).toBe(
+        "Lý do hủy đề nghị không được vượt quá 500 ký tự.",
+      )
     })
   })
 })

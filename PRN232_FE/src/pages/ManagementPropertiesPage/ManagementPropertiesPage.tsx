@@ -4,6 +4,12 @@ import { useAuth } from "@/auth/AuthContext"
 import { ApiError } from "@/api/apiClient"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementPage from "@/components/management/ManagementPage"
+import {
+  ManagementEmptyState,
+  ManagementErrorState,
+  ManagementLoadingState,
+  ManagementSuccessBanner,
+} from "@/components/management/ManagementState"
 import PropertyDetailDrawer from "@/components/management/PropertyDetailDrawer"
 import PropertyFormModal from "@/components/management/PropertyFormModal"
 import PropertyThumbnail from "@/components/management/PropertyThumbnail"
@@ -166,6 +172,9 @@ export default function ManagementPropertiesPage() {
     setSuccess("")
     try {
       await deleteProperty(accessToken, property.propertyId)
+      if (detailProperty?.propertyId === property.propertyId) {
+        setDetailProperty(null)
+      }
       setSuccess(`Đã xóa ${property.propertyName}.`)
       setReload((value) => value + 1)
     } catch (cause) {
@@ -185,44 +194,30 @@ export default function ManagementPropertiesPage() {
           ? "Theo dõi khu trọ; phân công Manager thực hiện tại trang Phân công Manager."
           : "Các khu trọ được Admin giao cho bạn quản lý."
       }
-    >
-      {isAdmin && (
-        <div className="mb-5 flex justify-end">
+      actions={
+        isAdmin ? (
           <button
             type="button"
             onClick={() => {
               setEditingProperty(null)
               setPropertyDialog("create")
             }}
-            className="rounded-lg bg-[#087775] px-4 py-2.5 text-[13px] font-bold text-white"
+            className="rounded-lg bg-[#087775] px-4 py-2.5 text-[13px] font-bold text-white hover:bg-[#066a68]"
           >
             + Thêm khu trọ
           </button>
-        </div>
-      )}
+        ) : undefined
+      }
+    >
       {error && (
-        <div
-          role="alert"
-          className="mb-4 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700"
-        >
-          <p>{error}</p>
-          <button
-            type="button"
-            onClick={() => setReload((value) => value + 1)}
-            className="mt-2 font-bold underline"
-          >
-            Tải lại
-          </button>
-        </div>
+        <ManagementErrorState
+          variant="banner"
+          message={error}
+          retryLabel="Tải lại"
+          onRetry={() => setReload((value) => value + 1)}
+        />
       )}
-      {success && (
-        <p
-          role="status"
-          className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
-        >
-          {success}
-        </p>
-      )}
+      {success && <ManagementSuccessBanner message={success} />}
 
       <ManagementDataTable
         headers={[
@@ -235,32 +230,30 @@ export default function ManagementPropertiesPage() {
         ]}
       >
         {loading ? (
-          <p role="status" className="px-5 py-8 text-sm text-slate-500">
-            Đang tải khu trọ...
-          </p>
+          <ManagementLoadingState message="Đang tải khu trọ..." />
         ) : properties.length === 0 ? (
-          <div
-            role="status"
-            className="px-5 py-8 text-center text-sm text-slate-500"
-          >
-            <p>
-              {isAdmin
+          <ManagementEmptyState
+            icon="building"
+            message={
+              isAdmin
                 ? "Chưa có khu trọ nào. Hãy tạo khu trọ đầu tiên."
-                : "Bạn chưa được phân công quản lý khu trọ. Vui lòng liên hệ Admin."}
-            </p>
-            {isAdmin && (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingProperty(null)
-                  setPropertyDialog("create")
-                }}
-                className="mt-4 rounded-lg bg-[#087775] px-4 py-2.5 text-[13px] font-bold text-white"
-              >
-                + Thêm khu trọ
-              </button>
-            )}
-          </div>
+                : "Bạn chưa được phân công quản lý khu trọ. Vui lòng liên hệ Admin."
+            }
+            action={
+              isAdmin ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingProperty(null)
+                    setPropertyDialog("create")
+                  }}
+                  className="rounded-lg bg-[#087775] px-4 py-2.5 text-[13px] font-bold text-white hover:bg-[#066a68]"
+                >
+                  + Thêm khu trọ
+                </button>
+              ) : undefined
+            }
+          />
         ) : (
           <div className="divide-y divide-slate-100">
             {properties.map((property) => {
@@ -375,6 +368,12 @@ export default function ManagementPropertiesPage() {
       {detailProperty && (
         <PropertyDetailDrawer
           property={detailProperty}
+          deleting={deletingPropertyId === detailProperty.propertyId}
+          onEdit={(selected) => {
+            setDetailProperty(null)
+            void openPropertyEdit(selected)
+          }}
+          onDelete={(selected) => void removeProperty(selected)}
           onClose={() => setDetailProperty(null)}
         />
       )}

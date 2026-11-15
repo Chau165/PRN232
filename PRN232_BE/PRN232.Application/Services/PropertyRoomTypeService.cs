@@ -11,8 +11,12 @@ public sealed class PropertyRoomTypeService : IPropertyRoomTypeService
     private readonly IPropertyRoomTypeRepository _repository;
     private readonly TimeProvider _timeProvider;
 
-    public PropertyRoomTypeService(IPropertyRoomTypeRepository repository, TimeProvider timeProvider)
+    private readonly IAuditTrail? _audit;
+
+    public PropertyRoomTypeService(IPropertyRoomTypeRepository repository, TimeProvider timeProvider,
+        IAuditTrail? audit = null)
     {
+        _audit = audit;
         _repository = repository;
         _timeProvider = timeProvider;
     }
@@ -77,8 +81,10 @@ public sealed class PropertyRoomTypeService : IPropertyRoomTypeService
             return null;
         }
 
+        var previousRent = entity.MonthlyRent;
         entity.MonthlyRent = dto.MonthlyRent;
         await _repository.SaveChangesAsync();
+        _audit?.Record(new { MonthlyRent = previousRent }, new { dto.MonthlyRent });
         return await GetByIdAsync(propertyId, roomTypeId, 0, RoleNames.Admin);
     }
 

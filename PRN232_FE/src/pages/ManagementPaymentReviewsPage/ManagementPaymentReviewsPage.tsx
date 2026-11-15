@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { ApiError } from "@/api/apiClient"
 import { useAuth } from "@/auth/AuthContext"
 import ManagementPage from "@/components/management/ManagementPage"
+import {
+  ManagementEmptyState,
+  ManagementErrorState,
+  ManagementLoadingState,
+} from "@/components/management/ManagementState"
 import StatusBadge from "@/components/customer/StatusBadge"
 import { getPaymentReview, getPaymentReviews, resolvePaymentReview } from "@/services/paymentReviewService"
 import type { PaymentReviewDto, PaymentReviewResolution, PaymentReviewStatus, ResolvePaymentReviewInput } from "@/types/paymentReview"
@@ -279,17 +284,34 @@ function ReviewQueue({ accessToken }: { accessToken: string }) {
       <div className="hidden grid-cols-[.5fr_1fr_1.2fr_1fr_1.3fr_1fr] gap-3 border-b border-slate-100 px-5 py-3 text-xs text-slate-500 xl:grid" aria-hidden="true">
         <span>Mục</span><span>Hoá đơn</span><span className="text-right">Số tiền thừa</span><span>Nguồn</span><span>Ngày tạo</span><span>Trạng thái</span>
       </div>
-      {error ? <div className="p-5"><p role="alert" className="text-sm text-rose-700">{error}</p><button type="button" className={`${buttonClass} mt-3`} disabled={resolving} onClick={() => setRevision((value) => value + 1)}>Thử lại</button></div>
-        : loading ? <p role="status" className="p-5 text-sm text-slate-500">Đang tải danh sách đối soát...</p>
-        : rows.length === 0 ? <p className="p-5 text-sm text-slate-500">Không có mục đối soát trong bộ lọc này.</p>
-        : <ul className="divide-y divide-slate-100">{rows.map((row) => <li key={row.id}>
-          <button type="button" disabled={resolving} onClick={() => { setSuccess(""); setSelected(row.id) }} aria-label={`Xem mục đối soát #${row.id}`} aria-pressed={selected === row.id}
-            className={`grid w-full gap-3 px-5 py-4 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-[#087775] disabled:opacity-50 sm:grid-cols-2 xl:grid-cols-[.5fr_1fr_1.2fr_1fr_1.3fr_1fr] xl:items-center ${selected === row.id ? "bg-teal-50/50" : ""}`}>
-            <span className="font-semibold text-[#087775]">#{row.id}</span><span>Hoá đơn #{row.invoiceId}</span>
-            <span className="font-semibold tabular-nums xl:text-right">{formatVnd(row.additionalAmount)}</span>
-            <span className="break-words">{row.source}</span><span className="text-xs">{dateLabel(row.createdAtUtc)}</span><span><ReviewStatus status={row.status} /></span>
-          </button>
-        </li>)}</ul>}
+      {error ? (
+        <ManagementErrorState
+          message={error}
+          retryLabel="Thử lại"
+          retryDisabled={resolving}
+          onRetry={() => setRevision((value) => value + 1)}
+        />
+      ) : loading ? (
+        <ManagementLoadingState message="Đang tải danh sách đối soát..." />
+      ) : rows.length === 0 ? (
+        <ManagementEmptyState
+          icon="receipt"
+          message="Không có mục đối soát trong bộ lọc này."
+        />
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {rows.map((row) => (
+            <li key={row.id}>
+              <button type="button" disabled={resolving} onClick={() => { setSuccess(""); setSelected(row.id) }} aria-label={`Xem mục đối soát #${row.id}`} aria-pressed={selected === row.id}
+                className={`grid w-full gap-3 px-5 py-4 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-[#087775] disabled:opacity-50 sm:grid-cols-2 xl:grid-cols-[.5fr_1fr_1.2fr_1fr_1.3fr_1fr] xl:items-center ${selected === row.id ? "bg-teal-50/50" : ""}`}>
+                <span className="font-semibold text-[#087775]">#{row.id}</span><span>Hoá đơn #{row.invoiceId}</span>
+                <span className="font-semibold tabular-nums xl:text-right">{formatVnd(row.additionalAmount)}</span>
+                <span className="break-words">{row.source}</span><span className="text-xs">{dateLabel(row.createdAtUtc)}</span><span><ReviewStatus status={row.status} /></span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
     <div className="mt-4 flex items-center justify-end gap-3 text-sm text-slate-600">
       <button type="button" className={buttonClass} disabled={loading || resolving || page === 1} onClick={() => changePage(page - 1)}>Trước</button><span>Trang {page}</span>

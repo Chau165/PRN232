@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { MemoryRouter, Route, Routes, useLocation } from "react-router"
 import { describe, expect, it, vi } from "vitest"
@@ -16,6 +16,7 @@ vi.mock("@/auth/AuthContext", () => ({ useOptionalAuth: () => auth.current }))
 
 const customer: CurrentUser = { id: "7", name: "Lan Anh", email: "lan@example.test", phone: "0900", role: "CUSTOMER" } as CurrentUser
 const admin: CurrentUser = { ...customer, id: "1", name: "Quản Trị", role: "ADMIN" } as CurrentUser
+const manager: CurrentUser = { ...customer, id: "2", name: "Quản Lý", role: "MANAGER" } as CurrentUser
 
 function Path() {
   return <output data-testid="path">{useLocation().pathname}</output>
@@ -45,6 +46,57 @@ describe("client-side navigation links", () => {
 
     fireEvent.click(screen.getByRole("link", { name: /Về trang khách thuê/ }))
     expect(path()).toBe("/")
+  })
+
+  it("groups sidebar items by domain and hides empty admin-only groups for Manager (6.1)", () => {
+    const { unmount } = renderAt(
+      "/management/dashboard",
+      <ManagementSidebar user={admin} pathname="/management/dashboard" open onClose={vi.fn()} />,
+    )
+
+    expect(within(screen.getByRole("group", { name: "Tổng quan" })).getByRole("link", { name: "Dashboard" }).getAttribute("href")).toBe("/management/dashboard")
+    expect(within(screen.getByRole("group", { name: "Khu trọ & Phòng" })).getByRole("link", { name: "Khu trọ" }).getAttribute("href")).toBe("/management/properties")
+
+    const leasingGroup = screen.getByRole("group", { name: "Cho thuê" })
+    expect(within(leasingGroup).getAllByRole("link").map((link) => link.textContent)).toEqual([
+      "Lịch xem phòng",
+      "Đặt phòng & Đặt cọc",
+      "Hợp đồng",
+    ])
+
+    const financeGroup = screen.getByRole("group", { name: "Tài chính" })
+    expect(within(financeGroup).getAllByRole("link").map((link) => link.textContent)).toEqual([
+      "Hóa đơn",
+      "Đối soát thanh toán",
+      "Xét duyệt hoàn cọc",
+    ])
+
+    expect(within(screen.getByRole("group", { name: "Vận hành" })).getByRole("link", { name: "Bảo trì / Sửa chữa" })).toBeTruthy()
+
+    const adminGroup = screen.getByRole("group", { name: "Quản trị" })
+    expect(within(adminGroup).getAllByRole("link").map((link) => link.textContent)).toEqual([
+      "Người dùng",
+      "Phân công Manager",
+      "Báo cáo",
+      "Nhật ký thao tác",
+    ])
+
+    unmount()
+
+    renderAt(
+      "/management/dashboard",
+      <ManagementSidebar user={manager} pathname="/management/dashboard" open onClose={vi.fn()} />,
+    )
+
+    expect(screen.getByRole("group", { name: "Tổng quan" })).toBeTruthy()
+    expect(screen.getByRole("group", { name: "Khu trọ & Phòng" })).toBeTruthy()
+    expect(screen.getByRole("group", { name: "Cho thuê" })).toBeTruthy()
+    expect(within(screen.getByRole("group", { name: "Tài chính" })).getAllByRole("link").map((link) => link.textContent)).toEqual([
+      "Hóa đơn",
+    ])
+    expect(screen.getByRole("group", { name: "Vận hành" })).toBeTruthy()
+    expect(screen.queryByRole("group", { name: "Quản trị" })).toBeNull()
+    expect(screen.queryByText("Quản trị")).toBeNull()
   })
 
   it("opens customer pages from the navbar account menu and closes the menu", () => {

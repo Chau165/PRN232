@@ -260,6 +260,8 @@ public class BookingRefundRequestApiTests
                     pg.AddRange(await original.Users.AsNoTracking().ToListAsync());
                     pg.AddRange(await original.Properties.AsNoTracking().ToListAsync());
                     pg.AddRange(await original.RoomTypes.AsNoTracking().ToListAsync());
+                    // Rooms now reference the property's room-type price (FK_Rooms_PropertyRoomTypes).
+                    pg.AddRange(await original.PropertyRoomTypes.AsNoTracking().ToListAsync());
                     pg.AddRange(await original.Rooms.AsNoTracking().ToListAsync());
                     pg.AddRange(await original.PropertyManagerAssignments.AsNoTracking().ToListAsync());
                     await pg.SaveChangesAsync();

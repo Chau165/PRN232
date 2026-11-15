@@ -4,15 +4,13 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react"
 import { Link } from "react-router"
-import {
-  publicApi,
-} from "@/services/publicBrowsingService"
+import { publicApi } from "@/services/publicBrowsingService"
 import type { PublicPropertyServiceRate } from "@/types/publicBrowsing"
 import { usePublicApiResource } from "@/hooks/usePublicApiResource"
 import { routes, viewingRequestPath } from "@/constants/routes"
+import RoomDetailView from "@/components/room/RoomDetailView"
 import { publicApiErrorMessage } from "@/utils/publicApiDisplay"
-import { formatAddress, formatVnd, serviceRateUnitLabel } from "@/utils/publicFormatting"
-import { formatRoomFloor } from "@/utils/roomValidation"
+import { formatAddress, serviceRateUnitLabel } from "@/utils/publicFormatting"
 
 type RoomDetailModalProps = {
   roomId: number
@@ -75,7 +73,7 @@ export default function RoomDetailModal({
 
   const room = resource.status === "success" ? resource.data : null
   const address = room
-    ? formatAddress(room.property.addressText, room.property.ward, room.property.district, room.property.city)
+    ? formatAddress(room.property.addressText, room.property.ward, room.property.city)
     : ""
 
   return (
@@ -161,164 +159,67 @@ export default function RoomDetailModal({
           )}
 
           {room && (
-            <>
-              {room.images.length > 0 ? (
-                <div className="grid grid-cols-2 gap-2 overflow-hidden rounded-2xl bg-slate-100">
-                  {room.images.map((image, index) => (
-                    <img
-                      key={`${image}-${index}`}
-                      src={image}
-                      alt={`Ảnh ${room.roomType.roomTypeName}`}
-                      className="max-h-[300px] w-full object-cover"
-                    />
-                  ))}
+            <RoomDetailView
+              viewerRole="guest"
+              room={{
+                roomId: room.roomId,
+                roomCode: room.roomCode,
+                propertyId: room.property.propertyId,
+                propertyName: room.property.propertyName,
+                address,
+                roomTypeName: room.roomType.roomTypeName,
+                price: room.baseRent,
+                areaSqm: room.areaSqm,
+                maxOccupants: room.maxOccupants,
+                floor: room.floor,
+                description: room.description,
+                images: room.images,
+                imageAltSubject: room.roomType.roomTypeName,
+                amenities: room.amenities,
+                services: room.services.map((service) => {
+                  const rate = propertyServiceRates.find(
+                    (item) => item.serviceId === service.serviceId,
+                  )
+                  const unitLabel = rate
+                    ? serviceRateUnitLabel(rate.unitCode, rate.billingBasis)
+                    : null
+
+                  return {
+                    serviceId: service.serviceId,
+                    name: service.name,
+                    price: rate && unitLabel ? rate.price : null,
+                    unitCode: rate?.unitCode ?? null,
+                    billingBasis: rate?.billingBasis ?? null,
+                    note: rate
+                      ? unitLabel
+                        ? null
+                        : "Đơn vị tính đang được cập nhật."
+                      : "Biểu phí theo khu trọ đang được cập nhật.",
+                  }
+                }),
+                equipments: room.equipments.map((equipment) => ({
+                  equipmentId: equipment.equipmentId,
+                  name: equipment.name,
+                  quantity: equipment.quantity,
+                })),
+              }}
+              actions={
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Link
+                    to={viewingRequestPath(room.property.propertyId, room.roomType.roomTypeId)}
+                    className="rounded-lg bg-teal-50 py-3.5 text-center text-[13px] font-bold text-[#087775] hover:bg-teal-100"
+                  >
+                    Đặt lịch xem phòng
+                  </Link>
+                  <Link
+                    to={`${routes.deposit}?roomId=${room.roomId}`}
+                    className="rounded-lg bg-[#087775] py-3.5 text-center text-[13px] font-bold text-white hover:bg-[#066a68]"
+                  >
+                    Đặt cọc giữ phòng
+                  </Link>
                 </div>
-              ) : (
-                <div
-                  role="img"
-                  aria-label="Ảnh phòng chưa được cung cấp"
-                  className="grid h-[220px] place-items-center rounded-2xl bg-slate-100 text-[14px] text-slate-500"
-                >
-                  Ảnh phòng chưa được cung cấp
-                </div>
-              )}
-
-              <section className="mt-7 flex items-end justify-between gap-4">
-                <div>
-                  <p className="text-[12px] text-slate-500">Giá thuê</p>
-                  <p className="mt-1 text-[26px] font-bold tracking-[-.04em] text-[#087775]">
-                    {formatVnd(room.baseRent)}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-[13px] font-medium text-slate-600">
-                  <span>{room.areaSqm} m²</span>
-                  {room.maxOccupants !== undefined && room.maxOccupants !== null && (
-                    <span>Tối đa {room.maxOccupants} người</span>
-                  )}
-                  {room.floor !== undefined && room.floor !== null && (
-                    <span>{formatRoomFloor(room.floor)}</span>
-                  )}
-                </div>
-              </section>
-
-              {room.description?.trim() && (
-                <section className="mt-7">
-                  <h3 className="font-display text-[19px] font-bold text-slate-900">
-                    Mô tả phòng
-                  </h3>
-                  <p className="mt-2 whitespace-pre-line text-[14px] leading-6 text-slate-600">
-                    {room.description}
-                  </p>
-                </section>
-              )}
-
-              <section className="mt-7">
-                <h3 className="font-display text-[19px] font-bold text-slate-900">
-                  Địa chỉ
-                </h3>
-                <p className="mt-2 text-[14px] text-slate-600">
-                  {room.property.propertyName}
-                </p>
-                {address && (
-                  <p className="mt-1 text-[14px] leading-6 text-slate-500">
-                    {address}
-                  </p>
-                )}
-              </section>
-
-              <section className="mt-7">
-                <h3 className="font-display text-[19px] font-bold text-slate-900">
-                  Tiện ích phòng
-                </h3>
-                {room.amenities.length > 0 ? (
-                  <ul className="mt-3 flex flex-wrap gap-2">
-                    {room.amenities.map((amenity) => (
-                      <li key={amenity.amenityId} className="room-amenity">
-                        {amenity.name}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-[14px] text-slate-500">
-                    Chưa có thông tin tiện ích công khai.
-                  </p>
-                )}
-              </section>
-
-              <section className="mt-7">
-                <h3 className="font-display text-[19px] font-bold text-slate-900">
-                  Dịch vụ
-                </h3>
-                {room.services.length > 0 ? (
-                  <ul className="mt-3 divide-y divide-slate-100 rounded-xl bg-slate-50 px-4">
-                    {room.services.map((service) => {
-                      const rate = propertyServiceRates.find(
-                        (item) => item.serviceId === service.serviceId,
-                      )
-                      const unitLabel = rate
-                        ? serviceRateUnitLabel(rate.unitCode, rate.billingBasis)
-                        : null
-
-                      return (
-                        <li
-                          key={service.serviceId}
-                          className="flex justify-between gap-4 py-3 text-[14px]"
-                        >
-                          <span className="text-slate-600">{service.name}</span>
-                          {rate && unitLabel ? (
-                            <strong className="font-semibold text-slate-800">
-                              {formatVnd(rate.price)}/{unitLabel}
-                            </strong>
-                          ) : (
-                            <span className="text-right text-[12px] text-slate-500">
-                              {rate
-                                ? "Đơn vị tính đang được cập nhật."
-                                : "Biểu phí theo khu trọ đang được cập nhật."}
-                            </span>
-                          )}
-                        </li>
-                      )
-                    })}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-[14px] text-slate-500">
-                    Chưa có thông tin dịch vụ công khai.
-                  </p>
-                )}
-              </section>
-
-              {room.equipments.length > 0 && (
-                <section className="mt-7">
-                  <h3 className="font-display text-[19px] font-bold text-slate-900">
-                    Thiết bị trong phòng
-                  </h3>
-                  <ul className="mt-3 flex flex-wrap gap-2">
-                    {room.equipments.map((equipment) => (
-                      <li key={equipment.equipmentId} className="room-amenity">
-                        {equipment.quantity && equipment.quantity > 1
-                          ? `${equipment.name} × ${equipment.quantity}`
-                          : equipment.name}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-
-              <div className="mt-9 grid gap-3 sm:grid-cols-2">
-                <Link
-                  to={viewingRequestPath(room.property.propertyId, room.roomType.roomTypeId)}
-                  className="rounded-lg bg-teal-50 py-3.5 text-center text-[13px] font-bold text-[#087775] hover:bg-teal-100"
-                >
-                  Đặt lịch xem phòng
-                </Link>
-                <Link
-                  to={`${routes.deposit}?roomId=${room.roomId}`}
-                  className="rounded-lg bg-[#087775] py-3.5 text-center text-[13px] font-bold text-white hover:bg-[#066a68]"
-                >
-                  Đặt cọc giữ phòng
-                </Link>
-              </div>
-            </>
+              }
+            />
           )}
         </div>
       </div>

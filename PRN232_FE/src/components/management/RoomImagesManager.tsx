@@ -11,6 +11,7 @@ type Props = {
   accessToken: string
   roomId: number
   onImagesChanged: () => void
+  onImagesLoaded?: (images: RoomImageDto[]) => void
 }
 
 function errorMessage(cause: unknown) {
@@ -23,6 +24,7 @@ export default function RoomImagesManager({
   accessToken,
   roomId,
   onImagesChanged,
+  onImagesLoaded,
 }: Props) {
   const [images, setImages] = useState<RoomImageDto[]>([])
   const [loading, setLoading] = useState(true)
@@ -34,13 +36,18 @@ export default function RoomImagesManager({
   const [isPrimary, setIsPrimary] = useState(false)
   const [reload, setReload] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const onImagesLoadedRef = useRef(onImagesLoaded)
+  onImagesLoadedRef.current = onImagesLoaded
 
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
     getRoomImages(accessToken, roomId, controller.signal)
       .then((rows) => {
-        if (!controller.signal.aborted) setImages(rows)
+        if (!controller.signal.aborted) {
+          setImages(rows)
+          onImagesLoadedRef.current?.(rows)
+        }
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) setError(errorMessage(cause))

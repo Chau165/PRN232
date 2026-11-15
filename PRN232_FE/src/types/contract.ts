@@ -36,6 +36,8 @@ export interface ContractDto {
   moveOutForfeitsDeposit?: boolean
   hasDepositSettlement?: boolean
   isDepositSettled?: boolean
+  transferredFromContractId?: number | null
+  transferredToContractId?: number | null
 }
 
 export interface SaveMoveOutNoticeRequest {
@@ -187,4 +189,88 @@ export interface DepositSettlementDto {
 export interface ConfirmDepositSettlementRequest {
   outstandingDebtAcknowledged: boolean
   note?: string | null
+}
+
+export interface ContractOccupantDto {
+  contractOccupantId: number
+  fullName: string
+  phoneNumber: string | null
+  maskedIdentityNumber: string
+  moveInDate: string
+  moveOutDate: string | null
+  isActive: boolean
+  note: string | null
+  addedByName: string | null
+  createdAtUtc: string
+}
+
+export interface ContractOccupantsListDto {
+  contractId: number
+  holderName: string
+  maxOccupants: number
+  currentCount: number
+  canManage: boolean
+  canRevealIdentity: boolean
+  occupants: ContractOccupantDto[]
+}
+
+export interface CreateContractOccupantRequest {
+  fullName: string
+  phoneNumber?: string | null
+  identityNumber: string
+  moveInDate: string
+  note?: string | null
+}
+
+export interface RecordOccupantMoveOutRequest {
+  moveOutDate: string
+}
+
+export interface RevealOccupantIdentityResponseDto {
+  contractOccupantId: number
+  fullName: string
+  identityNumber: string
+}
+
+export type ContractTransferStatus = "Pending" | "Completed" | "Cancelled"
+
+export interface ContractTransferDto {
+  contractTransferId: number
+  status: ContractTransferStatus | string
+  fromContractId: number
+  roomCode: string
+  propertyName: string
+  oldHolderId: number
+  oldHolderName: string
+  newHolderId: number
+  newHolderName: string
+  newHolderEmail: string
+  becomingHolderOccupantName: string | null
+  effectiveDate: string
+  monthlyRent: number
+  contractEndDate: string
+  depositCarriedOver: number
+  requestedByName: string
+  createdAtUtc: string
+  oldHolderConfirmedAtUtc: string | null
+  newHolderConfirmedAtUtc: string | null
+  completedAtUtc: string | null
+  newContractId: number | null
+  cancelledAtUtc: string | null
+  cancelReason: string | null
+  canConfirm: boolean
+  canCancel: boolean
+  canComplete: boolean
+  blockers: string[]
+}
+
+export interface CreateContractTransferRequest {
+  contractId: number
+  newHolderEmail: string
+  effectiveDate: string
+  occupantId?: number | null
+}
+
+export interface CancelContractTransferRequest {
+  reason?: string | null
 }

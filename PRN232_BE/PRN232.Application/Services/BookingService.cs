@@ -29,6 +29,7 @@ public class BookingService : IBookingService
     private readonly IUserContactLookup? _contactLookup;
     private readonly BookingRefundSettings _refundSettings;
     private readonly BookingDepositSettings _depositSettings;
+    private readonly IAuditTrail? _audit;
 
     public BookingService(
         IBookingRepository repository,
@@ -38,8 +39,10 @@ public class BookingService : IBookingService
         ILogger<BookingService>? logger = null,
         IUserContactLookup? contactLookup = null,
         BookingRefundSettings? refundSettings = null,
-        BookingDepositSettings? depositSettings = null)
+        BookingDepositSettings? depositSettings = null,
+        IAuditTrail? audit = null)
     {
+        _audit = audit;
         _contactLookup = contactLookup;
         _refundSettings = refundSettings ?? new BookingRefundSettings();
         _depositSettings = depositSettings ?? new BookingDepositSettings();
@@ -102,6 +105,10 @@ public class BookingService : IBookingService
         {
             throw new InvalidOperationException("Created booking was not found.");
         }
+        _audit?.Record(null, new
+        {
+            created.RoomCode, created.Status, created.DepositAmount, created.AgreedMonthlyRent, created.MoveInDate, created.OccupantCount
+        });
         if (pendingNotification is not null && _realtimePublisher is not null)
         {
             await _realtimePublisher.PublishCreatedAsync([pendingNotification]);
@@ -273,6 +280,9 @@ public class BookingService : IBookingService
         {
             throw new InvalidOperationException("Cancelled booking was not found.");
         }
+        _audit?.Record(
+            new { booking.Status, booking.DepositAmount },
+            new { cancelled.Status, cancelled.CancellationReason });
         if (notifications.Count > 0 && _realtimePublisher is not null)
         {
             await _realtimePublisher.PublishCreatedAsync(notifications);
@@ -320,6 +330,9 @@ public class BookingService : IBookingService
         }
         var confirmed = await _repository.GetByIdAsync(id, null, null)
             ?? throw new InvalidOperationException("Confirmed booking was not found.");
+        _audit?.Record(
+            new { booking.DepositAmount, DepositReturnedAtUtc = (DateTime?)null },
+            new { confirmed.DepositAmount, confirmed.DepositReturnedAtUtc });
         return await ToDtoAsync(confirmed);
     }
 

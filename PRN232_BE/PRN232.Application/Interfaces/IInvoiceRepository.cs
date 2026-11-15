@@ -11,6 +11,7 @@ public interface IInvoiceRepository
     Task<PrepaidRentCreditReadModel?> GetAvailablePrepaidRentCreditAsync(int contractId);
     Task<List<BillableServiceReadModel>> GetBillableServicesAsync(int propertyId, int roomTypeId, DateOnly month);
     Task<MonthUsageReadModel?> GetUsageAsync(int contractId, DateOnly month);
+    Task<List<OccupantStayReadModel>> GetOccupantStaysAsync(int contractId, DateOnly month);
     Task<bool> ExistsForMonthAsync(int contractId, DateOnly month);
     Task<bool> AddIfAbsentAsync(Invoices invoice, Notifications customerNotification, int managerId = 0);
     Task<List<InvoiceReadModel>> GetAllAsync(int? customerId, int? ownerId, int? contractId, string? status);

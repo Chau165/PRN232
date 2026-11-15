@@ -445,7 +445,7 @@ describe("management property and room CRUD", () => {
 
     renderManagementPage(<ManagementRoomsPage />)
     fireEvent.click(await screen.findByRole("button", { name: "+ Thêm phòng" }))
-    fireEvent.change(screen.getByLabelText("Khu trọ"), {
+    fireEvent.change(await screen.findByLabelText("Khu trọ"), {
       target: { value: String(property.propertyId) },
     })
     await within(await screen.findByLabelText("Loại phòng")).findByRole("option", { name: "Studio" })
@@ -632,7 +632,7 @@ describe("management property and room CRUD", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Xem" }))
     const detailHeading = await screen.findByText("Chi tiết phòng")
     const drawer = within(detailHeading.closest("section")!)
-    expect(await drawer.findByText("2 người")).toBeTruthy()
+    expect(await drawer.findByText("Tối đa 2 người")).toBeTruthy()
     expect(await drawer.findByText("Tầng trệt")).toBeTruthy()
     expect(
       await drawer.findByText("Phòng tầng trệt có cửa sổ thoáng."),

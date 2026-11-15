@@ -96,6 +96,63 @@ public sealed class AuditLogApiTests
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
     }
 
+    // Rebuild 5.2 (layer 2): important business actions also keep the values before/after, on the same log row.
+    [Fact]
+    public async Task Booking_actions_keep_values_before_and_after_but_failures_keep_none()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "customer@example.test");
+
+        using var created = await client.PostAsJsonAsync("/api/bookings", new { roomId = 1, occupantCount = 1 });
+        var bookingId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("bookingId").GetInt32();
+        await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
+        var again = await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
+
+        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var logs = await scope.ServiceProvider.GetRequiredService<AppDbContext>().AuditLogs
+            .Where(log => log.EntityType == "Bookings").OrderBy(log => log.AuditLogId).ToListAsync();
+        Assert.Equal(3, logs.Count);
+        Assert.Null(logs[0].OldValues);
+        var createdValues = JsonDocument.Parse(logs[0].NewValues!).RootElement;
+        Assert.Equal(("A101", "Pending", 1), (createdValues.GetProperty("roomCode").GetString(),
+            createdValues.GetProperty("status").GetString(), createdValues.GetProperty("occupantCount").GetInt32()));
+        Assert.Equal("Pending", JsonDocument.Parse(logs[1].OldValues!).RootElement.GetProperty("status").GetString());
+        var cancelled = JsonDocument.Parse(logs[1].NewValues!).RootElement;
+        Assert.Equal(("Cancelled", "CustomerCancelled"),
+            (cancelled.GetProperty("status").GetString(), cancelled.GetProperty("cancellationReason").GetString()));
+        Assert.Equal((false, (string?)null, (string?)null), (logs[2].Succeeded, logs[2].OldValues, logs[2].NewValues));
+    }
+
+    [Fact]
+    public async Task A_rent_change_records_the_old_and_new_monthly_rent()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "admin@example.test");
+
+        using var response = await client.PutAsJsonAsync("/api/properties/1/room-types/1", new { monthlyRent = 3_500_000m });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var log = await scope.ServiceProvider.GetRequiredService<AppDbContext>().AuditLogs
+            .SingleAsync(item => item.Action == "PropertyRoomTypes.Update");
+        Assert.Equal(3_000_000m, JsonDocument.Parse(log.OldValues!).RootElement.GetProperty("monthlyRent").GetDecimal());
+        Assert.Equal(3_500_000m, JsonDocument.Parse(log.NewValues!).RootElement.GetProperty("monthlyRent").GetDecimal());
+    }
+
+    [Fact]
+    public void Recorded_values_are_camel_case_json_that_keeps_vietnamese_text_readable()
+    {
+        var trail = new PRN232.Application.Services.AuditTrail();
+
+        trail.Record(new { Note = "Hư hỏng", Month = new DateOnly(2026, 11, 1) }, null);
+
+        Assert.Equal("{\"note\":\"Hư hỏng\",\"month\":\"2026-11-01\"}", trail.OldValues);
+        Assert.Null(trail.NewValues);
+    }
+
     private sealed class BrokenWriter : IAuditLogWriter
     {
         public Task WriteAsync(AuditLogEntry entry, CancellationToken cancellationToken) =>

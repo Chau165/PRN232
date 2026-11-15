@@ -145,6 +145,8 @@ public class ContractMeterHandoverApiTests
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
         var id = await CreateAsync(client);
+        // Hóa đơn tháng này đủ tháng, không phụ thuộc ngày chạy test (tiền phòng tháng đầu tính theo ngày).
+        await TestContractStartFilter.StartAtMonthStartAsync(client, id);
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.Services;
 
 namespace PRN232.Api.Auditing;
 
@@ -37,6 +38,9 @@ public sealed class AuditLogFilter(IAuditLogWriter writer, ICurrentUserService c
             };
         var controller = context.RouteData.Values["controller"]?.ToString() ?? "Unknown";
         var action = context.RouteData.Values["action"]?.ToString() ?? "Unknown";
+        var succeeded = statusCode is >= 200 and < 300;
+        // Lớp 2 (5.2): giá trị trước/sau do service ghi lại; chỉ lưu khi thao tác thành công.
+        var trail = succeeded ? context.HttpContext.RequestServices.GetService<AuditTrail>() : null;
         var entry = new AuditLogEntry(
             currentUser.UserId,
             currentUser.Role,
@@ -48,9 +52,11 @@ public sealed class AuditLogFilter(IAuditLogWriter writer, ICurrentUserService c
             EntityId(context.RouteData.Values) ??
                 (executed.Result is CreatedAtActionResult { RouteValues: { } created } ? EntityId(created) : null),
             statusCode,
-            statusCode is >= 200 and < 300,
+            succeeded,
             context.HttpContext.Connection.RemoteIpAddress?.ToString(),
-            context.HttpContext.TraceIdentifier);
+            context.HttpContext.TraceIdentifier,
+            trail?.OldValues,
+            trail?.NewValues);
         try
         {
             // Không dùng RequestAborted: client ngắt kết nối thì thao tác vẫn có thể đã xong, vẫn phải ghi.

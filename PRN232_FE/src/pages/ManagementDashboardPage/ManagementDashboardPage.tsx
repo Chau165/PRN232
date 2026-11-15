@@ -3,6 +3,11 @@ import { useAuth } from "@/auth/AuthContext"
 import { ApiError } from "@/api/apiClient"
 import ManagementPage from "@/components/management/ManagementPage"
 import ManagementStatCard from "@/components/management/ManagementStatCard"
+import {
+  ManagementEmptyState,
+  ManagementErrorState,
+  ManagementLoadingState,
+} from "@/components/management/ManagementState"
 import StatusBadge from "@/components/customer/StatusBadge"
 import { getManagementDashboard, type ManagementDashboardData } from "@/services/managementDashboardService"
 
@@ -48,38 +53,52 @@ export default function ManagementDashboardPage() {
   ] : []
 
   return (
-    <ManagementPage title="Dashboard" description={isAdmin
-      ? "Tổng quan hoạt động toàn bộ hệ thống TrọViệt."
-      : `Tổng quan các khu trọ được giao cho ${user?.name ?? "bạn"}.`}>
+    <ManagementPage
+      title="Dashboard"
+      description={
+        isAdmin
+          ? "Tổng quan hoạt động toàn bộ hệ thống TrọViệt."
+          : `Tổng quan các khu trọ được giao cho ${user?.name ?? "bạn"}.`
+      }
+      actions={
+        <button
+          type="button"
+          onClick={() => setReload((value) => value + 1)}
+          disabled={state.status === "loading"}
+          className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 disabled:opacity-50"
+        >
+          Làm mới dữ liệu
+        </button>
+      }
+    >
       {state.status === "loading" && (
-        <div role="status" aria-live="polite" aria-busy="true">
-          <p className="mb-4 text-sm text-slate-500">Đang tải dashboard...</p>
-          <div aria-hidden="true" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 6 }, (_, index) => <div key={index} className="h-40 animate-pulse rounded-2xl bg-slate-100 motion-reduce:animate-none" />)}
-          </div>
-        </div>
+        <ManagementLoadingState
+          variant="cards"
+          rows={6}
+          message="Đang tải dashboard..."
+        />
       )}
       {state.status === "error" && (
-        <div role="alert" className="rounded-xl bg-rose-50 p-5 text-sm text-rose-700">
-          <p>{state.message}</p>
-          <button type="button" onClick={() => setReload((value) => value + 1)} className="mt-3 rounded-lg border border-rose-200 px-4 py-2 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2">
-            Tải lại dashboard
-          </button>
-        </div>
+        <ManagementErrorState
+          message={state.message}
+          retryLabel="Tải lại dashboard"
+          onRetry={() => setReload((value) => value + 1)}
+        />
       )}
       {data && <>
-        <div className="mb-4 flex justify-end">
-          <button type="button" onClick={() => setReload((value) => value + 1)} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">
-            Làm mới dữ liệu
-          </button>
-        </div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {stats.map((stat) => <ManagementStatCard key={stat.label} {...stat} value={stat.value.toLocaleString("vi-VN")} />)}
         </div>
         <div className="mt-6 grid gap-5 xl:grid-cols-[1.2fr_.8fr]">
           <section className="min-w-0 rounded-2xl bg-white p-6 shadow-[0_3px_18px_rgba(16,65,67,.06)]">
             <h3 id="dashboard-properties" className="font-display text-[21px] font-bold text-slate-900">Tình trạng khu trọ</h3>
-            {data.properties.length === 0 ? <p className="mt-5 text-sm text-slate-500">Chưa có khu trọ trong phạm vi quản lý.</p> : (
+            {data.properties.length === 0 ? (
+              <ManagementEmptyState
+                compact
+                icon="building"
+                message="Chưa có khu trọ trong phạm vi quản lý."
+              />
+            ) : (
               <div role="region" aria-labelledby="dashboard-properties" tabIndex={0} className="mt-5 max-h-96 space-y-4 overflow-y-auto focus-visible:outline-2 focus-visible:outline-teal-700">
                 {data.properties.map((property) => (
                   <div key={property.propertyId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-4">
@@ -100,7 +119,13 @@ export default function ManagementDashboardPage() {
           <section className="min-w-0 rounded-2xl bg-[#f1f8f7] p-6">
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#087775]">Cần chú ý</h3>
             <div className="mt-5 space-y-4 text-sm">
-              {data.attention.length === 0 ? <p className="text-slate-600">Không có yêu cầu bảo trì cần xử lý.</p> : data.attention.map((request) => (
+              {data.attention.length === 0 ? (
+                <ManagementEmptyState
+                  compact
+                  icon="wrench"
+                  message="Không có yêu cầu bảo trì cần xử lý."
+                />
+              ) : data.attention.map((request) => (
                 <div key={request.requestId} className="border-b border-teal-100 pb-4 last:border-0">
                   <p className="break-words font-semibold text-slate-700">{request.description}</p>
                   <p className="mt-1 text-slate-500">{request.propertyName} · Phòng {request.roomCode ?? "chưa xác định"}</p>

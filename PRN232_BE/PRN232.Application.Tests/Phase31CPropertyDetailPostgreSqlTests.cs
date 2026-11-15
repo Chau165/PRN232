@@ -133,7 +133,10 @@ public sealed class Phase31CPropertyDetailPostgreSqlTests
         }
     }
 
-    [Phase31BPostgreSqlFact]
+    // Obsolete scenario: it runs today's API against a schema from before PropertyRoomTypes existed. The API now
+    // requires that table, and Railway always applies migrations (./efbundle) before the new API starts, so this
+    // combination can no longer happen. CI already excluded it; kept (skipped) so the history stays visible.
+    [Phase31BPostgreSqlFact(Skip = "Obsolete: current API cannot run on the pre-PropertyRoomTypes schema; migrations always run before deploy.")]
     public async Task Feature_off_preserves_public_and_management_gets_on_pre_enrichment_schema()
     {
         var serverConnectionString = GetIsolatedServerConnectionString();

@@ -27,29 +27,33 @@ export default function ManagementHeader({
   const unread = notificationState.unreadCount
   return (
     <header className="relative flex min-h-[76px] items-center justify-between gap-4 border-b border-slate-100 bg-white px-5 py-3 lg:px-8">
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <button
           onClick={onMenu}
-          className="grid h-9 w-9 place-items-center rounded-lg bg-slate-50 text-slate-600 lg:hidden"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-50 text-slate-600 lg:hidden"
           aria-label="Mở menu"
         >
           ☰
         </button>
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-[.14em] text-[#087775]">
-            Management Portal
-          </p>
-          <h1 className="text-[20px] font-bold text-slate-900">{title}</h1>
+        <div className="flex min-w-0 items-center gap-2 text-xs">
+          <Link
+            to={routes.managementDashboard}
+            className="shrink-0 font-bold uppercase tracking-[.12em] text-[#087775] hover:underline"
+          >
+            Cổng quản lý
+          </Link>
+          <span aria-hidden="true" className="text-slate-300">
+            /
+          </span>
+          <span className="truncate font-semibold text-slate-700">{title}</span>
         </div>
       </div>
-      <div className="hidden max-w-[320px] flex-1 items-center rounded-lg bg-slate-50 px-3 text-slate-400 md:flex">
-        <Icon name="search" size={16} />
-        <input
-          placeholder="Tìm kiếm..."
-          className="min-w-0 flex-1 bg-transparent px-2 py-2 text-[13px] outline-none"
-        />
-      </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2.5">
+        <span className="hidden rounded-full bg-[#f1f8f7] px-3 py-1 text-[11px] font-semibold text-[#087775] md:inline-flex">
+          {currentUser.role === "ADMIN"
+            ? "Toàn hệ thống"
+            : "Phạm vi được phân công"}
+        </span>
         <div className="relative">
           <button
             onClick={() => {

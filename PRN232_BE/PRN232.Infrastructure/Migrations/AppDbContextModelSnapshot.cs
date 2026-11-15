@@ -493,6 +493,81 @@ namespace PRN232.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.ContractTransfers", b =>
+                {
+                    b.Property<int>("ContractTransferId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ContractTransferId"));
+
+                    b.Property<int?>("BecomingHolderOccupantId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("CancelledById")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("CompletedById")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("EffectiveDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("FromContractId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("NewContractId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("NewHolderConfirmedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("NewHolderId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("OldHolderConfirmedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("RequestedById")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("ContractTransferId");
+
+                    b.HasIndex("FromContractId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ContractTransfers_PendingPerContract")
+                        .HasFilter("\"Status\" = 'Pending'");
+
+                    b.HasIndex("NewContractId");
+
+                    b.HasIndex("NewHolderId");
+
+                    b.HasIndex("RequestedById");
+
+                    b.ToTable("ContractTransfers", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ContractTransfers_Status", "\"Status\" IN ('Pending', 'Completed', 'Cancelled')");
+                        });
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.Contracts", b =>
                 {
                     b.Property<int>("ContractId")
@@ -547,6 +622,9 @@ namespace PRN232.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int?>("TransferredFromContractId")
+                        .HasColumnType("integer");
+
                     b.HasKey("ContractId");
 
                     b.HasIndex("BookingId")
@@ -559,6 +637,11 @@ namespace PRN232.Infrastructure.Migrations
                     b.HasIndex("ProcessedByStaffId");
 
                     b.HasIndex("RoomId");
+
+                    b.HasIndex("TransferredFromContractId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Contracts_TransferredFromContractId")
+                        .HasFilter("\"TransferredFromContractId\" IS NOT NULL");
 
                     b.ToTable("Contracts");
                 });
@@ -2223,6 +2306,40 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("Contract");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.ContractTransfers", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Contracts", "FromContract")
+                        .WithMany()
+                        .HasForeignKey("FromContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Contracts", "NewContract")
+                        .WithMany()
+                        .HasForeignKey("NewContractId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "NewHolder")
+                        .WithMany()
+                        .HasForeignKey("NewHolderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "RequestedBy")
+                        .WithMany()
+                        .HasForeignKey("RequestedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FromContract");
+
+                    b.Navigation("NewContract");
+
+                    b.Navigation("NewHolder");
+
+                    b.Navigation("RequestedBy");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.Contracts", b =>
                 {
                     b.HasOne("PRN232.Domain.Entities.Bookings", "Booking")
@@ -2252,6 +2369,11 @@ namespace PRN232.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("PRN232.Domain.Entities.Contracts", "TransferredFromContract")
+                        .WithMany()
+                        .HasForeignKey("TransferredFromContractId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Booking");
 
                     b.Navigation("Customer");
@@ -2261,6 +2383,8 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("ProcessedByStaff");
 
                     b.Navigation("Room");
+
+                    b.Navigation("TransferredFromContract");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.DepositSettlements", b =>

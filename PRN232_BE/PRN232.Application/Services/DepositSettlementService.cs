@@ -16,7 +16,8 @@ public sealed class DepositSettlementService(
     IContractRepository contracts,
     IHandoverRepository handovers,
     TimeProvider clock,
-    INotificationRealtimePublisher? realtimePublisher = null) : IDepositSettlementService
+    INotificationRealtimePublisher? realtimePublisher = null,
+    IAuditTrail? audit = null) : IDepositSettlementService
 {
     private static readonly TimeZoneInfo BusinessTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh");
     private static readonly CultureInfo Vietnamese = CultureInfo.GetCultureInfo("vi-VN");
@@ -98,7 +99,13 @@ public sealed class DepositSettlementService(
         {
             await realtimePublisher.PublishCreatedAsync([notification]);
         }
-        return ToDto((await settlements.GetAsync(contractId, cancellationToken))!, contract.EndDate);
+        var settled = ToDto((await settlements.GetAsync(contractId, cancellationToken))!, contract.EndDate);
+        audit?.Record(null, new
+        {
+            settled.DepositAmount, settled.DamageCharges, settled.OutstandingDebt, settled.RetainedForDebt,
+            settled.ForfeitedAmount, settled.RefundAmount, settled.AmountDue, settled.EarlyWithoutNotice, settled.NoticeDays
+        });
+        return settled;
     }
 
     // Rebuild 3.6c: quản lý đã chuyển trả tiền cọc cho khách NGOÀI hệ thống và xác nhận để lưu vết.
@@ -163,7 +170,11 @@ public sealed class DepositSettlementService(
         {
             await realtimePublisher.PublishCreatedAsync([notification]);
         }
-        return ToDto((await settlements.GetAsync(contractId, cancellationToken))!, contract.EndDate);
+        var confirmed = ToDto((await settlements.GetAsync(contractId, cancellationToken))!, contract.EndDate);
+        audit?.Record(
+            new { settlement.RefundAmount, settlement.AmountDue, settlement.RefundConfirmedAtUtc, settlement.DueCollectedAtUtc },
+            new { confirmed.RefundAmount, confirmed.AmountDue, confirmed.RefundConfirmedAtUtc, confirmed.DueCollectedAtUtc });
+        return confirmed;
     }
 
     private async Task<ContractReadModel> GetContractAsync(int contractId, int? customerId, int? managerId) =>

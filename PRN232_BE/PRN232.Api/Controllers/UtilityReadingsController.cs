@@ -78,23 +78,41 @@ public class UtilityReadingsController : ControllerBase
                 id = created.ReadingId
             }, created);
         }
-        catch (UtilityReadingBusinessRuleException exception)
+        catch (Exception exception) when (ToProblem(exception) is { } problem)
         {
-            return BadRequest(new ProblemDetails { Title = "Invalid meter reading", Detail = exception.Message });
-        }
-        catch (UtilityReadingNotFoundException exception)
-        {
-            return NotFound(new ProblemDetails { Title = "Contract not found", Detail = exception.Message });
-        }
-        catch (UtilityReadingAuthorizationException exception)
-        {
-            return ForbidWithProblem(exception.Message);
-        }
-        catch (UtilityReadingConflictException exception)
-        {
-            return Conflict(new ProblemDetails { Title = "Reading cannot be recorded", Detail = exception.Message });
+            return problem;
         }
     }
+
+    // Rebuild 4.4: kiểm tra và tính lượng dùng + cảnh báo bất thường, không lưu. Cùng quyền và cùng lỗi như khi lưu.
+    [HttpPost("preview")]
+    [Authorize(Roles = "Admin,Manager")]
+    [PRN232.Api.Auditing.SkipAudit] // chỉ xem trước, không ghi dữ liệu.
+    public async Task<ActionResult<UtilityReadingPreviewDto>> Preview(CreateUtilityReadingDto dto)
+    {
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            return Ok(await _readingService.PreviewAsync(dto, userId, role));
+        }
+        catch (Exception exception) when (ToProblem(exception) is { } problem)
+        {
+            return problem;
+        }
+    }
+
+    private ObjectResult? ToProblem(Exception exception) => exception switch
+    {
+        UtilityReadingBusinessRuleException => BadRequest(new ProblemDetails { Title = "Invalid meter reading", Detail = exception.Message }),
+        UtilityReadingNotFoundException => NotFound(new ProblemDetails { Title = "Contract not found", Detail = exception.Message }),
+        UtilityReadingAuthorizationException => ForbidWithProblem(exception.Message),
+        UtilityReadingConflictException => Conflict(new ProblemDetails { Title = "Reading cannot be recorded", Detail = exception.Message }),
+        _ => null
+    };
 
     private bool TryGetCurrentUser(out int userId, out string role)
     {

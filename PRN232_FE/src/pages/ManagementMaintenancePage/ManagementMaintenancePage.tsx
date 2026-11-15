@@ -16,6 +16,11 @@ import type { MaintenanceRoomDto } from "@/types/user"
 import MaintenanceManagementDrawer from "@/components/management/MaintenanceManagementDrawer"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementPage from "@/components/management/ManagementPage"
+import {
+  ManagementEmptyState,
+  ManagementErrorState,
+  ManagementLoadingState,
+} from "@/components/management/ManagementState"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
 
@@ -314,7 +319,13 @@ export default function ManagementMaintenancePage() {
 
   return (
     <ManagementPage title="Bảo trì / Sửa chữa" description={isAdmin ? "Xem yêu cầu của khách thuê và phân công Manager." : "Yêu cầu sửa chữa được Backend phân công cho bạn."}>
-      {error && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700"><span>{error}</span><button onClick={() => setRetryVersion((value) => value + 1)} className="font-bold underline">Thử lại</button></div>}
+      {error && (
+        <ManagementErrorState
+          variant="banner"
+          message={error}
+          onRetry={() => setRetryVersion((value) => value + 1)}
+        />
+      )}
       <div className="mb-4 flex flex-wrap gap-2" aria-label="Lọc theo trạng thái">
         {filterButtons.map(({ value, label }) => <button key={value} aria-pressed={filterStatus === value} onClick={() => setFilterStatus(value)} className={`rounded-full px-3 py-1.5 text-[12px] font-semibold ${filterStatus === value ? "bg-[#087775] text-white" : "bg-slate-100 text-slate-600 hover:bg-teal-50"}`}>{label}</button>)}
       </div>
@@ -325,7 +336,20 @@ export default function ManagementMaintenancePage() {
         <button onClick={() => void refreshRequests()} className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#087775]">Làm mới</button>
       </div>
       <ManagementDataTable headers={["Yêu cầu", "Khách thuê", "Phòng", "Thiết bị / Vấn đề", "Trạng thái"]}>
-        {loading && requests.length === 0 ? <p role="status" className="px-5 py-8 text-sm text-slate-500">Đang tải yêu cầu bảo trì...</p> : filtered.length === 0 ? <div role="status" className="px-5 py-10 text-center text-sm text-slate-500">{requests.length === 0 ? "Chưa có yêu cầu bảo trì." : "Không có yêu cầu khớp bộ lọc."}</div> : <div className="divide-y divide-slate-100">{filtered.map((request) => <button key={request.requestId} onClick={() => void openRequest(request.requestId)} className="grid w-full gap-3 px-5 py-4 text-left hover:bg-slate-50 lg:grid-cols-[.8fr_1.1fr_1fr_2fr_1.1fr] lg:items-center"><strong className="text-[13px] text-[#087775]">#{request.requestId}</strong><span className="text-[13px] text-slate-700">{request.customerName ?? "Khách thuê"}</span><span className="text-[13px] text-slate-600">{request.roomCode ? `Phòng ${request.roomCode}` : `Phòng #${request.roomId}`}<small className="block text-slate-400">{roomById.get(request.roomId)?.propertyName ?? ""}</small></span><span className="text-[13px] text-slate-700">{request.equipmentName ?? "Thiết bị không xác định"}<small className="mt-1 block text-slate-500">{request.description}</small></span><StatusBadge tone={request.status === "Completed" ? "green" : request.status === "Pending" ? "amber" : "slate"}>{statusLabels[request.status]}</StatusBadge></button>)}</div>}
+        {loading && requests.length === 0 ? (
+          <ManagementLoadingState message="Đang tải yêu cầu bảo trì..." />
+        ) : filtered.length === 0 ? (
+          <ManagementEmptyState
+            icon="wrench"
+            message={
+              requests.length === 0
+                ? "Chưa có yêu cầu bảo trì."
+                : "Không có yêu cầu khớp bộ lọc."
+            }
+          />
+        ) : (
+          <div className="divide-y divide-slate-100">{filtered.map((request) => <button key={request.requestId} onClick={() => void openRequest(request.requestId)} className="grid w-full gap-3 px-5 py-4 text-left hover:bg-slate-50 lg:grid-cols-[.8fr_1.1fr_1fr_2fr_1.1fr] lg:items-center"><strong className="text-[13px] text-[#087775]">#{request.requestId}</strong><span className="text-[13px] text-slate-700">{request.customerName ?? "Khách thuê"}</span><span className="text-[13px] text-slate-600">{request.roomCode ? `Phòng ${request.roomCode}` : `Phòng #${request.roomId}`}<small className="block text-slate-400">{roomById.get(request.roomId)?.propertyName ?? ""}</small></span><span className="text-[13px] text-slate-700">{request.equipmentName ?? "Thiết bị không xác định"}<small className="mt-1 block text-slate-500">{request.description}</small></span><StatusBadge tone={request.status === "Completed" ? "green" : request.status === "Pending" ? "amber" : "slate"}>{statusLabels[request.status]}</StatusBadge></button>)}</div>
+        )}
       </ManagementDataTable>
       {detailLoading && <div role="status" className="fixed right-4 top-20 z-[110] rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-xl">Đang tải chi tiết và lịch sử...</div>}
       {detailError && <div role="alert" className="fixed right-4 top-20 z-[110] max-w-sm rounded-xl border border-rose-200 bg-white p-4 text-sm text-rose-700 shadow-xl"><p>{detailError}</p><button onClick={() => { setDetailError(""); if (selected) void openRequest(selected.requestId) }} className="mt-2 font-semibold">Thử lại</button></div>}

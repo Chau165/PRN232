@@ -144,6 +144,8 @@ describe("public property detail and room listing", () => {
     expect(
       await screen.findByRole("heading", { name: "Property 7" }),
     ).toBeTruthy()
+    expect(screen.getByText("7 Đường API, Phường Một, TP.HCM")).toBeTruthy()
+    expect(screen.queryByText(/Quận Hai/)).toBeNull()
     expect(
       screen.queryByRole("heading", { name: "Loại phòng và giá thuê" }),
     ).toBeNull()

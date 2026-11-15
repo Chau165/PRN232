@@ -25,10 +25,28 @@ vi.mock("@/auth/AuthContext", () => ({
 vi.mock("@/components/management/ManagementPage", () => ({
   default: ({
     title,
+    breadcrumbs,
+    actions,
     children,
-  }: { title: string; children: ReactNode }) => (
+  }: {
+    title: string
+    breadcrumbs?: Array<{ label: string; to?: string }>
+    actions?: ReactNode
+    children: ReactNode
+  }) => (
     <main>
+      {breadcrumbs && breadcrumbs.length > 0 && (
+        <nav aria-label="Đường dẫn">
+          {breadcrumbs.map((item, index) => (
+            <span key={item.label}>
+              {index > 0 && " › "}
+              <span>{item.label}</span>
+            </span>
+          ))}
+        </nav>
+      )}
       <h1>{title}</h1>
+      {actions}
       {children}
     </main>
   ),

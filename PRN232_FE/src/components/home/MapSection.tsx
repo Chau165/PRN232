@@ -26,9 +26,8 @@ type MapSectionState =
   | { status: "empty"; result: AreaDiscoveryResult }
 
 function areaName(result: AreaDiscoveryResult): string {
-  const { area, matchedLevel } = result
-  if (matchedLevel === "district" && area.district) return area.district
-  return area.ward ?? area.district ?? area.city ?? "khu vực hiện tại"
+  const { area } = result
+  return area.ward ?? area.city ?? "khu vực hiện tại"
 }
 
 function hasCoordinates(property: PublicPropertyAreaCard): boolean {
@@ -225,8 +224,7 @@ export default function MapSection() {
           </button>
         </form>
         <p id="map-location-help" className="mb-4 text-xs text-slate-500">
-          Kết quả được lọc theo phường, quận hoặc thành phố của địa điểm tìm
-          kiếm.
+          Kết quả được lọc theo phường hoặc thành phố của địa điểm tìm kiếm.
         </p>
 
         <Suspense
@@ -254,7 +252,7 @@ export default function MapSection() {
           <p role="status" className="mt-4 rounded-xl bg-white px-5 py-4 text-center text-sm text-slate-600">
             {state.step === "location" && "Đang xin quyền và lấy vị trí hiện tại..."}
             {state.step === "geocode" && "Đang tìm địa điểm bạn nhập..."}
-            {state.step === "reverse-geocode" && "Đang xác định phường, quận và thành phố..."}
+            {state.step === "reverse-geocode" && "Đang xác định phường và thành phố..."}
             {state.step === "properties" && "Đang tải khu trọ trong khu vực..."}
           </p>
         )}

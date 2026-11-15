@@ -158,7 +158,11 @@ export function createPublicApiClient(
       if (!Array.isArray(response) || response.some((area: unknown) => {
         if (typeof area !== "object" || area === null) return true
         const option = area as Partial<PublicAreaOption>
-        return typeof option.city !== "string" || typeof option.district !== "string" || typeof option.ward !== "string"
+        return (
+          typeof option.city !== "string" ||
+          typeof option.ward !== "string" ||
+          (option.district !== undefined && typeof option.district !== "string")
+        )
       })) {
         throw new PublicApiError("unexpected", "Dữ liệu khu vực nhận được không hợp lệ.")
       }
@@ -176,20 +180,18 @@ export function createPublicApiClient(
     ): Promise<PublicPropertyAreaCard[]> {
       const params = new URLSearchParams()
       const city = query.city?.trim()
-      const district = query.district?.trim()
       const ward = query.ward?.trim()
 
       if (city) params.set("city", city)
-      if (district) params.set("district", district)
       if (ward) params.set("ward", ward)
-      if (!city && !district && !ward) {
+      if (!city && !ward) {
         throw new PublicApiError(
           "validation",
           "Hãy kiểm tra lại điều kiện tìm kiếm.",
           {
             validationErrors: {
-              district: [
-                "Hãy cung cấp ít nhất thành phố, quận/huyện hoặc phường/xã.",
+              ward: [
+                "Hãy cung cấp ít nhất thành phố hoặc phường/xã.",
               ],
             },
           },

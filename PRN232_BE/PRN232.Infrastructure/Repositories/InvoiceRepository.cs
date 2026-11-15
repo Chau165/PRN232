@@ -35,7 +35,8 @@ public class InvoiceRepository : IInvoiceRepository
             contract.Status,
             contract.StartDate,
             contract.EndDate,
-            contract.BookingId))
+            contract.BookingId,
+            contract.PlannedMoveOutDate))
             .FirstOrDefaultAsync();
     }
 
@@ -143,6 +144,20 @@ public class InvoiceRepository : IInvoiceRepository
             : new MonthUsageReadModel(reading.ElectricEnd - reading.ElectricStart, reading.WaterEnd - reading.WaterStart);
     }
 
+    // Những người ở cùng có mặt ít nhất một ngày trong tháng `month` (vào trước hết tháng, ngày dọn ra từ đầu tháng
+    // trở đi — ngày dọn ra vẫn tính là một ngày ở).
+    public async Task<List<OccupantStayReadModel>> GetOccupantStaysAsync(int contractId, DateOnly month)
+    {
+        var next = month.AddMonths(1);
+        return await _context.ContractOccupants
+            .AsNoTracking()
+            .Where(occupant => occupant.ContractId == contractId &&
+                occupant.MoveInDate < next &&
+                (occupant.MoveOutDate == null || occupant.MoveOutDate >= month))
+            .Select(occupant => new OccupantStayReadModel(occupant.MoveInDate, occupant.MoveOutDate))
+            .ToListAsync();
+    }
+
     public Task<bool> ExistsForMonthAsync(int contractId, DateOnly month)
     {
         return _context.Invoices.AnyAsync(invoice => invoice.ContractId == contractId && invoice.InvoiceMonth == month);
@@ -192,11 +207,13 @@ public class InvoiceRepository : IInvoiceRepository
             var creditLines = invoice.InvoiceDetails
                 .Where(detail => detail.ItemType == InvoiceItemTypes.PrepaidRentCredit)
                 .ToArray();
-            var firstContractMonth = new DateOnly(contract.StartDate.Year, contract.StartDate.Month, 1);
             var rentAmount = invoice.InvoiceDetails
                 .Where(detail => detail.ItemType == InvoiceItemTypes.Rent)
                 .Sum(detail => detail.Amount);
-            var availableCredit = invoice.InvoiceMonth == firstContractMonth && contract.BookingId.HasValue
+            // Phần cọc (luật cũ) trừ ở tháng đầu; phần còn lại trừ tiếp vào tháng sau khi tháng đầu đã lập (xem InvoiceService).
+            var firstContractMonth = new DateOnly(contract.StartDate.Year, contract.StartDate.Month, 1);
+            var availableCredit = contract.BookingId.HasValue &&
+                (invoice.InvoiceMonth == firstContractMonth || await ExistsForMonthAsync(invoice.ContractId, firstContractMonth))
                 ? await GetAvailablePrepaidRentCreditAsync(invoice.ContractId)
                 : null;
             var permittedCredit = availableCredit is null

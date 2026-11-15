@@ -12,12 +12,15 @@ public class PropertyService : IPropertyService
     private readonly IPropertyRepository _repository;
     private readonly IAdministrativeDivisionCatalog? _administrativeDivisionCatalog;
     private readonly IPropertyImageStorage? _imageStorage;
+    private readonly IAuditTrail? _audit;
 
     public PropertyService(
         IPropertyRepository repository,
         IAdministrativeDivisionCatalog? administrativeDivisionCatalog = null,
-        IPropertyImageStorage? imageStorage = null)
+        IPropertyImageStorage? imageStorage = null,
+        IAuditTrail? audit = null)
     {
+        _audit = audit;
         _repository = repository;
         _administrativeDivisionCatalog = administrativeDivisionCatalog;
         _imageStorage = imageStorage;
@@ -109,6 +112,13 @@ public class PropertyService : IPropertyService
         }
         var rates = await _repository.GetServiceRatesAsync(id, null, cancellationToken);
         var created = rates.Single(item => item.RateId == rate.RateId);
+        // Giá cũ = kỳ giá liền trước của cùng dịch vụ (nếu có), để Admin thấy đổi từ bao nhiêu sang bao nhiêu.
+        var previous = rates
+            .Where(item => item.ServiceId == created.ServiceId && item.EffectiveFrom < created.EffectiveFrom)
+            .MaxBy(item => item.EffectiveFrom);
+        _audit?.Record(
+            previous is null ? null : new { previous.ServiceName, previous.Price, previous.UnitCode, previous.BillingBasis, previous.EffectiveFrom, previous.EffectiveTo },
+            new { created.ServiceName, created.Price, created.UnitCode, created.BillingBasis, created.EffectiveFrom, created.EffectiveTo });
         return new PropertyServiceRateDto(created.RateId, created.PropertyId, created.ServiceId,
             created.ServiceName, created.Price, created.UnitCode, created.BillingBasis,
             created.EffectiveFrom, created.EffectiveTo);
@@ -268,8 +278,12 @@ public class PropertyService : IPropertyService
             throw new PropertyHasRoomsException();
         }
 
+        var imageUrl = entity.PrimaryImageUrl;
         _repository.Remove(entity);
         await _repository.SaveChangesAsync();
+        // Rebuild 6.4: xóa luôn ảnh trên Storage (mỗi ảnh chỉ thuộc một khu trọ — đổi ảnh cũng xóa ảnh cũ). Làm SAU khi
+        // xóa DB thành công và không làm hỏng thao tác nếu Storage lỗi. Phòng không cần: phải xóa hết ảnh mới xóa được phòng.
+        await TryDeleteImageAsync(imageUrl);
         return true;
     }
 

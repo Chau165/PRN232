@@ -73,6 +73,8 @@ public class ScopeBEndToEndReviewTests
             bookingId, startDate = today, endDate = today.AddYears(1)
         }, HttpStatusCode.Created);
         var contractId = contract.GetProperty("contractId").GetInt32();
+        // Hóa đơn tháng này đủ tháng, không phụ thuộc ngày chạy test (tiền phòng tháng đầu tính theo ngày).
+        await TestContractStartFilter.StartAtMonthStartAsync(client, contractId);
         using var handover = await client.PutAsJsonAsync($"/api/contracts/{contractId}/meter-handover", new
         {
             meterHandoverDate = today, initialElectricReading = 100m, initialWaterReading = 10m

@@ -4,11 +4,18 @@ import ContractEquipmentHandover from "@/components/customer/ContractEquipmentHa
 import ContractEvidenceSection from "@/components/customer/ContractEvidenceSection"
 import ContractMoveOutNotice from "@/components/customer/ContractMoveOutNotice"
 import ContractDepositSettlement from "@/components/customer/ContractDepositSettlement"
+import ContractOccupantsSection from "@/components/customer/ContractOccupantsSection"
+import ContractTransferSection from "@/components/customer/ContractTransferSection"
 import { useEffect, useState } from "react"
 import { useLocation } from "react-router"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementDetailDrawer from "@/components/management/ManagementDetailDrawer"
 import ManagementPage from "@/components/management/ManagementPage"
+import {
+  ManagementEmptyState,
+  ManagementErrorState,
+  ManagementLoadingState,
+} from "@/components/management/ManagementState"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
 import { useAuth } from "@/auth/AuthContext"
@@ -244,19 +251,22 @@ export default function ManagementContractsPage() {
 
   return (
     <ManagementPage title="Hợp đồng" description="Quản lý hợp đồng thuê được lập từ các booking đã đặt cọc.">
-      {loading && <p role="status" className="text-[14px] text-slate-500">Đang tải danh sách hợp đồng...</p>}
+      {loading && (
+        <ManagementLoadingState
+          variant="inline"
+          message="Đang tải danh sách hợp đồng..."
+        />
+      )}
       {!loading && error && (
-        <div role="alert" className="rounded-2xl bg-white p-6 text-center shadow-[0_3px_18px_rgba(16,65,67,.05)]">
-          <p className="text-[14px] text-slate-700">{error}</p>
-          <button type="button" onClick={() => setReload((value) => value + 1)} className="mt-4 rounded-lg bg-[#087775] px-4 py-2 text-[13px] font-bold text-white">
-            Thử lại
-          </button>
-        </div>
+        <ManagementErrorState
+          message={error}
+          onRetry={() => setReload((value) => value + 1)}
+        />
       )}
       {!loading && !error && (
         <ManagementDataTable headers={["Hợp đồng", "Khách thuê", "Khu trọ / Phòng", "Thời hạn", "Giá thuê", "Trạng thái", "Thao tác"]}>
           {contracts.length === 0 ? (
-            <p className="px-5 py-8 text-center text-[13px] text-slate-500">Chưa có hợp đồng nào.</p>
+            <ManagementEmptyState icon="file" message="Chưa có hợp đồng nào." />
           ) : (
             <div className="divide-y divide-slate-100">
               {contracts.map((contract) => {
@@ -360,8 +370,25 @@ export default function ManagementContractsPage() {
               <Detail label="Tiền cọc" value={formatVnd(selected.depositAmount)} />
             )}
             <Detail label="Trạng thái" value={statusLabel(selected.displayStatus || selected.status)} />
+            {selected.transferredFromContractId && (
+              <Detail
+                label="Nguồn hợp đồng"
+                value={`Chuyển từ hợp đồng #${selected.transferredFromContractId}`}
+              />
+            )}
+            {selected.transferredToContractId && (
+              <Detail
+                label="Chuyển tiếp"
+                value={`Đã chuyển sang hợp đồng #${selected.transferredToContractId}`}
+              />
+            )}
             {selected.processedByStaffName && <Detail label="Người lập" value={selected.processedByStaffName} />}
           </dl>
+          <ContractOccupantsSection contract={selected} />
+          <ContractTransferSection
+            contract={selected}
+            onTransferCompleted={() => setReload((value) => value + 1)}
+          />
           <ContractMoveOutNotice
             contract={selected}
             onContractUpdated={(updated) => {
@@ -463,7 +490,7 @@ export default function ManagementContractsPage() {
                 )}
                 {unissuedPeriods.length > 0 && (
                   <p className="mt-3 rounded-lg bg-orange-50 p-3 text-sm text-orange-900">
-                    Còn kỳ thanh toán chưa phát hành. Hãy hoàn tất hóa đơn kỳ cuối phù hợp trước khi trả phòng; hệ thống không tự tạo hóa đơn hoặc tính prorate.
+                    Còn kỳ thanh toán chưa phát hành. Hãy hoàn tất hóa đơn kỳ cuối phù hợp trước khi trả phòng; hệ thống không tự tạo hóa đơn; tiền phòng tháng cuối được tính theo số ngày ở đến ngày kết thúc (hoặc ngày trả phòng đã báo).
                   </p>
                 )}
               </section>

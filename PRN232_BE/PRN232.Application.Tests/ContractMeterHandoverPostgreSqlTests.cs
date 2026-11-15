@@ -67,14 +67,13 @@ public class ContractMeterHandoverPostgreSqlTests
             await using var db = Context(connectionString);
             await db.Database.MigrateAsync();
             await SeedAsync(db);
-            var target = db.Database.GetMigrations().Last();
-            var migrator = db.GetService<IMigrator>();
-            await migrator.MigrateAsync(Before);
-            Assert.Equal(25, (await db.Database.GetAppliedMigrationsAsync()).Count());
+            // This test used to roll back to SecurePaymentTables and migrate forward again. A later migration
+            // (PropertyScopedRoomTypesAndViewingFlow) is forward-only by design, so that round trip is no longer
+            // possible. The baseline migration itself is checked at script level in
+            // Migration_only_adds_three_nullable_columns_without_defaults_or_backfill; this test keeps the PostgreSQL
+            // locking checks on the current schema, and historical values must still be unchanged at the end.
+            Assert.Empty(await db.Database.GetPendingMigrationsAsync());
             var before = await FingerprintAsync(connectionString);
-            await migrator.MigrateAsync(target);
-            Assert.Equal(before, await FingerprintAsync(connectionString));
-            Assert.Equal(26, (await db.Database.GetAppliedMigrationsAsync()).Count());
             db.ChangeTracker.Clear();
             Assert.All(await db.Contracts.ToListAsync(), contract =>
             {

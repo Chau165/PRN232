@@ -109,6 +109,55 @@ public sealed class ContractOccupantApiTests
             (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("errors").GetProperty("identityNumber")[0].GetString());
     }
 
+    // Rebuild 4.3: dịch vụ theo đầu người tính theo số ngày ở (cả ngày dọn ra) của từng người ở cùng; người đứng tên luôn là 1.
+    [Fact]
+    public async Task A_per_person_service_on_the_invoice_counts_the_days_each_roommate_stayed_that_month()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        var url = await CreateContractAsync(factory, client, maxOccupants: 3);
+        var contractId = int.Parse(url.Split('/')[3]);
+        var lastMonth = new DateOnly(Today.Year, Today.Month, 1).AddMonths(-1);
+        var days = lastMonth.AddMonths(1).DayNumber - lastMonth.DayNumber;
+        decimal price;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var contract = await db.Contracts.SingleAsync(item => item.ContractId == contractId);
+            (contract.StartDate, contract.MeterHandoverDate) = (lastMonth, lastMonth);
+            (contract.InitialElectricReading, contract.InitialWaterReading) = (100m, 10m);
+            var rate = await db.PropertyServiceRates.FirstAsync(item => item.PropertyId == 1 && item.BillingBasis == "fixed_room");
+            (rate.UnitCode, rate.BillingBasis, price) = ("person_month", "occupant", rate.Price);
+            db.ContractOccupants.AddRange(
+                // vào ngày 11 và còn ở: (days - 10) ngày
+                Occupant(contractId, "Trần Thị B", lastMonth.AddDays(10), null),
+                // ở từ đầu tháng, dọn ra ngày 6 (vẫn tính ngày 6): 6 ngày
+                Occupant(contractId, "Lê Văn C", lastMonth, lastMonth.AddDays(5)),
+                // đã chuyển đi từ tháng trước nữa: không tính
+                Occupant(contractId, "Phạm Văn D", lastMonth.AddMonths(-2), lastMonth.AddMonths(-1)));
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/utility-readings", new
+        {
+            contractId, readingMonth = lastMonth, electricEnd = 150m, waterEnd = 14m
+        })).StatusCode);
+
+        using var invoice = await client.PostAsJsonAsync("/api/invoices", new { contractId, invoiceMonth = lastMonth, dueDate = Today.AddDays(10) });
+
+        Assert.Equal(HttpStatusCode.Created, invoice.StatusCode);
+        var line = (await invoice.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("lines").EnumerateArray()
+            .Single(item => item.GetProperty("unitCode").GetString() == "person_month");
+        var expected = Math.Round(1m + (decimal)(days - 10 + 6) / days, 2, MidpointRounding.AwayFromZero);
+        Assert.Equal(expected, line.GetProperty("quantity").GetDecimal());
+        Assert.Equal(Math.Round(expected * price, 0, MidpointRounding.AwayFromZero), line.GetProperty("amount").GetDecimal());
+    }
+
+    private static PRN232.Domain.Entities.ContractOccupants Occupant(int contractId, string name, DateOnly moveIn, DateOnly? moveOut) => new()
+    {
+        ContractId = contractId, FullName = name, IdentityNumber = Cccd, MoveInDate = moveIn, MoveOutDate = moveOut,
+        AddedById = 7, CreatedAtUtc = DateTime.UtcNow
+    };
+
     private static object Roommate(string name, string cccd) =>
         new { fullName = name, phoneNumber = "0905123456", identityNumber = cccd, moveInDate = Today };
 

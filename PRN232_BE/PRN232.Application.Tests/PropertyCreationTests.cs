@@ -135,6 +135,42 @@ public sealed class PropertyCreationTests
         0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
     ];
 
+    // Rebuild 6.4: deleting a property also removes its image from Storage — only after the row is gone, and a Storage
+    // failure never undoes or fails the delete.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DeleteProperty_removes_its_image_from_storage_after_the_row_is_deleted(bool storageFails)
+    {
+        await using var context = await CreateContextAsync();
+        var storage = new FakePropertyImageStorage { FailDelete = storageFails };
+        var service = new PropertyService(new PropertyRepository(context), new AdministrativeDivisionCatalog(), storage);
+        var created = await service.CreateAsync(new CreatePropertyDto("Nhà trọ Bình An", "12 Đường số 5", "01", "00004", "Mô tả", Latitude: 21.032m, Longitude: 105.814m),
+            ownerId: 10, isAdmin: true, new PropertyImageInput("property.png", "image/png", ValidPng()));
+
+        Assert.True(await service.DeleteAsync(created.PropertyId, requestingUserId: 10, isAdmin: true));
+
+        Assert.False(await context.Properties.AnyAsync(property => property.PropertyId == created.PropertyId));
+        Assert.Equal(storageFails ? [] : ["https://cdn.example.test/properties/property.png"], storage.DeletedImageUrls);
+    }
+
+    [Fact]
+    public async Task DeleteProperty_with_rooms_keeps_both_the_row_and_its_image()
+    {
+        await using var context = await CreateContextAsync();
+        var storage = new FakePropertyImageStorage();
+        var service = new PropertyService(new PropertyRepository(context), new AdministrativeDivisionCatalog(), storage);
+        var created = await service.CreateAsync(new CreatePropertyDto("Nhà trọ Bình An", "12 Đường số 5", "01", "00004", "Mô tả", Latitude: 21.032m, Longitude: 105.814m),
+            ownerId: 10, isAdmin: true, new PropertyImageInput("property.png", "image/png", ValidPng()));
+        context.Rooms.Add(new Rooms { RoomId = 1, PropertyId = created.PropertyId, RoomTypeId = 1, RoomCode = "A101", Status = "Available" });
+        await context.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<PropertyHasRoomsException>(() => service.DeleteAsync(created.PropertyId, 10, isAdmin: true));
+
+        Assert.True(await context.Properties.AnyAsync(property => property.PropertyId == created.PropertyId));
+        Assert.Empty(storage.DeletedImageUrls);
+    }
+
     private static async Task<AppDbContext> CreateContextAsync()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
@@ -163,6 +199,17 @@ public sealed class PropertyCreationTests
             return Task.FromResult("https://cdn.example.test/properties/property.png");
         }
 
-        public Task DeleteAsync(string imageUrl, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public List<string> DeletedImageUrls { get; } = [];
+        public bool FailDelete { get; init; }
+
+        public Task DeleteAsync(string imageUrl, CancellationToken cancellationToken = default)
+        {
+            if (FailDelete)
+            {
+                throw new PropertyImageStorageException();
+            }
+            DeletedImageUrls.Add(imageUrl);
+            return Task.CompletedTask;
+        }
     }
 }

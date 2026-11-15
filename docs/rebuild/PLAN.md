@@ -8,13 +8,41 @@
 
 ---
 
+## Tiến độ (cập nhật 15/11/2026)
+
+**Trạng thái mã nguồn:** PR #34 (31 commit) đã **merge vào `main`** (`72abc7c`). Railway đã deploy cả BE và FE thành công, `./efbundle` đã áp dụng **13 migration của rebuild lên DB Live**. Tài liệu API cho FE: `API-CHANGES.md` mục **C1–C20**. Việc mới làm trên nhánh `Tan_rebuild_2` (tách từ `main`).
+
+### Yêu cầu của giảng viên → trạng thái
+| Yêu cầu | Trạng thái | Việc |
+|---|---|---|
+| Thiếu validate/dropdown khi tạo phòng; nhập sai địa chỉ, m² | ✅ BE + FE | 1.1, 1.2, 1.5 |
+| Bỏ quận/huyện, địa chỉ 2 cấp sau sáp nhập | ✅ Dữ liệu, form, bộ lọc và hiển thị chỉ còn tỉnh/phường (C26). Cột `District` giữ lại, luôn rỗng (mobile còn dùng) | 1.4, C26 |
+| Lưu ảnh trên cloud | ✅ Đã có (Supabase Storage); minh chứng hợp đồng dùng bucket private riêng | 3.5b |
+| Hiển thị thông tin thiết bị của phòng | ✅ Tên + số lượng công khai; giá bồi thường nội bộ | 2.2, 2.4 |
+| Hạn đặt cọc, hạn hợp đồng | ✅ Giữ phòng đến hết "dọn vào + 3 ngày"; nhắc hợp đồng sắp hết hạn | 3.1, 3.2, 3.4 |
+| Nhật ký thao tác CRUD | ✅ Lớp 1 (mọi request ghi) + lớp 2 (giá trị trước/sau của 16 thao tác quan trọng) + trang Admin "Nhật ký thao tác" | 5.1–5.3 |
+| Số người tối đa mỗi phòng | ✅ 8 m²/người; kiểm tra khi đặt cọc và khi thêm người ở cùng | 2.1, 3.1, 4.1 |
+| Bạn ở cùng; ai đứng tên khi người đứng tên chuyển đi | ✅ Người ở cùng (CCCD mã hóa, có nhật ký khi xem); chuyển người đứng tên (ba bên xác nhận); dịch vụ theo đầu người | 4.1–4.5 |
+| **Làm lại luồng đặt cọc (luồng chính)** | ✅ BE đủ từ đặt cọc đến trả phòng; FE (Antigravity) đã làm đến C18 | 3.1–3.6 |
+| "Hóa đơn và thiết bị đang nằm chung" | ✅ Thiết bị tách khỏi hóa đơn: biên bản bàn giao + bồi thường nằm trong quyết toán cọc (**cần hỏi lại giảng viên** — câu 6) | 3.5, 3.6 |
+| Chi tiết khu trọ/phòng hiển thị khác nhau theo vai trò | ✅ Một component chi tiết khu trọ + một cho phòng, dùng chung cho khách/quản lý/Admin; chỉ khác khối nút thao tác; giá bồi thường thiết bị chỉ hiện cho quản lý/Admin | 6.2 |
+| Làm lại layout dashboard | ✅ Sidebar nhóm theo nghiệp vụ (Hóa đơn và Thiết bị tách nhóm); 16 trang quản lý dùng chung khung trang và trạng thái tải/trống/lỗi | 6.1, 6.3 |
+
+### Còn lại
+- **Claude (BE):** các việc trong kế hoạch đã xong. Toàn bộ test PostgreSQL (chạy local trên postgres:17) đã đạt: sửa 6 test lỗi từ trước (dữ liệu test cũ không khớp schema mới); `Phase31C…Feature_off…` đánh dấu bỏ qua vì kịch bản không còn xảy ra được. 6 test `PublicPropertyListingPostgreSql` cần DB có dữ liệu thật (chạy chỉ đọc trên Live) nên không chạy được trên DB trống.
+- **Antigravity (FE):** ✅ xong toàn bộ: C19–C26 và 6.1–6.3.
+- **Codex (test/review):** 1.6, 3.8, 4.6, 5.4 — chưa có báo cáo nào gửi về.
+- **Nhóm:** 3.9 mobile (cập nhật hay đóng băng), 7.1–7.3 (SRS, kịch bản demo, dữ liệu demo), câu hỏi 4, 6, 7, 9, 10 ở mục 6.
+
+---
+
 ## 0. Đọc nhanh
 
 | # | Vấn đề | Mức độ | Workstream |
 |---|--------|--------|------------|
 | 1 | **Tiền cọc đang bị trừ vào tiền phòng tháng đầu** → suốt hợp đồng chủ trọ không giữ đồng cọc nào, trả phòng không có gì để quyết toán | 🔴 Nghiêm trọng | WS3 |
 | 2 | Hợp đồng chỉ có **1 người** (`Contracts.CustomerId`), không có người ở cùng → không xử lý được ở ghép, chuyển đi | 🔴 Nghiêm trọng | WS4 |
-| 3 | Phòng không có **số người tối đa**; dịch vụ tính theo đầu người bị chặn "not supported yet" | 🔴 Nghiêm trọng | WS2, WS4 |
+| 3 | ~~Phòng không có **số người tối đa**; dịch vụ tính theo đầu người bị chặn "not supported yet"~~ → đã có `maxOccupants` (2.1) và tính theo đầu người (4.3, C22); riêng giá theo xe vẫn chưa hỗ trợ | ✅ Xong | WS2, WS4 |
 | 4 | Validate gần như chỉ "không rỗng" và "> 0" (diện tích 99.999 m², giá phòng 0đ vẫn hợp lệ) | 🟠 Cao | WS1 |
 | 5 | ~~Địa chỉ 3 cấp nhập tay~~ → **đã làm phần lớn trên main** (dropdown Tỉnh/Phường, danh mục NSO). Còn thiếu: chưa lưu mã tỉnh/phường, đường cập nhật còn nhận `District` cũ | 🟡 Còn dọn | WS1 |
 | 6 | Không có **audit log** (ai làm gì, lúc nào) | 🟠 Cao | WS5 |
@@ -23,7 +51,7 @@
 | 9 | Chi tiết phòng / khu trọ hiển thị khác nhau giữa các vai trò; sidebar 13 mục phẳng, không nhóm | 🟡 Trung bình | WS6 |
 | 10 | Ảnh **đã** lưu trên Supabase Storage (không phải DB) — chỉ cần làm rõ khi demo | 🟢 Đã có | WS6 |
 | 11 | **Ứng dụng mobile** (`PRN232_Mobile`, Flutter) gọi cùng API; mọi thay đổi API/luồng đặt cọc đều có thể làm vỡ mobile | 🟠 Cao | Tất cả |
-| 12 | Migration của Châu (`PropertyScopedRoomTypesAndViewingFlow`) **chưa chạy trên DB Live**, các migration của rebuild phải xếp sau | 🟠 Cao | Điều phối |
+| 12 | ~~Migration của Châu chưa chạy trên DB Live~~ → **đã chạy**; 13 migration của rebuild cũng đã áp dụng lên Live ngày 15/11/2026 | ✅ Xong | Điều phối |
 
 ---
 
@@ -138,7 +166,7 @@ Mô hình: **1 người đứng tên** (chịu trách nhiệm tiền phòng, c�
 
 | Tình huống | Xử lý |
 |------------|-------|
-| Người **ở cùng** chuyển đi | Ghi ngày ra. Tiền phòng giữ nguyên (tính theo phòng). Dịch vụ theo đầu người giảm từ tháng sau. Cọc không đổi — chia lại cọc giữa các bạn ở chung là chuyện riêng, hệ thống không can thiệp. |
+| Người **ở cùng** chuyển đi | Ghi ngày ra. Tiền phòng giữ nguyên (tính theo phòng). Dịch vụ theo đầu người tính theo số ngày còn ở trong tháng, kể cả ngày dọn ra (4.3, C22). Cọc không đổi — chia lại cọc giữa các bạn ở chung là chuyện riêng, hệ thống không can thiệp. |
 | Người **đứng tên** chuyển đi, người ở cùng ở tiếp | **Chuyển người đứng tên**: kết thúc HĐ cũ và tạo HĐ mới cho người ở lại. Chỉ số điện nước nối tiếp. Cọc: hoặc **chuyển sang** HĐ mới (cả hai xác nhận), hoặc quyết toán cho người cũ rồi người mới đóng cọc mới. |
 | Cả phòng chuyển đi trước hạn | Luồng trả phòng sớm ở D3 bước 6 |
 | Thêm người mới vào ở | Chỉ cho phép khi tổng số người ≤ `MaxOccupants` |
@@ -146,14 +174,14 @@ Mô hình: **1 người đứng tên** (chịu trách nhiệm tiền phòng, c�
 Lợi ích thêm: biết chính xác số người đang ở → tính được dịch vụ theo đầu người và hiển thị số người để chủ trọ **đăng ký định mức điện** với EVN (thực tế cứ 4 người được tính là 1 hộ; không kê khai thì toàn bộ sản lượng bị tính giá bậc 3).
 
 ### D5. Điện nước và hạn mức 🔒
-- Bật dịch vụ tính **theo người** dựa trên `ContractOccupants` (kể cả tính theo tỷ lệ ngày khi vào/ra giữa tháng).
+- Bật dịch vụ tính **theo người** dựa trên `ContractOccupants` (kể cả tính theo tỷ lệ ngày khi vào/ra giữa tháng, tính cả ngày vào và ngày dọn ra) — ✅ 4.3, C22.
 - **Trần giá điện và nước** (đã làm ở việc 1.2b, cấu hình `UtilityPriceLimits` trong appsettings):
   - Luật không đặt trần đơn giá, mà cấm chủ trọ thu **tổng** tiền điện cao hơn hóa đơn EVN; mỗi địa chỉ chỉ có một hợp đồng điện, cứ 4 người thuê tính là 1 hộ. Thu sai có thể bị phạt 20–30 triệu đồng (Nghị định 17/2022, theo Dân trí).
   - Hệ thống không thấy hóa đơn EVN nên chặn đơn giá cao hơn **giá kWh đắt nhất có thể có**: bậc 5 biểu 5 bậc từ 01/11/2026 (Quyết định 2892/QĐ-BCT) 3.844đ × VAT 8% = **4.152đ/kWh**. VAT 8% chỉ áp dụng đến hết 31/12/2026 (Nghị quyết 204/2025/QH15); từ 2027 nếu về 10% thì đổi cấu hình thành 4.229đ.
   - Biểu 5 bậc (chưa VAT): 1.901 / 2.289 / 2.894 / 3.456 / 3.844 đ/kWh.
   - Nước: trần **16.560đ/m³** = bậc cao nhất hộ gia đình TP.HCM 14.400đ + VAT 5% + phí môi trường 10% (Nghị định 346/2025/NĐ-CP). ⚠️ Chưa tìm được quyết định giá nước chính thức năm 2026 của TP.HCM; tỉnh khác giá khác → nhóm cần xác nhận.
   - Phí cố định hằng tháng (wifi, rác, nước khoán theo người, gửi xe): tối đa 1.000.000đ.
-- **Cảnh báo** (không chặn) khi chỉ số tháng này vượt *X%* so với trung bình 3 tháng gần nhất.
+- **Cảnh báo** (không chặn) khi lượng dùng tháng này lệch **quá 30%** (tăng hoặc giảm) so với trung bình 3 tháng gần nhất và chênh ít nhất 20 kWh / 2 m³; hiện trước khi lưu (C23).
 
 ### D6. Thiết bị và hóa đơn ("nằm chung – không tách")
 Cách hiểu đề xuất (nên **hỏi lại giảng viên**):
@@ -184,11 +212,11 @@ Giữ Supabase Storage. Bổ sung:
 ### WS1 — Validate & địa chỉ (nền tảng)
 | ID | Việc | Owner | Phụ thuộc | Size | Người |
 |----|------|-------|-----------|------|-------|
-| 1.1 | Khung FluentValidation + format lỗi `ValidationProblem` thống nhất | Claude | — | S | |
-| 1.2 | Validator cho Property, Room, **PropertyRoomType**, Equipment, Service rate theo bảng D2 | Claude | 1.1 | M | |
+| 1.1 | ✅ Khung FluentValidation + format lỗi `ValidationProblem` thống nhất | Claude | — | S | |
+| 1.2 | ✅ Validator cho Property, Room, **PropertyRoomType**, Equipment, Service rate theo bảng D2 | Claude | 1.1 | M | |
 | ~~1.3~~ | ~~Bảng Provinces/Wards~~ — **Châu đã làm** (danh mục JSON + `/api/locations`). Đã bỏ khỏi plan | — | — | — | Châu |
-| 1.4 | Dọn địa chỉ: lưu `ProvinceCode`/`WardCode` vào `Property` ✅, gán mã cho 32 khu trọ Live ✅, mở `/api/locations` cho khách ✅; **còn:** xóa cột `District` (nhóm chốt: mọi địa chỉ là sau sáp nhập) | Claude | — | S | |
-| 1.5 | FE: phần form **phòng** và **giá theo khu trọ** dùng dropdown, hiện lỗi theo field (form khu trọ đã có dropdown) | AG | 1.1 | S | |
+| 1.4 | ✅ Dọn địa chỉ: lưu `ProvinceCode`/`WardCode` vào `Property` ✅, gán mã cho 32 khu trọ Live ✅, mở `/api/locations` cho khách ✅; cột `District` **giữ lại, luôn rỗng** (app mobile còn dùng — xóa sẽ làm hỏng mobile); FE bỏ "Quận/Huyện" khỏi giao diện (C26) | Claude | — | S | |
+| 1.5 | ✅ FE: phần form **phòng** và **giá theo khu trọ** dùng dropdown, hiện lỗi theo field (form khu trọ đã có dropdown) | AG | 1.1 | S | |
 | 1.6 | Test validate biên (đúng biên, dưới, trên) cho từng DTO | Codex | 1.2 | M | |
 
 ### WS2 — Mô hình phòng
@@ -208,7 +236,7 @@ Giữ Supabase Storage. Bổ sung:
 | 3.4 | ✅ Job nhắc hạn 30 ngày / 7 ngày / quá hạn (không thêm trạng thái `Expired`, xem D3) | Claude | — | S | |
 | 3.5 | Biên bản bàn giao thiết bị lúc nhận phòng và trả phòng. **3.5a ✅** biên bản + tình trạng + bồi thường (C14). **3.5b ✅ + 3.5c ✅** ảnh/PDF minh chứng nhận phòng, trả phòng, hợp đồng đã ký (bucket private `contract-evidence`, khách và quản lý cùng upload, không duyệt, ảnh nhận phòng trong 7 ngày, Admin chỉ ẩn — C15) | Claude | 2.2 | M | |
 | 3.6 | **Quyết toán cọc** khi trả phòng (công thức D3 bước 6), báo trước 30 ngày. Nhóm chốt **phương án B**: khách trả hết hóa đơn trước, cọc chỉ trừ bồi thường (trừ nợ vào cọc cần "thanh toán một phần" trong luồng thanh toán — bàn với Nghĩa sau). **3.6a ✅** báo trả phòng (C16). **3.6b ✅** quyết toán + chặn trả phòng khi chưa quyết toán + khóa biên bản/ảnh trả phòng (C17). **3.6c ✅** "Đã hoàn cọc" / "Đã thu" (C18). → Luồng D3 (cọc → ký → hóa đơn → báo trả → biên bản → quyết toán → trả phòng) đã đủ phía BE | Claude | 3.3, 3.5 | L | |
-| 3.7 | FE: trang đặt cọc mới, trang trả phòng và quyết toán | AG | 3.1, 3.6 | L | |
+| 3.7 | ✅ FE: trang đặt cọc mới, trang trả phòng và quyết toán | AG | 3.1, 3.6 | L | |
 | 3.8 | Test end-to-end toàn luồng: cọc → ký → hóa đơn → trả phòng → hoàn cọc | Codex | 3.6 | L | |
 | 3.9 | Mobile (Flutter): cập nhật màn đặt cọc, hợp đồng, trả phòng theo API mới — hoặc chốt rõ mobile **đóng băng** ở mức nào cho buổi present | Nhóm quyết định | 3.1, 3.6 | M | |
 
@@ -216,27 +244,27 @@ Giữ Supabase Storage. Bổ sung:
 | ID | Việc | Owner | Phụ thuộc | Size | Người |
 |----|------|-------|-----------|------|-------|
 | 4.1 | ✅ Bảng `ContractOccupants` + API thêm/ghi ngày ra; CCCD bắt buộc, mã hóa, che, "con mắt" có ghi nhật ký (C20) | Claude | 3.3 | M | |
-| 4.2 | Chuyển người đứng tên (D4) | Claude | 4.1, 3.6 | L | |
-| 4.3 | Hóa đơn dịch vụ theo đầu người, tính theo tỷ lệ ngày | Claude | 4.1 | M | |
-| 4.4 | Trần giá điện/nước + cảnh báo chỉ số bất thường | Claude | 1.2 | S | |
-| 4.5 | FE: quản lý người ở cùng, chuyển người đứng tên | AG | 4.1, 4.2 | M | |
+| 4.2 | ✅ Chuyển người đứng tên (D4): ba bên xác nhận, cọc chuyển nguyên, hiệu lực ngày 1 của tháng, điện nước và biên bản nối tiếp (C21) | Claude | 4.1, 3.6 | L | |
+| 4.3 | ✅ Hóa đơn dịch vụ theo đầu người, tính theo tỷ lệ ngày (C22) | Claude | 4.1 | M | |
+| 4.4 | ✅ Trần giá điện/nước (1.2b) + cảnh báo chỉ số bất thường trước khi lưu (C23) | Claude | 1.2 | S | |
+| 4.5 | ✅ FE: quản lý người ở cùng, chuyển người đứng tên (C20, C21) | AG | 4.1, 4.2 | M | |
 | 4.6 | Test các tình huống bảng D4 | Codex | 4.2, 4.3 | M | |
 
 ### WS5 — Audit log
 | ID | Việc | Owner | Phụ thuộc | Size | Người |
 |----|------|-------|-----------|------|-------|
 | 5.1 | ✅ Bảng `AuditLogs` + action filter (lớp 1) + API Admin `GET /api/audit-logs` (C19) | Claude | — | M | |
-| 5.2 | Ghi chủ động có trước/sau cho nghiệp vụ quan trọng (lớp 2) | Claude | 5.1, WS3 | M | |
-| 5.3 | FE: trang Admin xem log có bộ lọc | AG | 5.1 | M | |
+| 5.2 | ✅ Ghi chủ động có trước/sau cho nghiệp vụ quan trọng (lớp 2, C24) | Claude | 5.1, WS3 | M | |
+| 5.3 | ✅ FE: trang Admin xem log có bộ lọc (C19) | AG | 5.1 | M | |
 | 5.4 | Test: không lộ dữ liệu nhạy cảm, đủ log cho thao tác ghi | Codex | 5.1 | S | |
 
 ### WS6 — UI/UX & hiển thị
 | ID | Việc | Owner | Phụ thuộc | Size | Người |
 |----|------|-------|-----------|------|-------|
-| 6.1 | Sidebar nhóm theo nghiệp vụ (xem bên dưới) | AG | — | S | |
-| 6.2 | **Một** component chi tiết phòng và **một** cho khu trọ, dùng chung cho mọi vai trò (vai trò chỉ thêm nút thao tác), có danh sách thiết bị | AG | 2.3 | M | |
-| 6.3 | Dashboard layout lại cho liền mạch: page template, header, empty/loading state thống nhất | AG | 6.1 | L | |
-| 6.4 | Xóa file Storage khi xóa phòng/khu trọ | Claude | — | S | |
+| 6.1 | ✅ Sidebar nhóm theo nghiệp vụ (xem bên dưới) | AG | — | S | |
+| 6.2 | ✅ **Một** component chi tiết phòng và **một** cho khu trọ, dùng chung cho mọi vai trò (vai trò chỉ thêm nút thao tác), có danh sách thiết bị | AG | 2.3 | M | |
+| 6.3 | ✅ Dashboard layout lại cho liền mạch: page template, header, empty/loading state thống nhất | AG | 6.1 | L | |
+| 6.4 | ✅ Xóa file Storage khi xóa khu trọ (ảnh đại diện; phòng phải xóa hết ảnh — đã xóa file — mới xóa được) | Claude | — | S | |
 | 6.5 | Review UI: accessibility, responsive, không vỡ luồng cũ | Codex | 6.3 | S | |
 
 Sidebar đề xuất:
@@ -292,11 +320,9 @@ Quy trình cho mỗi task:
 
 **Quy tắc migration:** tại một thời điểm chỉ **một branch** được tạo EF migration. Migration được merge theo thứ tự để không vỡ `AppDbContextModelSnapshot`. DB Supabase dùng chung, nên chỉ chạy migration sau khi PR đã merge.
 
-**Điều kiện đặc biệt từ main:** migration `20261114085610_PropertyScopedRoomTypesAndViewingFlow` của Châu **chưa chạy trên DB Live** và đang chờ backup + rehearsal PostgreSQL 17. Hệ quả cho rebuild:
-- Mọi migration của rebuild phải sinh **sau** migration này (tạo từ nhánh đã có nó, không từ nhánh cũ hơn).
-- Không chạy migration nào của rebuild lên DB Live trước khi migration của Châu được áp dụng.
-- Phần lớn việc BE ở WS2–WS5 cần migration, nên **hỏi Châu lịch áp dụng** ngay từ đầu để tránh nghẽn.
-- Máy local chưa có DB riêng; các test PostgreSQL đang bị bỏ qua (24 test skipped). Nên dựng một PostgreSQL local (Docker) để chạy migration trước khi đụng Supabase dùng chung.
+**Về migration (cập nhật 15/11/2026):** migration của Châu `20261114085610_PropertyScopedRoomTypesAndViewingFlow` đã chạy trên DB Live. Railway chạy `./efbundle` làm pre-deploy command, nên **merge vào `main` là migration tự áp dụng lên Live**: mọi migration phải an toàn với dữ liệu thật (cột mới cho phép NULL, hoặc có giá trị mặc định và backfill đúng) trước khi merge.
+- Các test PostgreSQL thật (24 test "skipped" khi chạy trên máy) **chỉ chạy trên CI** (job `postgres-tests`). Muốn chạy trên máy: dựng Docker `postgres:17` ở cổng 55432, tạo 3 role `anon`, `authenticated`, `service_role`, đặt biến `PRN232_MIGRATION_TEST_POSTGRES_CONNECTION` rồi chạy đúng bộ lọc trong `.github/workflows/ci-backend.yml`. Bắt buộc bản 17 (test kiểm tra phiên bản). Làm bước này mỗi khi thêm cột hoặc migration, vì test lưu entity ở mốc migration cũ sẽ vỡ khi model có thêm cột.
+- Có 5 test PostgreSQL vốn đã lỗi sẵn trên `main` (không do rebuild): `AssignmentNoteMigrationTests`, `ContractMeterHandoverPostgreSqlTests`, `PaymentTableSecurityMigrationTests`, `BookingRefundRequestApiTests` (bản PostgreSQL), `ScopeBPostgreSqlConcurrencyReviewTests.Same_deposited_booking_...`. Cần người của scope tương ứng xem lại.
 
 **Mobile:** `PRN232_Mobile` gọi cùng API. Mỗi task đổi hợp đồng API phải ghi vào `API-CHANGES.md` kèm mục "ảnh hưởng mobile". Quyết định ở việc 3.9: cập nhật mobile hay đóng băng.
 
@@ -304,16 +330,23 @@ Quy trình cho mỗi task:
 
 ## 6. Câu hỏi cần chốt (Giai đoạn 0)
 
-1. Mức cọc: cố định 1 tháng, hay chủ trọ cấu hình 1–2 tháng?
-2. Chủ trọ hủy: chỉ hoàn cọc, hay hoàn cọc **và** phạt thêm một khoản bằng cọc theo Điều 328 BLDS?
-3. Thời hạn báo trước khi trả phòng sớm: 30 ngày?
-4. Thời hạn hợp đồng tối thiểu: 1, 3 hay 6 tháng?
-5. Các con số trong bảng D2 (diện tích, giá, số người) — nhóm đồng ý hay chỉnh?
-6. "Hóa đơn vs thiết bị" — hỏi lại giảng viên xem có đúng cách hiểu ở D6 không.
-7. Phân công thành viên vào cột **Người** ở mục 3.
-8. **Hỏi Châu:** (a) lịch chạy migration `PropertyScopedRoomTypesAndViewingFlow` lên DB Live; (b) khu trọ cũ còn dùng `District` không, có thể migrate hết sang mã tỉnh/phường rồi bỏ cột; (c) `/api/locations` có mở public cho khách không.
-9. **Mobile:** cập nhật theo luồng cọc mới hay đóng băng ở mức nào cho buổi present?
-10. **Giá cũ bất thường:** RoomType 1 giá 3.000đ và Booking 4 (cọc 1.000đ so với hợp đồng 2.000.000đ) đang chờ người đối soát. Ai xử lý trước khi demo?
+Ký hiệu: ✅ đã chốt · ◐ đang áp dụng, nhóm chưa xác nhận chính thức · ❓ chưa chốt.
+
+1. ◐ Mức cọc: cố định 1 tháng, hay chủ trọ cấu hình 1–2 tháng? *(hiện làm cố định 1 tháng, chưa có cấu hình)*
+2. ✅ Chủ trọ hủy: **chỉ hoàn 100% cọc**, không phạt thêm.
+3. ✅ Báo trước khi trả phòng sớm: **30 ngày** (báo thiếu thì mất phần cọc còn lại).
+4. ❓ Thời hạn hợp đồng tối thiểu: 1, 3 hay 6 tháng?
+5. ◐ Các con số trong bảng D2 (diện tích, giá, số người) — đã áp dụng vào code, nhóm chưa phản đối.
+6. ❓ "Hóa đơn vs thiết bị" — hỏi lại giảng viên xem có đúng cách hiểu ở D6 không.
+7. ❓ Phân công thành viên vào cột **Người** ở mục 3.
+8. ✅ **Hỏi Châu:** (a) migration đã chạy lên Live; (b) nhóm chốt mọi địa chỉ là sau sáp nhập, 32 khu trọ đã gán mã tỉnh/phường, còn xóa cột `District`; (c) `/api/locations` đã mở public.
+9. ❓ **Mobile:** cập nhật theo luồng cọc mới hay đóng băng ở mức nào cho buổi present?
+10. ❓ **Giá cũ bất thường:** RoomType 1 giá 3.000đ và Booking 4 (cọc 1.000đ so với hợp đồng 2.000.000đ) đang chờ người đối soát. Ai xử lý trước khi demo?
+11. ✅ Hoàn tiền cọc **không qua hệ thống**: khách liên hệ quản lý, quản lý trả ngoài hệ thống rồi bấm "Đã hoàn cọc". Luồng payOS refund của Nghĩa giữ nguyên code nhưng bị khóa (`BookingRefunds:RequestsEnabled=false`).
+12. ✅ Quyết toán cọc theo **phương án B**: khách trả hết hóa đơn trước, cọc chỉ trừ bồi thường thiết bị. Trừ nợ hóa đơn vào cọc cần "thanh toán một phần" trong luồng thanh toán của Nghĩa — bàn sau nếu cần.
+13. ✅ **Chuyển người đứng tên (4.2):** hiệu lực vào ngày 1 của tháng; người ở lại cần tài khoản khách; thiết bị hư hỏng/mất thì không cho chuyển; hợp đồng mới kế thừa tiền phòng và ngày kết thúc. (đã làm, C21).
+14. ✅ **Tiền phòng tháng đầu/tháng cuối không trọn:** chia theo số ngày ở (tính cả ngày đầu và ngày cuối), dừng ở ngày trả phòng đã báo nếu sớm hơn; phí cố định theo phòng chia cùng tỷ lệ. Lý do: hóa đơn và chỉ số điện nước chốt theo tháng dương lịch, nên chia theo ngày là cách duy nhất không phải đổi cả luồng; trước đây HĐ 15/10–14/10 bị thu 13 tháng tiền phòng (C25).
+15. ✅ **Vai trò Admin:** Admin là **quản trị toàn hệ thống** (quản lý mọi khu trọ, giá, tài khoản, nhật ký). Riêng 4 thao tác nhạy cảm chỉ **chủ của khu đó** (`Property.OwnerId`) làm được: hủy đặt cọc với tư cách Admin, xác nhận đã hoàn cọc, xác nhận khoản quyết toán, xem đầy đủ số CCCD — nguyên tắc quyền tối thiểu cho tiền và dữ liệu cá nhân. Không chuyển sang mô hình "mỗi Admin chỉ thấy khu của mình" vì phải sửa gần như mọi API và trang Admin ngay trước demo; mọi thay đổi giá/tài khoản đã có nhật ký trước/sau (C24) nên vẫn truy được ai sửa.
 
 ---
 

@@ -26,88 +26,93 @@ type SidebarItem = {
   adminOnly?: boolean
 }
 
-const items: SidebarItem[] = [
-  { label: "Xét duyệt hoàn cọc", href: routes.managementRefunds, icon: "receipt", adminOnly: true },
-  { label: "Dashboard", href: routes.managementDashboard, icon: "building" },
+type SidebarGroup = {
+  id: string
 
-  { label: "Khu trọ", href: routes.managementProperties, icon: "building" },
+  title: string
 
+  items: SidebarItem[]
+}
+
+const groups: SidebarGroup[] = [
   {
-    label: "Đối soát thanh toán",
-    href: routes.managementPaymentReviews,
-    icon: "receipt",
-    adminOnly: true,
+    id: "overview",
+    title: "Tổng quan",
+    items: [
+      { label: "Dashboard", href: routes.managementDashboard, icon: "building" },
+    ],
   },
-
   {
-    label: "Đặt phòng & Đặt cọc",
-
-    href: routes.managementBookings,
-
-    icon: "calendar" as IconName,
+    id: "properties",
+    title: "Khu trọ & Phòng",
+    items: [
+      { label: "Khu trọ", href: routes.managementProperties, icon: "building" },
+    ],
   },
-
   {
-    label: "Lịch xem phòng",
-
-    href: routes.managementViewings,
-
-    icon: "calendar" as IconName,
+    id: "leasing",
+    title: "Cho thuê",
+    items: [
+      { label: "Lịch xem phòng", href: routes.managementViewings, icon: "calendar" },
+      { label: "Đặt phòng & Đặt cọc", href: routes.managementBookings, icon: "calendar" },
+      { label: "Hợp đồng", href: routes.managementContracts, icon: "file" },
+    ],
   },
-
   {
-    label: "Hợp đồng",
-
-    href: routes.managementContracts,
-
-    icon: "file" as IconName,
+    id: "finance",
+    title: "Tài chính",
+    items: [
+      { label: "Hóa đơn", href: routes.managementInvoices, icon: "receipt" },
+      {
+        label: "Đối soát thanh toán",
+        href: routes.managementPaymentReviews,
+        icon: "receipt",
+        adminOnly: true,
+      },
+      {
+        label: "Xét duyệt hoàn cọc",
+        href: routes.managementRefunds,
+        icon: "receipt",
+        adminOnly: true,
+      },
+    ],
   },
-
   {
-    label: "Hóa đơn",
-
-    href: routes.managementInvoices,
-
-    icon: "receipt" as IconName,
+    id: "operations",
+    title: "Vận hành",
+    items: [
+      { label: "Bảo trì / Sửa chữa", href: routes.managementMaintenance, icon: "wrench" },
+    ],
   },
-
   {
-    label: "Bảo trì / Sửa chữa",
-
-    href: routes.managementMaintenance,
-
-    icon: "wrench" as IconName,
-  },
-
-  {
-    label: "Báo cáo",
-
-    href: routes.managementReports,
-
-    icon: "chart" as IconName,
-
-    adminOnly: true,
-
-  },
-
-  {
-    label: "Phân công Manager",
-
-    href: routes.managementManagers,
-
-    icon: "users" as IconName,
-
-    adminOnly: true,
-  },
-
-  {
-    label: "Người dùng",
-
-    href: routes.managementUsers,
-
-    icon: "user" as IconName,
-
-    adminOnly: true,
+    id: "admin",
+    title: "Quản trị",
+    items: [
+      {
+        label: "Người dùng",
+        href: routes.managementUsers,
+        icon: "user",
+        adminOnly: true,
+      },
+      {
+        label: "Phân công Manager",
+        href: routes.managementManagers,
+        icon: "users",
+        adminOnly: true,
+      },
+      {
+        label: "Báo cáo",
+        href: routes.managementReports,
+        icon: "chart",
+        adminOnly: true,
+      },
+      {
+        label: "Nhật ký thao tác",
+        href: routes.managementAuditLogs,
+        icon: "file",
+        adminOnly: true,
+      },
+    ],
   },
 ]
 
@@ -120,6 +125,13 @@ export default function ManagementSidebar({
 
   onClose,
 }: ManagementSidebarProps) {
+  const visibleGroups = groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.adminOnly || user.role === "ADMIN"),
+    }))
+    .filter((group) => group.items.length > 0)
+
   return (
     <>
       {open && (
@@ -158,34 +170,42 @@ export default function ManagementSidebar({
               : "Khu vực vận hành"}
           </p>
         </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-          {items
+        <nav aria-label="Điều hướng quản lý" className="flex-1 space-y-5 overflow-y-auto p-4">
+          {visibleGroups.map((group) => (
+            <div key={group.id} role="group" aria-labelledby={`sidebar-group-${group.id}`}>
+              <p
+                id={`sidebar-group-${group.id}`}
+                className="mb-1.5 px-3 text-[11px] font-bold uppercase tracking-[.12em] text-slate-400"
+              >
+                {group.title}
+              </p>
+              <div className="space-y-1">
+                {group.items.map((item) => {
+                  const active =
+                    pathname === item.href ||
+                    (item.href !== routes.managementDashboard &&
+                      pathname.startsWith(item.href))
 
-            .filter((item) => !item.adminOnly || user.role === "ADMIN")
-
-            .map((item) => {
-              const active =
-                pathname === item.href ||
-                (item.href !== routes.managementDashboard &&
-                  pathname.startsWith(item.href))
-
-              return (
-                <Link
-                  key={item.href}
-                  to={item.href}
-                  onClick={onClose}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-semibold transition ${
-                    active
-                      ? "bg-teal-50 text-[#087775]"
-                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
-                  }`}
-                >
-                  <Icon name={item.icon} size={16} />
-                  {item.label}
-                </Link>
-              )
-            })}
+                  return (
+                    <Link
+                      key={item.href}
+                      to={item.href}
+                      onClick={onClose}
+                      aria-current={active ? "page" : undefined}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-semibold transition ${
+                        active
+                          ? "bg-teal-50 text-[#087775]"
+                          : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                      }`}
+                    >
+                      <Icon name={item.icon} size={16} />
+                      {item.label}
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
         <div className="border-t border-slate-100 p-4">
           <Link

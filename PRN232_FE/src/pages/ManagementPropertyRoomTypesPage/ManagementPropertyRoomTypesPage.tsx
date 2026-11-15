@@ -4,6 +4,12 @@ import { ApiError } from "@/api/apiClient"
 import { useAuth } from "@/auth/AuthContext"
 import ManagementPage from "@/components/management/ManagementPage"
 import {
+  ManagementEmptyState,
+  ManagementErrorState,
+  ManagementLoadingState,
+  ManagementSuccessBanner,
+} from "@/components/management/ManagementState"
+import {
   managementPropertyRoomsPath,
   parsePositiveRouteId,
   routes,
@@ -92,19 +98,12 @@ function ResourceError({
   onRetry: () => void
 }) {
   return (
-    <div
-      role="alert"
-      className="mb-4 flex flex-wrap items-center gap-3 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700"
-    >
-      <p className="min-w-0 flex-1">{message}</p>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-bold text-rose-700"
-      >
-        {retryLabel}
-      </button>
-    </div>
+    <ManagementErrorState
+      variant="banner"
+      message={message}
+      retryLabel={retryLabel}
+      onRetry={onRetry}
+    />
   )
 }
 
@@ -490,6 +489,10 @@ export default function ManagementPropertyRoomTypesPage() {
             ? `Cấu hình riêng cho ${property.propertyName}. Giá chung trong danh mục không được dùng làm giá thuê.`
             : "Cấu hình giá thuê riêng theo khu trọ."
       }
+      breadcrumbs={[
+        { label: "Khu trọ", to: routes.managementProperties },
+        { label: property?.propertyName ?? "Loại phòng và giá thuê" },
+      ]}
     >
       <Link
         to={routes.managementProperties}
@@ -506,14 +509,7 @@ export default function ManagementPropertyRoomTypesPage() {
         />
       )}
 
-      {actionError && (
-        <p
-          role="alert"
-          className="mb-4 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700"
-        >
-          {actionError}
-        </p>
-      )}
+      {actionError && <ManagementErrorState variant="banner" message={actionError} />}
       {partialWarning && (
         <p
           role="alert"
@@ -522,14 +518,7 @@ export default function ManagementPropertyRoomTypesPage() {
           {partialWarning}
         </p>
       )}
-      {success && (
-        <p
-          role="status"
-          className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
-        >
-          {success}
-        </p>
-      )}
+      {success && <ManagementSuccessBanner message={success} />}
 
       <section className="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
         <h2 className="font-display text-lg font-bold text-slate-900">
@@ -537,9 +526,12 @@ export default function ManagementPropertyRoomTypesPage() {
         </h2>
 
         {catalogState.loading && (
-          <p role="status" className="mt-3 text-sm text-slate-500">
-            Đang tải danh mục loại phòng...
-          </p>
+          <div className="mt-3">
+            <ManagementLoadingState
+              variant="inline"
+              message="Đang tải danh mục loại phòng..."
+            />
+          </div>
         )}
         {catalogState.error && (
           <div className="mt-4">
@@ -724,17 +716,20 @@ export default function ManagementPropertyRoomTypesPage() {
         )}
 
         {configurationState.loading && configurations.length === 0 && (
-          <p role="status" className="px-5 py-8 text-sm text-slate-500">
-            Đang tải cấu hình...
-          </p>
+          <ManagementLoadingState
+            variant="table"
+            rows={3}
+            message="Đang tải cấu hình..."
+          />
         )}
 
         {!configurationState.loading &&
           !configurationState.error &&
           configurations.length === 0 && (
-            <p role="status" className="px-5 py-8 text-sm text-slate-500">
-              Chưa có loại phòng nào được cấu hình.
-            </p>
+            <ManagementEmptyState
+              icon="building"
+              message="Chưa có loại phòng nào được cấu hình."
+            />
           )}
 
         {configurations.length > 0 && (

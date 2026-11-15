@@ -3,6 +3,11 @@ import { Link } from "react-router"
 import { useAuth } from "@/auth/AuthContext"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementPage from "@/components/management/ManagementPage"
+import {
+  ManagementEmptyState,
+  ManagementErrorState,
+  ManagementLoadingState,
+} from "@/components/management/ManagementState"
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
 import BookingRefundPanel from "@/components/customer/BookingRefundPanel"
@@ -102,25 +107,21 @@ export default function ManagementBookingsPage() {
     >
       <div className="mb-4 flex flex-wrap gap-3"><button type="button" onClick={retry} className="rounded-lg border border-[#087775] px-4 py-2 text-sm font-semibold text-[#087775]">Cập nhật booking</button>
         {user?.role === "ADMIN" && <Link to={routes.managementRefunds} className="rounded-lg bg-[#087775] px-4 py-2 text-sm font-bold text-white">Xét duyệt hoàn cọc</Link>}</div>
-      {loading && <p role="status" className="text-[14px] text-slate-500">Đang tải danh sách booking...</p>}
+      {loading && (
+        <ManagementLoadingState
+          variant="inline"
+          message="Đang tải danh sách booking..."
+        />
+      )}
       {!loading && error && (
-        <div role="alert" className="rounded-2xl bg-white p-6 text-center shadow-[0_3px_18px_rgba(16,65,67,.05)]">
-          <p className="text-[14px] text-slate-700">{error}</p>
-          <button
-            type="button"
-            onClick={retry}
-            className="mt-4 rounded-lg bg-[#087775] px-4 py-2 text-[13px] font-bold text-white"
-          >
-            Thử lại
-          </button>
-        </div>
+        <ManagementErrorState message={error} onRetry={retry} />
       )}
       {!loading && !error && (
         <ManagementDataTable
           headers={["Booking", "Khách hàng", "Khu trọ / Phòng", "Tiền cọc", "Giữ phòng đến", "Trạng thái", "Thao tác"]}
         >
           {bookings.length === 0 ? (
-            <p className="px-5 py-8 text-center text-[13px] text-slate-500">Chưa có booking nào.</p>
+            <ManagementEmptyState icon="calendar" message="Chưa có booking nào." />
           ) : (
             <div className="divide-y divide-slate-100">
               {bookings.map((booking) => {

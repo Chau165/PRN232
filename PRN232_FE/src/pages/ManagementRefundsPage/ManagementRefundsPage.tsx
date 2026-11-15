@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react"
 import { useAuth } from "@/auth/AuthContext"
 import ManagementPage from "@/components/management/ManagementPage"
+import {
+  ManagementEmptyState,
+  ManagementErrorState,
+  ManagementLoadingState,
+} from "@/components/management/ManagementState"
 import StatusBadge from "@/components/customer/StatusBadge"
 import {
   getRefundReview,
@@ -114,21 +119,27 @@ export default function ManagementRefundsPage() {
           Tải lại danh sách
         </button>
       </div>
-      {current.loading && <p role="status">Đang tải đơn hoàn cọc...</p>}
+      {current.loading && (
+        <ManagementLoadingState
+          variant="inline"
+          message="Đang tải đơn hoàn cọc..."
+        />
+      )}
       {current.error && (
-        <p
-          role="alert"
-          className="rounded-xl bg-rose-50 p-4 text-sm text-rose-700"
-        >
-          {current.error}
-        </p>
+        <ManagementErrorState
+          message={current.error}
+          onRetry={() => setRevision((value) => value + 1)}
+        />
       )}
       {!current.loading && !current.error && (
         <>
           {current.rows.length === 0 && (
-            <p className="rounded-xl bg-white p-6 text-sm text-slate-500">
-              Không có đơn phù hợp.
-            </p>
+            <div className="rounded-2xl border border-slate-100 bg-white shadow-[0_3px_18px_rgba(16,65,67,.05)]">
+              <ManagementEmptyState
+                icon="receipt"
+                message="Không có đơn phù hợp."
+              />
+            </div>
           )}
           <div className="space-y-3">
             {current.rows.map((item) => {

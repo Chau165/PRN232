@@ -6,6 +6,14 @@ public static class HandoverKinds
     public const string MoveOut = "MoveOut";
 }
 
+// Rebuild 4.2: đề nghị chuyển người đứng tên.
+public static class ContractTransferStatuses
+{
+    public const string Pending = "Pending";
+    public const string Completed = "Completed";
+    public const string Cancelled = "Cancelled";
+}
+
 // Rebuild 3.5b/3.5c: loại file minh chứng của hợp đồng.
 public static class ContractEvidenceKinds
 {

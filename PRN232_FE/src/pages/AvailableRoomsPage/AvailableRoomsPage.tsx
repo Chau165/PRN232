@@ -113,7 +113,7 @@ export default function AvailableRoomsPage() {
   const roomPage =
     roomsResource.status === "success" ? roomsResource.data : null
   const address = property
-    ? formatAddress(property.addressText, property.ward, property.district, property.city)
+    ? formatAddress(property.addressText, property.ward, property.city)
     : ""
   const pageCount = roomPage
     ? Math.ceil(roomPage.totalCount / roomPage.pageSize)

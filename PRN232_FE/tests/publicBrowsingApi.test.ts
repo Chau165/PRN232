@@ -177,6 +177,7 @@ describe("public browsing API client", () => {
       client.listPropertiesByArea({
         city: " TP. Hồ Chí Minh ",
         district: " Quận Gò Vấp ",
+        ward: " Phường Sáu ",
       }),
     ).resolves.toEqual(properties)
 
@@ -184,9 +185,9 @@ describe("public browsing API client", () => {
     const url = new URL(String(input), "http://localhost")
     expect(url.pathname).toBe("/api/public/properties/by-area")
     expect(url.searchParams.get("city")).toBe("TP. Hồ Chí Minh")
-    expect(url.searchParams.get("district")).toBe("Quận Gò Vấp")
+    expect(url.searchParams.has("district")).toBe(false)
     expect(url.searchParams.has("radius")).toBe(false)
-    expect(url.searchParams.has("ward")).toBe(false)
+    expect(url.searchParams.get("ward")).toBe("Phường Sáu")
     expect(new Headers(init?.headers).has("Authorization")).toBe(false)
     expect(init?.credentials).toBe("omit")
   })
@@ -195,7 +196,7 @@ describe("public browsing API client", () => {
     const fetchMock = createFetchMock([])
     const client = createPublicApiClient("/api", fetchMock)
 
-    await expect(client.listPropertiesByArea({ city: "  ", district: "" }))
+    await expect(client.listPropertiesByArea({ city: "  ", ward: "" }))
       .rejects.toMatchObject({ kind: "validation" })
     expect(fetchMock).not.toHaveBeenCalled()
   })

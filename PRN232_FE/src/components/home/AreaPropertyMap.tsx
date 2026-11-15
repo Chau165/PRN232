@@ -209,7 +209,7 @@ export default function AreaPropertyMap({
                 <div className="space-y-2 p-1">
                   <h3 className="font-bold text-slate-900">{property.propertyName}</h3>
                   <p className="text-xs leading-5 text-slate-600">
-                    {formatAddress(property.addressText, property.ward, property.district, property.city)}
+                    {formatAddress(property.addressText, property.ward, property.city)}
                   </p>
                   <p className="text-xs text-slate-600">
                     Còn {property.availableRoomCount} phòng đang cho thuê

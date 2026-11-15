@@ -9,12 +9,11 @@ export interface AreaCoordinates {
 }
 
 export interface ResolvedArea {
-  district?: string
   ward?: string
   city?: string
 }
 
-export type MatchedAreaLevel = "district" | "ward" | "city"
+export type MatchedAreaLevel = "ward" | "city"
 
 export type AreaDiscoveryStep = "location" | "geocode" | "reverse-geocode" | "properties"
 export type AreaDiscoveryErrorKind = "location-unavailable"
@@ -95,12 +94,6 @@ function areaFromReverseGeocode(response: unknown): ResolvedArea {
   }
 
   const area: ResolvedArea = {
-    district: readLocationName(address, [
-      "city_district",
-      "district",
-      "county",
-      "state_district",
-    ]),
     ward: readLocationName(address, [
       "ward",
       "suburb",
@@ -117,7 +110,7 @@ function areaFromReverseGeocode(response: unknown): ResolvedArea {
     ]),
   }
 
-  if (!area.district && !area.ward && !area.city) {
+  if (!area.ward && !area.city) {
     throw new AreaDiscoveryError(
       "reverse-geocode",
       "Không xác định được khu vực hiện tại từ vị trí.",
@@ -261,15 +254,15 @@ function enteredAdministrativeArea(location: string): ResolvedArea | null {
       .replace(/đ/gi, "d").toLowerCase()
       .replace(/\./g, " ").replace(/\s+/g, " ")
       .replace(/^khu vuc /, "").trim()
+    if (/^(quan|huyen|district)\s+\S/.test(normalized)) continue
     let level: keyof ResolvedArea
-    if (/^(quan|huyen|district)\s+\S/.test(normalized)) level = "district"
-    else if (/^(phuong|xa|ward|commune)\s+\S/.test(normalized)) level = "ward"
+    if (/^(phuong|xa|ward|commune)\s+\S/.test(normalized)) level = "ward"
     else if (/^(thanh pho|tinh|tp|city|province)\s+\S/.test(normalized)) level = "city"
     else return null // Street addresses and other free text still use geocoding.
     if (area[level]) return null
     area[level] = part
   }
-  return area
+  return area.ward || area.city ? area : null
 }
 
 export async function discoverEnteredArea(
@@ -292,8 +285,7 @@ export async function discoverEnteredArea(
     )
   }
 
-  // Explicit administrative names are authoritative. Photon may resolve an old
-  // district name to an unrelated street in another province.
+  // Explicit administrative names (ward/city) are authoritative when geocoding is flaky or unavailable.
   const enteredArea = enteredAdministrativeArea(location.trim())
   let enteredProperties: PublicPropertyAreaCard[] | undefined
   if (enteredArea) {
@@ -314,7 +306,7 @@ export async function discoverEnteredArea(
       onLocation?.(coordinates)
       return {
         coordinates, area: enteredArea,
-        matchedLevel: enteredArea.district ? "district" : enteredArea.ward ? "ward" : "city",
+        matchedLevel: enteredArea.ward ? "ward" : "city",
         properties: enteredProperties, locationLabel: location.trim(),
       }
     }
@@ -360,7 +352,7 @@ export async function discoverEnteredArea(
     if (!feature) {
       throw new AreaDiscoveryError(
         "geocode",
-        "Không tìm thấy địa điểm. Hãy nhập địa chỉ cụ thể hơn, kèm quận hoặc thành phố.",
+        "Không tìm thấy địa điểm. Hãy nhập địa chỉ cụ thể hơn, kèm phường hoặc thành phố.",
       )
     }
 
@@ -398,7 +390,6 @@ export async function discoverEnteredArea(
           [
             readLocationName(properties, ["name", "street"]),
             area.ward,
-            area.district,
             area.city,
           ].filter(Boolean),
         ),
@@ -423,16 +414,14 @@ export async function discoverEnteredArea(
 
   if (enteredArea) {
     area = enteredArea
-  } else if (!area.district && !area.ward && !area.city) {
+  } else if (!area.ward && !area.city) {
     area = await reverseGeocode(coordinates, fetchImplementation, signal)
   }
 
-  const matchedLevel = area.district ? "district" : area.ward ? "ward" : "city"
+  const matchedLevel: MatchedAreaLevel = area.ward ? "ward" : "city"
 
   const query: PublicPropertyAreaQuery = {
     ...(area.city ? { city: area.city } : {}),
-
-    ...(matchedLevel === "district" ? { district: area.district } : {}),
 
     ...(matchedLevel === "ward" ? { ward: area.ward } : {}),
   }
@@ -459,20 +448,17 @@ export async function discoverCurrentArea({
   onProgress?.("reverse-geocode")
   const area = await reverseGeocode(coordinates, fetchImplementation, signal)
 
-  const initialLevel: MatchedAreaLevel | null = area.district
-    ? "district"
-    : area.ward
-      ? "ward"
-      : null
+  const initialLevel: MatchedAreaLevel | null = area.ward ? "ward" : null
   if (!initialLevel) {
     throw new AreaDiscoveryError(
       "area-not-specific",
       "Chỉ xác định được thành phố, chưa đủ thông tin để lọc khu trọ quanh bạn. Hãy thử lại sau.",
     )
   }
-  const initialQuery: PublicPropertyAreaQuery = initialLevel === "district"
-    ? { district: area.district!, ...(area.city ? { city: area.city } : {}) }
-    : { ward: area.ward!, ...(area.city ? { city: area.city } : {}) }
+  const initialQuery: PublicPropertyAreaQuery = {
+    ward: area.ward!,
+    ...(area.city ? { city: area.city } : {}),
+  }
 
   onProgress?.("properties")
   const areaProperties = await loadProperties(

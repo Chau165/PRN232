@@ -130,6 +130,7 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<DepositSettlements> DepositSettlements => Set<DepositSettlements>();
     public DbSet<AuditLogs> AuditLogs => Set<AuditLogs>();
     public DbSet<ContractOccupants> ContractOccupants => Set<ContractOccupants>();
+    public DbSet<ContractTransfers> ContractTransfers => Set<ContractTransfers>();
     public DbSet<Equipments> Equipments
     {
         get
@@ -354,6 +355,37 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
             entity.ToTable("HandoverRecords", table => table.HasCheckConstraint(
                 "CK_HandoverRecords_Kind", "\"Kind\" IN ('MoveIn', 'MoveOut')"));
         });
+        // Rebuild 4.2: chuyển người đứng tên. Mỗi hợp đồng cũ chỉ sinh ra một hợp đồng mới và chỉ có một
+        // đề nghị đang chờ tại một thời điểm.
+        modelBuilder.Entity<Contracts>()
+            .HasOne(contract => contract.TransferredFromContract).WithMany()
+            .HasForeignKey(contract => contract.TransferredFromContractId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Contracts>()
+            .HasIndex(contract => contract.TransferredFromContractId).IsUnique()
+            .HasDatabaseName("UX_Contracts_TransferredFromContractId")
+            .HasFilter("\"TransferredFromContractId\" IS NOT NULL");
+        modelBuilder.Entity<ContractTransfers>(entity =>
+        {
+            entity.HasKey(transfer => transfer.ContractTransferId);
+            entity.Property(transfer => transfer.Status).HasMaxLength(20);
+            entity.Property(transfer => transfer.CancelReason).HasMaxLength(500);
+            entity.HasIndex(transfer => transfer.FromContractId).IsUnique()
+                .HasDatabaseName("UX_ContractTransfers_PendingPerContract")
+                .HasFilter("\"Status\" = 'Pending'");
+            entity.HasIndex(transfer => transfer.NewHolderId);
+            entity.HasOne(transfer => transfer.FromContract).WithMany()
+                .HasForeignKey(transfer => transfer.FromContractId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(transfer => transfer.NewContract).WithMany()
+                .HasForeignKey(transfer => transfer.NewContractId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(transfer => transfer.NewHolder).WithMany()
+                .HasForeignKey(transfer => transfer.NewHolderId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(transfer => transfer.RequestedBy).WithMany()
+                .HasForeignKey(transfer => transfer.RequestedById).OnDelete(DeleteBehavior.Restrict);
+            // "Ngày 1 của tháng" do validator kiểm tra (CHECK cần hàm ngày riêng của PostgreSQL, SQLite test không chạy được).
+            entity.ToTable("ContractTransfers", table => table.HasCheckConstraint(
+                "CK_ContractTransfers_Status", "\"Status\" IN ('Pending', 'Completed', 'Cancelled')"));
+        });
+
         // Rebuild 4.1: người ở cùng. CCCD mã hóa bằng cùng khóa với IdentityDocuments.CCCDNumber.
         modelBuilder.Entity<ContractOccupants>(entity =>
         {

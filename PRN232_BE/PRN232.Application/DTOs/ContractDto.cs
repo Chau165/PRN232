@@ -37,7 +37,10 @@ public record ContractDto(
     DateOnly? PlannedMoveOutDate = null,
     DateTime? MoveOutNoticeAtUtc = null,
     int? MoveOutNoticeDays = null,
-    bool MoveOutForfeitsDeposit = false)
+    bool MoveOutForfeitsDeposit = false,
+    // Rebuild 4.2: hợp đồng này nhận chuyển từ / đã chuyển sang hợp đồng nào (chuyển người đứng tên).
+    int? TransferredFromContractId = null,
+    int? TransferredToContractId = null)
 {
     public bool HasMeterHandover => InitialElectricReading.HasValue &&
         InitialWaterReading.HasValue && MeterHandoverDate.HasValue;

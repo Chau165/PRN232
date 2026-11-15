@@ -3,6 +3,11 @@ import { ApiError } from "@/api/apiClient"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
 import ManagementDetailDrawer from "@/components/management/ManagementDetailDrawer"
 import ManagementPage from "@/components/management/ManagementPage"
+import {
+  ManagementEmptyState,
+  ManagementErrorState,
+  ManagementLoadingState,
+} from "@/components/management/ManagementState"
 import CreateInvoiceModal from "@/components/management/CreateInvoiceModal"
 import InvoiceDetailDrawer from "@/components/customer/InvoiceDetailDrawer"
 import StatusBadge from "@/components/customer/StatusBadge"
@@ -140,19 +145,22 @@ export default function ManagementInvoicesPage() {
           </button>
         )}
       </div>
-      {loading && <p role="status" className="text-[14px] text-slate-500">Đang tải dữ liệu hóa đơn...</p>}
+      {loading && (
+        <ManagementLoadingState
+          variant="inline"
+          message="Đang tải dữ liệu hóa đơn..."
+        />
+      )}
       {!loading && error && (
-        <div role="alert" className="rounded-2xl bg-white p-6 text-center shadow-[0_3px_18px_rgba(16,65,67,.05)]">
-          <p className="text-[14px] text-slate-700">{error}</p>
-          <button type="button" onClick={() => setReload((value) => value + 1)} className="mt-4 rounded-lg bg-[#087775] px-4 py-2 text-[13px] font-bold text-white">
-            Thử lại
-          </button>
-        </div>
+        <ManagementErrorState
+          message={error}
+          onRetry={() => setReload((value) => value + 1)}
+        />
       )}
       {!loading && !error && section === "invoices" && (
         <ManagementDataTable headers={["Hóa đơn", "Khu trọ / Phòng", "Khách thuê", "Kỳ", "Tổng tiền", "Trạng thái", "Thao tác"]}>
           {invoices.length === 0 ? (
-            <p className="px-5 py-8 text-center text-[13px] text-slate-500">Chưa có hóa đơn nào.</p>
+            <ManagementEmptyState icon="receipt" message="Chưa có hóa đơn nào." />
           ) : (
             <div className="divide-y divide-slate-100">
               {invoices.map((invoice) => {
@@ -221,7 +229,10 @@ export default function ManagementInvoicesPage() {
               })}
             </div>
           ) : (
-            <div className="px-5 py-12 text-center text-[13px] text-slate-500">Chưa có khiếu nại hóa đơn nào.</div>
+            <ManagementEmptyState
+              icon="receipt"
+              message="Chưa có khiếu nại hóa đơn nào."
+            />
           )}
         </ManagementDataTable>
       )}

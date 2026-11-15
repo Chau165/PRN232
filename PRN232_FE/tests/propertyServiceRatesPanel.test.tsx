@@ -58,7 +58,35 @@ describe("PropertyServiceRatesPanel", () => {
     render(<PropertyServiceRatesPanel propertyId={5} />)
     const select = await screen.findByLabelText("Cách tính tiền")
     const labels = Array.from((select as HTMLSelectElement).options).map((option) => option.textContent)
-    expect(labels).toEqual(["Chọn cách tính", "Theo số điện (kWh)", "Theo số nước (m³)", "Cố định mỗi phòng/tháng"])
+    expect(labels).toEqual([
+      "Chọn cách tính",
+      "Theo số điện (kWh)",
+      "Theo số nước (m³)",
+      "Cố định mỗi phòng/tháng",
+      "Theo đầu người/tháng",
+    ])
+  })
+
+  it("lets Admin select person_month billing with occupant note (C22)", async () => {
+    mocks.create.mockResolvedValueOnce(
+      rate({ rateId: 4, serviceId: 2, serviceName: "Rác", price: 50000, unitCode: "person_month", billingBasis: "occupant" }),
+    )
+    render(<PropertyServiceRatesPanel propertyId={5} />)
+    await screen.findByRole("option", { name: "Nước" })
+
+    fireEvent.change(screen.getByLabelText("Dịch vụ"), { target: { value: "2" } })
+    fireEvent.change(screen.getByLabelText("Cách tính tiền"), { target: { value: "person" } })
+    expect(
+      screen.getByText("Tính theo số người trong danh sách người ở cùng, người vào/ra giữa tháng tính theo số ngày."),
+    ).toBeTruthy()
+    fireEvent.change(screen.getByLabelText("Đơn giá (VND)"), { target: { value: "50000" } })
+    fireEvent.change(screen.getByLabelText("Áp dụng từ tháng"), { target: { value: "2026-12" } })
+    fireEvent.click(screen.getByRole("button", { name: "Thêm mức giá" }))
+
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith("token", 5, {
+      serviceId: 2, price: 50000, unitCode: "person_month", billingBasis: "occupant", effectiveFrom: "2026-12-01", effectiveTo: null,
+    }))
+    expect(await screen.findByText(/50\.000\s₫\/người\/tháng/)).toBeTruthy()
   })
 
   it("explains an overlapping period instead of a raw error", async () => {

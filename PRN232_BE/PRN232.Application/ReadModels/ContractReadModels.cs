@@ -45,4 +45,6 @@ public sealed record ContractReadModel(
     bool HasInvoices = false,
     decimal SecurityDepositAmount = 0m,
     DateOnly? PlannedMoveOutDate = null,
-    DateTime? MoveOutNoticeAtUtc = null);
+    DateTime? MoveOutNoticeAtUtc = null,
+    int? TransferredFromContractId = null,
+    int? TransferredToContractId = null);

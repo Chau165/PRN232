@@ -14,9 +14,12 @@ public class UserService : IUserService
     private readonly IUserRepository _repository;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ILogger<UserService> _logger;
+    private readonly IAuditTrail? _audit;
 
-    public UserService(IUserRepository repository, IPasswordHasher passwordHasher, ILogger<UserService>? logger = null)
+    public UserService(IUserRepository repository, IPasswordHasher passwordHasher, ILogger<UserService>? logger = null,
+        IAuditTrail? audit = null)
     {
+        _audit = audit;
         _repository = repository;
         _passwordHasher = passwordHasher;
         _logger = logger ?? NullLogger<UserService>.Instance;
@@ -90,6 +93,7 @@ public class UserService : IUserService
         await _repository.SaveChangesAsync();
         _logger.LogInformation("User {UserId} role changed from {PreviousRoleId} to {RoleId} by admin {AdminId}.",
             id, previousRoleId, dto.RoleId, requestingUserId);
+        _audit?.Record(new { RoleId = previousRoleId }, new { dto.RoleId });
         var updated = await _repository.GetByIdAsync(id);
         if (updated is null)
         {
@@ -110,8 +114,10 @@ public class UserService : IUserService
             throw new UserCannotModifySelfException("khoá/mở khoá");
         }
 
+        var wasActive = entity.IsActive;
         entity.IsActive = dto.IsActive;
         await _repository.SaveChangesAsync();
+        _audit?.Record(new { IsActive = wasActive }, new { dto.IsActive });
         _logger.LogInformation("User {UserId} {Action} by admin {AdminId}.",
             id, dto.IsActive ? "activated" : "deactivated", requestingUserId);
         var updated = await _repository.GetByIdAsync(id);

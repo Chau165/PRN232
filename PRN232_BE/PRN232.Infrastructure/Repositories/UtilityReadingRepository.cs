@@ -56,6 +56,22 @@ public class UtilityReadingRepository : IUtilityReadingRepository
             .FirstOrDefaultAsync();
     }
 
+    // Rebuild 4.4: lượng dùng của tối đa `count` tháng gần nhất trước `beforeMonth` (mới nhất trước).
+    public async Task<List<MonthUsageReadModel>> GetRecentUsageAsync(int contractId, DateOnly beforeMonth, int count)
+    {
+        var readings = await _context.UtilityReadings
+            .AsNoTracking()
+            .Where(reading => reading.ContractId == contractId && reading.ReadingMonth < beforeMonth)
+            .OrderByDescending(reading => reading.ReadingMonth)
+            .Take(count)
+            .Select(reading => new { reading.ElectricStart, reading.ElectricEnd, reading.WaterStart, reading.WaterEnd })
+            .ToListAsync();
+        return readings
+            .Select(reading => new MonthUsageReadModel(
+                reading.ElectricEnd - reading.ElectricStart, reading.WaterEnd - reading.WaterStart))
+            .ToList();
+    }
+
     public async Task<bool> AddIfLatestAsync(UtilityReadings reading, int managerId = 0)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
