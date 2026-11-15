@@ -556,12 +556,12 @@ public class BookingServiceTests
         public Task<ViewingBookingReadModel?> GetViewingForBookingAsync(int viewingId, int customerId) =>
             Task.FromResult<ViewingBookingReadModel?>(null);
 
-        public Task<bool> AddIfRoomRentableAsync(Bookings booking, Func<int, Notifications> notificationFactory, DateTimeOffset asOfUtc)
+        public Task<BookingAddResult> AddIfRoomRentableAsync(Bookings booking, Func<int, Notifications> notificationFactory, DateTimeOffset asOfUtc)
         {
             LastAsOfUtc = asOfUtc;
             if (!RoomIsRentable)
             {
-                return Task.FromResult(false);
+                return Task.FromResult(BookingAddResult.RoomUnavailable);
             }
 
             booking.BookingId = Added.Count + 1;
@@ -569,7 +569,7 @@ public class BookingServiceTests
             Notifications.Add(notificationFactory(booking.BookingId));
             Booking = new BookingDto(booking.BookingId, booking.RoomId, "A-101", 1, "Sunrise", booking.CustomerId,
                 "Customer", booking.DepositAmount, booking.Status, booking.ExpiryDate, "0900000000", null);
-            return Task.FromResult(true);
+            return Task.FromResult(BookingAddResult.Added);
         }
 
         public Task<List<BookingReadModel>> GetAllAsync(int? customerId, int? ownerId, string? status)

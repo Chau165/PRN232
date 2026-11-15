@@ -7,11 +7,14 @@ public record IdentityDocumentDto(
     string CCCDNumber,
     string Status,
     int? ReviewedBy,
-    string? ReviewedByName);
+    string? ReviewedByName,
+    // V3: the rejection reason, visible to the customer and to reviewers.
+    string? ReviewNote = null);
 
 // Customer tự nộp số CCCD của mình — CustomerId lấy từ claim "sub", không tin client
 // khai báo CustomerId của người khác.
 public record SubmitIdentityDocumentDto(string CCCDNumber);
 
 // Admin/Manager duyệt: Status chỉ nhận "Approved" hoặc "Rejected".
-public record ReviewIdentityDocumentDto(string Status);
+// Note (V3): bắt buộc khi Rejected (tối đa 500 ký tự), bỏ qua khi Approved.
+public record ReviewIdentityDocumentDto(string Status, string? Note = null);

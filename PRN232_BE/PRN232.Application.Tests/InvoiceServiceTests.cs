@@ -507,7 +507,7 @@ public class InvoiceServiceTests
             return Task.FromResult(true);
         }
 
-        public Task<List<InvoiceReadModel>> GetAllAsync(int? customerId, int? ownerId, int? contractId, string? status)
+        public Task<List<InvoiceReadModel>> GetAllAsync(int? customerId, int? ownerId, int? contractId, string? status, DateOnly today)
         {
             LastQuery = (customerId, ownerId, contractId, status);
             return Task.FromResult(new List<InvoiceReadModel>());

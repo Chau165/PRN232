@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using FluentValidation;
 using PRN232.Application.DTOs;
+using PRN232.Application.States;
 
 namespace PRN232.Application.Validation;
 
@@ -32,6 +33,19 @@ public static partial class AccountRules
 
     [GeneratedRegex(@"\d")]
     private static partial Regex Digit();
+
+    // CCCD (căn cước công dân): đúng 12 chữ số, chỉ bỏ khoảng trắng hai đầu.
+    [GeneratedRegex("^[0-9]{12}$")]
+    private static partial Regex CccdPattern();
+
+    public const string CccdFormatMessage = "Số CCCD phải gồm đúng 12 chữ số.";
+
+    public static bool IsValidCccd(string? cccdNumber) =>
+        cccdNumber is not null && CccdPattern().IsMatch(cccdNumber.Trim());
+
+    // Used for the customer's own CCCD (IdentityDocuments) and for contract occupants.
+    public static IRuleBuilderOptions<T, string> ValidCccd<T>(this IRuleBuilder<T, string> rule) =>
+        rule.Must(IsValidCccd).WithMessage(CccdFormatMessage);
 
     public static string NormalizePhone(string? phone) => PhoneSeparators().Replace(phone ?? string.Empty, string.Empty);
 
@@ -111,12 +125,45 @@ public sealed class ChangePasswordDtoValidator : AbstractValidator<ChangePasswor
     }
 }
 
+public sealed class SubmitIdentityDocumentDtoValidator : AbstractValidator<SubmitIdentityDocumentDto>
+{
+    public SubmitIdentityDocumentDtoValidator()
+    {
+        RuleFor(dto => dto.CCCDNumber)
+            .Must(value => !string.IsNullOrWhiteSpace(value))
+            .WithMessage("Số CCCD không được để trống.")
+            .DependentRules(() => RuleFor(dto => dto.CCCDNumber).ValidCccd());
+    }
+}
+
+// V3: a rejection needs a reason the customer can read.
+public static class IdentityDocumentReviewRules
+{
+    public const int NoteMaxLength = 500;
+}
+
+public sealed class ReviewIdentityDocumentDtoValidator : AbstractValidator<ReviewIdentityDocumentDto>
+{
+    public ReviewIdentityDocumentDtoValidator()
+    {
+        RuleFor(dto => dto.Note)
+            .Must(note => !string.IsNullOrWhiteSpace(note))
+            .When(dto => dto.Status == IdentityDocumentStatuses.Rejected)
+            .WithMessage("Vui lòng nhập lý do từ chối hồ sơ.");
+        RuleFor(dto => dto.Note)
+            .Must(note => note is null || note.Trim().Length <= IdentityDocumentReviewRules.NoteMaxLength)
+            .WithMessage($"Lý do tối đa {IdentityDocumentReviewRules.NoteMaxLength} ký tự.");
+    }
+}
+
 public static class AccountValidation
 {
     public static readonly RegisterDtoValidator Register = new();
     public static readonly CreateUserDtoValidator CreateUser = new();
     public static readonly UpdateProfileDtoValidator UpdateProfile = new();
     public static readonly ChangePasswordDtoValidator ChangePassword = new();
+    public static readonly SubmitIdentityDocumentDtoValidator SubmitIdentityDocument = new();
+    public static readonly ReviewIdentityDocumentDtoValidator ReviewIdentityDocument = new();
 
     // Trả về câu báo lỗi đầu tiên (theo thứ tự khai báo rule) hoặc null nếu hợp lệ.
     public static string? FirstError<T>(IValidator<T> validator, T dto)

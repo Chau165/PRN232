@@ -900,6 +900,10 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<int>("CustomerId")
                         .HasColumnType("integer");
 
+                    b.Property<string>("ReviewNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<int?>("ReviewedBy")
                         .HasColumnType("integer");
 

@@ -94,6 +94,12 @@ public class BookingsController : ControllerBase
         {
             return Conflict(new ProblemDetails { Title = "Room unavailable", Detail = exception.Message });
         }
+        catch (BookingCustomerHasPendingBookingException exception)
+        {
+            var problem = new ProblemDetails { Title = "Pending booking exists", Detail = exception.Message };
+            problem.Extensions["pendingBookingId"] = exception.PendingBookingId;
+            return Conflict(problem);
+        }
         catch (BookingOccupancyExceededException exception)
         {
             return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>

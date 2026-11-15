@@ -1,3 +1,4 @@
+using PRN232.Application.Validation;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -583,6 +584,9 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
             .Property(notification => notification.Body)
             .HasColumnType("text");
         modelBuilder.Entity<IdentityDocuments>().HasKey(x => x.IdentityDocumentId);
+        modelBuilder.Entity<IdentityDocuments>()
+            .Property(document => document.ReviewNote)
+            .HasMaxLength(IdentityDocumentReviewRules.NoteMaxLength);
         modelBuilder.Entity<IdentityDocuments>()
             .Property(document => document.CCCDNumber)
             .HasConversion(CccdProtection.CreateConverter(_dataProtectionProvider));

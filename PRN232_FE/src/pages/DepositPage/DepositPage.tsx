@@ -23,6 +23,7 @@ import {
   formatMoveInHoldEndDate,
   getVietnamIsoDateOffset,
   isBookingExpired,
+  pendingBookingIdFromError,
 } from "@/utils/bookingDisplay"
 import { publicApiErrorMessage } from "@/utils/publicApiDisplay"
 import { formatVnd } from "@/utils/publicFormatting"
@@ -61,6 +62,7 @@ function HoldRoomStep({ roomId, viewingId }: { roomId: number; viewingId?: numbe
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<"moveInDate" | "occupantCount", string>>>({})
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const [existingPendingBookingId, setExistingPendingBookingId] = useState<number | null>(null)
 
   if (resource.status === "loading") return <p role="status" className="text-sm text-slate-500">Đang tải thông tin phòng...</p>
   if (resource.status === "error") {
@@ -94,6 +96,7 @@ function HoldRoomStep({ roomId, viewingId }: { roomId: number; viewingId?: numbe
     setPending(true)
     setFieldErrors({})
     setError(null)
+    setExistingPendingBookingId(null)
     try {
       const booking = await createBooking(accessToken, {
         roomId: room.roomId,
@@ -111,6 +114,14 @@ function HoldRoomStep({ roomId, viewingId }: { roomId: number; viewingId?: numbe
         )
         setFieldErrors(mapped)
         setError(generalError || null)
+        setPending(false)
+        return
+      }
+      const pendingBookingId = pendingBookingIdFromError(holdError)
+      if (pendingBookingId !== null && holdError instanceof Error) {
+        // B4: one unpaid booking at a time; show the backend message and a link to that booking.
+        setExistingPendingBookingId(pendingBookingId)
+        setError(holdError.message)
         setPending(false)
         return
       }
@@ -190,6 +201,14 @@ function HoldRoomStep({ roomId, viewingId }: { roomId: number; viewingId?: numbe
         100% (liên hệ trực tiếp quản lý để nhận lại tiền).
       </p>
       {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+      {existingPendingBookingId !== null && (
+        <Link
+          to={`${routes.deposit}?bookingId=${existingPendingBookingId}`}
+          className="inline-block text-sm font-semibold text-[#087775] hover:underline"
+        >
+          Xem đặt phòng đang chờ thanh toán
+        </Link>
+      )}
       <button
         type="button"
         onClick={holdRoom}
