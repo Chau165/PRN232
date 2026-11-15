@@ -55,7 +55,8 @@ public class PropertyServiceRatesApiTests
         Assert.Equal(("vehicle_month", "vehicle"), (defaults["Parking"].DefaultUnitCode, defaults["Parking"].DefaultBillingBasis));
         Assert.Equal(("room_month", "fixed_room"), (defaults["Cleaning"].DefaultUnitCode, defaults["Cleaning"].DefaultBillingBasis));
         Assert.Equal(("room_month", "fixed_room"), (defaults["Security"].DefaultUnitCode, defaults["Security"].DefaultBillingBasis));
-        Assert.Equal(("person_month", "occupant"), (defaults["Additional Occupant"].DefaultUnitCode, defaults["Additional Occupant"].DefaultBillingBasis));
+        Assert.Equal(("person_month", "additional_occupant"),
+            (defaults["Additional Occupant"].DefaultUnitCode, defaults["Additional Occupant"].DefaultBillingBasis));
     }
 
     [Theory]
@@ -177,8 +178,14 @@ public class PropertyServiceRatesApiTests
         }
         await LoginAsync(client, "admin@example.test");
 
-        var additionalOccupantWithLegacyBasis = await client.PostAsJsonAsync("/api/properties/1/service-rates",
-            NewRate(8) with { UnitCode = "person_month", BillingBasis = "additional_occupant" });
+        var catalog = await client.GetFromJsonAsync<List<ServiceDto>>("/api/services");
+        var additionalOccupantDefault = Assert.Single(catalog!, service => service.ServiceId == 8);
+        var additionalOccupantWithDefault = await client.PostAsJsonAsync("/api/properties/1/service-rates",
+            NewRate(8) with
+            {
+                UnitCode = additionalOccupantDefault.DefaultUnitCode!,
+                BillingBasis = additionalOccupantDefault.DefaultBillingBasis!
+            });
         var garbageCollection = await client.PostAsJsonAsync("/api/properties/1/service-rates",
             NewRate(4) with { UnitCode = "room_month", BillingBasis = "fixed_room" });
         var vehicle = await client.PostAsJsonAsync("/api/properties/1/service-rates",
@@ -187,16 +194,17 @@ public class PropertyServiceRatesApiTests
             NewRate(6) with { UnitCode = "room_month", BillingBasis = "fixed_room" });
         var security = await client.PostAsJsonAsync("/api/properties/1/service-rates",
             NewRate(7) with { UnitCode = "room_month", BillingBasis = "fixed_room" });
-        var additionalOccupant = await client.PostAsJsonAsync("/api/properties/1/service-rates",
+        var additionalOccupantWithLegacyBasis = await client.PostAsJsonAsync("/api/properties/1/service-rates",
             NewRate(8) with { UnitCode = "person_month", BillingBasis = "occupant" });
 
-        Assert.Equal(HttpStatusCode.BadRequest, additionalOccupantWithLegacyBasis.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, additionalOccupantWithDefault.StatusCode);
         Assert.Equal(HttpStatusCode.Created, garbageCollection.StatusCode);
         Assert.Equal(HttpStatusCode.Created, vehicle.StatusCode);
         Assert.Equal(HttpStatusCode.Created, cleaning.StatusCode);
         Assert.Equal(HttpStatusCode.Created, security.StatusCode);
-        Assert.Equal(HttpStatusCode.Created, additionalOccupant.StatusCode);
-        Assert.Equal("occupant", (await additionalOccupant.Content.ReadFromJsonAsync<PropertyServiceRateDto>())!.BillingBasis);
+        Assert.Equal(HttpStatusCode.BadRequest, additionalOccupantWithLegacyBasis.StatusCode);
+        Assert.Equal("additional_occupant",
+            (await additionalOccupantWithDefault.Content.ReadFromJsonAsync<PropertyServiceRateDto>())!.BillingBasis);
     }
 
     [Fact]

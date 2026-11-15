@@ -14,7 +14,7 @@ public static class ServiceRateBillingDefaults
             ["Parking"] = new("vehicle_month", "vehicle"),
             ["Cleaning"] = new("room_month", "fixed_room"),
             ["Security"] = new("room_month", "fixed_room"),
-            ["Additional Occupant"] = new("person_month", "occupant")
+            ["Additional Occupant"] = new("person_month", "additional_occupant")
         };
 
     public static ServiceRateBillingDefault? ForServiceName(string? serviceName)

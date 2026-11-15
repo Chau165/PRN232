@@ -62,15 +62,24 @@ describe("PropertyServiceRatesPanel", () => {
 
   it("submits the backend default for Additional Occupant without a billing selector", async () => {
     mocks.create.mockResolvedValueOnce(
-      rate({ rateId: 4, serviceId: 8, serviceName: "Additional Occupant", price: 50000, unitCode: "person_month", billingBasis: "occupant" }),
+      rate({
+        rateId: 4,
+        serviceId: 8,
+        serviceName: "Additional Occupant",
+        price: 50000,
+        unitCode: "person_month",
+        billingBasis: "additional_occupant",
+      }),
     )
-    mocks.catalog.mockResolvedValueOnce([{
-      serviceId: 8,
-      name: "Additional Occupant",
-      price: 0,
-      defaultUnitCode: "person_month",
-      defaultBillingBasis: "occupant",
-    }])
+    mocks.catalog.mockResolvedValueOnce([
+      {
+        serviceId: 8,
+        name: "Additional Occupant",
+        price: 0,
+        defaultUnitCode: "person_month",
+        defaultBillingBasis: "additional_occupant",
+      },
+    ])
     render(<PropertyServiceRatesPanel propertyId={5} />)
     await screen.findByRole("option", { name: "Additional Occupant" })
 
@@ -79,9 +88,16 @@ describe("PropertyServiceRatesPanel", () => {
     fireEvent.change(screen.getByLabelText("Áp dụng từ tháng"), { target: { value: "2026-12" } })
     fireEvent.click(screen.getByRole("button", { name: "Thêm mức giá" }))
 
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith("token", 5, {
-      serviceId: 8, price: 50000, unitCode: "person_month", billingBasis: "occupant", effectiveFrom: "2026-12-01", effectiveTo: null,
-    }))
+    await waitFor(() =>
+      expect(mocks.create).toHaveBeenCalledWith("token", 5, {
+        serviceId: 8,
+        price: 50000,
+        unitCode: "person_month",
+        billingBasis: "additional_occupant",
+        effectiveFrom: "2026-12-01",
+        effectiveTo: null,
+      }),
+    )
     expect(await screen.findByText(/50\.000\s₫\/người\/tháng/)).toBeTruthy()
   })
 
