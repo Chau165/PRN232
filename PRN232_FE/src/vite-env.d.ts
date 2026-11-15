@@ -1,4 +1,5 @@
 interface ImportMetaEnv {
+  readonly VITE_PROPERTY_GEOCODING_URL?: string
   readonly VITE_API_BASE_URL?: string
   readonly VITE_REVERSE_GEOCODING_URL?: string
   readonly VITE_GEOCODING_URL?: string

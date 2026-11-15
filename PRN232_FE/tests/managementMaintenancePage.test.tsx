@@ -148,7 +148,7 @@ describe("Management maintenance API flow", () => {
     expect((screen.getAllByRole("img", { name: /Ảnh hoàn thành sửa chữa/ })[0] as HTMLImageElement).src).toBe("https://storage.test/evidence.jpg")
     expect(mocks.getMaintenanceReport).toHaveBeenCalledWith("test-token", 41, expect.any(AbortSignal))
     fireEvent.click(screen.getByRole("button", { name: "Phóng to ảnh 1" }))
-    expect(screen.getByRole("dialog", { name: /Ảnh hoàn thành sửa chữa/ })).toBeTruthy()
+    expect(await screen.findByRole("dialog", { name: /Ảnh hoàn thành sửa chữa/ })).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "Ảnh tiếp theo" }))
     expect(screen.getAllByRole("img", { name: "Ảnh hoàn thành sửa chữa 2" })).toHaveLength(2)
     fireEvent.click(screen.getByRole("button", { name: "Ảnh trước" }))

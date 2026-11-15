@@ -295,6 +295,7 @@ builder.Services.AddHttpClient<IPropertyImageStorage, SupabasePropertyImageStora
 builder.Services.AddHttpClient<IRoomImageStorage, SupabaseRoomImageStorage>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<IPropertyGeocodingService, NominatimPropertyGeocodingService>();
+builder.Services.AddScoped<IPropertyLocationPreviewService, PropertyLocationPreviewService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddSingleton(TimeProvider.System);
