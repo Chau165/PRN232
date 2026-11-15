@@ -88,3 +88,12 @@ it("ignores an ambiguous ward name outside the province and gives up quietly on 
   expect(await createPropertyAreaLocator({ fetcher })({ wardName: "Phường An Lạc", provinceName: "Thành phố Hồ Chí Minh" })).toBeNull()
   expect(await createPropertyAreaLocator({ fetcher: vi.fn() })({ wardName: "Phường An Lạc" })).toBeNull()
 })
+it("searches with composed Vietnamese text even when typed in Unicode to hop", async () => {
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response([feature({ street: "Nguyễn Xiển", housenumber: "520" })]))
+  const typed = { ...address, addressText: "520  Nguyễn  Xiển", wardName: "Phường Long Bình" }
+  const result = await createPropertyLocationSearch({ fetcher })(typed)
+  const q = new URL(String(fetcher.mock.calls[0][0])).searchParams.get("q")!
+  expect(q).toBe("520 Nguyễn Xiển, Phường Long Bình, Thành phố Hồ Chí Minh, Việt Nam")
+  expect(q.normalize("NFC")).toBe(q)
+  expect(result.candidates).toHaveLength(1)
+})

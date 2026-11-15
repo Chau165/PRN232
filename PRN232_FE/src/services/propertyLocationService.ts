@@ -1,4 +1,5 @@
 import { isSupportedPropertyLocation } from "@/utils/propertyLocation"
+import { cleanText } from "@/utils/cleanText"
 
 export type LocationAddress = {
   addressText: string
@@ -27,14 +28,14 @@ function normalize(value: string) {
   return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/[^a-z0-9]+/g, " ").trim()
 }
 export function propertyAddressQueries(address: LocationAddress) {
-  const street = address.addressText.trim().replace(/^(\d+[\w/.-]*)\s*,\s*/u, "$1 ")
+  const street = cleanText(address.addressText).replace(/^(\d+[\w/.-]*)\s*,\s*/u, "$1 ")
   // Keep names such as Đường số 8 intact.
   const shortened = street.replace(/(^|\s)đường\s+(?!số(?:\s|$)|\d)/iu, "$1")
   const road = shortened.replace(/^\d+[\w/.-]*\s+/, "")
   return [...new Set([
-    [street, address.wardName, address.provinceName, "Việt Nam"].filter(Boolean).join(", "),
-    [shortened, address.provinceName, "Việt Nam"].filter(Boolean).join(", "),
-    [road, address.provinceName, "Việt Nam"].filter(Boolean).join(", "),
+    [street, address.wardName && cleanText(address.wardName), address.provinceName && cleanText(address.provinceName), "Việt Nam"].filter(Boolean).join(", "),
+    [shortened, address.provinceName && cleanText(address.provinceName), "Việt Nam"].filter(Boolean).join(", "),
+    [road, address.provinceName && cleanText(address.provinceName), "Việt Nam"].filter(Boolean).join(", "),
   ])]
 }
 
@@ -79,7 +80,7 @@ export function createPropertyLocationSearch(options: Options = {}) {
         if (!Array.isArray(body?.features)) return result("Unavailable")
         const candidates: LocationCandidate[] = []
         const seen = new Set<string>()
-        const requestedRoad = normalize(address.addressText.replace(/^(\d+[\w/.-]*)\s*,?\s*/u, "").replace(/^đường\s+/iu, ""))
+        const requestedRoad = normalize(cleanText(address.addressText).replace(/^(\d+[\w/.-]*)\s*,?\s*/u, "").replace(/^đường\s+/iu, ""))
         for (const feature of body.features.slice(0, 20)) {
           const p = feature?.properties
           const coordinates = feature?.geometry?.coordinates
@@ -138,8 +139,8 @@ export function createPropertyAreaLocator(options: Options = {}) {
   const cache = new Map<string, AreaFocus | null>()
   return async (area: AreaQuery, signal?: AbortSignal): Promise<AreaFocus | null> => {
     signal?.throwIfAborted()
-    const province = area.provinceName?.trim()
-    const ward = area.wardName?.trim()
+    const province = area.provinceName && cleanText(area.provinceName)
+    const ward = area.wardName && cleanText(area.wardName)
     if (!province) return null
     let endpoint: URL
     try {

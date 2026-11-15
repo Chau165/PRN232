@@ -1,4 +1,4 @@
-using PRN232.Application.Policies;
+﻿using PRN232.Application.Policies;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Normalizers;
@@ -122,6 +122,11 @@ public class PropertyService : IPropertyService
         PropertyImageInput? image = null,
         CancellationToken cancellationToken = default)
     {
+        dto = dto with
+        {
+            PropertyName = VietnameseTextNormalizer.Clean(dto.PropertyName),
+            AddressText = VietnameseTextNormalizer.Clean(dto.AddressText)
+        };
         EnsureAdmin(isAdmin);
         ValidatePropertyText(dto.PropertyName, dto.AddressText);
         var (province, commune) = ResolveAdministrativeLocation(dto.ProvinceCode, dto.WardCode);
@@ -158,6 +163,11 @@ public class PropertyService : IPropertyService
         PropertyImageInput? image = null,
         CancellationToken cancellationToken = default)
     {
+        dto = dto with
+        {
+            PropertyName = VietnameseTextNormalizer.Clean(dto.PropertyName),
+            AddressText = VietnameseTextNormalizer.Clean(dto.AddressText)
+        };
         EnsureAdmin(isAdmin);
         var entity = await _repository.GetTrackedByIdAsync(id);
         if (entity is null)
@@ -270,7 +280,7 @@ public class PropertyService : IPropertyService
         string addressText,
         string ward,
         string city) =>
-        string.Equals(entity.AddressText.Trim(), addressText.Trim(), StringComparison.Ordinal) &&
+        string.Equals(VietnameseTextNormalizer.Clean(entity.AddressText), VietnameseTextNormalizer.Clean(addressText), StringComparison.Ordinal) &&
         string.Equals(entity.Ward.Trim(), ward.Trim(), StringComparison.Ordinal) &&
         string.Equals(entity.City.Trim(), city.Trim(), StringComparison.Ordinal);
 

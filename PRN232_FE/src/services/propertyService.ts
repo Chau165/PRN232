@@ -1,3 +1,4 @@
+import { cleanText } from "@/utils/cleanText"
 import { apiRequest } from "@/api/apiClient"
 
 import type {
@@ -26,9 +27,9 @@ export type PropertyWriteRequest = {
 function toPropertyFormData(request: PropertyWriteRequest) {
   const formData = new FormData()
 
-  formData.append("propertyName", request.propertyName)
+  formData.append("propertyName", cleanText(request.propertyName))
 
-  formData.append("addressText", request.addressText)
+  formData.append("addressText", cleanText(request.addressText))
 
   formData.append("provinceCode", request.provinceCode)
 
