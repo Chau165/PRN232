@@ -230,6 +230,53 @@ Việc FE gợi ý: form đặt cọc thêm ô chọn ngày (`min` = hôm nay, `
 
 ---
 
+## C10 — Hủy cọc, hạn giữ phòng, khóa hoàn cọc qua hệ thống · ✅ đã có (việc 3.2a)
+
+Migration `AddBookingCancellationReason` (2 cột NULL: `CancellationReason`, `CancelledAtUtc`).
+
+**Nhóm đã chốt:** hệ thống **không hoàn tiền qua tài khoản**. Khoản phải hoàn do quản lý trả trực tiếp cho khách; khách xem thông tin liên hệ trong booking.
+
+### Luật hủy (`POST /api/bookings/{id}/cancel`, không đổi URL/body)
+
+| Ai hủy | Khi nào | `cancellationReason` | Tiền cọc |
+|---|---|---|---|
+| Khách | Chưa cọc hoặc **đã cọc** (trước đây bị chặn, giờ được phép) | `CustomerCancelled` | Đã cọc thì **mất cọc** |
+| Quản lý / chủ trọ | Còn trong hạn giữ phòng (`canReleaseRoom = false`) | `LandlordCancelled` | **Hoàn 100%** ngoài hệ thống (`depositRefundDue = true`) |
+| Quản lý / chủ trọ | Hết hạn giữ phòng (`canReleaseRoom = true`) | `NoShow` | Mất cọc |
+
+**Hạn giữ phòng** (`holdUntilUtc`): đến **hết ngày "ngày dọn vào + 3"** theo giờ VN. Ví dụ dọn vào 20/11 → giữ đến hết 23/11 (`holdUntilUtc` = `2026-11-23T17:00:00Z`). Booking cũ không có `moveInDate`: vẫn 7 ngày kể từ lúc cọc.
+
+### Response `BookingDto` thêm
+
+| Field | Ý nghĩa |
+|---|---|
+| `cancellationReason` | `CustomerCancelled` / `LandlordCancelled` / `NoShow` / `null` (booking hủy trước rebuild hoặc chưa hủy) |
+| `cancelledAtUtc` | Thời điểm hủy |
+| `depositRefundDue` | `true` = chủ trọ hủy sau khi khách đã cọc → phải hoàn 100% ngoài hệ thống |
+| `contacts` | `[{ fullName, phoneNumber, email, role }]` — quản lý đang phụ trách khu trọ (`role = "Manager"`); khu chưa có quản lý thì là chủ trọ (`role = "Owner"`) |
+
+`canRequestRefund` giờ **luôn `false`**. `POST /api/bookings/{id}/refund-requests` trả **409** với `detail` = "Hệ thống không hoàn tiền cọc qua tài khoản. Vui lòng liên hệ trực tiếp quản lý khu trọ (xem mục Liên hệ trong booking)." Các API xem lịch sử hoàn cọc cũ và trang duyệt của Admin vẫn chạy (cho dữ liệu cũ). Code hoàn cọc payOS **giữ nguyên**, bật lại bằng `BookingRefunds:RequestsEnabled = true`.
+
+### Việc FE gợi ý
+1. **Ẩn** nút "Xin hoàn cọc" và form nhập tài khoản ngân hàng (`BookingRefundPanel`); vẫn cho xem đơn hoàn cọc cũ nếu `refundStatus` khác null. **Không xóa** code — chỉ ẩn.
+2. **Khách** (`MyBookingsPage`): booking đã cọc có nút "Hủy đặt cọc", bấm thì hiện hộp xác nhận: *"Nếu hủy, bạn sẽ mất tiền cọc {depositAmount}. Bạn chắc chắn?"*
+3. **Quản lý** (`ManagementBookingsPage`): booking đã cọc, chưa có hợp đồng:
+   - `canReleaseRoom = false` → nút "Hủy (hoàn 100% cọc)", xác nhận: *"Khách sẽ được hoàn {depositAmount}. Bạn cần tự chuyển tiền cho khách."*
+   - `canReleaseRoom = true` → nút "Nhả phòng (khách mất cọc)" như hiện tại.
+   - Hiển thị hạn giữ phòng: "Giữ phòng đến hết {holdUntilUtc − 1 giây, giờ VN, dd/MM/yyyy}".
+4. Booking đã hủy hiển thị lý do. Nếu `depositRefundDue = true`: khách thấy khung **"Bạn được hoàn 100% tiền cọc {depositAmount}. Liên hệ để nhận lại tiền:"** + danh sách `contacts` (tên, "Gọi/Zalo: {phoneNumber}" dạng link `tel:`, email dạng `mailto:`).
+5. Menu "Hoàn cọc" của Admin: giữ (cho đơn cũ) hoặc ẩn nếu không còn đơn nào — nhóm chọn.
+6. **Đặt cọc từ lịch xem phòng** (`MyBookingsPage.tsx`, hàm `bookSelectedRoom`) đang gọi `createBooking` chỉ với `roomId` + `viewingId`, nên BE mặc định dọn vào **hôm nay** → phòng chỉ được giữ 3 ngày. Cần cho khách chọn ngày dọn vào và số người như `DepositPage` (gợi ý: chuyển sang `DepositPage?roomId=..&viewingId=..` dùng chung form C9).
+7. **Điều khoản cọc phải hiện TRƯỚC khi khách giữ phòng** (`DepositPage`, bước giữ phòng). Pháp luật không quy định số ngày; điều khoản chỉ có giá trị khi khách được biết trước. Thay câu "phòng được giữ 7 ngày" bằng, ví dụ: *"Phòng được giữ đến hết ngày {ngày dọn vào + 3}. Nếu bạn hủy hoặc không đến nhận phòng trước hạn đó, tiền cọc không được hoàn. Nếu chủ trọ hủy, bạn được hoàn 100% (liên hệ trực tiếp quản lý để nhận lại tiền)."* Ngày tính lại theo ô ngày dọn vào khách đang chọn.
+8. Thay các câu cũ còn ghi "7 ngày": `ManagementBookingsPage.tsx` (hộp xác nhận nhả phòng), `MyBookingsPage.tsx` ("7 ngày kể từ khi đặt cọc"). Giờ hạn giữ phòng lấy từ `holdUntilUtc`.
+9. Nhỏ: khi ô ngày dọn vào bị xóa trống, câu lỗi đang là "không được ở quá khứ" → nên là "Vui lòng chọn ngày dọn vào."
+
+Chưa đổi trong C10: câu "Tiền cọc được trừ vào tiền phòng tháng đầu tiên" vẫn đúng cho đến việc 3.3 (cọc thành tiền đảm bảo, không trừ tháng đầu).
+
+Sắp có (3.2b): nút "Đã hoàn cọc" cho quản lý, hiện hộp xác nhận số tiền rồi ghi nhận.
+
+---
+
 <a id="fe"></a>
 ## Việc FE cần làm (task 1.5, Antigravity)
 

@@ -114,8 +114,11 @@ Vấn đề:
    - Phòng chuyển Reserved đến ngày dọn vào + 3 ngày ân hạn
 3. Trước khi ký hợp đồng
    - Khách hủy           → mất cọc        (Điều 328 BLDS 2015)
-   - Chủ trọ từ chối/huỷ → hoàn 100% cọc (luật cho phép phạt thêm 1 khoản bằng cọc — nhóm chọn có áp dụng không)
-   - Quá hạn dọn vào     → quản lý nhả phòng, khách mất cọc
+   - Chủ trọ từ chối/huỷ → hoàn 100% cọc (✅ nhóm chốt: KHÔNG phạt thêm khoản bằng cọc)
+   - Quá hạn dọn vào     → quản lý nhả phòng, khách mất cọc (✅ hạn = hết ngày "dọn vào + 3")
+   - ✅ Nhóm chốt: hệ thống KHÔNG hoàn tiền qua tài khoản. Khách liên hệ quản lý (SĐT/Zalo/email hiện
+     trong booking); quản lý trả tiền trực tiếp rồi bấm "Đã hoàn cọc" để ghi nhận. Luồng hoàn cọc payOS
+     của Nghĩa giữ nguyên code nhưng khóa bằng cấu hình `BookingRefunds:RequestsEnabled = false`.
 4. Ký hợp đồng
    - Cọc giữ chỗ CHUYỂN THÀNH cọc hợp đồng (tiền cọc đảm bảo), giữ nguyên số tiền
    - Hóa đơn đầu tiên = tiền phòng tháng đầu, KHÔNG trừ cọc
@@ -200,7 +203,7 @@ Giữ Supabase Storage. Bổ sung:
 | ID | Việc | Owner | Phụ thuộc | Size | Người |
 |----|------|-------|-----------|------|-------|
 | 3.1 | ✅ Booking thêm `MoveInDate`, `OccupantCount`, validate ≤ `MaxOccupants` (giữ nguyên `AgreedMonthlyRent` và `ViewingId` của Châu). Tạm thời không bắt buộc, xem API-CHANGES C9 | Claude | 2.1 | M | |
-| 3.2 | Chính sách hủy theo D3 bước 3 (khách hủy / chủ hủy / quá hạn dọn vào) | Claude | 3.1 | M | |
+| 3.2 | Chính sách hủy theo D3 bước 3. **3.2a ✅** luật hủy + lý do hủy + hạn giữ phòng (ngày dọn vào + 3) + liên hệ quản lý + khóa luồng hoàn cọc payOS (giữ code, API-CHANGES C10). **3.2b** nút "Đã hoàn cọc" (quản lý xác nhận số tiền đã trả ngoài hệ thống). **3.2c** nhắc khách ngày dọn vào / còn 1 ngày ân hạn | Claude | 3.1 | M | |
 | 3.3 | Cọc chuyển thành cọc hợp đồng, bỏ `PrepaidRentCredit` cho HĐ mới | Claude | 3.1 | M | |
 | 3.4 | ✅ Job nhắc hạn 30 ngày / 7 ngày / quá hạn (không thêm trạng thái `Expired`, xem D3) | Claude | — | S | |
 | 3.5 | Biên bản bàn giao thiết bị lúc nhận phòng và trả phòng | Claude | 2.2 | M | |

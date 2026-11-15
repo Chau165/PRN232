@@ -181,7 +181,9 @@ public class BookingPayOSApiTests
     }
 
     [Fact]
-    public async Task Verified_webhook_settles_once_keeps_original_deadline_and_blocks_direct_cancellation()
+    // Rebuild 3.2: staff may now cancel a deposited booking during the hold (landlord cancel, refunded
+    // outside the system), so this test no longer expects the cancel endpoint to refuse.
+    public async Task Verified_webhook_settles_once_and_keeps_original_deadline()
     {
         var gateway = new Gateway();
         using var factory = new BookingsApiFactory(); using var app = factory.WithWebHostBuilder(builder => Configure(builder, gateway));
@@ -201,7 +203,6 @@ public class BookingPayOSApiTests
             Assert.Equal(2, await db.Notifications.CountAsync(item => item.Title.Contains("qua payOS")));
         }
         await BookingsApiTests.LoginAsync(client, "manager@example.test");
-        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync($"/api/bookings/{booking.BookingId}/cancel", null)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/payment-requests/{link.PaymentRequestId}")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Webhook, Signed(gateway, reference: "additional-ref"))).StatusCode);
         using var verifyScope = app.Services.CreateScope(); var verify = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();

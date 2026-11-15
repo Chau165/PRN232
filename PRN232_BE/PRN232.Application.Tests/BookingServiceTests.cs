@@ -282,10 +282,12 @@ public class BookingServiceTests
         Assert.Contains("không được hoàn", cancellation.Notification.Body);
     }
 
+    // Rebuild 3.2: cancelling during the hold is a landlord cancellation, the customer gets 100% back
+    // (paid by the manager outside the system).
     [Theory]
     [InlineData(RoleNames.Manager)]
     [InlineData(RoleNames.Admin)]
-    public async Task CancelAsync_rejects_releasing_deposited_booking_before_hold_ends(string role)
+    public async Task CancelAsync_by_staff_during_hold_is_a_landlord_cancellation_with_full_refund(string role)
     {
         var repository = new FakeBookingRepository
         {
@@ -294,9 +296,82 @@ public class BookingServiceTests
             DepositPaidAtUtc = Now.AddDays(-7).AddMinutes(1).UtcDateTime
         };
 
-        await Assert.ThrowsAsync<BookingStatusConflictException>(() =>
-            CreateService(repository).CancelAsync(1, 42, role));
-        Assert.Empty(repository.Cancellations);
+        await CreateService(repository).CancelAsync(1, 42, role);
+
+        Assert.Equal(BookingCancellationReasons.LandlordCancelled, repository.LastCancelReason);
+        var notification = Assert.Single(repository.Cancellations).Notification;
+        Assert.NotNull(notification);
+        Assert.Contains("chủ trọ hủy", notification.Title);
+        Assert.Contains("hoàn 100% tiền cọc (3.000.000đ)", notification.Body);
+        Assert.Contains("liên hệ quản lý", notification.Body);
+    }
+
+    [Fact]
+    public async Task CancelAsync_by_customer_after_deposit_forfeits_the_deposit()
+    {
+        var repository = new FakeBookingRepository
+        {
+            Booking = SampleBooking(customerId: 42, BookingStatuses.Deposited),
+            DepositPaidAtUtc = Now.AddDays(-1).UtcDateTime
+        };
+
+        await CreateService(repository).CancelAsync(1, 42, RoleNames.Customer);
+
+        Assert.Equal(BookingCancellationReasons.CustomerCancelled, repository.LastCancelReason);
+        Assert.Null(Assert.Single(repository.Cancellations).Notification);
+    }
+
+    // Moving in 30/10 (Vietnam): held until the end of 02/11, i.e. 03/11 00:00 in Vietnam = 02/11 17:00 UTC.
+    [Theory]
+    [InlineData(-1, false)]
+    [InlineData(0, true)]
+    public async Task Hold_ends_three_days_after_the_move_in_date_in_vietnam(int minutesFromHoldEnd, bool canRelease)
+    {
+        var holdEnd = new DateTimeOffset(2026, 11, 2, 17, 0, 0, TimeSpan.Zero);
+        var repository = new FakeBookingRepository
+        {
+            Booking = SampleBooking(customerId: 10, BookingStatuses.Deposited),
+            DepositPaidAtUtc = Now.UtcDateTime,
+            MoveInDate = new DateOnly(2026, 10, 30)
+        };
+        var service = new BookingService(repository, new FakePaymentGateway(), new FixedTimeProvider(holdEnd.AddMinutes(minutesFromHoldEnd)));
+
+        var booking = await service.GetByIdAsync(1, 7, RoleNames.Admin);
+
+        Assert.Equal(holdEnd.UtcDateTime, booking!.HoldUntilUtc);
+        Assert.Equal(canRelease, booking.CanReleaseRoom);
+    }
+
+    [Fact]
+    public async Task Staff_release_after_the_move_in_grace_is_a_no_show()
+    {
+        var repository = new FakeBookingRepository
+        {
+            Booking = SampleBooking(customerId: 10, BookingStatuses.Deposited),
+            OwnerId = 42,
+            DepositPaidAtUtc = Now.AddDays(-10).UtcDateTime,
+            MoveInDate = new DateOnly(2026, 10, 20)
+        };
+
+        await CreateService(repository).CancelAsync(1, 42, RoleNames.Manager);
+
+        Assert.Equal(BookingCancellationReasons.NoShow, repository.LastCancelReason);
+        Assert.Contains("đến hết ngày 23/10/2026", Assert.Single(repository.Cancellations).Notification!.Body);
+    }
+
+    [Fact]
+    public async Task Booking_lists_property_managers_to_contact()
+    {
+        var repository = new FakeBookingRepository
+        {
+            Booking = SampleBooking(customerId: 42),
+            Contacts = [new BookingContactReadModel(1, "Manager A", "0911000000", "a@example.test", RoleNames.Manager),
+                new BookingContactReadModel(2, "Other", "0999", "o@example.test", RoleNames.Manager)]
+        };
+
+        var booking = await CreateService(repository).GetByIdAsync(1, 42, RoleNames.Customer);
+
+        Assert.Equal(new BookingContactDto("Manager A", "0911000000", "a@example.test", RoleNames.Manager), Assert.Single(booking!.Contacts!));
     }
 
     [Theory]
@@ -380,7 +455,6 @@ public class BookingServiceTests
     }
 
     [Theory]
-    [InlineData(RoleNames.Customer, BookingStatuses.Deposited)]
     [InlineData(RoleNames.Customer, BookingStatuses.Cancelled)]
     [InlineData(RoleNames.Admin, BookingStatuses.Cancelled)]
     public async Task CancelAsync_rejects_disallowed_status(string role, string status)
@@ -451,6 +525,9 @@ public class BookingServiceTests
         public int OwnerId { get; init; } = 7;
         public DateTime? DepositPaidAtUtc { get; init; }
         public int? LastCancelManagerId { get; private set; }
+        public string? LastCancelReason { get; private set; }
+        public DateOnly? MoveInDate { get; init; }
+        public List<BookingContactReadModel> Contacts { get; init; } = [];
         public DateTimeOffset? LastCancelAsOfUtc { get; private set; }
         public List<Bookings> Added { get; } = [];
         public List<Notifications> Notifications { get; } = [];
@@ -539,13 +616,18 @@ public class BookingServiceTests
             return Task.FromResult(true);
         }
 
+        public Task<List<BookingContactReadModel>> GetPropertyContactsAsync(IReadOnlyCollection<int> propertyIds) =>
+            Task.FromResult(Contacts.Where(contact => propertyIds.Contains(contact.PropertyId)).ToList());
+
         public Task<bool> CancelAsync(
             int bookingId,
             string expectedStatus,
+            string reason,
             Notifications? customerNotification,
             DateTimeOffset asOfUtc,
             int? managerId = null)
         {
+            LastCancelReason = reason;
             LastCancelManagerId = managerId;
             LastCancelAsOfUtc = asOfUtc;
             if (managerId.HasValue && !ManagerAssignmentActive)
@@ -569,7 +651,7 @@ public class BookingServiceTests
             booking.BookingId, booking.RoomId, booking.RoomCode, booking.PropertyId, booking.PropertyName,
             booking.CustomerId, booking.CustomerName, booking.DepositAmount, booking.Status, booking.ExpiryDate,
             booking.CustomerPhone, booking.ContractId, booking.RefundStatus,
-            DepositPaidAtUtc: DepositPaidAtUtc);
+            DepositPaidAtUtc: DepositPaidAtUtc, MoveInDate: MoveInDate);
     }
 
     private sealed class FakePaymentGateway : IPaymentGateway

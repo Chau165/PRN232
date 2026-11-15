@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.Settings;
 using PRN232.Application.States;
 
 namespace PRN232.Api.Controllers;
@@ -10,13 +11,19 @@ namespace PRN232.Api.Controllers;
 [Route("api/bookings/{bookingId:int}/refund-requests")]
 [Authorize(Roles = "Customer,Manager,Admin")]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class BookingRefundRequestsController(IBookingRefundService service, ICurrentUserService currentUser) : ControllerBase
+public sealed class BookingRefundRequestsController(
+    IBookingRefundService service, ICurrentUserService currentUser, BookingRefundSettings refundSettings) : ControllerBase
 {
+    public const string RequestsDisabledMessage =
+        "Hệ thống không hoàn tiền cọc qua tài khoản. Vui lòng liên hệ trực tiếp quản lý khu trọ (xem mục Liên hệ trong booking).";
+
     [HttpPost]
     [Authorize(Roles = RoleNames.Customer)]
     public async Task<ActionResult<BookingRefundDto>> Create(int bookingId, CreateBookingRefundDto input, CancellationToken cancellationToken)
     {
         if (currentUser.UserId is not > 0) return Unauthorized();
+        // Rebuild 3.2: luồng hoàn cọc payOS được giữ code nhưng khóa (BookingRefundSettings).
+        if (!refundSettings.RequestsEnabled) return Conflict(new ProblemDetails { Detail = RequestsDisabledMessage });
         try
         {
             var result = await service.CreateAsync(bookingId, currentUser.UserId.Value, input, cancellationToken);

@@ -240,6 +240,12 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<decimal?>("AgreedMonthlyRent")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<string>("CancellationReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("CustomerId")
                         .HasColumnType("integer");
 

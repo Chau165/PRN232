@@ -23,6 +23,9 @@ public class Bookings
     // Rebuild 3.1 (PLAN D3 bước 2). NULL ở booking tạo trước rebuild.
     public DateOnly? MoveInDate { get; set; }
     public int? OccupantCount { get; set; }
+    // Rebuild 3.2 (PLAN D3 bước 3): ai hủy quyết định cọc mất hay phải hoàn. NULL ở booking hủy trước rebuild.
+    public string? CancellationReason { get; set; }
+    public DateTime? CancelledAtUtc { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime ExpiryDate
     {

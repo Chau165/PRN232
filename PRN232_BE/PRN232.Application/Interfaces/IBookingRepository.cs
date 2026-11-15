@@ -18,7 +18,9 @@ public interface IBookingRepository
     Task<bool> CancelAsync(
         int bookingId,
         string expectedStatus,
+        string reason,
         Notifications? customerNotification,
         DateTimeOffset asOfUtc,
         int? managerId = null);
+    Task<List<BookingContactReadModel>> GetPropertyContactsAsync(IReadOnlyCollection<int> propertyIds);
 }

@@ -2,6 +2,7 @@ using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Policies;
 using PRN232.Application.ReadModels;
+using PRN232.Application.Settings;
 using PRN232.Application.States;
 using PRN232.Application.Validation;
 using PRN232.Domain.Entities;
@@ -26,6 +27,7 @@ public class BookingService : IBookingService
     private readonly INotificationRealtimePublisher? _realtimePublisher;
     private readonly ILogger<BookingService> _logger;
     private readonly IUserContactLookup? _contactLookup;
+    private readonly BookingRefundSettings _refundSettings;
 
     public BookingService(
         IBookingRepository repository,
@@ -33,9 +35,11 @@ public class BookingService : IBookingService
         TimeProvider timeProvider,
         INotificationRealtimePublisher? realtimePublisher = null,
         ILogger<BookingService>? logger = null,
-        IUserContactLookup? contactLookup = null)
+        IUserContactLookup? contactLookup = null,
+        BookingRefundSettings? refundSettings = null)
     {
         _contactLookup = contactLookup;
+        _refundSettings = refundSettings ?? new BookingRefundSettings();
         _repository = repository;
         _paymentGateway = paymentGateway;
         _timeProvider = timeProvider;
@@ -98,7 +102,7 @@ public class BookingService : IBookingService
         {
             await _realtimePublisher.PublishCreatedAsync([pendingNotification]);
         }
-        return ConvertToDto(created);
+        return await ToDtoAsync(created);
     }
 
     public async Task<List<BookingDto>> GetAllAsync(int userId, string role, string? status)
@@ -111,7 +115,7 @@ public class BookingService : IBookingService
 
         var (customerId, managerId) = GetScope(userId, role);
         var bookings = await _repository.GetAllAsync(customerId, managerId, status);
-        return bookings.Select(ConvertToDto).ToList();
+        return await ToDtosAsync(bookings);
     }
 
     public async Task<BookingDto?> GetByIdAsync(int id, int userId, string role)
@@ -126,7 +130,7 @@ public class BookingService : IBookingService
         {
             return null;
         }
-        return ConvertToDto(booking);
+        return await ToDtoAsync(booking);
     }
 
     public async Task<BookingDto> PayAsync(int id, PayBookingDto dto, int customerId)
@@ -200,7 +204,7 @@ public class BookingService : IBookingService
         {
             await _realtimePublisher.PublishCreatedAsync([notification]);
         }
-        return ConvertToDto(paid);
+        return await ToDtoAsync(paid);
     }
 
     public async Task<BookingDto> CancelAsync(int id, int userId, string role)
@@ -224,44 +228,25 @@ public class BookingService : IBookingService
         {
             throw new BookingAuthorizationException("Only the property owner can cancel this booking as an Admin.");
         }
-        // Khách chỉ tự huỷ được khi chưa trả cọc; booking đã cọc phải do quản lý/admin huỷ
-        // (hoàn cọc xử lý ngoài hệ thống vì thanh toán là giả lập).
 
-        if (role == RoleNames.Customer && booking.Status != BookingStatuses.Pending)
+        var deposited = booking.Status == BookingStatuses.Deposited;
+        if (deposited && booking.RefundStatus is not (null or BookingRefundRequestStatuses.Rejected))
         {
-            throw new BookingStatusConflictException("Deposited bookings require a cancellation/refund request.");
+            // Yêu cầu hoàn cọc cũ (luồng payOS đã khóa) phải được xử lý xong trước.
+            throw new BookingStatusConflictException("Booking này đang có yêu cầu hoàn cọc chưa xử lý xong.");
         }
 
-        // OD07: staff release a deposited room only when the customer did not move in within the hold.
-        var releasesDeposit = booking.Status == BookingStatuses.Deposited;
-        if (releasesDeposit && !booking.CanReleaseRoom)
-        {
-            throw new BookingStatusConflictException(
-                "A deposited booking can be released only 7 days after the deposit was paid, with no refund request in progress.");
-        }
+        // Rebuild 3.2 (PLAN D3 bước 3): khách hủy thì mất cọc; chủ trọ hủy trong thời hạn giữ phòng thì hoàn
+        // 100%; hết thời hạn mà khách chưa đến nhận phòng thì quản lý nhả phòng và khách mất cọc.
+        var reason = role == RoleNames.Customer
+            ? BookingCancellationReasons.CustomerCancelled
+            : deposited && booking.CanReleaseRoom
+                ? BookingCancellationReasons.NoShow
+                : BookingCancellationReasons.LandlordCancelled;
+        var notification = role == RoleNames.Customer ? null : CancellationNotification(booking, reason);
 
-        Notifications? notification = null;
-        if (role != RoleNames.Customer)
-        {
-            notification = releasesDeposit
-                ? new Notifications
-                {
-                    UserId = booking.CustomerId,
-                    Title = $"Booking #{id} - Phòng {booking.RoomCode} đã được giải phóng do quá hạn nhận phòng",
-                    Body = "Bạn không nhận phòng trong 7 ngày kể từ khi đặt cọc nên phòng đã được mở cho người khác thuê. Theo chính sách giữ phòng, tiền cọc không được hoàn.",
-                    Type = NotificationTypes.Booking,
-                    IsRead = false
-                }
-                : new Notifications
-                {
-                    UserId = booking.CustomerId,
-                    Title = $"Booking #{id} - Phòng {booking.RoomCode} đã bị huỷ",
-                    Type = NotificationTypes.Booking,
-                    IsRead = false
-                };
-        }
         int? managerId = role == RoleNames.Manager ? userId : null;
-        if (!await _repository.CancelAsync(id, booking.Status, notification, _timeProvider.GetUtcNow(), managerId))
+        if (!await _repository.CancelAsync(id, booking.Status, reason, notification, _timeProvider.GetUtcNow(), managerId))
         {
             throw new BookingStatusConflictException("Booking status has changed. Please reload and try again.");
         }
@@ -274,7 +259,7 @@ public class BookingService : IBookingService
         {
             await _realtimePublisher.PublishCreatedAsync([notification]);
         }
-        return ConvertToDto(cancelled);
+        return await ToDtoAsync(cancelled);
     }
 
     private static Bookings CreateBookingEntity(
@@ -305,13 +290,54 @@ public class BookingService : IBookingService
         return scope.Value;
     }
 
-    private BookingDto ConvertToDto(BookingReadModel booking)
+    private static Notifications CancellationNotification(BookingDto booking, string reason)
+    {
+        var (title, body) = reason switch
+        {
+            BookingCancellationReasons.NoShow => (
+                $"Booking #{booking.BookingId} - Phòng {booking.RoomCode} đã được giải phóng do quá hạn nhận phòng",
+                $"Bạn không nhận phòng trong thời hạn giữ phòng{HoldDeadlineText(booking.HoldUntilUtc)} nên phòng đã được mở cho người khác thuê. Theo chính sách giữ phòng, tiền cọc không được hoàn."),
+            _ when booking.Status == BookingStatuses.Deposited => (
+                $"Booking #{booking.BookingId} - Phòng {booking.RoomCode} đã bị chủ trọ hủy",
+                $"Bạn được hoàn 100% tiền cọc ({booking.DepositAmount.ToString("#,0", System.Globalization.CultureInfo.GetCultureInfo("vi-VN"))}đ). Hệ thống không chuyển tiền tự động, vui lòng liên hệ quản lý khu trọ {booking.PropertyName} (xem mục Liên hệ trong booking) để nhận lại tiền."),
+            _ => ($"Booking #{booking.BookingId} - Phòng {booking.RoomCode} đã bị huỷ", (string?)null)
+        };
+        return new Notifications
+        {
+            UserId = booking.CustomerId,
+            Title = title,
+            Body = body,
+            Type = NotificationTypes.Booking,
+            IsRead = false
+        };
+    }
+
+    // " (đến hết ngày 23/11/2026)" theo giờ VN; HoldUntilUtc là 00:00 ngày hôm sau nên lùi 1 tích tắc.
+    private static string HoldDeadlineText(DateTime? holdUntilUtc) =>
+        holdUntilUtc is { } until
+            ? $" (đến hết ngày {TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(until, DateTimeKind.Utc).AddTicks(-1), VietnamTimeZone):dd/MM/yyyy})"
+            : "";
+
+    private static readonly TimeZoneInfo VietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh");
+
+    private async Task<BookingDto> ToDtoAsync(BookingReadModel booking) => (await ToDtosAsync([booking]))[0];
+
+    private async Task<List<BookingDto>> ToDtosAsync(IReadOnlyList<BookingReadModel> bookings)
+    {
+        var contacts = (await _repository.GetPropertyContactsAsync(bookings.Select(booking => booking.PropertyId).ToArray()))
+            .ToLookup(contact => contact.PropertyId);
+        return bookings.Select(booking => ConvertToDto(booking, contacts[booking.PropertyId])).ToList();
+    }
+
+    private BookingDto ConvertToDto(BookingReadModel booking, IEnumerable<BookingContactReadModel> contacts)
     {
         var holding = booking.Status == BookingStatuses.Deposited && booking.ContractId is null;
-        var holdUntil = holding ? DepositHoldPolicy.HoldUntilUtc(booking.DepositPaidAtUtc) : null;
+        var holdUntil = holding ? DepositHoldPolicy.HoldUntilUtc(booking.DepositPaidAtUtc, booking.MoveInDate) : null;
         var canReleaseRoom = holding &&
             (booking.RefundStatus is null or BookingRefundRequestStatuses.Rejected) &&
-            DepositHoldPolicy.IsHoldOver(booking.DepositPaidAtUtc, _timeProvider.GetUtcNow().UtcDateTime);
+            DepositHoldPolicy.IsHoldOver(booking.DepositPaidAtUtc, _timeProvider.GetUtcNow().UtcDateTime, booking.MoveInDate);
+        var depositRefundDue = booking.Status == BookingStatuses.Cancelled &&
+            booking.CancellationReason == BookingCancellationReasons.LandlordCancelled && booking.DepositPaid;
         return new BookingDto(
             booking.BookingId,
             booking.RoomId,
@@ -324,9 +350,12 @@ public class BookingService : IBookingService
             booking.Status,
             UtcTimestamp.ForResponse(booking.ExpiryDate),
             booking.CustomerPhone,
-            booking.ContractId, booking.RefundStatus, booking.CanRequestRefund, booking.LatestPaymentRequestId,
+            booking.ContractId, booking.RefundStatus, booking.CanRequestRefund && _refundSettings.RequestsEnabled,
+            booking.LatestPaymentRequestId,
             UtcTimestamp.ForResponse(holdUntil), canReleaseRoom, booking.AgreedMonthlyRent,
-            booking.MoveInDate, booking.OccupantCount);
+            booking.MoveInDate, booking.OccupantCount,
+            booking.CancellationReason, UtcTimestamp.ForResponse(booking.CancelledAtUtc), depositRefundDue,
+            contacts.Select(contact => new BookingContactDto(contact.FullName, contact.PhoneNumber, contact.Email, contact.Role)).ToArray());
     }
 }
 

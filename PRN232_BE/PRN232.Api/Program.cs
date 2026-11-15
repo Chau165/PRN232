@@ -413,6 +413,10 @@ builder.Services.AddValidatorsFromAssemblyContaining<FluentValidationFilter>();
 // Trần giá điện nước (rebuild D5); thiếu mục này trong appsettings thì dùng giá trị mặc định.
 builder.Services.AddSingleton(
     builder.Configuration.GetSection("UtilityPriceLimits").Get<UtilityPriceLimits>() ?? new UtilityPriceLimits());
+// Rebuild 3.2: mặc định khóa luồng yêu cầu hoàn cọc (khách liên hệ quản lý để nhận lại tiền).
+builder.Services.AddSingleton(
+    builder.Configuration.GetSection("BookingRefunds").Get<PRN232.Application.Settings.BookingRefundSettings>()
+        ?? new PRN232.Application.Settings.BookingRefundSettings());
 
 builder.Services.AddControllers(options =>
 {
