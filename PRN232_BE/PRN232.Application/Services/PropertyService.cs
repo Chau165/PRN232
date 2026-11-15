@@ -1,7 +1,4 @@
-using System.Diagnostics;
-using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
+using PRN232.Application.Policies;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Normalizers;
@@ -12,31 +9,18 @@ namespace PRN232.Application.Services;
 public class PropertyService : IPropertyService
 {
     private const int MaxImageBytes = 5 * 1024 * 1024;
-    // Split OSM ways on the same street are usually clustered; farther matches need manual correction.
-    private const double MaxStreetCandidateSpreadMeters = 600;
-    private const double MaxBuildingCandidateSpreadMeters = 100;
-    private static readonly Regex HouseNumberAndStreetPattern = new(
-        @"^\s*(?<number>\d+[A-Za-z]?(?:\s*[/\-]\s*\d+[A-Za-z]?)*)\s*(?:,\s*|\s+)(?<street>.+?)\s*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
     private readonly IPropertyRepository _repository;
     private readonly IAdministrativeDivisionCatalog? _administrativeDivisionCatalog;
-    private readonly IPropertyGeocodingService? _geocodingService;
     private readonly IPropertyImageStorage? _imageStorage;
-    private readonly ILogger<PropertyService> _logger;
 
     public PropertyService(
         IPropertyRepository repository,
         IAdministrativeDivisionCatalog? administrativeDivisionCatalog = null,
-        IPropertyGeocodingService? geocodingService = null,
-        IPropertyImageStorage? imageStorage = null,
-        ILogger<PropertyService>? logger = null)
+        IPropertyImageStorage? imageStorage = null)
     {
         _repository = repository;
         _administrativeDivisionCatalog = administrativeDivisionCatalog;
-        _geocodingService = geocodingService;
         _imageStorage = imageStorage;
-        _logger = logger ?? NullLogger<PropertyService>.Instance;
     }
 
     public async Task<List<PropertyDto>> GetAllAsync(int? ownerId, int? managerId)
@@ -142,11 +126,7 @@ public class PropertyService : IPropertyService
         ValidatePropertyText(dto.PropertyName, dto.AddressText);
         var (province, commune) = ResolveAdministrativeLocation(dto.ProvinceCode, dto.WardCode);
         ValidateStreetAddressDoesNotRepeatArea(dto.AddressText, commune.Name, province.Name);
-        var coordinates = await GeocodeAddressCoordinatesAsync(
-            dto.AddressText,
-            commune.Name,
-            province.Name,
-            cancellationToken);
+        var coordinates = PropertyCoordinatePolicy.Require(dto.Latitude, dto.Longitude);
         string? uploadedImageUrl = null;
         try
         {
@@ -214,27 +194,19 @@ public class PropertyService : IPropertyService
             dto.AddressText,
             wardName,
             provinceName);
-        var updateLocation = !addressUnchanged;
+        var codesChanged = hasProvinceCode && (dto.ProvinceCode != entity.ProvinceCode || dto.WardCode != entity.WardCode);
+        var suppliedCoordinates = dto.Latitude.HasValue || dto.Longitude.HasValue;
+        var updateLocation = !addressUnchanged || codesChanged || suppliedCoordinates;
         AddressCoordinates coordinates;
         if (updateLocation)
         {
-            if (!hasProvinceCode || !hasWardCode)
-            {
+            if ((!addressUnchanged || codesChanged) && (!hasProvinceCode || !hasWardCode))
                 throw new PropertyValidationException("Địa chỉ mới cần chọn tỉnh/thành phố và phường/xã hiện hành.");
-            }
-
             ValidateStreetAddress(dto.AddressText);
             ValidateStreetAddressDoesNotRepeatArea(dto.AddressText, wardName, provinceName);
-            coordinates = await GeocodeAddressCoordinatesAsync(
-                dto.AddressText,
-                wardName,
-                provinceName,
-                cancellationToken);
+            coordinates = PropertyCoordinatePolicy.Require(dto.Latitude, dto.Longitude);
         }
-        else
-        {
-            coordinates = new AddressCoordinates(entity.Latitude, entity.Longitude);
-        }
+        else coordinates = new AddressCoordinates(entity.Latitude, entity.Longitude);
 
         var previousImageUrl = entity.PrimaryImageUrl;
         string? uploadedImageUrl = null;
@@ -384,370 +356,6 @@ public class PropertyService : IPropertyService
             throw new PropertyValidationException(
                 "Số nhà và tên đường chỉ nhập địa chỉ chi tiết; không lặp lại phường/xã hoặc tỉnh/thành phố.");
         }
-    }
-
-    private static string BuildFullAddress(string addressText, string wardName, string provinceName)
-    {
-        var parts = new[] { addressText.Trim(), wardName, provinceName, "Việt Nam" };
-        var uniqueParts = new List<string>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var part in parts)
-        {
-            var normalized = PublicAreaNameNormalizer.Normalize(part);
-            if (normalized.Length > 0 && seen.Add(normalized))
-            {
-                uniqueParts.Add(part.Trim());
-            }
-        }
-
-        return string.Join(", ", uniqueParts);
-    }
-
-    private async Task<AddressCoordinates> GeocodeAddressCoordinatesAsync(
-        string addressText,
-        string expectedWardName,
-        string expectedProvinceName,
-        CancellationToken cancellationToken)
-    {
-        if (_geocodingService is null)
-        {
-            throw new PropertyGeocodingException();
-        }
-
-        var parsedAddress = ParseStreetAddress(addressText);
-        if (string.IsNullOrWhiteSpace(parsedAddress.StreetName))
-        {
-            throw new PropertyValidationException("Hãy nhập tên đường để xác định tọa độ khu trọ.");
-        }
-
-        var query = new PropertyGeocodingQuery(
-            BuildFullAddress(addressText, expectedWardName, expectedProvinceName),
-            parsedAddress.StreetName,
-            parsedAddress.HouseNumber,
-            expectedWardName,
-            expectedProvinceName);
-
-        var nominatimResult = await TryFindCandidatesAsync(
-            _geocodingService.FindNominatimCandidatesAsync,
-            query,
-            cancellationToken);
-        var nominatimSelection = SelectBestCandidate(nominatimResult.Candidates, query);
-        if (nominatimSelection.Candidate is not null)
-        {
-            LogSelectedCandidate(nominatimSelection.Candidate);
-            return nominatimSelection.Candidate.Coordinates;
-        }
-
-        _logger.LogInformation(
-            "Nominatim did not produce a trusted property coordinate; trying Photon. TraceId={TraceId} CandidateCount={CandidateCount} Ambiguous={Ambiguous}",
-            Activity.Current?.TraceId.ToString(),
-            nominatimResult.Candidates.Count,
-            nominatimSelection.IsAmbiguous);
-
-        var photonResult = await TryFindCandidatesAsync(
-            _geocodingService.FindPhotonCandidatesAsync,
-            query,
-            cancellationToken);
-        var photonSelection = SelectBestCandidate(photonResult.Candidates, query);
-        if (photonSelection.Candidate is not null)
-        {
-            LogSelectedCandidate(photonSelection.Candidate);
-            return photonSelection.Candidate.Coordinates;
-        }
-
-        if (nominatimResult.IsRateLimited || photonResult.IsRateLimited)
-        {
-            throw new PropertyGeocodingRateLimitedException();
-        }
-
-        if (!nominatimResult.IsAvailable || !photonResult.IsAvailable)
-        {
-            throw new PropertyGeocodingException();
-        }
-
-        if (nominatimSelection.IsAmbiguous || photonSelection.IsAmbiguous)
-        {
-            throw new PropertyValidationException(
-                "Tìm thấy nhiều vị trí phù hợp nhưng cách nhau quá xa để xác định an toàn. Hãy kiểm tra lại số nhà và tên đường.");
-        }
-
-        if (nominatimResult.Candidates.Count == 0 && photonResult.Candidates.Count == 0)
-        {
-            throw new PropertyValidationException(
-                "Không tìm thấy kết quả định vị cho địa chỉ đã nhập. Hãy kiểm tra số nhà, tên đường và địa giới hành chính.");
-        }
-
-        throw new PropertyValidationException(
-            "Kết quả định vị không khớp đủ tin cậy với số nhà, tên đường hoặc phường/xã đã chọn.");
-    }
-
-    private async Task<ProviderCandidates> TryFindCandidatesAsync(
-        Func<PropertyGeocodingQuery, CancellationToken, Task<IReadOnlyList<AddressGeocodingCandidate>>> findCandidatesAsync,
-        PropertyGeocodingQuery query,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var candidates = await findCandidatesAsync(query, cancellationToken);
-            _logger.LogInformation(
-                "Geocoding provider returned candidates. TraceId={TraceId} Provider={Provider} CandidateCount={CandidateCount}",
-                Activity.Current?.TraceId.ToString(),
-                candidates.FirstOrDefault()?.Provider,
-                candidates.Count);
-            return new ProviderCandidates(true, false, candidates);
-        }
-        catch (PropertyGeocodingRateLimitedException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return new ProviderCandidates(false, true, Array.Empty<AddressGeocodingCandidate>());
-        }
-        catch (PropertyGeocodingException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return new ProviderCandidates(false, false, Array.Empty<AddressGeocodingCandidate>());
-        }
-        catch (HttpRequestException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return new ProviderCandidates(false, false, Array.Empty<AddressGeocodingCandidate>());
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return new ProviderCandidates(false, false, Array.Empty<AddressGeocodingCandidate>());
-        }
-    }
-
-    private CandidateSelection SelectBestCandidate(
-        IReadOnlyList<AddressGeocodingCandidate> candidates,
-        PropertyGeocodingQuery query)
-    {
-        var acceptedCandidates = new List<CandidateEvaluation>();
-        foreach (var candidate in candidates)
-        {
-            var rejectionReason = GetCandidateRejectionReason(candidate, query);
-            _logger.LogInformation(
-                "Geocoding candidate evaluated. TraceId={TraceId} Provider={Provider} OsmKey={OsmKey} OsmValue={OsmValue} Precision={Precision} Decision={Decision} RejectionReason={RejectionReason}",
-                Activity.Current?.TraceId.ToString(),
-                candidate.Provider,
-                candidate.OsmKey,
-                candidate.OsmValue,
-                candidate.Precision,
-                rejectionReason is null ? "accepted" : "rejected",
-                rejectionReason);
-
-            if (rejectionReason is null)
-            {
-                acceptedCandidates.Add(new CandidateEvaluation(
-                    candidate,
-                    GetCandidateQualityScore(candidate, query)));
-            }
-        }
-
-        if (acceptedCandidates.Count == 0)
-        {
-            return new CandidateSelection(null, false);
-        }
-
-        var bestQualityScore = acceptedCandidates.Max(item => item.QualityScore);
-        var bestCandidates = acceptedCandidates
-            .Where(item => item.QualityScore == bestQualityScore)
-            .OrderBy(item => item.Candidate.ProviderRank)
-            .ToList();
-        var maximumSpread = PrecisionRank(bestCandidates[0].Candidate.Precision) == PrecisionRank("street")
-            ? MaxStreetCandidateSpreadMeters
-            : MaxBuildingCandidateSpreadMeters;
-
-        for (var firstIndex = 0; firstIndex < bestCandidates.Count; firstIndex++)
-        {
-            for (var secondIndex = firstIndex + 1; secondIndex < bestCandidates.Count; secondIndex++)
-            {
-                var distanceMeters = DistanceInMeters(
-                    bestCandidates[firstIndex].Candidate.Coordinates,
-                    bestCandidates[secondIndex].Candidate.Coordinates);
-                if (distanceMeters > maximumSpread)
-                {
-                    _logger.LogWarning(
-                        "Geocoding candidates with equal address evidence are spatially ambiguous. TraceId={TraceId} Provider={Provider} DistanceMeters={DistanceMeters} CandidateCount={CandidateCount}",
-                        Activity.Current?.TraceId.ToString(),
-                        bestCandidates[firstIndex].Candidate.Provider,
-                        distanceMeters,
-                        bestCandidates.Count);
-                    return new CandidateSelection(null, true);
-                }
-            }
-        }
-
-        return new CandidateSelection(bestCandidates[0].Candidate, false);
-    }
-
-    private static string? GetCandidateRejectionReason(
-        AddressGeocodingCandidate candidate,
-        PropertyGeocodingQuery query)
-    {
-        if (!IsWithinVietnam(candidate))
-        {
-            return "country_or_coordinate_mismatch";
-        }
-
-        if (candidate.ProvinceName is not null)
-        {
-            if (!NamesMatch(candidate.ProvinceName, query.ProvinceName))
-            {
-                return "province_mismatch";
-            }
-        }
-        else if (candidate.ProvinceAreas?.Any(area => NamesMatch(area.Name, query.ProvinceName)) != true)
-        {
-            return "province_unverified";
-        }
-
-        if (candidate.WardName is not null)
-        {
-            if (!NamesMatch(candidate.WardName, query.WardName))
-            {
-                return "ward_mismatch";
-            }
-        }
-        else if (candidate.AdministrativeAreas?.Any(area => NamesMatch(area.Name, query.WardName)) != true)
-        {
-            return "ward_unverified";
-        }
-
-        if (string.IsNullOrWhiteSpace(candidate.StreetName))
-        {
-            return "street_missing";
-        }
-
-        if (!string.Equals(
-                NormalizeStreetName(candidate.StreetName),
-                NormalizeStreetName(query.StreetName),
-                StringComparison.Ordinal))
-        {
-            return "street_mismatch";
-        }
-
-        if (candidate.HouseNumber is not null)
-        {
-            if (query.HouseNumber is null ||
-                !string.Equals(
-                    NormalizeHouseNumber(candidate.HouseNumber),
-                    NormalizeHouseNumber(query.HouseNumber),
-                    StringComparison.Ordinal))
-            {
-                return "house_number_mismatch";
-            }
-        }
-
-        if (query.HouseNumber is not null &&
-            (candidate.Precision is "building" or "house") &&
-            candidate.HouseNumber is null)
-        {
-            return "house_number_unverified";
-        }
-
-        if (PrecisionRank(candidate.Precision) < PrecisionRank("street"))
-        {
-            return "object_precision_too_low";
-        }
-
-        return null;
-    }
-
-    private static int GetCandidateQualityScore(
-        AddressGeocodingCandidate candidate,
-        PropertyGeocodingQuery query)
-    {
-        var precisionScore = PrecisionRank(candidate.Precision) * 100;
-        var wardEvidenceScore = candidate.WardName is not null ? 20 : 10;
-        var provinceEvidenceScore = candidate.ProvinceName is not null ? 10 : 0;
-        var houseNumberScore = candidate.HouseNumber is not null && query.HouseNumber is not null ? 100 : 0;
-        return precisionScore + wardEvidenceScore + provinceEvidenceScore + houseNumberScore;
-    }
-
-    private void LogSelectedCandidate(AddressGeocodingCandidate candidate)
-    {
-        _logger.LogInformation(
-            "Property geocoding candidate selected. TraceId={TraceId} Provider={Provider} OsmKey={OsmKey} OsmValue={OsmValue} Precision={Precision}",
-            Activity.Current?.TraceId.ToString(),
-            candidate.Provider,
-            candidate.OsmKey,
-            candidate.OsmValue,
-            candidate.Precision);
-    }
-
-    private static (string? HouseNumber, string StreetName) ParseStreetAddress(string addressText)
-    {
-        var match = HouseNumberAndStreetPattern.Match(addressText.Trim());
-        if (!match.Success)
-        {
-            return (null, addressText.Trim());
-        }
-
-        return (
-            match.Groups["number"].Value.Trim(),
-            match.Groups["street"].Value.Trim());
-    }
-
-    private static bool NamesMatch(string? candidateName, string expectedName)
-    {
-        return candidateName is not null &&
-            PublicAreaNameNormalizer.Normalize(candidateName) ==
-            PublicAreaNameNormalizer.Normalize(expectedName);
-    }
-
-    private static string NormalizeStreetName(string value)
-    {
-        var tokens = PublicAreaNameNormalizer.Normalize(value)
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .ToList();
-        while (tokens.Count > 1 && tokens[0] is "duong" or "street" or "road" or "st" or "rd")
-        {
-            tokens.RemoveAt(0);
-        }
-
-        return string.Join(' ', tokens);
-    }
-
-    private static string NormalizeHouseNumber(string value)
-    {
-        return string.Concat(value
-            .Trim()
-            .ToUpperInvariant()
-            .Where(character => char.IsLetterOrDigit(character) || character is '/' or '-'));
-    }
-
-    private static double DistanceInMeters(AddressCoordinates first, AddressCoordinates second)
-    {
-        const double earthRadiusMeters = 6_371_000;
-        var firstLatitude = (double)first.Latitude * Math.PI / 180;
-        var secondLatitude = (double)second.Latitude * Math.PI / 180;
-        var latitudeDifference = secondLatitude - firstLatitude;
-        var longitudeDifference = ((double)second.Longitude - (double)first.Longitude) * Math.PI / 180;
-        var haversine = Math.Pow(Math.Sin(latitudeDifference / 2), 2) +
-            Math.Cos(firstLatitude) * Math.Cos(secondLatitude) *
-            Math.Pow(Math.Sin(longitudeDifference / 2), 2);
-        return earthRadiusMeters * 2 * Math.Atan2(Math.Sqrt(haversine), Math.Sqrt(1 - haversine));
-    }
-
-    private static bool IsWithinVietnam(AddressGeocodingCandidate candidate)
-    {
-        var coordinates = candidate.Coordinates;
-        // This broad envelope includes mainland Vietnam and the Hoang Sa/Truong Sa archipelagos.
-        // It rejects implausible country-level coordinates; it does not verify ward membership.
-        var coordinatesWithinBroadEnvelope = coordinates.Latitude is >= 6.5m and <= 24m &&
-            coordinates.Longitude is >= 102m and <= 117.5m;
-        return coordinatesWithinBroadEnvelope &&
-            string.Equals(candidate.CountryCode, "vn", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static int PrecisionRank(string precision)
-    {
-        return precision switch
-        {
-            "house" => 5,
-            "building" => 4,
-            "street" => 3,
-            "commune" => 2,
-            "province" => 1,
-            _ => 0
-        };
     }
 
     private async Task<string?> UploadImageAsync(PropertyImageInput? image)
@@ -912,18 +520,7 @@ public class PropertyService : IPropertyService
         return property;
     }
 
-    private sealed record ProviderCandidates(
-        bool IsAvailable,
-        bool IsRateLimited,
-        IReadOnlyList<AddressGeocodingCandidate> Candidates);
 
-    private sealed record CandidateEvaluation(
-        AddressGeocodingCandidate Candidate,
-        int QualityScore);
-
-    private sealed record CandidateSelection(
-        AddressGeocodingCandidate? Candidate,
-        bool IsAmbiguous);
 }
 
 public class PropertyBusinessRuleException(string message) : Exception(message);

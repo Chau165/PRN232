@@ -13,15 +13,13 @@ namespace PRN232.Application.Tests;
 public sealed class PropertyCreationTests
 {
     [Fact]
-    public async Task CreateProperty_geocodes_address_and_stores_coordinates_and_uploaded_image_url()
+    public async Task CreateProperty_stores_supplied_coordinates_and_uploaded_image_url()
     {
         await using var context = await CreateContextAsync();
-        var geocoder = new FakeGeocodingService(new AddressCoordinates(21.032m, 105.814m));
         var storage = new FakePropertyImageStorage();
         var service = new PropertyService(
             new PropertyRepository(context),
             new AdministrativeDivisionCatalog(),
-            geocoder,
             storage);
 
         var created = await service.CreateAsync(
@@ -30,7 +28,7 @@ public sealed class PropertyCreationTests
                 "12 Đường số 5",
                 "01",
                 "00004",
-                "Mô tả"),
+                "Mô tả", Latitude: 21.032m, Longitude: 105.814m),
             ownerId: 10,
             isAdmin: true,
             new PropertyImageInput("property.png", "image/png", ValidPng()));
@@ -41,10 +39,6 @@ public sealed class PropertyCreationTests
         Assert.Equal("Phường Ba Đình", created.Ward);
         Assert.Equal(string.Empty, created.District);
         Assert.Equal("Thành phố Hà Nội", created.City);
-        Assert.Equal(1, geocoder.Calls);
-        Assert.Equal(
-            "12 Đường số 5, Phường Ba Đình, Thành phố Hà Nội, Việt Nam",
-            geocoder.LastQuery);
         Assert.Single(storage.UploadedImages);
 
         var persisted = await context.Properties.SingleAsync(property => property.PropertyId == created.PropertyId);
@@ -54,15 +48,13 @@ public sealed class PropertyCreationTests
     }
 
     [Fact]
-    public async Task CreateProperty_rejects_missing_geocoding_result_before_upload()
+    public async Task CreateProperty_rejects_missing_coordinates_before_upload()
     {
         await using var context = await CreateContextAsync();
-        var geocoder = new FakeGeocodingService(null);
         var storage = new FakePropertyImageStorage();
         var service = new PropertyService(
             new PropertyRepository(context),
             new AdministrativeDivisionCatalog(),
-            geocoder,
             storage);
 
         await Assert.ThrowsAsync<PropertyValidationException>(() => service.CreateAsync(
@@ -76,7 +68,7 @@ public sealed class PropertyCreationTests
     }
 
     [Fact]
-    public async Task UpdateProperty_geocodes_changed_address_and_keeps_existing_image_without_new_file()
+    public async Task UpdateProperty_stores_changed_pin_and_keeps_existing_image_without_new_file()
     {
         await using var context = await CreateContextAsync();
         context.Properties.Add(new Property
@@ -94,12 +86,10 @@ public sealed class PropertyCreationTests
         });
         await context.SaveChangesAsync();
 
-        var geocoder = new FakeGeocodingService(new AddressCoordinates(21.032m, 105.814m));
         var storage = new FakePropertyImageStorage();
         var service = new PropertyService(
             new PropertyRepository(context),
             new AdministrativeDivisionCatalog(),
-            geocoder,
             storage);
 
         var updated = await service.UpdateAsync(
@@ -108,7 +98,7 @@ public sealed class PropertyCreationTests
                 "Nhà trọ mới",
                 "12 Đường số 5",
                 "01",
-                "00004"),
+                "00004", Latitude:21.032m, Longitude:105.814m),
             requestingUserId: 10,
             isAdmin: true);
 
@@ -117,7 +107,6 @@ public sealed class PropertyCreationTests
         Assert.Equal(105.814m, updated.Longitude);
         Assert.Equal("https://cdn.example.test/properties/old.png", updated.PrimaryImageUrl);
         Assert.Empty(storage.UploadedImages);
-        Assert.Equal(1, geocoder.Calls);
     }
 
     [Fact]
@@ -128,11 +117,10 @@ public sealed class PropertyCreationTests
         var service = new PropertyService(
             new PropertyRepository(context),
             new AdministrativeDivisionCatalog(),
-            new FakeGeocodingService(new AddressCoordinates(21m, 105m)),
             storage);
 
         await Assert.ThrowsAsync<PropertyValidationException>(() => service.CreateAsync(
-            new CreatePropertyDto("Nhà trọ", "Địa chỉ", "01", "00004"),
+            new CreatePropertyDto("Nhà trọ", "Địa chỉ", "01", "00004", Latitude:21m, Longitude:105m),
             ownerId: 10,
             isAdmin: true,
             new PropertyImageInput("property.png", "image/png", [1, 2, 3])));
@@ -163,44 +151,6 @@ public sealed class PropertyCreationTests
         });
         await context.SaveChangesAsync();
         return context;
-    }
-
-    private sealed class FakeGeocodingService(AddressCoordinates? result) : IPropertyGeocodingService
-    {
-        private readonly AddressCoordinates? _result = result;
-
-        public string? LastQuery { get; private set; }
-
-        public int Calls { get; private set; }
-
-        public Task<IReadOnlyList<AddressGeocodingCandidate>> FindNominatimCandidatesAsync(
-            PropertyGeocodingQuery query,
-            CancellationToken cancellationToken = default)
-        {
-            Calls++;
-            LastQuery = query.FullAddress;
-            IReadOnlyList<AddressGeocodingCandidate> candidates = _result is null
-                ? Array.Empty<AddressGeocodingCandidate>()
-                : [new AddressGeocodingCandidate(
-                    _result,
-                    query.FullAddress,
-                    "Nominatim",
-                    "house",
-                    "12",
-                    "Đường số 5",
-                    "Phường Ba Đình",
-                    "Thành phố Hà Nội",
-                    "vn")];
-            return Task.FromResult(candidates);
-        }
-
-        public Task<IReadOnlyList<AddressGeocodingCandidate>> FindPhotonCandidatesAsync(
-            PropertyGeocodingQuery query,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult<IReadOnlyList<AddressGeocodingCandidate>>(
-                Array.Empty<AddressGeocodingCandidate>());
-        }
     }
 
     private sealed class FakePropertyImageStorage : IPropertyImageStorage

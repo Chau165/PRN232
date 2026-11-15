@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter, Route, Routes, useLocation } from "react-router"
 import { AuthProvider } from "@/auth/AuthContext"
@@ -10,6 +10,9 @@ import ManagementRoomsPage from "@/pages/ManagementRoomsPage/ManagementRoomsPage
 import { routes } from "@/constants/routes"
 import type { CurrentUser } from "@/types/user"
 
+// Map selection is tested separately; this suite checks CRUD contracts.
+vi.mock("@/components/management/PropertyLocationPicker", () => ({ default: ({onChange}:{onChange:(p:unknown)=>void}) =>
+  <button type="button" onClick={()=>onChange({latitude:21.032,longitude:105.814})}>Chọn ghim kiểm thử</button> }))
 const admin = {
   userId: 7,
   fullName: "Admin Thật",
@@ -186,6 +189,7 @@ describe("management property and room CRUD", () => {
     fireEvent.change(screen.getByLabelText("Ảnh đại diện"), {
       target: { files: [image] },
     })
+    fireEvent.click(screen.getByRole("button", { name: "Chọn ghim kiểm thử" }))
     fireEvent.click(screen.getByRole("button", { name: "Tạo khu trọ" }))
 
     await waitFor(() =>
@@ -332,7 +336,7 @@ describe("management property and room CRUD", () => {
     const propertySelect = screen.getByLabelText("Khu trọ") as HTMLSelectElement
     expect(propertySelect.value).toBe(String(property.propertyId))
     expect(propertySelect.disabled).toBe(true)
-    await screen.findByRole("option", { name: "Studio" })
+    await within(await screen.findByLabelText("Loại phòng")).findByRole("option", { name: "Studio" })
     fireEvent.change(screen.getByLabelText("Loại phòng"), {
       target: { value: "4" },
     })
@@ -444,7 +448,7 @@ describe("management property and room CRUD", () => {
     fireEvent.change(screen.getByLabelText("Khu trọ"), {
       target: { value: String(property.propertyId) },
     })
-    await screen.findByRole("option", { name: "Studio" })
+    await within(await screen.findByLabelText("Loại phòng")).findByRole("option", { name: "Studio" })
     fireEvent.change(screen.getByLabelText("Loại phòng"), {
       target: { value: "4" },
     })
@@ -530,7 +534,7 @@ describe("management property and room CRUD", () => {
 
     renderScopedRoomsPage()
     fireEvent.click(await screen.findByRole("button", { name: "+ Thêm phòng" }))
-    await screen.findByRole("option", { name: "Studio" })
+    await within(await screen.findByLabelText("Loại phòng")).findByRole("option", { name: "Studio" })
 
     const areaInput = screen.getByLabelText("Diện tích (m²)") as HTMLInputElement
     expect(areaInput.getAttribute("min")).toBe("8")
@@ -626,17 +630,18 @@ describe("management property and room CRUD", () => {
 
     // Open detail drawer and verify maxOccupants, floor=0 ("Tầng trệt"), and description
     fireEvent.click(await screen.findByRole("button", { name: "Xem" }))
-    expect(await screen.findByText("Chi tiết phòng")).toBeTruthy()
-    expect(screen.getByText("2 người")).toBeTruthy()
-    expect(screen.getByText("Tầng trệt")).toBeTruthy()
+    const detailHeading = await screen.findByText("Chi tiết phòng")
+    const drawer = within(detailHeading.closest("section")!)
+    expect(await drawer.findByText("2 người")).toBeTruthy()
+    expect(await drawer.findByText("Tầng trệt")).toBeTruthy()
     expect(
-      screen.getByText("Phòng tầng trệt có cửa sổ thoáng."),
+      await drawer.findByText("Phòng tầng trệt có cửa sổ thoáng."),
     ).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "Đóng" }))
 
     // Open edit modal and verify dynamic hint + validation + payload
     fireEvent.click(screen.getByRole("button", { name: "Sửa" }))
-    await screen.findByRole("option", { name: "Studio" })
+    await within(await screen.findByLabelText("Loại phòng")).findByRole("option", { name: "Studio" })
     expect(
       await screen.findByText("Tối đa 2 người cho phòng 20 m²"),
     ).toBeTruthy()
