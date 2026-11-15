@@ -314,9 +314,15 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
                 .IsUnique()
                 .HasDatabaseName("UX_Bookings_ViewingId")
                 .HasFilter("\"ViewingId\" IS NOT NULL");
-            entity.ToTable("Bookings", table => table.HasCheckConstraint(
-                "CK_Bookings_AgreedMonthlyRent_Positive",
-                "\"AgreedMonthlyRent\" IS NULL OR \"AgreedMonthlyRent\" > 0"));
+            entity.ToTable("Bookings", table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_Bookings_AgreedMonthlyRent_Positive",
+                    "\"AgreedMonthlyRent\" IS NULL OR \"AgreedMonthlyRent\" > 0");
+                table.HasCheckConstraint(
+                    "CK_Bookings_OccupantCount_Range",
+                    "\"OccupantCount\" IS NULL OR \"OccupantCount\" BETWEEN 1 AND 10");
+            });
             entity.HasOne(booking => booking.Viewing).WithMany()
                 .HasForeignKey(booking => booking.ViewingId).OnDelete(DeleteBehavior.Restrict);
         });

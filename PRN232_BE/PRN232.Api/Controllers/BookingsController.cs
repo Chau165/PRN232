@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using PRN232.Api.Validation;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Services;
@@ -92,7 +93,20 @@ public class BookingsController : ControllerBase
         catch (BookingRoomUnavailableException exception)
         {
             return Conflict(new ProblemDetails { Title = "Room unavailable", Detail = exception.Message });
-        }        catch (PhoneNumberRequiredException exception)
+        }
+        catch (BookingOccupancyExceededException exception)
+        {
+            return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                ["occupantCount"] = [exception.Message]
+            })
+            {
+                Title = FluentValidationFilter.Title,
+                Detail = exception.Message,
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+        catch (PhoneNumberRequiredException exception)
         {
             return BadRequest(new ProblemDetails { Title = "Phone number required", Detail = exception.Message });
         }

@@ -3,6 +3,7 @@ using PRN232.Application.Interfaces;
 using PRN232.Application.Policies;
 using PRN232.Application.ReadModels;
 using PRN232.Application.States;
+using PRN232.Application.Validation;
 using PRN232.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -54,6 +55,12 @@ public class BookingService : IBookingService
             throw new BookingNotFoundException("Room does not exist.");
         }
 
+        var occupantCount = dto.OccupantCount ?? 1;
+        if (occupantCount > room.MaxOccupants)
+        {
+            throw new BookingOccupancyExceededException(BookingRules.OccupancyExceeded(room.RoomCode, room.MaxOccupants));
+        }
+
         if (dto.ViewingId.HasValue)
         {
             var viewing = await _repository.GetViewingForBookingAsync(dto.ViewingId.Value, customerId);
@@ -68,6 +75,8 @@ public class BookingService : IBookingService
 
         var now = _timeProvider.GetUtcNow();
         var booking = CreateBookingEntity(room, customerId, now, dto.ViewingId);
+        booking.MoveInDate = dto.MoveInDate ?? BookingRules.Today(_timeProvider);
+        booking.OccupantCount = occupantCount;
         Notifications? pendingNotification = null;
 
         if (!await _repository.AddIfRoomRentableAsync(booking, bookingId => pendingNotification = new Notifications
@@ -316,13 +325,17 @@ public class BookingService : IBookingService
             UtcTimestamp.ForResponse(booking.ExpiryDate),
             booking.CustomerPhone,
             booking.ContractId, booking.RefundStatus, booking.CanRequestRefund, booking.LatestPaymentRequestId,
-            UtcTimestamp.ForResponse(holdUntil), canReleaseRoom, booking.AgreedMonthlyRent);
+            UtcTimestamp.ForResponse(holdUntil), canReleaseRoom, booking.AgreedMonthlyRent,
+            booking.MoveInDate, booking.OccupantCount);
     }
 }
 
 public sealed class BookingNotFoundException(string message) : Exception(message);
 
 public sealed class BookingRoomUnavailableException(string message) : Exception(message);
+
+// Controller trả 400 với lỗi gắn vào field occupantCount, như lỗi FluentValidation.
+public sealed class BookingOccupancyExceededException(string message) : Exception(message);
 
 public sealed class BookingAuthorizationException(string message) : Exception(message);
 

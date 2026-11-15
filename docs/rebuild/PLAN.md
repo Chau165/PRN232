@@ -199,7 +199,7 @@ Giữ Supabase Storage. Bổ sung:
 ### WS3 — Đặt cọc, hợp đồng, quyết toán (LUỒNG CHÍNH)
 | ID | Việc | Owner | Phụ thuộc | Size | Người |
 |----|------|-------|-----------|------|-------|
-| 3.1 | Booking thêm `MoveInDate`, `OccupantCount`, validate ≤ `MaxOccupants` (giữ nguyên `AgreedMonthlyRent` và `ViewingId` của Châu) | Claude | 2.1 | M | |
+| 3.1 | ✅ Booking thêm `MoveInDate`, `OccupantCount`, validate ≤ `MaxOccupants` (giữ nguyên `AgreedMonthlyRent` và `ViewingId` của Châu). Tạm thời không bắt buộc, xem API-CHANGES C9 | Claude | 2.1 | M | |
 | 3.2 | Chính sách hủy theo D3 bước 3 (khách hủy / chủ hủy / quá hạn dọn vào) | Claude | 3.1 | M | |
 | 3.3 | Cọc chuyển thành cọc hợp đồng, bỏ `PrepaidRentCredit` cho HĐ mới | Claude | 3.1 | M | |
 | 3.4 | ✅ Job nhắc hạn 30 ngày / 7 ngày / quá hạn (không thêm trạng thái `Expired`, xem D3) | Claude | — | S | |

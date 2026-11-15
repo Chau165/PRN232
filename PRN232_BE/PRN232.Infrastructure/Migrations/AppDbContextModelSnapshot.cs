@@ -249,6 +249,12 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<DateTime>("ExpiryDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateOnly?>("MoveInDate")
+                        .HasColumnType("date");
+
+                    b.Property<int?>("OccupantCount")
+                        .HasColumnType("integer");
+
                     b.Property<int>("RoomId")
                         .HasColumnType("integer");
 
@@ -273,6 +279,8 @@ namespace PRN232.Infrastructure.Migrations
                     b.ToTable("Bookings", null, t =>
                         {
                             t.HasCheckConstraint("CK_Bookings_AgreedMonthlyRent_Positive", "\"AgreedMonthlyRent\" IS NULL OR \"AgreedMonthlyRent\" > 0");
+
+                            t.HasCheckConstraint("CK_Bookings_OccupantCount_Range", "\"OccupantCount\" IS NULL OR \"OccupantCount\" BETWEEN 1 AND 10");
                         });
                 });
 

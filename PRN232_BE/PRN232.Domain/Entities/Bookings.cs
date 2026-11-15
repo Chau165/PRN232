@@ -20,6 +20,9 @@ public class Bookings
     }
     public decimal? AgreedMonthlyRent { get; set; }
     public int? ViewingId { get; set; }
+    // Rebuild 3.1 (PLAN D3 bước 2). NULL ở booking tạo trước rebuild.
+    public DateOnly? MoveInDate { get; set; }
+    public int? OccupantCount { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime ExpiryDate
     {

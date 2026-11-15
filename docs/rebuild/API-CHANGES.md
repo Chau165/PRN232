@@ -203,6 +203,33 @@ Việc FE gợi ý: type `PublicRoomDetail.equipments` thêm `quantity: number`;
 
 ---
 
+## C9 — Đặt cọc: ngày dọn vào, số người ở · ✅ đã có (việc 3.1)
+
+Migration `AddBookingMoveInDateAndOccupantCount` (2 cột cho phép NULL; booking cũ để NULL).
+
+**Request** `POST /api/bookings` thêm 2 field, **tạm thời không bắt buộc** để FE cũ và mobile không hỏng:
+
+```json
+{ "roomId": 12, "viewingId": 3, "moveInDate": "2026-11-20", "occupantCount": 2 }
+```
+
+| Field | Quy tắc | Câu báo lỗi | Key trong `errors` |
+|---|---|---|---|
+| `moveInDate` (`yyyy-MM-dd`) | ≥ hôm nay (giờ VN) | Ngày dọn vào không được ở quá khứ. | `moveInDate` |
+| | ≤ hôm nay + 14 ngày | Ngày dọn vào tối đa 14 ngày kể từ hôm nay. | `moveInDate` |
+| `occupantCount` | 1 ≤ x ≤ 10 | Số người ở phải từ 1 đến 10. | `occupantCount` |
+| | ≤ `maxOccupants` của phòng | Phòng {roomCode} chỉ được ở tối đa {N} người. | `occupantCount` |
+
+Không gửi: `moveInDate` = hôm nay, `occupantCount` = 1. Khi FE và mobile đã gửi đủ, BE sẽ chuyển 2 field này sang **bắt buộc** (sẽ báo trước).
+
+**Response** `BookingDto` (tạo, xem, danh sách) thêm `moveInDate: string | null`, `occupantCount: number | null` (null ở booking cũ).
+
+Chưa đổi trong việc này: thời hạn giữ phòng vẫn là 7 ngày sau khi cọc (`holdUntilUtc`). Việc 3.2 sẽ đổi thành "ngày dọn vào + 3 ngày".
+
+Việc FE gợi ý: form đặt cọc thêm ô chọn ngày (`min` = hôm nay, `max` = hôm nay + 14) và ô số người (`min=1`, `max` = `maxOccupants` lấy từ chi tiết phòng công khai, C6). Trang danh sách/chi tiết booking hiển thị "Dọn vào 20/11/2026 · 2 người".
+
+---
+
 <a id="fe"></a>
 ## Việc FE cần làm (task 1.5, Antigravity)
 

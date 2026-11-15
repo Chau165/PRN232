@@ -30,6 +30,40 @@ public class BookingServiceTests
         Assert.Contains("chờ thanh toán cọc", notification.Title);
     }
 
+    // Rebuild 3.1: Now is 19:00 on 28/10 in Vietnam.
+    [Fact]
+    public async Task CreateAsync_defaults_to_moving_in_today_with_one_occupant()
+    {
+        var repository = new FakeBookingRepository { Room = new BookingRoomReadModel(5, "A-101", 7, 3_000_000m, MaxOccupants: 2) };
+
+        await CreateService(repository).CreateAsync(new CreateBookingDto(5), 42);
+
+        var added = Assert.Single(repository.Added);
+        Assert.Equal((new DateOnly(2026, 10, 28), 1), (added.MoveInDate, added.OccupantCount));
+    }
+
+    [Fact]
+    public async Task CreateAsync_stores_the_chosen_move_in_date_and_occupants()
+    {
+        var repository = new FakeBookingRepository { Room = new BookingRoomReadModel(5, "A-101", 7, 3_000_000m, MaxOccupants: 2) };
+
+        await CreateService(repository).CreateAsync(new CreateBookingDto(5, MoveInDate: new DateOnly(2026, 11, 5), OccupantCount: 2), 42);
+
+        var added = Assert.Single(repository.Added);
+        Assert.Equal((new DateOnly(2026, 11, 5), 2), (added.MoveInDate, added.OccupantCount));
+    }
+
+    [Fact]
+    public async Task CreateAsync_rejects_more_occupants_than_the_room_allows()
+    {
+        var repository = new FakeBookingRepository { Room = new BookingRoomReadModel(5, "A-101", 7, 3_000_000m, MaxOccupants: 2) };
+
+        var error = await Assert.ThrowsAsync<BookingOccupancyExceededException>(() =>
+            CreateService(repository).CreateAsync(new CreateBookingDto(5, OccupantCount: 3), 42));
+        Assert.Equal("Phòng A-101 chỉ được ở tối đa 2 người.", error.Message);
+        Assert.Empty(repository.Added);
+    }
+
     [Fact]
     public async Task CreateAsync_rejects_missing_room()
     {

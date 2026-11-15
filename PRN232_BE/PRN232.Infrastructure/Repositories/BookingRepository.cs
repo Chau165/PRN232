@@ -27,7 +27,8 @@ public class BookingRepository : IBookingRepository
                 room.RoomId,
                 room.RoomCode,
                 room.Property!.OwnerId,
-                room.PropertyRoomType!.MonthlyRent))
+                room.PropertyRoomType!.MonthlyRent,
+                room.MaxOccupants))
             .FirstOrDefaultAsync();
     }
 
@@ -313,5 +314,7 @@ public class BookingRepository : IBookingRepository
             .OrderBy(payment => payment.PaymentId)
             .Select(payment => payment.PaidAtUtc)
             .FirstOrDefault(),
-        booking.AgreedMonthlyRent);
+        booking.AgreedMonthlyRent,
+        booking.MoveInDate,
+        booking.OccupantCount);
 }
