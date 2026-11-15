@@ -163,6 +163,20 @@ describe("DepositPage", () => {
     expect(mocks.getBooking).not.toHaveBeenCalled()
   })
 
+  it("links to the pending booking when the customer already holds an unpaid one (B4)", async () => {
+    const message = "Bạn đang có một đặt phòng chờ thanh toán. Hãy thanh toán hoặc hủy trước khi đặt phòng khác."
+    mocks.createBooking.mockRejectedValue(new ApiError(message, {
+      status: 409,
+      body: { title: "Pending booking exists", detail: message, pendingBookingId: 42 },
+    }))
+    renderAt("/deposit?roomId=501")
+    fireEvent.click(await screen.findByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
+
+    expect((await screen.findByRole("alert")).textContent).toBe(message)
+    const link = screen.getByRole("link", { name: "Xem đặt phòng đang chờ thanh toán" })
+    expect(link.getAttribute("href")).toBe("/deposit?bookingId=42")
+  })
+
   it("does not offer a hold for a room that is no longer listed", async () => {
     mocks.getRoom.mockRejectedValue(new PublicApiError("not-found", "Not found", { status: 404 }))
     renderAt("/deposit?roomId=501")

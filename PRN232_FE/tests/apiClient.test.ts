@@ -15,6 +15,21 @@ function jsonResponse(body: unknown, status = 200): Response {
 afterEach(() => setUnauthorizedHandler(() => undefined))
 
 describe("shared API client", () => {
+  it("keeps the ProblemDetails body on ApiError so callers can read extra fields", async () => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
+      title: "Pending booking exists",
+      detail: "Bạn đang có một đặt phòng chờ thanh toán.",
+      pendingBookingId: 42,
+    }, 409)))
+
+    const error = await apiRequest("/bookings", { method: "POST", json: { roomId: 1 } }).catch((cause: unknown) => cause)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as ApiError).status).toBe(409)
+    expect((error as ApiError).message).toBe("Bạn đang có một đặt phòng chờ thanh toán.")
+    expect((error as ApiError).body).toMatchObject({ pendingBookingId: 42 })
+  })
+
   it("serializes JSON and adds common and Bearer headers", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ id: 3 }))
     vi.stubGlobal("fetch", fetchMock)
