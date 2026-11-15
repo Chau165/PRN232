@@ -12,7 +12,10 @@ namespace PRN232.Application.Services;
 //   (giống mọi thao tác sửa hợp đồng).
 // - Bồi thường (BLDS 2015 Điều 479): chỉ khi trả phòng, chỉ thiết bị Hư hỏng/Mất, tối đa giá trị đã chụp lại
 //   × số lượng; thiết bị đã hỏng/mất từ lúc nhận phòng thì không tính tiền khách; hao mòn không bồi thường.
-public sealed class HandoverService(IHandoverRepository repository, TimeProvider clock) : IHandoverService
+public sealed class HandoverService(
+    IHandoverRepository repository,
+    TimeProvider clock,
+    IDepositSettlementRepository? settlements = null) : IHandoverService
 {
     private static readonly CultureInfo Vietnamese = CultureInfo.GetCultureInfo("vi-VN");
 
@@ -63,6 +66,11 @@ public sealed class HandoverService(IHandoverRepository repository, TimeProvider
         else if (contract.Status is not (ContractStatuses.Active or ContractStatuses.Terminated))
         {
             throw new ContractConflictException("Hợp đồng này không lập được biên bản trả phòng.");
+        }
+        else if (settlements is not null && await settlements.ExistsAsync(contractId, cancellationToken))
+        {
+            // Rebuild 3.6b: tiền bồi thường đã được trừ vào cọc theo biên bản này.
+            throw new ContractConflictException("Đã quyết toán cọc nên không sửa được biên bản trả phòng.");
         }
 
         if (dto.HandoverDate < contract.StartDate)

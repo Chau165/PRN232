@@ -400,6 +400,15 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<decimal>("MonthlyRent")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<DateTime?>("MoveOutNoticeAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("MoveOutNoticeById")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly?>("PlannedMoveOutDate")
+                        .HasColumnType("date");
+
                     b.Property<int?>("ProcessedByStaffId")
                         .HasColumnType("integer");
 
@@ -420,11 +429,103 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.HasIndex("CustomerId");
 
+                    b.HasIndex("MoveOutNoticeById");
+
                     b.HasIndex("ProcessedByStaffId");
 
                     b.HasIndex("RoomId");
 
                     b.ToTable("Contracts");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.DepositSettlements", b =>
+                {
+                    b.Property<int>("DepositSettlementId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("DepositSettlementId"));
+
+                    b.Property<decimal>("AmountDue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("DamageCharges")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("DepositAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("DueCollectedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("DueCollectedById")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("EarlyWithoutNotice")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("ForfeitedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateOnly>("MoveOutDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int?>("NoticeDays")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("OutstandingDebt")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("RefundAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("RefundConfirmedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("RefundConfirmedById")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("RetainedForDebt")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("SettledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("SettledById")
+                        .HasColumnType("integer");
+
+                    b.HasKey("DepositSettlementId");
+
+                    b.HasIndex("ContractId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_DepositSettlements_ContractId");
+
+                    b.HasIndex("DueCollectedById");
+
+                    b.HasIndex("RefundConfirmedById");
+
+                    b.HasIndex("SettledById");
+
+                    b.ToTable("DepositSettlements", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_DepositSettlements_Balanced", "\"DamageCharges\" - \"AmountDue\" + \"RetainedForDebt\" + \"ForfeitedAmount\" + \"RefundAmount\" = \"DepositAmount\"");
+
+                            t.HasCheckConstraint("CK_DepositSettlements_NonNegative", "\"DepositAmount\" >= 0 AND \"DamageCharges\" >= 0 AND \"OutstandingDebt\" >= 0 AND \"RetainedForDebt\" >= 0 AND \"ForfeitedAmount\" >= 0 AND \"RefundAmount\" >= 0 AND \"AmountDue\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Equipments", b =>
@@ -1991,6 +2092,11 @@ namespace PRN232.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("PRN232.Domain.Entities.Users", "MoveOutNoticeBy")
+                        .WithMany()
+                        .HasForeignKey("MoveOutNoticeById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PRN232.Domain.Entities.Users", "ProcessedByStaff")
                         .WithMany("ContractsProcessed")
                         .HasForeignKey("ProcessedByStaffId")
@@ -2006,9 +2112,44 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.Navigation("Customer");
 
+                    b.Navigation("MoveOutNoticeBy");
+
                     b.Navigation("ProcessedByStaff");
 
                     b.Navigation("Room");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.DepositSettlements", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Contracts", "Contract")
+                        .WithMany()
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "DueCollectedBy")
+                        .WithMany()
+                        .HasForeignKey("DueCollectedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "RefundConfirmedBy")
+                        .WithMany()
+                        .HasForeignKey("RefundConfirmedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PRN232.Domain.Entities.Users", "SettledBy")
+                        .WithMany()
+                        .HasForeignKey("SettledById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Contract");
+
+                    b.Navigation("DueCollectedBy");
+
+                    b.Navigation("RefundConfirmedBy");
+
+                    b.Navigation("SettledBy");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.Equipments", b =>

@@ -127,6 +127,7 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<HandoverRecords> HandoverRecords => Set<HandoverRecords>();
     public DbSet<HandoverItems> HandoverItems => Set<HandoverItems>();
     public DbSet<ContractEvidenceFiles> ContractEvidenceFiles => Set<ContractEvidenceFiles>();
+    public DbSet<DepositSettlements> DepositSettlements => Set<DepositSettlements>();
     public DbSet<Equipments> Equipments
     {
         get
@@ -332,6 +333,9 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
                 .HasForeignKey(booking => booking.DepositReturnedById).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<Contracts>().HasKey(x => x.ContractId);
+        modelBuilder.Entity<Contracts>()
+            .HasOne(contract => contract.MoveOutNoticeBy).WithMany()
+            .HasForeignKey(contract => contract.MoveOutNoticeById).OnDelete(DeleteBehavior.Restrict);
         // Rebuild 3.5: biên bản bàn giao. Không cho xóa hợp đồng/người lập khi còn biên bản (giữ bằng chứng).
         modelBuilder.Entity<HandoverRecords>(entity =>
         {
@@ -347,6 +351,34 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
                 .HasForeignKey(record => record.RecordedById).OnDelete(DeleteBehavior.Restrict);
             entity.ToTable("HandoverRecords", table => table.HasCheckConstraint(
                 "CK_HandoverRecords_Kind", "\"Kind\" IN ('MoveIn', 'MoveOut')"));
+        });
+        modelBuilder.Entity<DepositSettlements>(entity =>
+        {
+            entity.HasKey(settlement => settlement.DepositSettlementId);
+            entity.HasIndex(settlement => settlement.ContractId).IsUnique()
+                .HasDatabaseName("UX_DepositSettlements_ContractId");
+            foreach (var amount in new[] { "DepositAmount", "DamageCharges", "OutstandingDebt", "RetainedForDebt",
+                         "ForfeitedAmount", "RefundAmount", "AmountDue" })
+            {
+                entity.Property<decimal>(amount).HasPrecision(18, 2);
+            }
+            entity.Property(settlement => settlement.Note).HasMaxLength(1000);
+            entity.HasOne(settlement => settlement.Contract).WithMany()
+                .HasForeignKey(settlement => settlement.ContractId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(settlement => settlement.SettledBy).WithMany()
+                .HasForeignKey(settlement => settlement.SettledById).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(settlement => settlement.RefundConfirmedBy).WithMany()
+                .HasForeignKey(settlement => settlement.RefundConfirmedById).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(settlement => settlement.DueCollectedBy).WithMany()
+                .HasForeignKey(settlement => settlement.DueCollectedById).OnDelete(DeleteBehavior.Restrict);
+            // Mọi đồng cọc đều có chỗ đi: bù bồi thường + giữ bù nợ + mất + hoàn = cọc.
+            entity.ToTable("DepositSettlements", table =>
+            {
+                table.HasCheckConstraint("CK_DepositSettlements_NonNegative",
+                    "\"DepositAmount\" >= 0 AND \"DamageCharges\" >= 0 AND \"OutstandingDebt\" >= 0 AND \"RetainedForDebt\" >= 0 AND \"ForfeitedAmount\" >= 0 AND \"RefundAmount\" >= 0 AND \"AmountDue\" >= 0");
+                table.HasCheckConstraint("CK_DepositSettlements_Balanced",
+                    "\"DamageCharges\" - \"AmountDue\" + \"RetainedForDebt\" + \"ForfeitedAmount\" + \"RefundAmount\" = \"DepositAmount\"");
+            });
         });
         modelBuilder.Entity<ContractEvidenceFiles>(entity =>
         {

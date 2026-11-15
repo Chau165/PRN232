@@ -22,7 +22,8 @@ public sealed class ContractEvidenceService(
     IHandoverRepository contracts,
     IContractEvidenceStorage storage,
     TimeProvider clock,
-    ILogger<ContractEvidenceService>? logger = null) : IContractEvidenceService
+    ILogger<ContractEvidenceService>? logger = null,
+    IDepositSettlementRepository? settlements = null) : IContractEvidenceService
 {
     public const int MaxFilesPerKind = 20;
     public const int ImageMaxBytes = 5 * 1024 * 1024;
@@ -143,20 +144,28 @@ public sealed class ContractEvidenceService(
         return contract;
     }
 
-    private async Task<DateOnly> MoveInDeadlineAsync(HandoverContractReadModel contract, CancellationToken cancellationToken) =>
-        ((await repository.GetMoveInHandoverDateAsync(contract.ContractId, cancellationToken)) ?? contract.StartDate)
-            .AddDays(MoveInUploadDays);
+    private sealed record Window(DateOnly MoveInDeadline, bool Settled);
 
-    private bool IsOpen(string kind, HandoverContractReadModel contract, DateOnly moveInDeadline) => kind switch
+    private async Task<Window> MoveInDeadlineAsync(HandoverContractReadModel contract, CancellationToken cancellationToken) => new(
+        ((await repository.GetMoveInHandoverDateAsync(contract.ContractId, cancellationToken)) ?? contract.StartDate)
+            .AddDays(MoveInUploadDays),
+        settlements is not null && await settlements.ExistsAsync(contract.ContractId, cancellationToken));
+
+    private bool IsOpen(string kind, HandoverContractReadModel contract, Window window) => kind switch
     {
-        ContractEvidenceKinds.MoveIn => contract.Status == ContractStatuses.Active && BookingRules.Today(clock) <= moveInDeadline,
-        // 3.6 sẽ khóa thêm khi đã quyết toán cọc.
+        ContractEvidenceKinds.MoveIn => contract.Status == ContractStatuses.Active && BookingRules.Today(clock) <= window.MoveInDeadline,
+        // Rebuild 3.6b: ảnh trả phòng là căn cứ bồi thường, khóa khi đã quyết toán cọc.
+        ContractEvidenceKinds.MoveOut => contract.Status is ContractStatuses.Active or ContractStatuses.Terminated && !window.Settled,
         _ => contract.Status is ContractStatuses.Active or ContractStatuses.Terminated
     };
 
-    private static string ClosedMessage(string kind, DateOnly moveInDeadline) => kind == ContractEvidenceKinds.MoveIn
-        ? $"Đã hết hạn upload hoặc xóa ảnh nhận phòng (hạn đến hết ngày {moveInDeadline.ToString("dd/MM/yyyy", System.Globalization.CultureInfo.InvariantCulture)})."
-        : "Hợp đồng này không còn nhận minh chứng.";
+    private static string ClosedMessage(string kind, Window window) => kind switch
+    {
+        ContractEvidenceKinds.MoveIn =>
+            $"Đã hết hạn upload hoặc xóa ảnh nhận phòng (hạn đến hết ngày {window.MoveInDeadline.ToString("dd/MM/yyyy", System.Globalization.CultureInfo.InvariantCulture)}).",
+        ContractEvidenceKinds.MoveOut when window.Settled => "Đã quyết toán cọc nên không thêm hoặc xóa ảnh trả phòng được.",
+        _ => "Hợp đồng này không còn nhận minh chứng."
+    };
 
     private async Task<ContractEvidenceDto> BuildAsync(HandoverContractReadModel contract, int userId, string role,
         CancellationToken cancellationToken)
@@ -174,7 +183,7 @@ public sealed class ContractEvidenceService(
                 hidden && role != RoleNames.Admin ? null : await storage.GetReadUrlAsync(file.ObjectPath),
                 hidden, file.HiddenReason));
         }
-        return new ContractEvidenceDto(contract.ContractId, deadline,
+        return new ContractEvidenceDto(contract.ContractId, deadline.MoveInDeadline,
             canUpload && IsOpen(ContractEvidenceKinds.MoveIn, contract, deadline),
             canUpload && IsOpen(ContractEvidenceKinds.MoveOut, contract, deadline),
             canUpload && IsOpen(ContractEvidenceKinds.SignedContract, contract, deadline),

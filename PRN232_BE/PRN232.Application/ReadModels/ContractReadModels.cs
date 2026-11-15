@@ -43,4 +43,6 @@ public sealed record ContractReadModel(
     DateOnly? MeterHandoverDate = null,
     bool HasUtilityReadings = false,
     bool HasInvoices = false,
-    decimal SecurityDepositAmount = 0m);
+    decimal SecurityDepositAmount = 0m,
+    DateOnly? PlannedMoveOutDate = null,
+    DateTime? MoveOutNoticeAtUtc = null);

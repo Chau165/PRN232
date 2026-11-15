@@ -40,4 +40,9 @@ public interface IContractRepository
         DateTimeOffset asOfUtc,
         CancellationToken cancellationToken);
     Task<bool> ExistsAsync(int contractId);
+
+    // Rebuild 3.6a. plannedMoveOutDate = null là hủy báo trả phòng. Chỉ ghi khi hợp đồng còn Active.
+    Task<bool> SaveMoveOutNoticeAsync(int contractId, DateOnly? plannedMoveOutDate, DateTime? noticeAtUtc,
+        int? noticeById, IReadOnlyList<Notifications> notifications, CancellationToken cancellationToken);
+    Task<List<int>> GetActiveManagerIdsAsync(int propertyId, CancellationToken cancellationToken);
 }

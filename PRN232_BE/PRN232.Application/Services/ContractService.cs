@@ -20,15 +20,18 @@ public class ContractService : IContractService
     private readonly INotificationRealtimePublisher? _realtimePublisher;
     private readonly ILogger<ContractService>? _logger;
     private readonly IUserContactLookup? _contactLookup;
+    private readonly IDepositSettlementRepository? _settlements;
 
     public ContractService(
         IContractRepository repository,
         TimeProvider timeProvider,
         INotificationRealtimePublisher? realtimePublisher = null,
         ILogger<ContractService>? logger = null,
-        IUserContactLookup? contactLookup = null)
+        IUserContactLookup? contactLookup = null,
+        IDepositSettlementRepository? settlements = null)
     {
         _contactLookup = contactLookup;
+        _settlements = settlements;
         _repository = repository;
         _timeProvider = timeProvider;
         _realtimePublisher = realtimePublisher;
@@ -309,6 +312,12 @@ public class ContractService : IContractService
         {
             throw new ContractConflictException("This contract has already ended or is not active.");
         }
+        // Rebuild 3.6b: hợp đồng giữ cọc đảm bảo phải quyết toán cọc trước khi trả phòng (tiền cọc phải có chỗ đi).
+        if (contract.SecurityDepositAmount > 0m && _settlements is not null &&
+            !await _settlements.ExistsAsync(contractId, cancellationToken))
+        {
+            throw new ContractConflictException("Cần lập biên bản trả phòng và quyết toán cọc trước khi xác nhận trả phòng.");
+        }
 
         var notification = new Notifications
         {
@@ -476,8 +485,130 @@ public class ContractService : IContractService
             contract.MeterHandoverDate,
             contract.HasUtilityReadings,
             contract.HasInvoices,
-            contract.SecurityDepositAmount);
+            contract.SecurityDepositAmount,
+            contract.PlannedMoveOutDate,
+            UtcTimestamp.ForResponse(contract.MoveOutNoticeAtUtc),
+            NoticeDays(contract),
+            ForfeitsDeposit(contract.PlannedMoveOutDate, contract.EndDate, NoticeDays(contract)));
     }
+
+    // Rebuild 3.6a (PLAN D3 bước 6). Trả phòng TRƯỚC ngày kết thúc hợp đồng mà báo trước dưới 30 ngày thì
+    // mất phần cọc còn lại khi quyết toán; trả đúng/sau ngày kết thúc thì không cần báo trước.
+    public const int MoveOutNoticeRequiredDays = 30;
+
+    private static int? NoticeDays(ContractReadModel contract) =>
+        contract is { PlannedMoveOutDate: { } planned, MoveOutNoticeAtUtc: { } noticeAt }
+            ? planned.DayNumber - DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.SpecifyKind(noticeAt, DateTimeKind.Utc), BusinessTimeZone)).DayNumber
+            : null;
+
+    public static bool ForfeitsDeposit(DateOnly? moveOutDate, DateOnly endDate, int? noticeDays) =>
+        moveOutDate is { } date && date < endDate && (noticeDays ?? 0) < MoveOutNoticeRequiredDays;
+
+    public async Task<ContractDto> GiveMoveOutNoticeAsync(int contractId, MoveOutNoticeDto request, int userId,
+        string role, CancellationToken cancellationToken)
+    {
+        var contract = await GetContractForPartyMutationAsync(contractId, userId, role);
+        if (contract.Status != ContractStatuses.Active)
+        {
+            throw new ContractConflictException("Chỉ hợp đồng đang hiệu lực mới báo trả phòng được.");
+        }
+        var planned = request.PlannedMoveOutDate;
+        if (planned < TodayInBusinessTimeZone())
+        {
+            throw new ContractBusinessRuleException("Ngày trả phòng không được ở quá khứ.");
+        }
+        if (planned > contract.EndDate)
+        {
+            throw new ContractBusinessRuleException(
+                $"Ngày trả phòng không được sau ngày kết thúc hợp đồng ({FormatDate(contract.EndDate)}). Muốn ở lâu hơn hãy gia hạn hợp đồng.");
+        }
+
+        var noticeDays = planned.DayNumber - TodayInBusinessTimeZone().DayNumber;
+        var warning = ForfeitsDeposit(planned, contract.EndDate, noticeDays)
+            ? $" Trả phòng trước ngày kết thúc hợp đồng ({FormatDate(contract.EndDate)}) mà báo trước dưới {MoveOutNoticeRequiredDays} ngày thì mất phần tiền cọc còn lại khi quyết toán."
+            : "";
+        var notifications = await MoveOutNotificationsAsync(contract, role, cancellationToken,
+            $"Báo trả phòng {contract.RoomCode} ngày {FormatDate(planned)}",
+            $"Báo trước {noticeDays} ngày.{warning}");
+        if (!await _repository.SaveMoveOutNoticeAsync(contractId, planned, _timeProvider.GetUtcNow().UtcDateTime, userId,
+                notifications, cancellationToken))
+        {
+            throw new ContractConflictException("Hợp đồng vừa thay đổi. Vui lòng tải lại.");
+        }
+        return await ReloadAfterNoticeAsync(contractId, notifications);
+    }
+
+    public async Task<ContractDto> CancelMoveOutNoticeAsync(int contractId, int userId, string role,
+        CancellationToken cancellationToken)
+    {
+        var contract = await GetContractForPartyMutationAsync(contractId, userId, role);
+        if (contract.Status != ContractStatuses.Active || contract.PlannedMoveOutDate is null)
+        {
+            throw new ContractConflictException("Hợp đồng này không có báo trả phòng để hủy.");
+        }
+        var notifications = await MoveOutNotificationsAsync(contract, role, cancellationToken,
+            $"Đã hủy báo trả phòng {contract.RoomCode} ngày {FormatDate(contract.PlannedMoveOutDate.Value)}",
+            "Hợp đồng tiếp tục đến ngày kết thúc như cũ.");
+        if (!await _repository.SaveMoveOutNoticeAsync(contractId, null, null, null, notifications, cancellationToken))
+        {
+            throw new ContractConflictException("Hợp đồng vừa thay đổi. Vui lòng tải lại.");
+        }
+        return await ReloadAfterNoticeAsync(contractId, notifications);
+    }
+
+    // Khách báo thì nhắn quản lý đang phụ trách; quản lý ghi nhận giúp thì nhắn khách.
+    private async Task<List<Notifications>> MoveOutNotificationsAsync(ContractReadModel contract, string role,
+        CancellationToken cancellationToken, string title, string body)
+    {
+        var recipients = role == RoleNames.Customer
+            ? await _repository.GetActiveManagerIdsAsync(contract.PropertyId, cancellationToken)
+            : [contract.CustomerId];
+        return recipients.Select(userId => new Notifications
+        {
+            UserId = userId,
+            Title = title,
+            Body = body,
+            Type = NotificationTypes.Contract,
+            RelatedEntityId = contract.ContractId,
+            IsRead = false
+        }).ToList();
+    }
+
+    private async Task<ContractDto> ReloadAfterNoticeAsync(int contractId, List<Notifications> notifications)
+    {
+        if (_realtimePublisher is not null && notifications.Count > 0)
+        {
+            await _realtimePublisher.PublishCreatedAsync(notifications);
+        }
+        var updated = await _repository.GetByIdAsync(contractId, null, null)
+            ?? throw new ContractNotFoundException("Contract does not exist.");
+        return ConvertToDto(updated);
+    }
+
+    // Khách của chính hợp đồng hoặc quản lý đang phụ trách khu trọ.
+    private async Task<ContractReadModel> GetContractForPartyMutationAsync(int contractId, int userId, string role)
+    {
+        if (role == RoleNames.Manager)
+        {
+            return await GetContractForManagerMutationAsync(contractId, userId, role);
+        }
+        if (role != RoleNames.Customer)
+        {
+            throw new ContractAuthorizationException("Chỉ khách thuê hoặc quản lý của hợp đồng được báo trả phòng.");
+        }
+        var contract = await _repository.GetByIdAsync(contractId, userId, null);
+        if (contract is not null)
+        {
+            return contract;
+        }
+        throw await _repository.ExistsAsync(contractId)
+            ? new ContractAuthorizationException("Bạn không phải khách thuê của hợp đồng này.")
+            : new ContractNotFoundException("Contract does not exist.");
+    }
+
+    private static string FormatDate(DateOnly date) =>
+        date.ToString("dd/MM/yyyy", System.Globalization.CultureInfo.InvariantCulture);
 
     private static InvoiceDto ConvertToDto(InvoiceReadModel invoice, DateOnly today)
     {

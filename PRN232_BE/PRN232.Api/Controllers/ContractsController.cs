@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Services;
+using PRN232.Application.States;
 
 namespace PRN232.Api.Controllers;
 
@@ -153,6 +154,45 @@ public class ContractsController : ControllerBase
         catch (ContractConflictException exception)
         {
             return Conflict(new ProblemDetails { Title = "Contract cannot be extended", Detail = exception.Message });
+        }
+    }
+
+    // Rebuild 3.6a: khách (hoặc quản lý nhập giúp) báo ngày dự kiến trả phòng; DELETE để hủy báo.
+    [HttpPut("{id:int}/move-out-notice")]
+    [Authorize(Roles = RoleNames.Customer + "," + RoleNames.Manager)]
+    public Task<ActionResult<ContractDto>> GiveMoveOutNotice(int id, MoveOutNoticeDto request, CancellationToken cancellationToken) =>
+        RunNoticeAsync((userId, role) => _contractService.GiveMoveOutNoticeAsync(id, request, userId, role, cancellationToken));
+
+    [HttpDelete("{id:int}/move-out-notice")]
+    [Authorize(Roles = RoleNames.Customer + "," + RoleNames.Manager)]
+    public Task<ActionResult<ContractDto>> CancelMoveOutNotice(int id, CancellationToken cancellationToken) =>
+        RunNoticeAsync((userId, role) => _contractService.CancelMoveOutNoticeAsync(id, userId, role, cancellationToken));
+
+    private async Task<ActionResult<ContractDto>> RunNoticeAsync(Func<int, string, Task<ContractDto>> action)
+    {
+        if (!TryGetCurrentUser(out var userId, out var role))
+        {
+            return Unauthorized();
+        }
+        try
+        {
+            return Ok(await action(userId, role));
+        }
+        catch (ContractBusinessRuleException exception)
+        {
+            return BadRequest(new ProblemDetails { Title = "Invalid move-out notice", Detail = exception.Message });
+        }
+        catch (ContractNotFoundException exception)
+        {
+            return NotFound(new ProblemDetails { Title = "Contract not found", Detail = exception.Message });
+        }
+        catch (ContractAuthorizationException exception)
+        {
+            return ForbidWithProblem(exception.Message);
+        }
+        catch (ContractConflictException exception)
+        {
+            return Conflict(new ProblemDetails { Title = "Move-out notice conflict", Detail = exception.Message });
         }
     }
 

@@ -18,6 +18,12 @@ public sealed record ContractEvidenceFileReadModel(
     int UploadedById, string UploadedByName, string UploadedByRole, DateTime UploadedAtUtc,
     DateTime? HiddenAtUtc, string? HiddenReason);
 
+public sealed record DepositSettlementReadModel(
+    int ContractId, DateOnly MoveOutDate, decimal DepositAmount, decimal DamageCharges, decimal OutstandingDebt,
+    decimal RetainedForDebt, decimal ForfeitedAmount, decimal RefundAmount, decimal AmountDue, bool EarlyWithoutNotice,
+    int? NoticeDays, string? Note, string SettledByName, DateTime SettledAtUtc,
+    DateTime? RefundConfirmedAtUtc, string? RefundConfirmedByName, DateTime? DueCollectedAtUtc, string? DueCollectedByName);
+
 // Dòng thiết bị đã được service kiểm tra và chụp lại giá trị, sẵn sàng ghi.
 public sealed record HandoverItemWriteModel(
     int EquipmentId, string EquipmentName, int Quantity, decimal CompensationValue,

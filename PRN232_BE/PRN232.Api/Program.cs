@@ -377,6 +377,8 @@ builder.Services.AddScoped<IContractExpiryReminderService, ContractExpiryReminde
 builder.Services.AddHostedService<PRN232.Api.Workers.ContractExpiryReminderWorker>();
 builder.Services.AddScoped<IHandoverRepository, HandoverRepository>();
 builder.Services.AddScoped<IHandoverService, HandoverService>();
+builder.Services.AddScoped<IDepositSettlementRepository, DepositSettlementRepository>();
+builder.Services.AddScoped<IDepositSettlementService, DepositSettlementService>();
 builder.Services.AddScoped<IContractEvidenceRepository, ContractEvidenceRepository>();
 builder.Services.AddScoped<IContractEvidenceService, ContractEvidenceService>();
 builder.Services.AddHttpClient<IContractEvidenceStorage, SupabaseContractEvidenceStorage>();

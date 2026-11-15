@@ -480,3 +480,86 @@ File bị ẩn: `isHidden = true`, `url = null` (Admin vẫn thấy `url`).
 3. Khu ảnh nhận phòng ghi rõ: **"Bạn có thể thêm hoặc xóa ảnh nhận phòng đến hết ngày {moveInUploadDeadline}"**.
 4. Nút xóa chỉ hiện khi `canDelete = true`, có hộp xác nhận.
 5. Admin: nút "Ẩn" mở hộp nhập lý do. File đã ẩn hiện "Đã ẩn: {hiddenReason}" (không có ảnh).
+
+---
+
+## C16 — Báo trả phòng (30 ngày) · ✅ đã có (việc 3.6a)
+
+Migration `AddContractMoveOutNotice` (3 cột NULL trên `Contracts`).
+
+Luật nhóm đã chốt: trả phòng **trước ngày kết thúc hợp đồng** mà **báo trước dưới 30 ngày** → khi quyết toán (3.6b) **mất phần cọc còn lại** sau khi trừ bồi thường. Trả đúng ngày kết thúc thì không cần báo trước. **Mỗi lần đổi ngày** thì số ngày báo trước tính lại từ lúc báo mới.
+
+| API | Quyền | Body |
+|---|---|---|
+| `PUT /api/contracts/{id}/move-out-notice` | Khách của HĐ, quản lý phụ trách (nhập giúp) | `{ "plannedMoveOutDate": "2026-12-20" }` |
+| `DELETE /api/contracts/{id}/move-out-notice` | như trên | — (hủy báo, HĐ tiếp tục như cũ) |
+
+Trả về `ContractDto`, thêm 4 field:
+
+| Field | Ý nghĩa |
+|---|---|
+| `plannedMoveOutDate` | Ngày dự kiến trả phòng (`null` = chưa báo) |
+| `moveOutNoticeAtUtc` | Lúc báo |
+| `moveOutNoticeDays` | Số ngày từ lúc báo đến ngày trả (giờ VN) |
+| `moveOutForfeitsDeposit` | `true` = trả trước hạn mà báo dưới 30 ngày → **sẽ mất cọc** |
+
+Lỗi: ngày ở quá khứ → 400; sau ngày kết thúc HĐ → 400 ("…Muốn ở lâu hơn hãy gia hạn hợp đồng."); HĐ không còn hiệu lực / hủy khi chưa báo → 409; người ngoài, Admin → 403.
+
+Thông báo: khách báo → các quản lý phụ trách nhận "Báo trả phòng A101 ngày dd/MM/yyyy" (kèm cảnh báo mất cọc nếu có); quản lý nhập giúp → khách nhận thông báo.
+
+### Việc FE gợi ý
+1. Chi tiết hợp đồng (khách + quản lý, HĐ đang hiệu lực): nút **"Báo trả phòng"** → chọn ngày (`min` = hôm nay, `max` = `endDate`).
+2. **Trước khi gửi**, FE tự tính và cảnh báo đỏ nếu ngày chọn < `endDate` và cách hôm nay < 30 ngày: *"Bạn trả phòng trước hạn hợp đồng mà báo trước dưới 30 ngày nên sẽ mất phần tiền cọc còn lại khi quyết toán. Báo muộn nhất ngày X để giữ cọc."* (X = ngày chọn − 30).
+3. Đã báo: hiện "Dự kiến trả phòng {plannedMoveOutDate} · báo trước {moveOutNoticeDays} ngày" + nhãn đỏ nếu `moveOutForfeitsDeposit`, nút "Đổi ngày" và "Hủy báo trả phòng".
+
+---
+
+## C17 — Quyết toán cọc khi trả phòng · ✅ đã có (việc 3.6b)
+
+Migration `AddDepositSettlements` (1 bảng mới). Chỉ áp dụng cho hợp đồng có `securityDepositAmount > 0` (điều khoản mới, C13). Hợp đồng luật cũ: GET trả 409 "không có tiền cọc đảm bảo" và trả phòng như trước.
+
+### Thứ tự bắt buộc
+1. **Biên bản trả phòng** (C14) — ngày trả phòng và tiền bồi thường lấy từ đây.
+2. **Quyết toán cọc** (API dưới) — khóa biên bản trả phòng và ảnh trả phòng.
+3. **Xác nhận trả phòng** (`POST /api/contracts/{id}/terminate` cũ) — nếu HĐ có cọc đảm bảo mà chưa quyết toán → **409** "Cần lập biên bản trả phòng và quyết toán cọc trước khi xác nhận trả phòng."
+
+### Công thức (nhóm chốt phương án B)
+Cọc **C** dùng theo thứ tự: (1) bù bồi thường **B**; (2) giữ bù nợ hóa đơn **D** nếu khách còn nợ; (3) phần còn lại: **mất** nếu trả trước ngày kết thúc HĐ mà báo trước dưới 30 ngày (C16), ngược lại **hoàn** cho khách. B > C thì khách **nộp thêm** B − C.
+
+| Ví dụ (C = 3.000.000) | Hoàn | Mất | Giữ bù nợ | Nộp thêm |
+|---|---|---|---|---|
+| B = 1,2tr, báo trước đủ 30 ngày | 1.800.000 | 0 | 0 | 0 |
+| B = 1,2tr, trả sớm không báo đủ | 0 | 1.800.000 | 0 | 0 |
+| B = 4tr | 0 | 0 | 0 | 1.000.000 |
+| B = 0, còn nợ 500k | 2.500.000 | 0 | 500.000 | 0 |
+
+Bình thường khách **trả hết hóa đơn trước** khi quyết toán. "Giữ bù nợ" chỉ dành cho khách bỏ đi còn nợ. **Hạn chế đã biết:** hóa đơn vẫn hiện đủ số nợ (hệ thống chưa có thanh toán một phần); nếu phần giữ lại đủ trả trọn một hóa đơn, quản lý bấm "Ghi nhận tiền mặt" cho hóa đơn đó.
+
+### API
+| | Quyền | |
+|---|---|---|
+| `GET /api/contracts/{id}/settlement` | Khách của HĐ, quản lý phụ trách, Admin | Chưa quyết toán → **bản xem trước** (`isSettled: false`); chưa có biên bản trả phòng → 409 "Cần lập biên bản trả phòng trước khi quyết toán cọc." |
+| `POST /api/contracts/{id}/settlement` | Quản lý phụ trách | body `{ "outstandingDebtAcknowledged": false, "note": "..." }` |
+
+```json
+{ "contractId": 12, "isSettled": true, "moveOutDate": "2026-11-15", "contractEndDate": "2027-11-15",
+  "depositAmount": 3000000, "damageCharges": 1200000, "damageCoveredByDeposit": 1200000,
+  "outstandingDebt": 0, "retainedForDebt": 0, "forfeitedAmount": 0, "refundAmount": 1800000, "amountDue": 0,
+  "earlyWithoutNotice": false, "noticeDays": 40, "note": "...", "settledByName": "Manager A", "settledAtUtc": "...",
+  "refundConfirmedAtUtc": null, "refundConfirmedByName": null, "dueCollectedAtUtc": null, "dueCollectedByName": null }
+```
+
+| Lỗi POST | HTTP |
+|---|---|
+| Khách còn nợ mà chưa xác nhận | 400 — "Khách còn nợ hóa đơn {X}đ. Nên thu hết trước khi quyết toán; nếu khách không trả, hãy xác nhận để giữ lại cọc bù nợ." |
+| Đã quyết toán / HĐ đã kết thúc / chưa có biên bản trả phòng / HĐ luật cũ | 409 |
+| Không phải quản lý phụ trách | 403 |
+
+Khách nhận thông báo "Quyết toán cọc phòng A101": *"Cọc 3.000.000đ: bồi thường thiết bị 1.200.000đ; hoàn lại 1.800.000đ. Quản lý sẽ chuyển trả trực tiếp cho bạn (hệ thống không chuyển tiền)."*
+
+### Việc FE gợi ý
+1. Chi tiết hợp đồng có cọc đảm bảo: mục **"Quyết toán cọc"** (khách + quản lý) hiện bảng: Tiền cọc / Bồi thường thiết bị / Giữ bù nợ / Mất cọc (kèm lý do "trả trước hạn, báo trước {noticeDays} ngày < 30") / **Hoàn lại** / **Khách nộp thêm**.
+2. Quản lý, chưa quyết toán: bảng xem trước + nút **"Xác nhận quyết toán"** → hộp xác nhận nhắc số tiền hoàn/nộp thêm. Nếu `outstandingDebt > 0`: cảnh báo + ô tick "Khách không trả, giữ cọc bù nợ".
+3. Nút "Trả phòng" (terminate): với HĐ có `securityDepositAmount > 0`, chỉ bật khi đã quyết toán; hướng dẫn thứ tự 3 bước ở trên.
+4. Sau quyết toán: ẩn nút sửa biên bản trả phòng và thêm ảnh trả phòng.
+5. Nút "Đã hoàn cọc" / "Đã thu": việc 3.6c (sắp có).
