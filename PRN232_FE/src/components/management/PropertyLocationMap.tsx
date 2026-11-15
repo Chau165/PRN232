@@ -8,6 +8,7 @@ import {
   useMapEvents,
 } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
+import type { AreaFocus } from "@/services/propertyLocationService"
 export type LocationPoint = { latitude: number; longitude: number }
 const icon = L.divIcon({
   className: "",
@@ -17,10 +18,12 @@ const icon = L.divIcon({
 })
 function MapEvents({
   point,
+  focus,
   onPick,
   disabled,
 }: {
   point: LocationPoint | null
+  focus?: AreaFocus | null
   onPick: (point: LocationPoint) => void
   disabled: boolean
 }) {
@@ -28,6 +31,12 @@ function MapEvents({
   useEffect(() => {
     if (point) map.panTo([point.latitude, point.longitude])
   }, [map, point])
+  // Moves the view to the selected ward/province; the pin itself stays where it is.
+  useEffect(() => {
+    if (!focus) return
+    if (focus.bounds) map.fitBounds(focus.bounds, { maxZoom: focus.zoom })
+    else map.setView([focus.latitude, focus.longitude], focus.zoom)
+  }, [map, focus])
   useMapEvents({
     click: (e) => { if (!disabled) onPick({ latitude: e.latlng.lat, longitude: e.latlng.lng }) },
   })
@@ -48,11 +57,13 @@ function MapEvents({
 export default function PropertyLocationMap({
   point,
   initialPoint,
+  focus,
   onPick,
   disabled = false,
 }: {
   point: LocationPoint | null
   initialPoint?: LocationPoint
+  focus?: AreaFocus | null
   onPick: (point: LocationPoint) => void
   disabled?: boolean
 }) {
@@ -70,9 +81,9 @@ export default function PropertyLocationMap({
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <MapEvents point={point} onPick={onPick} disabled={disabled} />
+        <MapEvents point={point} focus={focus} onPick={onPick} disabled={disabled} />
       </MapContainer>
     </div>
   )

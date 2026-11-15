@@ -1,12 +1,12 @@
 import {afterEach,beforeEach,it,expect,vi} from "vitest"
 import {cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react"
 import PropertyLocationPicker from "@/components/management/PropertyLocationPicker"
-const mocks=vi.hoisted(()=>({preview:vi.fn()}))
-vi.mock("@/services/propertyLocationService",()=>({previewPropertyLocation:mocks.preview}))
-vi.mock("@/components/management/PropertyLocationMap",()=>({default:({onPick}:{onPick:(p:{latitude:number;longitude:number})=>void})=><button type="button" onClick={()=>onPick({latitude:10.86,longitude:106.78})}>Kéo ghim kiểm thử</button>}))
+const mocks=vi.hoisted(()=>({preview:vi.fn(),locate:vi.fn()}))
+vi.mock("@/services/propertyLocationService",()=>({previewPropertyLocation:mocks.preview,locatePropertyArea:mocks.locate}))
+vi.mock("@/components/management/PropertyLocationMap",()=>({default:({onPick,focus}:{onPick:(p:{latitude:number;longitude:number})=>void;focus?:{latitude:number;longitude:number;zoom:number}|null})=><><button type="button" onClick={()=>onPick({latitude:10.86,longitude:106.78})}>Kéo ghim kiểm thử</button><output aria-label="Vùng bản đồ">{focus?`${focus.latitude},${focus.longitude},${focus.zoom}`:""}</output></>}))
 const address={addressText:"121 Lê Văn Việt",provinceCode:"79",wardCode:"01",provinceName:"Thành phố Hồ Chí Minh",wardName:"Phường Thủ Đức"}
 const candidate={location:{displayAddress:"Lê Văn Việt, Thủ Đức",precision:"street",provider:"Photon",coordinates:{latitude:10.85,longitude:106.77}},matchLevel:"Suggestion",reasons:["ward_unverified"]}
-beforeEach(()=>{mocks.preview.mockReset()});afterEach(cleanup)
+beforeEach(()=>{mocks.preview.mockReset();mocks.locate.mockReset();mocks.locate.mockResolvedValue(null)});afterEach(cleanup)
 it("selects a suggestion and sends the final dragged pin without a confirmation endpoint",async()=>{
   mocks.preview.mockResolvedValue({status:"Suggestions",candidates:[candidate],providers:[]})
   const change=vi.fn();render(<PropertyLocationPicker address={address} disabled={false} onChange={change}/>)
@@ -47,4 +47,20 @@ it("does not accept map edits while saving",async()=>{
   const change=vi.fn();render(<PropertyLocationPicker address={address} disabled onChange={change}/>)
   fireEvent.click(await screen.findByRole("button",{name:"Kéo ghim kiểm thử"}))
   expect(change).not.toHaveBeenCalled()
+})
+it("flies the map to the selected ward and again when the ward changes",async()=>{
+  mocks.locate.mockResolvedValueOnce({latitude:10.85,longitude:106.77,zoom:15}).mockResolvedValueOnce({latitude:10.88,longitude:106.83,zoom:15})
+  const view=render(<PropertyLocationPicker address={address} disabled={false} onChange={vi.fn()}/>)
+  await waitFor(()=>expect(screen.getByLabelText("Vùng bản đồ").textContent).toBe("10.85,106.77,15"))
+  expect(mocks.locate).toHaveBeenLastCalledWith({wardName:"Phường Thủ Đức",provinceName:"Thành phố Hồ Chí Minh"},expect.any(AbortSignal))
+  view.rerender(<PropertyLocationPicker address={{...address,wardCode:"02",wardName:"Phường Long Bình"}} disabled={false} onChange={vi.fn()}/>)
+  await waitFor(()=>expect(screen.getByLabelText("Vùng bản đồ").textContent).toBe("10.88,106.83,15"))
+  expect(mocks.locate).toHaveBeenLastCalledWith({wardName:"Phường Long Bình",provinceName:"Thành phố Hồ Chí Minh"},expect.any(AbortSignal))
+})
+it("keeps a stored location's view until another ward is chosen",async()=>{
+  const view=render(<PropertyLocationPicker address={address} initialPoint={{latitude:10.8,longitude:106.7}} disabled={false} onChange={vi.fn()}/>)
+  await Promise.resolve()
+  expect(mocks.locate).not.toHaveBeenCalled()
+  view.rerender(<PropertyLocationPicker address={{...address,wardCode:"02",wardName:"Phường Long Bình"}} initialPoint={{latitude:10.8,longitude:106.7}} disabled={false} onChange={vi.fn()}/>)
+  await waitFor(()=>expect(mocks.locate).toHaveBeenCalledTimes(1))
 })

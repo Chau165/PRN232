@@ -18,6 +18,7 @@ function fixture(providerStatus=200){
   vi.stubGlobal("fetch",vi.fn(async(input,init?:RequestInit)=>{
     const url=String(input)
     if(new URL(url,"http://localhost").host === "photon.komoot.io"){
+      if(new URL(url).searchParams.has("layer"))return Response.json({features:[]})
       searches.push({url,init})
       return Response.json({features:[{geometry:{type:"Point",coordinates:[105.815,21.033]},properties:{street:"Lê Lợi",housenumber:"18",countrycode:"VN",city:"Hà Nội"}}]}, {status:providerStatus})
     }
