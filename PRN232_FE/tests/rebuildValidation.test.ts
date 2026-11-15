@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest"
 import {
+  MAX_IMAGE_EVIDENCE_BYTES,
+  MAX_PDF_EVIDENCE_BYTES,
+  validateContractEvidenceFile,
+  validateEvidenceBatchCount,
+  validateHideEvidenceReason,
+} from "@/utils/contractEvidenceValidation"
+import {
   areaSqmError,
   formatRoomFloor,
   maxOccupantsByArea,
@@ -41,6 +48,13 @@ import {
   bookingOccupantCountError,
   formatBookingMoveInSummary,
 } from "@/utils/bookingDisplay"
+import {
+  canChargeForHandoverItem,
+  handoverChargeAmountError,
+  handoverConditionError,
+  handoverDateError,
+  splitHandoverValidationErrors,
+} from "@/utils/handoverValidation"
 
 describe("rebuild validation rules (C2 & C3)", () => {
   describe("roomValidation (C2)", () => {
@@ -360,6 +374,142 @@ describe("rebuild validation rules (C2 & C3)", () => {
         }),
       ).toBe("Dọn vào 20/11/2026 · 2 người")
       expect(formatBookingMoveInSummary({})).toBeNull()
+    })
+
+    it("validates equipment handover records and maps items[i].field errors (C14)", () => {
+      const today = "2026-11-15"
+      expect(handoverDateError("2026-11-16", today)).toBe(
+        "Ngày bàn giao không được ở tương lai.",
+      )
+      expect(handoverDateError("2026-11-15", today)).toBeNull()
+      expect(handoverConditionError("Invalid")).toBe(
+        "Tình trạng phải là Tốt, Hao mòn, Hư hỏng hoặc Mất.",
+      )
+
+      expect(canChargeForHandoverItem("MoveIn", "Damaged", null)).toBe(false)
+      expect(canChargeForHandoverItem("MoveOut", "Good", "Good")).toBe(false)
+      expect(canChargeForHandoverItem("MoveOut", "Worn", "Good")).toBe(false)
+      expect(canChargeForHandoverItem("MoveOut", "Damaged", "Damaged")).toBe(false)
+      expect(canChargeForHandoverItem("MoveOut", "Damaged", "Good")).toBe(true)
+
+      expect(
+        handoverChargeAmountError({
+          kind: "MoveIn",
+          equipmentName: "Máy lạnh",
+          quantity: 1,
+          compensationValue: 8_500_000,
+          condition: "Damaged",
+          chargeAmount: 100_000,
+        }),
+      ).toBe("Biên bản nhận phòng không tính tiền bồi thường.")
+
+      expect(
+        handoverChargeAmountError({
+          kind: "MoveOut",
+          equipmentName: "Máy lạnh",
+          quantity: 1,
+          compensationValue: 8_500_000,
+          condition: "Worn",
+          moveInCondition: "Good",
+          chargeAmount: 100_000,
+        }),
+      ).toBe(
+        "Máy lạnh: chỉ tính tiền khi thiết bị hư hỏng hoặc mất (hao mòn tự nhiên không phải bồi thường).",
+      )
+
+      expect(
+        handoverChargeAmountError({
+          kind: "MoveOut",
+          equipmentName: "Máy lạnh",
+          quantity: 1,
+          compensationValue: 8_500_000,
+          condition: "Damaged",
+          moveInCondition: "Damaged",
+          chargeAmount: 100_000,
+        }),
+      ).toBe(
+        "Máy lạnh đã hư hỏng hoặc mất từ lúc nhận phòng nên không tính tiền khách.",
+      )
+
+      expect(
+        handoverChargeAmountError({
+          kind: "MoveOut",
+          equipmentName: "Bàn học",
+          quantity: 2,
+          compensationValue: 500_000,
+          condition: "Damaged",
+          moveInCondition: "Good",
+          chargeAmount: 1_200_000,
+        }),
+      ).toBe("Bàn học: tiền bồi thường tối đa 1.000.000đ (2 × 500.000đ).")
+
+      const split = splitHandoverValidationErrors(
+        {
+          handoverDate: ["Ngày bàn giao không được ở tương lai."],
+          "items[0].chargeAmount": ["Tiền bồi thường phải là bội số của 1.000đ."],
+        },
+        "Dữ liệu không hợp lệ.",
+      )
+      expect(split.fieldErrors).toEqual({
+        handoverDate: "Ngày bàn giao không được ở tương lai.",
+        "items[0].chargeAmount": "Tiền bồi thường phải là bội số của 1.000đ.",
+      })
+      expect(split.generalError).toBe("")
+    })
+
+    it("validates contract evidence files, count limits, and hide reasons (C15)", () => {
+      expect(
+        validateContractEvidenceFile({
+          name: "anh-nhan-phong.jpg",
+          type: "image/jpeg",
+          size: 1_500_000,
+        }),
+      ).toBeNull()
+
+      expect(
+        validateContractEvidenceFile({
+          name: "hop-dong-ky.pdf",
+          type: "application/pdf",
+          size: 8 * 1024 * 1024,
+        }),
+      ).toBeNull()
+
+      expect(
+        validateContractEvidenceFile({
+          name: "tai-lieu.docx",
+          type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          size: 100_000,
+        }),
+      ).toBe("Chỉ nhận ảnh JPG, PNG, WEBP hoặc file PDF hợp lệ.")
+
+      expect(
+        validateContractEvidenceFile({
+          name: "anh-qua-nang.png",
+          type: "image/png",
+          size: MAX_IMAGE_EVIDENCE_BYTES + 1,
+        }),
+      ).toBe("Ảnh tối đa 5 MB, PDF tối đa 10 MB.")
+
+      expect(
+        validateContractEvidenceFile({
+          name: "pdf-qua-nang.pdf",
+          type: "application/pdf",
+          size: MAX_PDF_EVIDENCE_BYTES + 1,
+        }),
+      ).toBe("Ảnh tối đa 5 MB, PDF tối đa 10 MB.")
+
+      expect(validateEvidenceBatchCount(19, 1)).toBeNull()
+      expect(validateEvidenceBatchCount(19, 2)).toBe(
+        "Mỗi loại minh chứng tối đa 20 file.",
+      )
+
+      expect(validateHideEvidenceReason("   ")).toBe(
+        "Vui lòng nhập lý do ẩn minh chứng.",
+      )
+      expect(validateHideEvidenceReason("a".repeat(501))).toBe(
+        "Lý do ẩn minh chứng không được vượt quá 500 ký tự.",
+      )
+      expect(validateHideEvidenceReason("Ảnh tải nhầm hợp đồng")).toBeNull()
     })
   })
 })

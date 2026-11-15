@@ -17,6 +17,7 @@ import {
   bookingErrorMessage,
   bookingMoveInDateError,
   bookingOccupantCountError,
+  formatBookingDepositTermText,
   formatBookingMoveInSummary,
   formatDateTime,
   formatMoveInHoldEndDate,
@@ -180,7 +181,8 @@ function HoldRoomStep({ roomId, viewingId }: { roomId: number; viewingId?: numbe
 
       <p className="text-sm text-slate-500">Sau khi giữ phòng, bạn có 15 phút để thanh toán tiền cọc.</p>
       <p className="text-sm text-slate-500">
-        Tiền cọc được trừ vào tiền phòng tháng đầu tiên khi lập hợp đồng.{" "}
+        Tiền cọc được giữ làm tiền đảm bảo trong suốt thời gian thuê và hoàn lại khi trả phòng, sau khi trừ tiền phòng còn
+        nợ và hư hỏng thiết bị (nếu có). Tháng đầu tiên bạn đóng đủ tiền phòng.{" "}
         {holdEndDateLabel
           ? `Phòng được giữ đến hết ngày ${holdEndDateLabel}.`
           : "Phòng được giữ đến hết ngày dọn vào + 3 ngày."}{" "}
@@ -262,10 +264,11 @@ function PayDepositStep({ bookingId }: { bookingId: number }) {
           ["Khu trọ", booking.propertyName],
           ["Phòng", booking.roomCode],
           ["Dự kiến nhận phòng", formatBookingMoveInSummary(booking) ?? ""],
-          ["Giữ phòng đến", formatDateTime(booking.expiryDate)],
+          ["Hạn thanh toán cọc", formatDateTime(booking.expiryDate)],
         ]}
         amount={booking.depositAmount}
       />
+      <p className="text-sm text-slate-500">{formatBookingDepositTermText(booking)}</p>
       <div className="rounded-xl border border-teal-100 bg-teal-50/50 p-4 text-sm text-slate-700"><strong>Thanh toán cọc qua payOS</strong>
         <p className="mt-2">Mở trang thanh toán để quét mã hoặc chuyển khoản. Booking chỉ được xác nhận sau khi hệ thống nhận kết quả thanh toán.</p></div>
       {recent?.bookingId === bookingId && <Link to={`${routes.paymentResult}?requestId=${recent.requestId}`} className="block text-sm font-semibold text-[#087775]">Kiểm tra giao dịch cọc gần nhất</Link>}

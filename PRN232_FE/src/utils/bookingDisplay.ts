@@ -152,6 +152,15 @@ export function formatBookingCancellationReason(
   }
 }
 
+export function formatBookingDepositTermText(
+  booking: Pick<BookingDto, "depositAppliesToFirstMonth">,
+): string {
+  if (booking.depositAppliesToFirstMonth === true) {
+    return "Tiền cọc được trừ vào tiền phòng tháng đầu tiên khi lập hợp đồng."
+  }
+  return "Tiền cọc được giữ làm tiền đảm bảo trong suốt thời gian thuê và hoàn lại khi trả phòng, sau khi trừ tiền phòng còn nợ và hư hỏng thiết bị (nếu có). Tháng đầu tiên bạn đóng đủ tiền phòng."
+}
+
 // 409 nghĩa là trạng thái phòng/booking vừa đổi; mỗi màn hình tự giải thích bằng câu phù hợp.
 export function bookingErrorMessage(error: unknown, conflictMessage: string) {
   if (error instanceof ApiError && error.status === 409) return conflictMessage

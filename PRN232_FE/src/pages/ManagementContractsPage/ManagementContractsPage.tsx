@@ -1,5 +1,7 @@
 import MeterHandoverModal from "@/components/management/MeterHandoverModal"
 import ContractMeterHandover from "@/components/customer/ContractMeterHandover"
+import ContractEquipmentHandover from "@/components/customer/ContractEquipmentHandover"
+import ContractEvidenceSection from "@/components/customer/ContractEvidenceSection"
 import { useEffect, useState } from "react"
 import { useLocation } from "react-router"
 import ManagementDataTable from "@/components/management/ManagementDataTable"
@@ -281,11 +283,21 @@ export default function ManagementContractsPage() {
             <Detail label="Phòng" value={selected.roomCode} />
             <Detail label="Thời hạn" value={`${formatContractDate(selected.startDate)} - ${formatContractDate(selected.endDate)}`} />
             <Detail label="Giá thuê" value={`${formatVnd(selected.monthlyRent)}/tháng`} />
-            <Detail label="Tiền cọc" value={formatVnd(selected.depositAmount)} />
+            {(selected.securityDepositAmount ?? 0) > 0 && (
+              <Detail
+                label="Tiền cọc (hoàn lại khi trả phòng)"
+                value={formatVnd(selected.securityDepositAmount!)}
+              />
+            )}
+            {(selected.prepaidRentAmount > 0 || !(selected.securityDepositAmount && selected.securityDepositAmount > 0)) && (
+              <Detail label="Tiền cọc" value={formatVnd(selected.depositAmount)} />
+            )}
             <Detail label="Trạng thái" value={statusLabel(selected.displayStatus || selected.status)} />
             {selected.processedByStaffName && <Detail label="Người lập" value={selected.processedByStaffName} />}
           </dl>
           <ContractMeterHandover contract={selected} />
+          <ContractEquipmentHandover contract={selected} />
+          <ContractEvidenceSection contract={selected} />
         </ManagementDetailDrawer>
       )}
       {handover && <MeterHandoverModal contract={handover} onClose={() => setHandover(null)} onSaved={(updated) => {

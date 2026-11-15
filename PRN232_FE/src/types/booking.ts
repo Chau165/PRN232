@@ -39,5 +39,6 @@ export interface BookingDto {
   depositRefundDue?: boolean
   depositReturnedAtUtc?: string | null
   depositReturnedByName?: string | null
+  depositAppliesToFirstMonth?: boolean
   contacts?: BookingContactDto[] | null
 }

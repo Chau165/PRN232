@@ -14,6 +14,7 @@ import {
   bookingErrorMessage,
   bookingStatusDisplay,
   formatBookingCancellationReason,
+  formatBookingDepositTermText,
   formatBookingMoveInSummary,
   formatDateTime,
   formatHoldUntilDate,
@@ -120,6 +121,11 @@ export default function MyBookingsPage() {
                       ? `Phòng được giữ đến ${formatDateTime(booking.holdUntilUtc)} (${formatHoldUntilDate(booking.holdUntilUtc)}).`
                       : "Phòng được giữ để lập hợp đồng."}{" "}
                     Nếu chưa lập hợp đồng khi hết hạn, chủ trọ có thể mở lại phòng và tiền cọc không được hoàn.
+                  </p>
+                )}
+                {(booking.status === "Pending" || booking.status === "Deposited") && (
+                  <p className="mt-2 text-[13px] text-slate-500">
+                    {formatBookingDepositTermText(booking)}
                   </p>
                 )}
                 {booking.status === "Cancelled" && formatBookingCancellationReason(booking.cancellationReason) && (

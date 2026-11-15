@@ -6,7 +6,7 @@ import { getBooking } from "@/services/bookingService"
 import { createContract } from "@/services/contractService"
 import type { BookingDto } from "@/types/booking"
 import { parsePositiveRouteId, routes } from "@/constants/routes"
-import { bookingErrorMessage } from "@/utils/bookingDisplay"
+import { bookingErrorMessage, formatBookingDepositTermText } from "@/utils/bookingDisplay"
 import { refundBlocksContract } from "@/utils/bookingRefund"
 import { addContractMonths, isContractDate, localToday } from "@/utils/managementContracts"
 import { formatVnd } from "@/utils/publicFormatting"
@@ -92,6 +92,9 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
         <h3 className="mt-2 text-lg font-bold text-slate-800">{booking.propertyName} · Phòng {booking.roomCode}</h3>
         <p className="mt-2 text-sm text-slate-500">
           Tiền cọc đã nhận: {formatVnd(booking.depositAmount)}. Giá thuê lấy theo giá phòng hiện tại khi lập hợp đồng.
+        </p>
+        <p className="mt-1 text-sm text-slate-600">
+          {formatBookingDepositTermText(booking)}
         </p>
       </div>
 

@@ -49,6 +49,29 @@ vi.mock("@/services/contractService", () => ({
   getContracts: mocks.getContracts,
   getContractBillingTimeline: mocks.getContractBillingTimeline,
 }))
+vi.mock("@/services/contractHandoverService", () => ({
+  getContractHandovers: vi.fn().mockResolvedValue({
+    contractId: 123,
+    moveIn: null,
+    moveOut: null,
+    roomEquipments: [],
+  }),
+  saveContractMoveInHandover: vi.fn(),
+  saveContractMoveOutHandover: vi.fn(),
+}))
+vi.mock("@/services/contractEvidenceService", () => ({
+  getContractEvidence: vi.fn().mockResolvedValue({
+    contractId: 123,
+    moveInUploadDeadline: "2026-01-08",
+    canUploadMoveIn: false,
+    canUploadMoveOut: true,
+    canUploadSignedContract: true,
+    files: [],
+  }),
+  uploadContractEvidence: vi.fn(),
+  deleteContractEvidence: vi.fn(),
+  hideContractEvidence: vi.fn(),
+}))
 vi.mock("@/services/maintenanceService", () => ({
   getMaintenanceRequests: mocks.getMaintenanceRequests,
   getMaintenanceRequest: mocks.getMaintenanceRequest,
@@ -213,7 +236,7 @@ describe("Customer room and notification pages", () => {
 
   it("shows every contract status and only labels planned periods as not issued", async () => {
     mocks.getContracts.mockResolvedValue([
-      contract({ contractId: 123, displayStatus: "Upcoming" }),
+      contract({ contractId: 123, displayStatus: "Upcoming", prepaidRentAmount: 0, securityDepositAmount: 3_500_000 }),
       contract({ contractId: 88, roomCode: "D406", displayStatus: "Active" }),
       contract({ contractId: 99, roomCode: "E407", displayStatus: "Ended" }),
       contract({ contractId: 77, roomCode: "F408", displayStatus: "ExpiredPendingCheckout" }),
@@ -221,6 +244,7 @@ describe("Customer room and notification pages", () => {
     ])
     renderPage(<MyContractsPage />)
     expect(await screen.findByText("Hợp đồng #123")).toBeTruthy()
+    expect(screen.getByText("Tiền cọc (hoàn lại khi trả phòng)")).toBeTruthy()
     expect(screen.getByText("Hợp đồng #88")).toBeTruthy()
     expect(screen.getByText("Hợp đồng #99")).toBeTruthy()
     expect(screen.getByText("Sắp có hiệu lực")).toBeTruthy()

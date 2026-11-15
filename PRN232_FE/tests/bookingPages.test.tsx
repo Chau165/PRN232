@@ -94,6 +94,7 @@ describe("DepositPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
 
     await screen.findByText("Thanh toán cọc qua payOS")
+    expect(screen.getByText("Hạn thanh toán cọc")).toBeTruthy()
     expect(mocks.createBooking).toHaveBeenCalledWith("customer-token", {
       roomId: 501,
       moveInDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
@@ -112,12 +113,13 @@ describe("DepositPage", () => {
     expect(screen.queryByText("payment success page")).toBeNull()
   })
 
-  it("explains before the hold that the deposit is the first month's rent and holds the room until moveInDate + 3 days, updating dynamically and validating empty moveInDate (C10 items 7 & 9)", async () => {
+  it("explains before the hold that the deposit is held as security deposit until checkout and holds the room until moveInDate + 3 days, updating dynamically and validating empty moveInDate (C10 items 7 & 9, C13)", async () => {
     renderAt("/deposit?roomId=501")
     await screen.findByText("A101 · Studio")
 
     fireEvent.change(screen.getByLabelText("Ngày dọn vào"), { target: { value: "2026-11-20" } })
-    const rules = screen.getByText(/được trừ vào tiền phòng tháng đầu tiên/)
+    const rules = screen.getByText(/Tiền cọc được giữ làm tiền đảm bảo trong suốt thời gian thuê/)
+    expect(rules.textContent).toContain("Tháng đầu tiên bạn đóng đủ tiền phòng.")
     expect(rules.textContent).toContain("Phòng được giữ đến hết ngày 23/11/2026.")
     expect(rules.textContent).toContain("không được hoàn")
     expect(rules.textContent).toContain("Nếu chủ trọ hủy, bạn được hoàn 100%")
@@ -210,15 +212,31 @@ describe("MyBookingsPage", () => {
     expect(screen.queryByRole("button", { name: "Huỷ giữ phòng" })).toBeNull()
   })
 
-  it("tells the customer how long a deposited room is held and that a missed move-in keeps the deposit", async () => {
+  it("tells the customer how long a deposited room is held and shows deposit terms according to depositAppliesToFirstMonth (C13)", async () => {
     mocks.getBookings.mockResolvedValue([
-      booking({ bookingId: 9, status: "Deposited", holdUntilUtc: "2026-11-21T03:00:00Z", canReleaseRoom: false }),
+      booking({
+        bookingId: 9,
+        status: "Deposited",
+        holdUntilUtc: "2026-11-21T03:00:00Z",
+        canReleaseRoom: false,
+        depositAppliesToFirstMonth: false,
+      }),
+      booking({
+        bookingId: 12,
+        roomCode: "B102",
+        status: "Deposited",
+        holdUntilUtc: "2026-11-21T03:00:00Z",
+        canReleaseRoom: false,
+        depositAppliesToFirstMonth: true,
+      }),
     ])
     renderAt("/my-bookings")
 
-    const hold = await screen.findByText(/Phòng được giữ đến/)
-    expect(hold.textContent).toContain("Giữ phòng đến hết 21/11/2026")
-    expect(hold.textContent).toContain("tiền cọc không được hoàn")
+    const holds = await screen.findAllByText(/Phòng được giữ đến/)
+    expect(holds[0]!.textContent).toContain("Giữ phòng đến hết 21/11/2026")
+    expect(holds[0]!.textContent).toContain("tiền cọc không được hoàn")
+    expect(screen.getByText(/Tiền cọc được giữ làm tiền đảm bảo trong suốt thời gian thuê/)).toBeTruthy()
+    expect(screen.getByText("Tiền cọc được trừ vào tiền phòng tháng đầu tiên khi lập hợp đồng.")).toBeTruthy()
     expect(screen.queryByText(/giữ đến khi lập hợp đồng/)).toBeNull()
   })
 
@@ -337,6 +355,7 @@ describe("MyBookingsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
 
     await screen.findByText("Thanh toán cọc qua payOS")
+    expect(screen.getByText("Hạn thanh toán cọc")).toBeTruthy()
     expect(mocks.createBooking).toHaveBeenCalledWith("customer-token", {
       roomId: 501,
       viewingId: 3,

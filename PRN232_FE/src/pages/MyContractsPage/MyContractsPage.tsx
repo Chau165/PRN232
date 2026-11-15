@@ -1,4 +1,6 @@
 import ContractMeterHandover from "@/components/customer/ContractMeterHandover"
+import ContractEquipmentHandover from "@/components/customer/ContractEquipmentHandover"
+import ContractEvidenceSection from "@/components/customer/ContractEvidenceSection"
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { Link } from "react-router"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
@@ -191,7 +193,15 @@ function ContractSummaryCard({
         <SummaryValue label="Bắt đầu" value={formatContractDate(contract.startDate)} />
         <SummaryValue label="Kết thúc" value={formatContractDate(contract.endDate)} />
         <SummaryValue label="Giá thuê / tháng" value={formatVnd(contract.monthlyRent)} emphasized />
-        <SummaryValue label="Đã trả trước" value={formatVnd(contract.prepaidRentAmount)} emphasized />
+        {(contract.securityDepositAmount ?? 0) > 0 ? (
+          <SummaryValue
+            label="Tiền cọc (hoàn lại khi trả phòng)"
+            value={formatVnd(contract.securityDepositAmount!)}
+            emphasized
+          />
+        ) : (
+          <SummaryValue label="Đã trả trước" value={formatVnd(contract.prepaidRentAmount)} emphasized />
+        )}
       </div>
 
       <button
@@ -269,11 +279,23 @@ function ContractBillingTimeline({
           <DetailValue label="Địa chỉ bên cho thuê" value={contract.lessorAddress ?? "Chưa có thông tin lưu trên hợp đồng"} />
           <DetailValue label="Người lập hồ sơ" value={contract.processedByStaffName ?? "Không có dữ liệu"} />
           <DetailValue label="Trạng thái lưu trong hệ thống" value={contract.status} />
-          <DetailValue label="Số tiền thuê trả trước" value={formatVnd(contract.prepaidRentAmount)} />
-          <DetailValue label="Đã phân bổ vào hóa đơn" value={formatVnd(contract.prepaidRentApplied)} />
-          <DetailValue label="Số dư trả trước" value={formatVnd(Math.max(0, contract.remainingPrepaidCredit))} />
+          {(contract.securityDepositAmount ?? 0) > 0 && (
+            <DetailValue
+              label="Tiền cọc (hoàn lại khi trả phòng)"
+              value={formatVnd(contract.securityDepositAmount!)}
+            />
+          )}
+          {(contract.prepaidRentAmount > 0 || !(contract.securityDepositAmount && contract.securityDepositAmount > 0)) && (
+            <>
+              <DetailValue label="Số tiền thuê trả trước" value={formatVnd(contract.prepaidRentAmount)} />
+              <DetailValue label="Đã phân bổ vào hóa đơn" value={formatVnd(contract.prepaidRentApplied)} />
+              <DetailValue label="Số dư trả trước" value={formatVnd(Math.max(0, contract.remainingPrepaidCredit))} />
+            </>
+          )}
         </dl>
         <ContractMeterHandover contract={contract} />
+        <ContractEquipmentHandover contract={contract} />
+        <ContractEvidenceSection contract={contract} />
         <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-xs text-amber-900">
           Chữ ký điện tử/chữ ký xác nhận chưa được lưu trong dữ liệu hợp đồng; trạng thái trên không xác nhận hợp đồng đã ký.
         </p>
