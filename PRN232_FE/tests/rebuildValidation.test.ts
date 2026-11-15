@@ -379,15 +379,17 @@ describe("rebuild validation rules (C2 & C3)", () => {
 
     it("validates booking moveInDate, occupantCount and move-in summary (C9)", () => {
       const today = "2026-11-15"
-      expect(bookingMoveInDateError("", today)).toBe(
+      // Pass the matching max date too; its default is the real today + 14 days.
+      const maxDate = "2026-11-29"
+      expect(bookingMoveInDateError("", today, maxDate)).toBe(
         "Vui lòng chọn ngày dọn vào.",
       )
-      expect(bookingMoveInDateError("2026-11-14", today)).toBe(
+      expect(bookingMoveInDateError("2026-11-14", today, maxDate)).toBe(
         "Ngày dọn vào không được ở quá khứ.",
       )
-      expect(bookingMoveInDateError("2026-11-15", today)).toBeNull()
-      expect(bookingMoveInDateError("2026-11-29", today)).toBeNull()
-      expect(bookingMoveInDateError("2026-11-30", today)).toBe(
+      expect(bookingMoveInDateError("2026-11-15", today, maxDate)).toBeNull()
+      expect(bookingMoveInDateError("2026-11-29", today, maxDate)).toBeNull()
+      expect(bookingMoveInDateError("2026-11-30", today, maxDate)).toBe(
         "Ngày dọn vào tối đa 14 ngày kể từ hôm nay.",
       )
 
