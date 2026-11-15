@@ -26,6 +26,10 @@ public class Bookings
     // Rebuild 3.2 (PLAN D3 bước 3): ai hủy quyết định cọc mất hay phải hoàn. NULL ở booking hủy trước rebuild.
     public string? CancellationReason { get; set; }
     public DateTime? CancelledAtUtc { get; set; }
+    // Rebuild 3.2b: hệ thống không chuyển tiền hoàn; quản lý trả tiền ngoài hệ thống rồi xác nhận ở đây.
+    public DateTime? DepositReturnedAtUtc { get; set; }
+    public int? DepositReturnedById { get; set; }
+    public Users? DepositReturnedBy { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime ExpiryDate
     {

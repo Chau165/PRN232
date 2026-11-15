@@ -203,7 +203,7 @@ Giữ Supabase Storage. Bổ sung:
 | ID | Việc | Owner | Phụ thuộc | Size | Người |
 |----|------|-------|-----------|------|-------|
 | 3.1 | ✅ Booking thêm `MoveInDate`, `OccupantCount`, validate ≤ `MaxOccupants` (giữ nguyên `AgreedMonthlyRent` và `ViewingId` của Châu). Tạm thời không bắt buộc, xem API-CHANGES C9 | Claude | 2.1 | M | |
-| 3.2 | Chính sách hủy theo D3 bước 3. **3.2a ✅** luật hủy + lý do hủy + hạn giữ phòng (ngày dọn vào + 3) + liên hệ quản lý + khóa luồng hoàn cọc payOS (giữ code, API-CHANGES C10). **3.2b** nút "Đã hoàn cọc" (quản lý xác nhận số tiền đã trả ngoài hệ thống). **3.2c** nhắc khách ngày dọn vào / còn 1 ngày ân hạn | Claude | 3.1 | M | |
+| 3.2 | Chính sách hủy theo D3 bước 3. **3.2a ✅** luật hủy + lý do hủy + hạn giữ phòng (ngày dọn vào + 3) + liên hệ quản lý + khóa luồng hoàn cọc payOS (giữ code, API-CHANGES C10). **3.2b ✅** nút "Đã hoàn cọc" (quản lý xác nhận số tiền đã trả ngoài hệ thống, API-CHANGES C11). **3.2c** nhắc khách ngày dọn vào / còn 1 ngày ân hạn | Claude | 3.1 | M | |
 | 3.3 | Cọc chuyển thành cọc hợp đồng, bỏ `PrepaidRentCredit` cho HĐ mới | Claude | 3.1 | M | |
 | 3.4 | ✅ Job nhắc hạn 30 ngày / 7 ngày / quá hạn (không thêm trạng thái `Expired`, xem D3) | Claude | — | S | |
 | 3.5 | Biên bản bàn giao thiết bị lúc nhận phòng và trả phòng | Claude | 2.2 | M | |

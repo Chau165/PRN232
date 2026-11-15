@@ -316,7 +316,33 @@ public class BookingRepository : IBookingRepository
         booking.CancellationReason,
         booking.CancelledAtUtc,
         booking.Payments.Any(payment => payment.Status == PaymentStatuses.Success && payment.InvoiceId == null &&
-            payment.ContractId == null && payment.ReadingId == null));
+            payment.ContractId == null && payment.ReadingId == null),
+        booking.DepositReturnedAtUtc,
+        booking.DepositReturnedBy != null ? booking.DepositReturnedBy.FullName : null);
+
+    public async Task<bool> ConfirmDepositReturnedAsync(
+        int bookingId, int confirmedById, DateTimeOffset asOfUtc, Notifications customerNotification)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        // Điều kiện "chưa xác nhận" nằm trong câu UPDATE: bấm hai lần thì lần sau khớp 0 dòng.
+        var updated = await _context.Bookings
+            .Where(booking => booking.BookingId == bookingId &&
+                booking.Status == BookingStatuses.Cancelled &&
+                booking.CancellationReason == BookingCancellationReasons.LandlordCancelled &&
+                booking.DepositReturnedAtUtc == null)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(booking => booking.DepositReturnedAtUtc, asOfUtc.UtcDateTime)
+                .SetProperty(booking => booking.DepositReturnedById, confirmedById));
+        if (updated == 0)
+        {
+            return false;
+        }
+
+        await _context.Notifications.AddAsync(customerNotification);
+        await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return true;
+    }
 
     public async Task<List<BookingContactReadModel>> GetPropertyContactsAsync(IReadOnlyCollection<int> propertyIds)
     {

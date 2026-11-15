@@ -273,7 +273,35 @@ Migration `AddBookingCancellationReason` (2 cột NULL: `CancellationReason`, `C
 
 Chưa đổi trong C10: câu "Tiền cọc được trừ vào tiền phòng tháng đầu tiên" vẫn đúng cho đến việc 3.3 (cọc thành tiền đảm bảo, không trừ tháng đầu).
 
-Sắp có (3.2b): nút "Đã hoàn cọc" cho quản lý, hiện hộp xác nhận số tiền rồi ghi nhận.
+---
+
+## C11 — Quản lý xác nhận "Đã hoàn cọc" · ✅ đã có (việc 3.2b)
+
+Migration `AddBookingDepositReturned` (2 cột NULL + khóa ngoại tới `Users`).
+
+Hệ thống **không chuyển tiền**. Quản lý trả tiền cho khách bên ngoài (chuyển khoản, tiền mặt…), rồi bấm nút để hệ thống lưu vết và báo cho khách.
+
+**`POST /api/bookings/{id}/deposit-returned`** — không có body. Quyền: **Manager** đang phụ trách khu trọ hoặc **Admin là chủ** khu trọ.
+
+| Kết quả | Khi nào |
+|---|---|
+| 200 + `BookingDto` | Booking có `depositRefundDue = true` |
+| 409 | Không có khoản phải hoàn (khách tự hủy, không đến nhận phòng, chưa hủy) hoặc **đã xác nhận rồi** (bấm 2 lần) |
+| 403 | Khách, quản lý khu khác, Admin không phải chủ |
+
+Sau khi xác nhận: `depositRefundDue = false`, thêm `depositReturnedAtUtc` và `depositReturnedByName`. Khách nhận thông báo: *"Booking #12 - Đã xác nhận hoàn 3.000.000đ tiền cọc phòng A101"* kèm câu "Nếu bạn chưa nhận được, hãy liên hệ quản lý khu trọ".
+
+### Việc FE gợi ý (`ManagementBookingsPage`)
+1. Booking có `depositRefundDue = true`: nhãn **"Chờ hoàn cọc {depositAmount}"** + nút **"Đã hoàn cọc"**.
+2. Bấm nút → **cửa sổ xác nhận** (không dùng `window.confirm`):
+   - Tiêu đề: "Xác nhận đã hoàn cọc"
+   - Nội dung: "Khách **{customerName}** ({customerPhone}) · Booking #{bookingId} · Phòng {roomCode}" và số tiền lớn, rõ: **"{depositAmount}"**.
+   - Ghi chú: "Chỉ xác nhận sau khi bạn ĐÃ chuyển tiền cho khách. Hệ thống không chuyển tiền."
+   - Hai nút: **"Xác nhận đã hoàn"** (gọi API) và **"Hủy"** (đóng cửa sổ, không gọi API).
+3. Sau khi xác nhận: thay nhãn bằng "Đã hoàn cọc lúc {depositReturnedAtUtc} — {depositReturnedByName}".
+4. Phía khách (`MyBookingsPage`): khung liên hệ ở C10 mục 4 đổi thành "Quản lý đã xác nhận hoàn {depositAmount} lúc …" khi `depositReturnedAtUtc` khác null.
+
+Nút "Đã hoàn cọc": xem C11.
 
 ---
 

@@ -77,6 +77,59 @@ public sealed class BookingCancellationApiTests
         Assert.False(booking.GetProperty("depositRefundDue").GetBoolean());
     }
 
+    // Rebuild 3.2b: the manager pays the customer back outside the system and confirms it once.
+    [Fact]
+    public async Task Manager_confirms_the_deposit_was_returned_once_and_the_customer_is_told()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await BookingsApiTests.LoginAsync(client, "customer@example.test");
+        var bookingId = await CreatePaidBookingAsync(client);
+        var confirmUrl = $"/api/bookings/{bookingId}/deposit-returned";
+        await BookingsApiTests.LoginAsync(client, "manager@example.test");
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync(confirmUrl, null)).StatusCode); // not cancelled yet
+        await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
+
+        await BookingsApiTests.LoginAsync(client, "customer@example.test");
+        var byCustomer = await client.PostAsync(confirmUrl, null);
+        await BookingsApiTests.LoginAsync(client, "manager-b@example.test");
+        var byOtherManager = await client.PostAsync(confirmUrl, null);
+        await BookingsApiTests.LoginAsync(client, "manager@example.test");
+        using var confirmed = await client.PostAsync(confirmUrl, null);
+        var again = await client.PostAsync(confirmUrl, null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, byCustomer.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, byOtherManager.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+        var booking = await confirmed.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(booking.GetProperty("depositRefundDue").GetBoolean());
+        Assert.NotEqual(JsonValueKind.Null, booking.GetProperty("depositReturnedAtUtc").ValueKind);
+        Assert.Equal("Manager A", booking.GetProperty("depositReturnedByName").GetString());
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(7, (await db.Bookings.SingleAsync()).DepositReturnedById);
+        var told = await db.Notifications.SingleAsync(item => item.UserId == 10 && item.Title.Contains("Đã xác nhận hoàn"));
+        Assert.Contains("3.000.000đ", told.Body);
+    }
+
+    [Fact]
+    public async Task Nothing_to_return_when_the_customer_cancelled()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        await BookingsApiTests.LoginAsync(client, "customer@example.test");
+        var bookingId = await CreatePaidBookingAsync(client);
+        await client.PostAsync($"/api/bookings/{bookingId}/cancel", null);
+
+        await BookingsApiTests.LoginAsync(client, "manager@example.test");
+        using var response = await client.PostAsync($"/api/bookings/{bookingId}/deposit-returned", null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        Assert.Null((await scope.ServiceProvider.GetRequiredService<AppDbContext>().Bookings.SingleAsync()).DepositReturnedAtUtc);
+    }
+
     private static async Task<int> CreatePaidBookingAsync(HttpClient client)
     {
         using var created = await client.PostAsJsonAsync("/api/bookings", new { roomId = 1 });

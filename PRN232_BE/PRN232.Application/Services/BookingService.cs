@@ -262,6 +262,49 @@ public class BookingService : IBookingService
         return await ToDtoAsync(cancelled);
     }
 
+    // Rebuild 3.2b: quản lý/chủ trọ đã trả lại tiền cọc cho khách NGOÀI hệ thống và xác nhận để lưu vết.
+    public async Task<BookingDto> ConfirmDepositReturnedAsync(int id, int userId, string role)
+    {
+        if (role is not (RoleNames.Manager or RoleNames.Admin))
+        {
+            throw new BookingAuthorizationException("Chỉ quản lý hoặc chủ trọ được xác nhận đã hoàn cọc.");
+        }
+
+        var booking = await GetByIdAsync(id, userId, role)
+            ?? throw new BookingNotFoundException("Booking does not exist.");
+        if (role == RoleNames.Admin && !await _repository.IsPropertyOwnerAsync(booking.PropertyId, userId))
+        {
+            throw new BookingAuthorizationException("Chỉ chủ trọ của khu này được xác nhận đã hoàn cọc.");
+        }
+        if (!booking.DepositRefundDue)
+        {
+            throw new BookingStatusConflictException(booking.DepositReturnedAtUtc is null
+                ? "Booking này không có khoản cọc phải hoàn (chỉ hoàn khi chủ trọ hủy sau khi khách đã cọc)."
+                : "Khoản cọc của booking này đã được xác nhận hoàn trước đó.");
+        }
+
+        var amount = booking.DepositAmount.ToString("#,0", System.Globalization.CultureInfo.GetCultureInfo("vi-VN"));
+        var notification = new Notifications
+        {
+            UserId = booking.CustomerId,
+            Title = $"Booking #{id} - Đã xác nhận hoàn {amount}đ tiền cọc phòng {booking.RoomCode}",
+            Body = $"{(role == RoleNames.Admin ? "Chủ trọ" : "Quản lý")} khu {booking.PropertyName} xác nhận đã chuyển lại cho bạn {amount}đ tiền cọc. Nếu bạn chưa nhận được, hãy liên hệ quản lý khu trọ.",
+            Type = NotificationTypes.Booking,
+            IsRead = false
+        };
+        if (!await _repository.ConfirmDepositReturnedAsync(id, userId, _timeProvider.GetUtcNow(), notification))
+        {
+            throw new BookingStatusConflictException("Khoản cọc của booking này đã được xác nhận hoàn trước đó.");
+        }
+        if (_realtimePublisher is not null)
+        {
+            await _realtimePublisher.PublishCreatedAsync([notification]);
+        }
+        var confirmed = await _repository.GetByIdAsync(id, null, null)
+            ?? throw new InvalidOperationException("Confirmed booking was not found.");
+        return await ToDtoAsync(confirmed);
+    }
+
     private static Bookings CreateBookingEntity(
         BookingRoomReadModel room,
         int customerId,
@@ -337,7 +380,8 @@ public class BookingService : IBookingService
             (booking.RefundStatus is null or BookingRefundRequestStatuses.Rejected) &&
             DepositHoldPolicy.IsHoldOver(booking.DepositPaidAtUtc, _timeProvider.GetUtcNow().UtcDateTime, booking.MoveInDate);
         var depositRefundDue = booking.Status == BookingStatuses.Cancelled &&
-            booking.CancellationReason == BookingCancellationReasons.LandlordCancelled && booking.DepositPaid;
+            booking.CancellationReason == BookingCancellationReasons.LandlordCancelled && booking.DepositPaid &&
+            booking.DepositReturnedAtUtc is null;
         return new BookingDto(
             booking.BookingId,
             booking.RoomId,
@@ -355,7 +399,8 @@ public class BookingService : IBookingService
             UtcTimestamp.ForResponse(holdUntil), canReleaseRoom, booking.AgreedMonthlyRent,
             booking.MoveInDate, booking.OccupantCount,
             booking.CancellationReason, UtcTimestamp.ForResponse(booking.CancelledAtUtc), depositRefundDue,
-            contacts.Select(contact => new BookingContactDto(contact.FullName, contact.PhoneNumber, contact.Email, contact.Role)).ToArray());
+            contacts.Select(contact => new BookingContactDto(contact.FullName, contact.PhoneNumber, contact.Email, contact.Role)).ToArray(),
+            UtcTimestamp.ForResponse(booking.DepositReturnedAtUtc), booking.DepositReturnedByName);
     }
 }
 

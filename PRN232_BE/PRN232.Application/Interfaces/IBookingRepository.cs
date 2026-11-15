@@ -23,4 +23,6 @@ public interface IBookingRepository
         DateTimeOffset asOfUtc,
         int? managerId = null);
     Task<List<BookingContactReadModel>> GetPropertyContactsAsync(IReadOnlyCollection<int> propertyIds);
+    // Chỉ ghi khi booking vẫn đang nợ khách tiền cọc (chủ trọ hủy, đã cọc, chưa xác nhận).
+    Task<bool> ConfirmDepositReturnedAsync(int bookingId, int confirmedById, DateTimeOffset asOfUtc, Notifications customerNotification);
 }

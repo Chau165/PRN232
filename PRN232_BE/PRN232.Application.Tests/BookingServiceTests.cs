@@ -616,6 +616,9 @@ public class BookingServiceTests
             return Task.FromResult(true);
         }
 
+        public Task<bool> ConfirmDepositReturnedAsync(int bookingId, int confirmedById, DateTimeOffset asOfUtc, Notifications customerNotification) =>
+            throw new NotSupportedException("Covered by BookingCancellationApiTests against the real repository.");
+
         public Task<List<BookingContactReadModel>> GetPropertyContactsAsync(IReadOnlyCollection<int> propertyIds) =>
             Task.FromResult(Contacts.Where(contact => propertyIds.Contains(contact.PropertyId)).ToList());
 

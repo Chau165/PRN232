@@ -30,7 +30,9 @@ public sealed record BookingReadModel(
     int? OccupantCount = null,
     string? CancellationReason = null,
     DateTime? CancelledAtUtc = null,
-    bool DepositPaid = false);
+    bool DepositPaid = false,
+    DateTime? DepositReturnedAtUtc = null,
+    string? DepositReturnedByName = null);
 
 // Người khách liên hệ để nhận lại tiền cọc (hệ thống không chuyển tiền hoàn).
 public sealed record BookingContactReadModel(int PropertyId, string FullName, string PhoneNumber, string Email, string Role);

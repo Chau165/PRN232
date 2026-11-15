@@ -325,6 +325,8 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
             });
             entity.HasOne(booking => booking.Viewing).WithMany()
                 .HasForeignKey(booking => booking.ViewingId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(booking => booking.DepositReturnedBy).WithMany()
+                .HasForeignKey(booking => booking.DepositReturnedById).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<Contracts>().HasKey(x => x.ContractId);
         modelBuilder.Entity<UtilityReadings>().HasKey(x => x.ReadingId);

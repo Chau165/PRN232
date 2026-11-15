@@ -252,6 +252,12 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<decimal>("DepositAmount")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<DateTime?>("DepositReturnedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("DepositReturnedById")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("ExpiryDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -274,6 +280,8 @@ namespace PRN232.Infrastructure.Migrations
                     b.HasKey("BookingId");
 
                     b.HasIndex("CustomerId");
+
+                    b.HasIndex("DepositReturnedById");
 
                     b.HasIndex("RoomId");
 
@@ -1751,6 +1759,11 @@ namespace PRN232.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("PRN232.Domain.Entities.Users", "DepositReturnedBy")
+                        .WithMany()
+                        .HasForeignKey("DepositReturnedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PRN232.Domain.Entities.Rooms", "Room")
                         .WithMany("Bookings")
                         .HasForeignKey("RoomId")
@@ -1763,6 +1776,8 @@ namespace PRN232.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Customer");
+
+                    b.Navigation("DepositReturnedBy");
 
                     b.Navigation("Room");
 
