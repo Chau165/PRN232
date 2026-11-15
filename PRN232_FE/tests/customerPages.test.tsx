@@ -79,6 +79,8 @@ vi.mock("@/services/contractMoveOutNoticeService", () => ({
 vi.mock("@/services/contractSettlementService", () => ({
   getContractDepositSettlement: vi.fn().mockResolvedValue(null),
   confirmContractDepositSettlement: vi.fn(),
+  confirmDepositSettlementRefund: vi.fn(),
+  confirmDepositSettlementDueCollected: vi.fn(),
 }))
 vi.mock("@/services/maintenanceService", () => ({
   getMaintenanceRequests: mocks.getMaintenanceRequests,

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest"
 import {
+  canConfirmSettlementDueCollected,
+  canConfirmSettlementPayment,
+  canConfirmSettlementRefund,
   canTerminateContractWithSettlement,
   formatForfeitedDepositReason,
   requiresDepositSettlement,
@@ -624,6 +627,66 @@ describe("rebuild validation rules (C2 & C3)", () => {
           outstandingDebtAcknowledged: true,
         }),
       ).toBeNull()
+    })
+
+    it("validates refund-confirmed and due-collected permissions and eligibility after settlement (C18)", () => {
+      expect(
+        canConfirmSettlementPayment(
+          { id: "7", role: "MANAGER" },
+          { lessorUserId: 2 },
+        ),
+      ).toBe(true)
+
+      expect(
+        canConfirmSettlementPayment(
+          { id: "2", role: "ADMIN" },
+          { lessorUserId: 2 },
+        ),
+      ).toBe(true)
+
+      expect(
+        canConfirmSettlementPayment(
+          { id: "99", role: "ADMIN" },
+          { lessorUserId: 2 },
+        ),
+      ).toBe(false)
+
+      expect(
+        canConfirmSettlementPayment(
+          { id: "10", role: "CUSTOMER" },
+          { lessorUserId: 2 },
+        ),
+      ).toBe(false)
+
+      expect(
+        canConfirmSettlementRefund({
+          isSettled: true,
+          refundAmount: 1_800_000,
+          refundConfirmedAtUtc: null,
+        }),
+      ).toBe(true)
+      expect(
+        canConfirmSettlementRefund({
+          isSettled: true,
+          refundAmount: 1_800_000,
+          refundConfirmedAtUtc: "2026-11-15T12:00:00Z",
+        }),
+      ).toBe(false)
+
+      expect(
+        canConfirmSettlementDueCollected({
+          isSettled: true,
+          amountDue: 1_000_000,
+          dueCollectedAtUtc: null,
+        }),
+      ).toBe(true)
+      expect(
+        canConfirmSettlementDueCollected({
+          isSettled: true,
+          amountDue: 1_000_000,
+          dueCollectedAtUtc: "2026-11-15T12:00:00Z",
+        }),
+      ).toBe(false)
     })
   })
 })

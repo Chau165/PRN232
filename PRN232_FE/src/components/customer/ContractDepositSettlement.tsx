@@ -3,11 +3,16 @@ import { ApiError } from "@/api/apiClient"
 import { useAuth } from "@/auth/AuthContext"
 import {
   confirmContractDepositSettlement,
+  confirmDepositSettlementDueCollected,
+  confirmDepositSettlementRefund,
   getContractDepositSettlement,
 } from "@/services/contractSettlementService"
 import type { ContractDto, DepositSettlementDto } from "@/types/contract"
 import { formatEvidenceUploadedAt } from "@/utils/contractEvidenceValidation"
 import {
+  canConfirmSettlementDueCollected,
+  canConfirmSettlementPayment,
+  canConfirmSettlementRefund,
   formatForfeitedDepositReason,
   requiresDepositSettlement,
   validateDepositSettlementConfirmation,
@@ -26,6 +31,7 @@ export default function ContractDepositSettlement({
 }) {
   const { accessToken, user } = useAuth()
   const isManager = user?.role?.toUpperCase() === "MANAGER"
+  const canConfirmMoney = canConfirmSettlementPayment(user, contract)
 
   const [settlement, setSettlement] = useState<DepositSettlementDto | null>(
     null,
@@ -41,6 +47,13 @@ export default function ContractDepositSettlement({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false)
+  const [dueDialogOpen, setDueDialogOpen] = useState(false)
+  const [paymentActionLoading, setPaymentActionLoading] = useState(false)
+  const [paymentActionError, setPaymentActionError] = useState<string | null>(
+    null,
+  )
 
   const hasSecurityDeposit = requiresDepositSettlement(contract)
 
@@ -147,6 +160,50 @@ export default function ContractDepositSettlement({
       setConfirmOpen(false)
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function handleConfirmRefund() {
+    if (!accessToken || !settlement || paymentActionLoading) return
+    setPaymentActionLoading(true)
+    setPaymentActionError(null)
+    try {
+      const updated = await confirmDepositSettlementRefund(
+        accessToken,
+        contract.contractId,
+      )
+      setSettlement(updated)
+      setRefundDialogOpen(false)
+    } catch (err: unknown) {
+      setPaymentActionError(
+        err instanceof Error
+          ? err.message
+          : "Không thể xác nhận đã hoàn cọc.",
+      )
+    } finally {
+      setPaymentActionLoading(false)
+    }
+  }
+
+  async function handleConfirmDueCollected() {
+    if (!accessToken || !settlement || paymentActionLoading) return
+    setPaymentActionLoading(true)
+    setPaymentActionError(null)
+    try {
+      const updated = await confirmDepositSettlementDueCollected(
+        accessToken,
+        contract.contractId,
+      )
+      setSettlement(updated)
+      setDueDialogOpen(false)
+    } catch (err: unknown) {
+      setPaymentActionError(
+        err instanceof Error
+          ? err.message
+          : "Không thể xác nhận đã thu tiền bồi thường.",
+      )
+    } finally {
+      setPaymentActionLoading(false)
     }
   }
 
@@ -332,6 +389,112 @@ export default function ContractDepositSettlement({
                 Ghi chú: {settlement.note}
               </p>
             )}
+
+            {settlement.isSettled &&
+              (settlement.refundAmount > 0 || settlement.amountDue > 0) && (
+                <div className="mt-3 space-y-2.5 border-t border-slate-100 pt-3 text-xs">
+                  {settlement.refundAmount > 0 && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2">
+                      {settlement.refundConfirmedAtUtc ? (
+                        <div>
+                          <p className="font-semibold text-emerald-900">
+                            Đã hoàn lúc{" "}
+                            {formatEvidenceUploadedAt(
+                              settlement.refundConfirmedAtUtc,
+                            )}{" "}
+                            — {settlement.refundConfirmedByName ?? "Quản lý"}
+                          </p>
+                          <p className="text-[11px] text-emerald-800">
+                            Quản lý đã xác nhận hoàn{" "}
+                            {formatVnd(settlement.refundAmount)} lúc{" "}
+                            {formatEvidenceUploadedAt(
+                              settlement.refundConfirmedAtUtc,
+                            )}
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <div>
+                            <span className="inline-block rounded-full bg-amber-100 px-2.5 py-0.5 font-bold text-amber-900">
+                              Chờ hoàn {formatVnd(settlement.refundAmount)}
+                            </span>
+                            {!canConfirmMoney && (
+                              <p className="mt-1 text-slate-700">
+                                Chờ quản lý hoàn{" "}
+                                {formatVnd(settlement.refundAmount)}
+                              </p>
+                            )}
+                          </div>
+                          {canConfirmMoney &&
+                            canConfirmSettlementRefund(settlement) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPaymentActionError(null)
+                                  setRefundDialogOpen(true)
+                                }}
+                                className="rounded-lg bg-[#087775] px-3 py-1.5 font-bold text-white hover:bg-teal-800"
+                              >
+                                Đã hoàn cọc
+                              </button>
+                            )}
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {settlement.amountDue > 0 && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2">
+                      {settlement.dueCollectedAtUtc ? (
+                        <div>
+                          <p className="font-semibold text-emerald-900">
+                            Đã thu lúc{" "}
+                            {formatEvidenceUploadedAt(
+                              settlement.dueCollectedAtUtc,
+                            )}{" "}
+                            — {settlement.dueCollectedByName ?? "Quản lý"}
+                          </p>
+                          <p className="text-[11px] text-emerald-800">
+                            Quản lý đã xác nhận thu{" "}
+                            {formatVnd(settlement.amountDue)} lúc{" "}
+                            {formatEvidenceUploadedAt(
+                              settlement.dueCollectedAtUtc,
+                            )}
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="inline-block rounded-full bg-rose-100 px-2.5 py-0.5 font-bold text-rose-900">
+                            Khách cần nộp thêm {formatVnd(settlement.amountDue)}
+                          </span>
+                          {canConfirmMoney &&
+                            canConfirmSettlementDueCollected(settlement) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPaymentActionError(null)
+                                  setDueDialogOpen(true)
+                                }}
+                                className="rounded-lg bg-[#087775] px-3 py-1.5 font-bold text-white hover:bg-teal-800"
+                              >
+                                Đã thu
+                              </button>
+                            )}
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {paymentActionError && (
+                    <p
+                      role="alert"
+                      className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800"
+                    >
+                      {paymentActionError}
+                    </p>
+                  )}
+                </div>
+              )}
           </div>
 
           {isManager && !settlement.isSettled && (
@@ -444,6 +607,102 @@ export default function ContractDepositSettlement({
                   className="rounded-lg bg-[#087775] px-3.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"
                 >
                   {submitting ? "Đang quyết toán..." : "Đồng ý quyết toán"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {refundDialogOpen && settlement.isSettled && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Xác nhận đã hoàn cọc"
+              className="rounded-xl border border-teal-300 bg-white p-4 shadow-md"
+            >
+              <h5 className="text-sm font-bold text-slate-900">
+                Xác nhận đã hoàn cọc
+              </h5>
+              <p className="mt-1.5 text-xs text-slate-700">
+                Khách{" "}
+                <strong className="font-bold text-slate-900">
+                  {contract.customerName}
+                </strong>{" "}
+                ({contract.customerPhone || "Chưa có SĐT"}) · Hợp đồng #
+                {contract.contractId} · Phòng {contract.roomCode}
+              </p>
+              <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-center text-base font-extrabold text-emerald-900">
+                {formatVnd(settlement.refundAmount)}
+              </p>
+              <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+                Chỉ xác nhận sau khi bạn ĐÃ chuyển tiền cho khách. Hệ thống
+                không chuyển tiền.
+              </p>
+              <div className="mt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={paymentActionLoading}
+                  onClick={() => setRefundDialogOpen(false)}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  disabled={paymentActionLoading}
+                  onClick={() => void handleConfirmRefund()}
+                  className="rounded-lg bg-[#087775] px-3.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+                >
+                  {paymentActionLoading
+                    ? "Đang xác nhận..."
+                    : "Xác nhận đã hoàn"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {dueDialogOpen && settlement.isSettled && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Xác nhận đã thu"
+              className="rounded-xl border border-teal-300 bg-white p-4 shadow-md"
+            >
+              <h5 className="text-sm font-bold text-slate-900">
+                Xác nhận đã thu
+              </h5>
+              <p className="mt-1.5 text-xs text-slate-700">
+                Khách{" "}
+                <strong className="font-bold text-slate-900">
+                  {contract.customerName}
+                </strong>{" "}
+                ({contract.customerPhone || "Chưa có SĐT"}) · Hợp đồng #
+                {contract.contractId} · Phòng {contract.roomCode}
+              </p>
+              <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-center text-base font-extrabold text-rose-900">
+                {formatVnd(settlement.amountDue)}
+              </p>
+              <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+                Chỉ xác nhận sau khi bạn ĐÃ nhận tiền của khách. Hệ thống không
+                chuyển tiền.
+              </p>
+              <div className="mt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={paymentActionLoading}
+                  onClick={() => setDueDialogOpen(false)}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  disabled={paymentActionLoading}
+                  onClick={() => void handleConfirmDueCollected()}
+                  className="rounded-lg bg-[#087775] px-3.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+                >
+                  {paymentActionLoading
+                    ? "Đang xác nhận..."
+                    : "Xác nhận đã thu"}
                 </button>
               </div>
             </div>

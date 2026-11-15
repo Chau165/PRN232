@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => ({
   cancelContractMoveOutNotice: vi.fn(),
   getContractDepositSettlement: vi.fn(),
   confirmContractDepositSettlement: vi.fn(),
+  confirmDepositSettlementRefund: vi.fn(),
+  confirmDepositSettlementDueCollected: vi.fn(),
   role: "MANAGER" as string,
 }))
 
@@ -66,6 +68,9 @@ vi.mock("@/services/contractMoveOutNoticeService", () => ({
 vi.mock("@/services/contractSettlementService", () => ({
   getContractDepositSettlement: mocks.getContractDepositSettlement,
   confirmContractDepositSettlement: mocks.confirmContractDepositSettlement,
+  confirmDepositSettlementRefund: mocks.confirmDepositSettlementRefund,
+  confirmDepositSettlementDueCollected:
+    mocks.confirmDepositSettlementDueCollected,
 }))
 
 const booking = (overrides: Partial<BookingDto> = {}): BookingDto => ({
@@ -870,5 +875,126 @@ describe("ManagementContractsPage", () => {
       screen.queryByRole("button", { name: "Lập biên bản trả phòng" }),
     ).toBeNull()
     expect(screen.queryByLabelText("Thêm ảnh Ảnh trả phòng")).toBeNull()
+  })
+
+  it("allows Manager to confirm deposit refund and due collected via C11-style confirmation dialogs after settlement (C18)", async () => {
+    const settledBase = {
+      contractId: 12,
+      isSettled: true,
+      moveOutDate: "2026-11-15",
+      contractEndDate: "2027-11-01",
+      depositAmount: 3_000_000,
+      damageCharges: 1_200_000,
+      damageCoveredByDeposit: 1_200_000,
+      outstandingDebt: 0,
+      retainedForDebt: 0,
+      forfeitedAmount: 0,
+      refundAmount: 1_800_000,
+      amountDue: 1_000_000,
+      earlyWithoutNotice: false,
+      noticeDays: 40,
+      note: null,
+      settledByName: "Manager A",
+      settledAtUtc: "2026-11-15T10:00:00Z",
+      refundConfirmedAtUtc: null as string | null,
+      refundConfirmedByName: null as string | null,
+      dueCollectedAtUtc: null as string | null,
+      dueCollectedByName: null as string | null,
+    }
+
+    mocks.getContracts.mockResolvedValue([
+      contract({
+        securityDepositAmount: 3_000_000,
+        prepaidRentAmount: 0,
+        prepaidRentApplied: 0,
+        remainingPrepaidCredit: 0,
+      }),
+    ])
+    mocks.getContractDepositSettlement.mockResolvedValue(settledBase)
+    mocks.confirmDepositSettlementRefund.mockResolvedValue({
+      ...settledBase,
+      refundConfirmedAtUtc: "2026-11-15T11:00:00Z",
+      refundConfirmedByName: "Manager A",
+    })
+    mocks.confirmDepositSettlementDueCollected.mockResolvedValue({
+      ...settledBase,
+      refundConfirmedAtUtc: "2026-11-15T11:00:00Z",
+      refundConfirmedByName: "Manager A",
+      dueCollectedAtUtc: "2026-11-15T11:15:00Z",
+      dueCollectedByName: "Manager A",
+    })
+
+    render(
+      <MemoryRouter initialEntries={["/management/contracts"]}>
+        <ManagementContractsPage />
+      </MemoryRouter>,
+    )
+
+    await screen.findByText("HĐ #12")
+    fireEvent.click(screen.getByRole("button", { name: "Xem" }))
+
+    const settlementSection = await screen.findByRole("region", {
+      name: "Quyết toán cọc hợp đồng 12",
+    })
+
+    // 1. Xác nhận "Đã hoàn cọc"
+    expect(
+      await within(settlementSection).findByText(/Chờ hoàn 1\.800\.000/),
+    ).toBeTruthy()
+    fireEvent.click(
+      within(settlementSection).getByRole("button", { name: "Đã hoàn cọc" }),
+    )
+
+    const refundDialog = await screen.findByRole("dialog", {
+      name: "Xác nhận đã hoàn cọc",
+    })
+    expect(
+      within(refundDialog).getByText(
+        "Chỉ xác nhận sau khi bạn ĐÃ chuyển tiền cho khách. Hệ thống không chuyển tiền.",
+      ),
+    ).toBeTruthy()
+    fireEvent.click(
+      within(refundDialog).getByRole("button", { name: "Xác nhận đã hoàn" }),
+    )
+
+    await waitFor(() =>
+      expect(mocks.confirmDepositSettlementRefund).toHaveBeenCalledWith(
+        "manager-token",
+        12,
+      ),
+    )
+    expect(
+      await within(settlementSection).findByText(/Đã hoàn lúc .* — Manager A/),
+    ).toBeTruthy()
+
+    // 2. Xác nhận "Đã thu"
+    expect(
+      within(settlementSection).getByText(/Khách cần nộp thêm 1\.000\.000/),
+    ).toBeTruthy()
+    fireEvent.click(
+      within(settlementSection).getByRole("button", { name: "Đã thu" }),
+    )
+
+    const dueDialog = await screen.findByRole("dialog", {
+      name: "Xác nhận đã thu",
+    })
+    expect(
+      within(dueDialog).getByText(
+        "Chỉ xác nhận sau khi bạn ĐÃ nhận tiền của khách. Hệ thống không chuyển tiền.",
+      ),
+    ).toBeTruthy()
+    fireEvent.click(
+      within(dueDialog).getByRole("button", { name: "Xác nhận đã thu" }),
+    )
+
+    await waitFor(() =>
+      expect(mocks.confirmDepositSettlementDueCollected).toHaveBeenCalledWith(
+        "manager-token",
+        12,
+      ),
+    )
+    expect(
+      await within(settlementSection).findByText(/Đã thu lúc .* — Manager A/),
+    ).toBeTruthy()
   })
 })

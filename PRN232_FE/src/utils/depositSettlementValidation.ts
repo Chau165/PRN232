@@ -44,3 +44,43 @@ export function validateDepositSettlementConfirmation(params: {
   }
   return null
 }
+
+export function canConfirmSettlementPayment(
+  user: { id?: string; role?: string } | null | undefined,
+  contract: { lessorUserId?: number | null },
+): boolean {
+  const role = user?.role?.toUpperCase()
+  if (role === "MANAGER") return true
+  if (role === "ADMIN") {
+    return (
+      contract.lessorUserId != null &&
+      user?.id != null &&
+      String(contract.lessorUserId) === String(user.id)
+    )
+  }
+  return false
+}
+
+export function canConfirmSettlementRefund(settlement: {
+  isSettled: boolean
+  refundAmount: number
+  refundConfirmedAtUtc: string | null
+}): boolean {
+  return (
+    settlement.isSettled &&
+    settlement.refundAmount > 0 &&
+    !settlement.refundConfirmedAtUtc
+  )
+}
+
+export function canConfirmSettlementDueCollected(settlement: {
+  isSettled: boolean
+  amountDue: number
+  dueCollectedAtUtc: string | null
+}): boolean {
+  return (
+    settlement.isSettled &&
+    settlement.amountDue > 0 &&
+    !settlement.dueCollectedAtUtc
+  )
+}

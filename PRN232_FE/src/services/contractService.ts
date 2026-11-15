@@ -105,5 +105,7 @@ export {
 
 export {
   confirmContractDepositSettlement,
+  confirmDepositSettlementDueCollected,
+  confirmDepositSettlementRefund,
   getContractDepositSettlement,
 } from "@/services/contractSettlementService"

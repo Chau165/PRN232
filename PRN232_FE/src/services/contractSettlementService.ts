@@ -29,3 +29,29 @@ export function confirmContractDepositSettlement(
     },
   )
 }
+
+export function confirmDepositSettlementRefund(
+  accessToken: string,
+  contractId: number,
+) {
+  return apiRequest<DepositSettlementDto>(
+    `/contracts/${contractId}/settlement/refund-confirmed`,
+    {
+      accessToken,
+      method: "POST",
+    },
+  )
+}
+
+export function confirmDepositSettlementDueCollected(
+  accessToken: string,
+  contractId: number,
+) {
+  return apiRequest<DepositSettlementDto>(
+    `/contracts/${contractId}/settlement/due-collected`,
+    {
+      accessToken,
+      method: "POST",
+    },
+  )
+}
