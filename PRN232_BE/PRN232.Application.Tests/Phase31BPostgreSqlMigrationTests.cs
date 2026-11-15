@@ -11,6 +11,85 @@ namespace PRN232.Application.Tests;
 public sealed class Phase31BPostgreSqlMigrationTests
 {
     [Phase31BPostgreSqlFact]
+    public async Task Contract_occupant_migration_allows_additional_occupant_service_rates()
+    {
+        var serverConnectionString = GetIsolatedServerConnectionString();
+        await AssertIsolatedPostgreSqlAsync(serverConnectionString);
+
+        var databaseName = NewDatabaseName("additionaloccupant");
+        await CreateDatabaseAsync(serverConnectionString, databaseName);
+        try
+        {
+            var connectionString = WithDatabase(serverConnectionString, databaseName);
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseNpgsql(connectionString)
+                .Options;
+
+            await using var context = new AppDbContext(options);
+            var migrations = context.Database.GetMigrations().ToArray();
+            var previousMigration = FindMigration(migrations, "SecureRebuildTables");
+            var targetMigration = FindMigration(migrations, "ContractOccupantsVehiclesSecurityDeposit");
+            var migrator = context.GetService<IMigrator>();
+
+            await migrator.MigrateAsync(previousMigration);
+
+            var ownerEmail = $"additional-occupant-{Guid.NewGuid():N}@invalid.test";
+            var ownerId = (await context.Database.SqlQuery<int>($"""
+                INSERT INTO "Users" ("RoleId", "FullName", "Email", "PasswordHash", "PhoneNumber", "IsActive")
+                VALUES (2, 'Additional occupant migration test', {ownerEmail}, 'isolated-test-only', '0000000000', TRUE)
+                RETURNING "UserId" AS "Value"
+                """).ToListAsync()).Single();
+            var property = CreateProperty(ownerId, "Additional occupant migration property");
+            await InsertLegacyPropertyAsync(context, property);
+
+            var additionalOccupantService = new Service { Name = "Additional Occupant", Price = 0m };
+            var legacyOccupantService = new Service { Name = "Legacy Occupant", Price = 0m };
+            context.Services.AddRange(additionalOccupantService, legacyOccupantService);
+            await context.SaveChangesAsync();
+
+            await AssertSqlStateAsync(
+                () => InsertRateAsync(
+                    context,
+                    property.PropertyId,
+                    additionalOccupantService.ServiceId,
+                    50_000m,
+                    "person_month",
+                    "additional_occupant",
+                    new DateOnly(2040, 1, 1),
+                    null),
+                "23514");
+
+            await migrator.MigrateAsync(targetMigration);
+
+            await InsertRateAsync(
+                context,
+                property.PropertyId,
+                additionalOccupantService.ServiceId,
+                50_000m,
+                "person_month",
+                "additional_occupant",
+                new DateOnly(2040, 1, 1),
+                null);
+            await InsertRateAsync(
+                context,
+                property.PropertyId,
+                legacyOccupantService.ServiceId,
+                50_000m,
+                "person_month",
+                "occupant",
+                new DateOnly(2040, 1, 1),
+                null);
+
+            Assert.Equal(2, await context.PropertyServiceRates.CountAsync());
+            Assert.True(await HistoryContainsAsync(connectionString, targetMigration));
+        }
+        finally
+        {
+            await DropDatabaseAsync(serverConnectionString, databaseName);
+        }
+    }
+
+    [Phase31BPostgreSqlFact]
     public async Task Migrations_preserve_legacy_invoice_lines_and_enforce_property_rate_invariants()
     {
         var serverConnectionString = GetIsolatedServerConnectionString();

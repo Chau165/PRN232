@@ -19,6 +19,9 @@ export interface ContractDto {
   prepaidRentApplied: number
   remainingPrepaidCredit: number
   securityDepositAmount?: number
+  registeredVehicleCount?: number | null
+  manualSecurityDepositAmount?: number | null
+  securityDepositAcknowledgedAtUtc?: string | null
   propertyAddress: string | null
   lessorUserId: number | null
   lessorName: string | null

@@ -49,10 +49,10 @@ public sealed class ReferenceDataServiceTests
         var repository = new ServiceRepositoryStub();
         var service = new ServiceCatalogService(repository);
 
-        Assert.Equal([new ServiceDto(1, "Water", 12m)], await service.GetAllAsync());
-        Assert.Equal(new ServiceDto(1, "Water", 12m), await service.GetByIdAsync(1));
-        Assert.Equal(new ServiceDto(2, "Electricity", 20m), await service.CreateAsync(new CreateServiceDto(" Electricity ", 20m)));
-        Assert.Equal(new ServiceDto(2, "Internet", 30m), await service.UpdateAsync(2, new UpdateServiceDto(" Internet ", 30m)));
+        Assert.Equal([new ServiceDto(1, "Water", 12m, "m3", "usage")], await service.GetAllAsync());
+        Assert.Equal(new ServiceDto(1, "Water", 12m, "m3", "usage"), await service.GetByIdAsync(1));
+        Assert.Equal(new ServiceDto(2, "Electricity", 20m, "kwh", "usage"), await service.CreateAsync(new CreateServiceDto(" Electricity ", 20m)));
+        Assert.Equal(new ServiceDto(2, "Internet", 30m, "room_month", "fixed_room"), await service.UpdateAsync(2, new UpdateServiceDto(" Internet ", 30m)));
         Assert.Equal(2, repository.SaveChangesCallCount);
     }
 

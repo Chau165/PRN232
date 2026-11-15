@@ -7,6 +7,7 @@ import {
   recordContractOccupantMoveOut,
   revealContractOccupantIdentity,
 } from "@/services/contractOccupantsService"
+import { updateContractRegisteredVehicleCount } from "@/services/contractService"
 import type {
   ContractDto,
   ContractOccupantDto,
@@ -25,12 +26,14 @@ import {
 
 export default function ContractOccupantsSection({
   contract,
+  onContractUpdated,
   revealTimeoutMs = REVEAL_IDENTITY_TIMEOUT_MS,
 }: {
   contract: ContractDto
+  onContractUpdated?: (contract: ContractDto) => void
   revealTimeoutMs?: number
 }) {
-  const { accessToken } = useAuth()
+  const { accessToken, user } = useAuth()
   const [data, setData] = useState<ContractOccupantsListDto | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -61,6 +64,10 @@ export default function ContractOccupantsSection({
   const [moveOutDate, setMoveOutDate] = useState("")
   const [moveOutError, setMoveOutError] = useState<string | null>(null)
   const [submittingMoveOut, setSubmittingMoveOut] = useState(false)
+  const [registeredVehicleCount, setRegisteredVehicleCount] = useState("0")
+  const [vehiclesConfirmed, setVehiclesConfirmed] = useState(contract.registeredVehicleCount != null)
+  const [savingVehicles, setSavingVehicles] = useState(false)
+  const [vehicleError, setVehicleError] = useState<string | null>(null)
 
   function clearAllRevealTimers() {
     for (const timer of Object.values(revealTimersRef.current)) {
@@ -291,6 +298,28 @@ export default function ContractOccupantsSection({
 
   const isRoomFull = Boolean(data && data.currentCount >= data.maxOccupants)
 
+  async function handleConfirmVehicles(event: FormEvent) {
+    event.preventDefault()
+    if (!accessToken || savingVehicles || !data) return
+    const count = Number(registeredVehicleCount)
+    if (!Number.isInteger(count) || count < 0 || count > data.currentCount) {
+      setVehicleError(`Số xe phải từ 0 đến ${data.currentCount}, theo số người đang đăng ký.`)
+      return
+    }
+    setSavingVehicles(true)
+    setVehicleError(null)
+    try {
+      const updated = await updateContractRegisteredVehicleCount(accessToken, contract.contractId, count)
+      setRegisteredVehicleCount(String(count))
+      setVehiclesConfirmed(true)
+      onContractUpdated?.(updated)
+    } catch (error: unknown) {
+      setVehicleError(error instanceof Error ? error.message : "Không thể xác nhận số xe.")
+    } finally {
+      setSavingVehicles(false)
+    }
+  }
+
   return (
     <section
       className="mt-5 rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-sm"
@@ -330,6 +359,25 @@ export default function ContractOccupantsSection({
           </div>
         )}
       </div>
+
+      {user?.role === "MANAGER" && contract.registeredVehicleCount == null && !vehiclesConfirmed && data && (
+        <form onSubmit={handleConfirmVehicles} className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs text-amber-900">Hợp đồng cũ chưa có số xe. Xác nhận số xe hiện có trước khi lập hóa đơn gửi xe; tối đa {data.currentCount} xe.</p>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <label className="text-xs font-semibold text-slate-700">Số xe đang đăng ký
+              <input aria-label="Số xe đang đăng ký" type="number" min={0} max={data.currentCount} step={1}
+                value={registeredVehicleCount} disabled={savingVehicles}
+                onChange={(event) => setRegisteredVehicleCount(event.target.value)}
+                className="mt-1 block h-9 w-28 rounded-lg border border-slate-200 bg-white px-2 text-sm" />
+            </label>
+            <button type="submit" disabled={savingVehicles}
+              className="rounded-lg bg-teal-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+              {savingVehicles ? "Đang lưu..." : "Xác nhận số xe"}
+            </button>
+          </div>
+          {vehicleError && <p role="alert" className="mt-2 text-xs text-rose-700">{vehicleError}</p>}
+        </form>
+      )}
 
       {loading && (
         <p role="status" className="mt-3 text-xs text-slate-500">

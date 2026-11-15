@@ -13,6 +13,8 @@ import { addIsoDays } from "@/utils/moveOutNoticeValidation"
 
 const mocks = vi.hoisted(() => ({
   getBooking: vi.fn(),
+  getRoomTypeServices: vi.fn(),
+  getPropertyServiceRates: vi.fn(),
   getContracts: vi.fn(),
   createContract: vi.fn(),
   getContractBillingTimeline: vi.fn(),
@@ -51,6 +53,8 @@ vi.mock("@/components/management/ManagementPage", () => ({
   default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
 }))
 vi.mock("@/services/bookingService", () => ({ getBooking: mocks.getBooking }))
+vi.mock("@/services/roomTypeService", () => ({ getRoomTypeServices: mocks.getRoomTypeServices }))
+vi.mock("@/services/serviceRateService", () => ({ getPropertyServiceRates: mocks.getPropertyServiceRates }))
 vi.mock("@/services/contractService", () => ({
   getContracts: mocks.getContracts,
   createContract: mocks.createContract,
@@ -99,6 +103,7 @@ const booking = (overrides: Partial<BookingDto> = {}): BookingDto => ({
   bookingId: 9, roomId: 1, roomCode: "A101", propertyId: 1, propertyName: "Sunrise",
   customerId: 10, customerName: "Nguyễn An", depositAmount: 3_000_000, status: "Deposited",
   expiryDate: new Date(Date.now() + 86_400_000).toISOString(), customerPhone: "0908123456", contractId: null,
+  maxOccupants: 3, roomTypeId: 4, roomTypeName: "Studio", agreedMonthlyRent: 3_000_000, occupantCount: 1,
   ...overrides,
 })
 
@@ -149,6 +154,8 @@ function renderCreatePage() {
 beforeEach(() => {
   mocks.role = "MANAGER"
   mocks.getBooking.mockResolvedValue(booking())
+  mocks.getRoomTypeServices.mockResolvedValue([])
+  mocks.getPropertyServiceRates.mockResolvedValue([])
   mocks.createContract.mockResolvedValue(contract())
   mocks.getContracts.mockResolvedValue([contract()])
   mocks.getContractBillingTimeline.mockResolvedValue(billingTimeline())
@@ -215,6 +222,8 @@ describe("CreateContractPage", () => {
     expect(mocks.getBooking).toHaveBeenCalledWith("manager-token", 9, expect.any(AbortSignal))
     expect(screen.getByText(/Tiền cọc được giữ làm tiền đảm bảo trong suốt thời gian thuê/)).toBeTruthy()
     expect((screen.getByLabelText("Số điện thoại người thuê") as HTMLInputElement).value).toBe("0908123456")
+    fireEvent.change(screen.getByLabelText(/CCCD người đứng tên/), { target: { value: "079201000001" } })
+    fireEvent.click(screen.getByRole("checkbox"))
 
     fireEvent.click(screen.getByRole("button", { name: "1 năm" }))
     expect(screen.getByRole("button", { name: "1 năm" }).getAttribute("aria-pressed")).toBe("true")
@@ -224,7 +233,31 @@ describe("CreateContractPage", () => {
     const today = localToday()
     expect(mocks.createContract).toHaveBeenCalledWith("manager-token", {
       bookingId: 9, startDate: today, endDate: addContractMonths(today, 12),
+      holderIdentityNumber: "079201000001", occupants: [], registeredVehicleCount: 0,
+      manualSecurityDepositAmount: 0, securityDepositHandoverAcknowledged: true,
+      occupantCountChangeConfirmed: false,
     })
+  })
+
+  it("requires confirmation for an initial roster change and limits vehicle count to occupants", async () => {
+    renderCreatePage()
+    await screen.findByText("Booking #9 · Đã đặt cọc")
+    fireEvent.change(screen.getByLabelText(/CCCD người đứng tên/), { target: { value: "079201000001" } })
+    fireEvent.change(screen.getByLabelText("Tổng số người đăng ký"), { target: { value: "2" } })
+    fireEvent.change(screen.getByLabelText("Họ tên người ở cùng 1"), { target: { value: "Trần Thị B" } })
+    fireEvent.change(screen.getByLabelText("CCCD người ở cùng 1"), { target: { value: "079201001234" } })
+    fireEvent.change(screen.getByLabelText("Số xe đăng ký"), { target: { value: "2" } })
+    fireEvent.click(screen.getByRole("button", { name: "1 năm" }))
+    fireEvent.click(screen.getByRole("checkbox", { name: /Xác nhận số người trên hợp đồng/ }))
+    fireEvent.click(screen.getByRole("checkbox", { name: /Tôi xác nhận đã đối chiếu/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận hợp đồng" }))
+
+    await screen.findByText("contract list page")
+    expect(mocks.createContract).toHaveBeenCalledWith("manager-token", expect.objectContaining({
+      occupantCountChangeConfirmed: true,
+      registeredVehicleCount: 2,
+      occupants: [{ fullName: "Trần Thị B", identityNumber: "079201001234", phoneNumber: null }],
+    }))
   })
 
   it.each([
@@ -241,6 +274,9 @@ describe("CreateContractPage", () => {
   it("explains a conflict reported by the server", async () => {
     mocks.createContract.mockRejectedValue(new ApiError("Room already has an active contract.", { status: 409 }))
     renderCreatePage()
+    await screen.findByText("Booking #9 · Đã đặt cọc")
+    fireEvent.change(screen.getByLabelText(/CCCD người đứng tên/), { target: { value: "079201000001" } })
+    fireEvent.click(screen.getByRole("checkbox"))
     fireEvent.click(await screen.findByRole("button", { name: "6 tháng" }))
     fireEvent.click(screen.getByRole("button", { name: "Xác nhận hợp đồng" }))
 

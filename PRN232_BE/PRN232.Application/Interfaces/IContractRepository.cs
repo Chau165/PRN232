@@ -10,9 +10,11 @@ public interface IContractRepository
         decimal initialElectricReading, decimal initialWaterReading,
         DateOnly? expectedHandoverDate, decimal? expectedElectricReading, decimal? expectedWaterReading,
         DateOnly today, CancellationToken cancellationToken);
+    Task<ContractMutationResult> SaveRegisteredVehicleCountAsync(
+        int contractId, int managerId, int registeredVehicleCount, CancellationToken cancellationToken);
     Task<ContractBookingReadModel?> GetBookingAsync(int bookingId);
     Task<bool> HasActiveManagerAssignmentAsync(int propertyId, int managerId);
-    Task<bool> AddFromBookingAsync(Contracts contract, Notifications customerNotification);
+    Task<ContractCreationStatus> AddFromBookingAsync(ContractCreationCommand creation, Notifications customerNotification);
     Task<List<ContractReadModel>> GetAllAsync(int? customerId, int? ownerId);
     Task<ContractReadModel?> GetByIdAsync(int contractId, int? customerId, int? ownerId);
     Task<List<InvoiceReadModel>> GetIssuedInvoicesForTimelineAsync(

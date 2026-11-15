@@ -338,7 +338,10 @@ public class BookingRepository : IBookingRepository
             payment.ContractId == null && payment.ReadingId == null),
         booking.DepositReturnedAtUtc,
         booking.DepositReturnedBy != null ? booking.DepositReturnedBy.FullName : null,
-        booking.DepositAppliesToFirstMonth);
+        booking.DepositAppliesToFirstMonth,
+        booking.Room.MaxOccupants,
+        booking.Room.RoomTypeId,
+        booking.Room.RoomType!.TypeName);
 
     public async Task<bool> ConfirmDepositReturnedAsync(
         int bookingId, int confirmedById, DateTimeOffset asOfUtc, Notifications customerNotification)

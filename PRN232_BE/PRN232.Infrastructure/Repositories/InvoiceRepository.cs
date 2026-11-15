@@ -37,7 +37,8 @@ public class InvoiceRepository : IInvoiceRepository
             contract.StartDate,
             contract.EndDate,
             contract.BookingId,
-            contract.PlannedMoveOutDate))
+            contract.PlannedMoveOutDate,
+            contract.RegisteredVehicleCount))
             .FirstOrDefaultAsync();
     }
 

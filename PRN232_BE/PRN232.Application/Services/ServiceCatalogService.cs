@@ -1,5 +1,6 @@
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
+using PRN232.Application.Policies;
 using Entities = PRN232.Domain.Entities;
 
 namespace PRN232.Application.Services;
@@ -98,6 +99,12 @@ public class ServiceCatalogService : IServiceService
 
     private static ServiceDto ConvertToDto(Entities.Service entity)
     {
-        return new ServiceDto(entity.ServiceId, entity.Name, entity.Price);
+        var billingDefault = ServiceRateBillingDefaults.ForServiceName(entity.Name);
+        return new ServiceDto(
+            entity.ServiceId,
+            entity.Name,
+            entity.Price,
+            billingDefault?.UnitCode,
+            billingDefault?.BillingBasis);
     }
 }

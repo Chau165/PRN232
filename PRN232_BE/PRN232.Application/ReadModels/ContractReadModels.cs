@@ -1,3 +1,5 @@
+using PRN232.Domain.Entities;
+
 namespace PRN232.Application.ReadModels;
 
 public sealed record ContractBookingReadModel(
@@ -13,7 +15,12 @@ public sealed record ContractBookingReadModel(
     bool HasSuccessfulPayment = false,
     string? LessorName = null,
     string? LessorAddress = null,
-    int PropertyId = 0);
+    int PropertyId = 0,
+    string CustomerName = "",
+    int? BookingOccupantCount = null,
+    int MaxOccupants = 1,
+    int RoomTypeId = 0,
+    string RoomTypeName = "");
 
 public sealed record ContractReadModel(
     int ContractId,
@@ -47,4 +54,21 @@ public sealed record ContractReadModel(
     DateOnly? PlannedMoveOutDate = null,
     DateTime? MoveOutNoticeAtUtc = null,
     int? TransferredFromContractId = null,
-    int? TransferredToContractId = null);
+    int? TransferredToContractId = null,
+    int? RegisteredVehicleCount = null,
+    decimal? ManualSecurityDepositAmount = null,
+    DateTime? SecurityDepositAcknowledgedAtUtc = null,
+    int? SecurityDepositRecordedByManagerId = null);
+
+public sealed record ContractCreationCommand(
+    Contracts Contract,
+    IReadOnlyList<ContractOccupants> Occupants,
+    IdentityDocuments PendingHolderIdentityDocument,
+    bool OccupantCountChangeConfirmed);
+
+public enum ContractCreationStatus
+{
+    Created,
+    Conflict,
+    HolderIdentityConflict
+}

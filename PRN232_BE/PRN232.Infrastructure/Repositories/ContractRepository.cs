@@ -14,10 +14,12 @@ public class ContractRepository : IContractRepository
 {
     private static readonly SemaphoreSlim SqliteContractWriteGate = new(1, 1);
     private readonly AppDbContext _context;
+    private readonly ICccdHasher? _cccdHasher;
 
-    public ContractRepository(AppDbContext context)
+    public ContractRepository(AppDbContext context, ICccdHasher? cccdHasher = null)
     {
         _context = context;
+        _cccdHasher = cccdHasher;
     }
 
     public Task<ContractBookingReadModel?> GetBookingAsync(int bookingId)
@@ -41,7 +43,12 @@ public class ContractRepository : IContractRepository
                     payment.Amount == booking.DepositAmount),
                 booking.Room.Property.Owner!.FullName,
                 booking.Room.Property.AddressText,
-                booking.Room.PropertyId))
+                booking.Room.PropertyId,
+                booking.Customer!.FullName,
+                booking.OccupantCount,
+                booking.Room.MaxOccupants,
+                booking.Room.RoomTypeId,
+                booking.Room.RoomType!.TypeName))
             .FirstOrDefaultAsync();
     }
 
@@ -104,6 +111,49 @@ public class ContractRepository : IContractRepository
         return new ContractMutationResult(ContractMutationStatus.Updated, updatedContract);
     }
 
+    public async Task<ContractMutationResult> SaveRegisteredVehicleCountAsync(
+        int contractId, int managerId, int registeredVehicleCount, CancellationToken cancellationToken)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        if (_context.Database.IsNpgsql())
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"Contracts\" WHERE \"ContractId\" = {contractId} FOR UPDATE", cancellationToken);
+        }
+        var contract = await _context.Contracts.SingleOrDefaultAsync(
+            item => item.ContractId == contractId, cancellationToken);
+        if (contract is null)
+        {
+            return new ContractMutationResult(ContractMutationStatus.NotFound);
+        }
+        await _context.Entry(contract).ReloadAsync(cancellationToken);
+        var propertyId = await GetPropertyIdForRoomAsync(contract.RoomId, cancellationToken);
+        if (!propertyId.HasValue)
+        {
+            return new ContractMutationResult(ContractMutationStatus.Conflict);
+        }
+        await LockManagerAssignmentAsync(propertyId.Value, managerId, cancellationToken);
+        if (!await HasActiveManagerAssignmentAsync(propertyId.Value, managerId, cancellationToken))
+        {
+            return new ContractMutationResult(ContractMutationStatus.Forbidden);
+        }
+        if (contract.Status != ContractStatuses.Active || registeredVehicleCount < 0)
+        {
+            return new ContractMutationResult(ContractMutationStatus.Conflict);
+        }
+        var activeOccupantCount = 1 + await _context.ContractOccupants.CountAsync(
+            occupant => occupant.ContractId == contractId && occupant.MoveOutDate == null, cancellationToken);
+        if (registeredVehicleCount > activeOccupantCount)
+        {
+            return new ContractMutationResult(ContractMutationStatus.Conflict);
+        }
+        contract.RegisteredVehicleCount = registeredVehicleCount;
+        await _context.SaveChangesAsync(cancellationToken);
+        var updated = await GetMutationReadModelAsync(contractId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new ContractMutationResult(ContractMutationStatus.Updated, updated);
+    }
+
     public Task<bool> HasActiveManagerAssignmentAsync(int propertyId, int managerId)
     {
         return _context.PropertyManagerAssignments.AnyAsync(assignment =>
@@ -113,12 +163,20 @@ public class ContractRepository : IContractRepository
             assignment.Manager.Role!.RoleName == RoleNames.Manager);
     }
 
-    public async Task<bool> AddFromBookingAsync(Contracts contract, Notifications customerNotification)
+    public async Task<ContractCreationStatus> AddFromBookingAsync(
+        ContractCreationCommand creation, Notifications customerNotification)
     {
+        var contract = creation.Contract;
         if (!contract.BookingId.HasValue)
         {
-            return false;
+            return ContractCreationStatus.Conflict;
         }
+        if (_cccdHasher is null)
+        {
+            throw new InvalidOperationException("An ICccdHasher is required to create contracts with a holder identity.");
+        }
+        var holderDocument = creation.PendingHolderIdentityDocument;
+        holderDocument.CCCDNumberHash = _cccdHasher.Hash(holderDocument.CCCDNumber);
         await using var transaction = await _context.Database.BeginTransactionAsync();
         //Nghia
         await BookingPaymentLock.LockAsync(_context, contract.BookingId.Value);
@@ -135,6 +193,8 @@ public class ContractRepository : IContractRepository
                 $"SELECT 1 FROM \"Rooms\" WHERE \"RoomId\" = {contract.RoomId} FOR UPDATE");
             await _context.Database.ExecuteSqlInterpolatedAsync(
                 $"SELECT assignment.\"PropertyId\" FROM \"PropertyManagerAssignments\" assignment JOIN \"Rooms\" room ON room.\"PropertyId\" = assignment.\"PropertyId\" WHERE room.\"RoomId\" = {contract.RoomId} AND assignment.\"ManagerId\" = {contract.ProcessedByStaffId} FOR SHARE OF assignment");
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock(hashtext({holderDocument.CCCDNumberHash}))");
         }
 
         var managerAssignmentStillActive = contract.ProcessedByStaffId.HasValue &&
@@ -158,14 +218,47 @@ public class ContractRepository : IContractRepository
                 payment.UserId == booking.CustomerId &&
                 payment.Amount == booking.DepositAmount) &&
             booking.Contract == null);
+        var bookingFacts = await _context.Bookings
+            .Where(booking => booking.BookingId == contract.BookingId)
+            .Select(booking => new { booking.OccupantCount, booking.Room!.MaxOccupants })
+            .SingleOrDefaultAsync();
+        var registeredOccupantCount = creation.Occupants.Count + 1;
+        if (bookingFacts is null || registeredOccupantCount > bookingFacts.MaxOccupants ||
+            (registeredOccupantCount != (bookingFacts.OccupantCount ?? 1) && !creation.OccupantCountChangeConfirmed) ||
+            contract.RegisteredVehicleCount is not int vehicleCount || vehicleCount < 0 || vehicleCount > registeredOccupantCount)
+        {
+            return ContractCreationStatus.Conflict;
+        }
         var roomHasUnterminatedContract = await _context.Contracts.AnyAsync(existing =>
             existing.RoomId == contract.RoomId && existing.Status != ContractStatuses.Terminated);
         if (!bookingStillDeposited || !managerAssignmentStillActive || roomHasUnterminatedContract)
         {
-            return false;
+            return ContractCreationStatus.Conflict;
         }
 
+        var existingHolderDocuments = await _context.IdentityDocuments
+            .Where(document => document.CustomerId == contract.CustomerId)
+            .Select(document => new { document.CCCDNumberHash, document.Status })
+            .ToListAsync();
+        var activeHolderDocuments = existingHolderDocuments.Where(document =>
+            document.Status == IdentityDocumentStatuses.Pending || document.Status == IdentityDocumentStatuses.Approved).ToList();
+        if (activeHolderDocuments.Any(document => document.CCCDNumberHash != holderDocument.CCCDNumberHash) ||
+            await _context.IdentityDocuments.AnyAsync(document => document.CustomerId != contract.CustomerId &&
+                document.CCCDNumberHash == holderDocument.CCCDNumberHash))
+        {
+            return ContractCreationStatus.HolderIdentityConflict;
+        }
+
+        contract.Occupants = creation.Occupants.ToList();
+        foreach (var occupant in creation.Occupants)
+        {
+            occupant.Contract = contract;
+        }
         await _context.Contracts.AddAsync(contract);
+        if (activeHolderDocuments.Count == 0)
+        {
+            await _context.IdentityDocuments.AddAsync(holderDocument);
+        }
         await _context.Notifications.AddAsync(customerNotification);
         await _context.SaveChangesAsync();
         // Phòng đã có người thuê: màn hình quản lý phòng và "Phòng của tôi" đọc Room.Status sẽ hiển thị đúng.
@@ -173,7 +266,7 @@ public class ContractRepository : IContractRepository
             .Where(room => room.RoomId == contract.RoomId)
             .ExecuteUpdateAsync(setters => setters.SetProperty(room => room.Status, RoomStatuses.Occupied));
         await transaction.CommitAsync();
-        return true;
+        return ContractCreationStatus.Created;
     }
 
     public async Task<List<ContractReadModel>> GetAllAsync(int? customerId, int? managerId)
@@ -603,7 +696,8 @@ public class ContractRepository : IContractRepository
                 invoice.CustomerId,
                 DepositAmount = invoice.Booking == null ? invoice.DepositAmount : invoice.Booking.DepositAmount,
                 DepositAppliesToFirstMonth = invoice.Booking != null && invoice.Booking.DepositAppliesToFirstMonth,
-                invoice.TransferredFromContractId
+                invoice.TransferredFromContractId,
+                invoice.ManualSecurityDepositAmount
             })
             .ToListAsync(cancellationToken);
         // Rebuild 4.2: hợp đồng đã chuyển người đứng tên thì cọc nằm ở hợp đồng kế tiếp.
@@ -654,6 +748,10 @@ public class ContractRepository : IContractRepository
             var securityDeposit = successor is not null ? 0m
                 : booking?.TransferredFromContractId is not null ? contract.DepositAmount
                 : prepaid ? 0m : eligiblePaid;
+            if (successor is null)
+            {
+                securityDeposit += booking?.ManualSecurityDepositAmount ?? 0m;
+            }
             return contract with
             {
                 PrepaidRentAmount = prepaid ? eligiblePaid : 0m,
@@ -709,7 +807,11 @@ public class ContractRepository : IContractRepository
         contract.PlannedMoveOutDate,
         contract.MoveOutNoticeAtUtc,
         contract.TransferredFromContractId,
-        null);
+        null,
+        contract.RegisteredVehicleCount,
+        contract.ManualSecurityDepositAmount,
+        contract.SecurityDepositAcknowledgedAtUtc,
+        contract.SecurityDepositRecordedByManagerId);
 
     public async Task<bool> SaveMoveOutNoticeAsync(int contractId, DateOnly? plannedMoveOutDate, DateTime? noticeAtUtc,
         int? noticeById, IReadOnlyList<Notifications> notifications, CancellationToken cancellationToken)

@@ -49,16 +49,16 @@ và đăng ký DI trong `PRN232.Api/Program.cs`.
 1. Cài [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) nếu chưa có.
 2. Clone repo, mở `PRN232_BE.sln` (chứa 4 project ở trên).
 3. Restore package: `dotnet restore`.
-4. Cấu hình connection string Supabase — **không gõ thẳng vào `appsettings.json`**,
-   dùng User Secrets để tránh lộ password khi push code (chạy trong `PRN232.Api/`,
-   vì `UserSecretsId` khai ở đó):
+4. Cấu hình connection string Supabase — **không gõ password vào appsettings hoặc Git**,
+   dùng User Secrets (chạy trong `PRN232.Api/`; `UserSecretsId` đã khai trong project):
 
    ```bash
    cd PRN232.Api
-   dotnet user-secrets init
-   dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=xxx.supabase.co;Port=5432;Database=postgres;Username=postgres;Password=xxx;SSL Mode=Require;Trust Server Certificate=true"
+   dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=aws-0-ap-southeast-1.pooler.supabase.com;Port=5432;Database=postgres;Username=postgres.qvdrjyecaprfpgvbfyfe;Password=THAY_BANG_MAT_KHAU_MOI;SSL Mode=Require;Trust Server Certificate=true"
    dotnet user-secrets set "Jwt:Key" "<một chuỗi random tối thiểu 32 ký tự>"
    ```
+
+   Đây là session pooler IPv4 của project. Thay `THAY_BANG_MAT_KHAU_MOI` bằng password mới sau khi reset trong Supabase Dashboard; connection string này chỉ lưu trong User Secrets trên máy local.
 
    Local (Development) không cần `IdentityDocuments:CccdHashKey` — tự dùng key dev. Production
    (Railway) **bắt buộc** đặt `IdentityDocuments__CccdHashKey` (chuỗi ngẫu nhiên >= 32 ký tự, không

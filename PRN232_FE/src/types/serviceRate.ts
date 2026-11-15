@@ -3,6 +3,8 @@ export interface ServiceCatalogItem {
   serviceId: number
   name: string
   price: number
+  defaultUnitCode?: string | null
+  defaultBillingBasis?: string | null
 }
 
 // GET/POST /api/properties/{id}/service-rates. Ngày là đầu tháng (yyyy-MM-01);

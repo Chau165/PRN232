@@ -103,15 +103,15 @@ public class InvoiceServiceTests
     }
 
     [Fact]
-    public async Task A_service_without_a_price_or_with_an_unsupported_basis_is_never_silently_skipped()
+    public async Task A_service_without_a_price_or_without_confirmed_legacy_vehicle_count_is_never_silently_skipped()
     {
         var noPrice = new FakeInvoiceRepository { Services = [Internet with { RateId = null, Price = null }] };
-        var perVehicle = new FakeInvoiceRepository { Services = [Internet with { UnitCode = "vehicle_month", BillingBasis = "vehicle" }] };
+        var legacyVehicle = new FakeInvoiceRepository { Services = [Internet with { UnitCode = "vehicle_month", BillingBasis = "vehicle" }] };
 
         await Assert.ThrowsAsync<InvoiceConflictException>(() =>
             CreateService(noPrice).PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 7, RoleNames.Manager));
-        await Assert.ThrowsAsync<InvoiceBusinessRuleException>(() =>
-            CreateService(perVehicle).PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 7, RoleNames.Manager));
+        await Assert.ThrowsAsync<InvoiceConflictException>(() =>
+            CreateService(legacyVehicle).PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 7, RoleNames.Manager));
     }
 
     [Fact]
@@ -129,6 +129,146 @@ public class InvoiceServiceTests
         var line = Assert.Single(preview.Lines, item => item.ItemType == InvoiceItemTypes.Service);
         Assert.Equal(((decimal?)1.35m, (decimal?)50_000m, "person_month", 67_500m),
             (line.Quantity, line.UnitPrice, line.UnitCode, line.Amount));
+    }
+
+    [Fact]
+    public async Task An_additional_occupant_service_excludes_the_holder_and_prorates_guest_days()
+    {
+        var repository = new FakeInvoiceRepository
+        {
+            Services = [Internet with { Price = 50_000m, UnitCode = "person_month", BillingBasis = "additional_occupant" }],
+            Stays = [new OccupantStayReadModel(new DateOnly(2026, 10, 21), null)]
+        };
+
+        var preview = await CreateService(repository).PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 7, RoleNames.Manager);
+
+        var line = Assert.Single(preview.Lines, item => item.ItemType == InvoiceItemTypes.Service);
+        Assert.Equal((0.35m, 17_500m), (line.Quantity, line.Amount));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task Additional_occupant_fee_counts_only_people_sharing_the_room(int residentCount)
+    {
+        var expectedPersonMonths = residentCount - 1m;
+        var expectedAmount = expectedPersonMonths * 50_000m;
+        var repository = new FakeInvoiceRepository
+        {
+            Services =
+            [
+                Internet with
+                {
+                    ServiceName = "Additional Occupant",
+                    Price = 50_000m,
+                    UnitCode = "person_month",
+                    BillingBasis = "additional_occupant"
+                }
+            ],
+            Stays = Enumerable.Range(1, residentCount - 1)
+                .Select(_ => new OccupantStayReadModel(new DateOnly(2026, 1, 1), null))
+                .ToList()
+        };
+
+        var preview = await CreateService(repository).PreviewAsync(
+            new CreateInvoiceDto(1, October, DueDate),
+            7,
+            RoleNames.Manager);
+
+        var line = Assert.Single(preview.Lines, item => item.ItemType == InvoiceItemTypes.Service);
+        Assert.Equal((expectedPersonMonths, expectedAmount), (line.Quantity, line.Amount));
+    }
+
+    [Fact]
+    public async Task Additional_occupant_preview_and_issued_invoice_keep_other_charges_unchanged()
+    {
+        var additionalOccupant = Internet with
+        {
+            ServiceId = 4,
+            ServiceName = "Additional Occupant",
+            Price = 50_000m,
+            UnitCode = "person_month",
+            BillingBasis = "additional_occupant"
+        };
+        var parking = Internet with
+        {
+            ServiceId = 5,
+            ServiceName = "Parking",
+            Price = 80_000m,
+            UnitCode = "vehicle_month",
+            BillingBasis = "vehicle"
+        };
+        var repository = new FakeInvoiceRepository
+        {
+            Services = [Electricity, Water, parking, additionalOccupant],
+            Contract = SampleContract() with { RegisteredVehicleCount = 2 },
+            Stays =
+            [
+                new OccupantStayReadModel(new DateOnly(2026, 1, 1), null),
+                new OccupantStayReadModel(new DateOnly(2026, 1, 1), null)
+            ]
+        };
+        var service = CreateService(repository);
+        var invoiceRequest = new CreateInvoiceDto(1, October, DueDate);
+
+        var preview = await service.PreviewAsync(invoiceRequest, 7, RoleNames.Manager);
+        var issued = await service.CreateAsync(invoiceRequest, 7, RoleNames.Manager);
+
+        Assert.Equal(preview.Total, issued.Total);
+        Assert.Equal(
+            preview.Lines.Select(line => (line.ItemType, line.Quantity, line.UnitCode, line.Amount)),
+            issued.Lines.Select(line => (line.ItemType, line.Quantity, line.UnitCode, line.Amount)));
+        Assert.Equal(
+            2_500_000m,
+            Assert.Single(issued.Lines, line => line.ItemType == InvoiceItemTypes.Rent).Amount);
+        Assert.Equal(
+            507_500m,
+            Assert.Single(issued.Lines, line => line.ItemType == InvoiceItemTypes.Electricity).Amount);
+        Assert.Equal(
+            100_000m,
+            Assert.Single(issued.Lines, line => line.ItemType == InvoiceItemTypes.Water).Amount);
+        Assert.Equal(
+            160_000m,
+            Assert.Single(issued.Lines, line => line.Description.StartsWith("Parking", StringComparison.Ordinal)).Amount);
+        Assert.Equal(
+            100_000m,
+            Assert.Single(issued.Lines, line => line.Description.StartsWith("Additional Occupant", StringComparison.Ordinal)).Amount);
+
+        var invoice = Assert.Single(repository.Added).Invoice;
+        var savedAdditionalOccupant = Assert.Single(
+            invoice.InvoiceDetails,
+            detail => detail.ServiceId == additionalOccupant.ServiceId);
+        Assert.Equal(("additional_occupant", 2m, 50_000m, 100_000m),
+            (savedAdditionalOccupant.BillingBasis, savedAdditionalOccupant.Quantity,
+                savedAdditionalOccupant.UnitPrice, savedAdditionalOccupant.Amount));
+
+        repository.Services[3] = additionalOccupant with
+        {
+            Price = 99_000m,
+            BillingBasis = "occupant"
+        };
+        var historicalInvoice = await service.GetByIdAsync(issued.InvoiceId, 10, RoleNames.Customer);
+        var historicalAdditionalOccupant = Assert.Single(
+            historicalInvoice!.Lines,
+            line => line.Description.StartsWith("Additional Occupant", StringComparison.Ordinal));
+        Assert.Equal((2m, 50_000m, 100_000m),
+            (historicalAdditionalOccupant.Quantity, historicalAdditionalOccupant.UnitPrice, historicalAdditionalOccupant.Amount));
+    }
+
+    [Fact]
+    public async Task A_vehicle_service_uses_registered_vehicle_count_and_prorates_partial_months()
+    {
+        var repository = new FakeInvoiceRepository
+        {
+            Contract = SampleContract() with { StartDate = new DateOnly(2026, 10, 15), RegisteredVehicleCount = 2 },
+            Services = [Internet with { Price = 80_000m, UnitCode = "vehicle_month", BillingBasis = "vehicle" }]
+        };
+
+        var preview = await CreateService(repository).PreviewAsync(new CreateInvoiceDto(1, October, DueDate), 7, RoleNames.Manager);
+
+        var line = Assert.Single(preview.Lines, item => item.ItemType == InvoiceItemTypes.Service);
+        Assert.Equal((1.10m, 88_000m), (line.Quantity, line.Amount));
     }
 
     [Fact]

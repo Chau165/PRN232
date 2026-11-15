@@ -20,7 +20,7 @@ public class ContractServiceTests
         var repository = new FakeContractRepository();
 
         var created = await CreateService(repository).CreateFromBookingAsync(
-            new CreateContractDto(1, VietnamToday, VietnamToday.AddYears(1)), 7, RoleNames.Manager);
+            ValidRequest(VietnamToday, VietnamToday.AddYears(1)), 7, RoleNames.Manager);
 
         var (contract, notification) = Assert.Single(repository.Added);
         Assert.Equal((5, 10, (int?)1, (int?)7), (contract.RoomId, contract.CustomerId, contract.BookingId, contract.ProcessedByStaffId));
@@ -38,7 +38,7 @@ public class ContractServiceTests
 
         await Assert.ThrowsAsync<ContractAuthorizationException>(() => CreateService(repository)
             .CreateFromBookingAsync(
-                new CreateContractDto(1, VietnamToday, VietnamToday.AddYears(1)),
+                ValidRequest(VietnamToday, VietnamToday.AddYears(1)),
                 7,
                 RoleNames.Admin));
 
@@ -51,7 +51,7 @@ public class ContractServiceTests
         var repository = new FakeContractRepository();
 
         await Assert.ThrowsAsync<ContractBusinessRuleException>(() => CreateService(repository)
-            .CreateFromBookingAsync(new CreateContractDto(1, VietnamToday.AddDays(-1), VietnamToday.AddMonths(6)), 7, RoleNames.Manager));
+            .CreateFromBookingAsync(ValidRequest(VietnamToday.AddDays(-1), VietnamToday.AddMonths(6)), 7, RoleNames.Manager));
         Assert.Empty(repository.Added);
     }
 
@@ -61,7 +61,7 @@ public class ContractServiceTests
     public async Task CreateFromBookingAsync_requires_end_date_after_start_date(int daysAfterStart)
     {
         await Assert.ThrowsAsync<ContractBusinessRuleException>(() => CreateService(new FakeContractRepository())
-            .CreateFromBookingAsync(new CreateContractDto(1, VietnamToday, VietnamToday.AddDays(daysAfterStart)), 7, RoleNames.Manager));
+            .CreateFromBookingAsync(ValidRequest(VietnamToday, VietnamToday.AddDays(daysAfterStart)), 7, RoleNames.Manager));
     }
 
     [Theory]
@@ -73,7 +73,7 @@ public class ContractServiceTests
         var repository = new FakeContractRepository();
 
         await Assert.ThrowsAsync<ContractAuthorizationException>(() => CreateService(repository)
-            .CreateFromBookingAsync(new CreateContractDto(1, VietnamToday, VietnamToday.AddYears(1)), userId, role));
+            .CreateFromBookingAsync(ValidRequest(VietnamToday, VietnamToday.AddYears(1)), userId, role));
         Assert.Empty(repository.Added);
     }
 
@@ -81,7 +81,7 @@ public class ContractServiceTests
     public async Task CreateFromBookingAsync_rejects_missing_booking()
     {
         await Assert.ThrowsAsync<ContractNotFoundException>(() => CreateService(new FakeContractRepository { Booking = null })
-            .CreateFromBookingAsync(new CreateContractDto(1, VietnamToday, VietnamToday.AddYears(1)), 7, RoleNames.Manager));
+            .CreateFromBookingAsync(ValidRequest(VietnamToday, VietnamToday.AddYears(1)), 7, RoleNames.Manager));
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public class ContractServiceTests
 
         await Assert.ThrowsAsync<ContractConflictException>(() => CreateService(repository)
             .CreateFromBookingAsync(
-                new CreateContractDto(1, VietnamToday, VietnamToday.AddYears(1)),
+                ValidRequest(VietnamToday, VietnamToday.AddYears(1)),
                 7,
                 RoleNames.Manager));
 
@@ -110,7 +110,7 @@ public class ContractServiceTests
         var repository = new FakeContractRepository { Booking = SampleBooking() with { Status = status, HasContract = hasContract } };
 
         await Assert.ThrowsAsync<ContractConflictException>(() => CreateService(repository)
-            .CreateFromBookingAsync(new CreateContractDto(1, VietnamToday, VietnamToday.AddYears(1)), 7, RoleNames.Manager));
+            .CreateFromBookingAsync(ValidRequest(VietnamToday, VietnamToday.AddYears(1)), 7, RoleNames.Manager));
         Assert.Empty(repository.Added);
     }
 
@@ -120,7 +120,7 @@ public class ContractServiceTests
         var repository = new FakeContractRepository { AddSucceeds = false };
 
         await Assert.ThrowsAsync<ContractConflictException>(() => CreateService(repository)
-            .CreateFromBookingAsync(new CreateContractDto(1, VietnamToday, VietnamToday.AddYears(1)), 7, RoleNames.Manager));
+            .CreateFromBookingAsync(ValidRequest(VietnamToday, VietnamToday.AddYears(1)), 7, RoleNames.Manager));
     }
 
     [Theory]
@@ -362,6 +362,9 @@ public class ContractServiceTests
     private static ContractService CreateService(FakeContractRepository repository) =>
         new(repository, new FixedTimeProvider(Now));
 
+    private static CreateContractDto ValidRequest(DateOnly start, DateOnly end) =>
+        new(1, start, end, "079201000001", [], 0, 0m, true);
+
     private static ContractBookingReadModel SampleBooking() =>
         new(1, 5, "A-101", 10, 7, BookingStatuses.Deposited, 3_000_000m, 3_500_000m, false,
             true, "Property owner", "Property address", 1);
@@ -395,17 +398,18 @@ public class ContractServiceTests
         public Task<bool> HasActiveManagerAssignmentAsync(int propertyId, int managerId) =>
             Task.FromResult(propertyId == 1 && managerId == 7);
 
-        public Task<bool> AddFromBookingAsync(Contracts contract, Notifications customerNotification)
+        public Task<ContractCreationStatus> AddFromBookingAsync(ContractCreationCommand creation, Notifications customerNotification)
         {
             if (!AddSucceeds)
             {
-                return Task.FromResult(false);
+                return Task.FromResult(ContractCreationStatus.Conflict);
             }
 
+            var contract = creation.Contract;
             contract.ContractId = 1;
             ExistingContractId = 1;
             Added.Add((contract, customerNotification));
-            return Task.FromResult(true);
+            return Task.FromResult(ContractCreationStatus.Created);
         }
 
         public Task<List<ContractReadModel>> GetAllAsync(int? customerId, int? ownerId)
@@ -492,6 +496,11 @@ public class ContractServiceTests
             int contractId, int managerId, DateOnly handoverDate, decimal electric, decimal water,
             DateOnly? expectedDate, decimal? expectedElectric, decimal? expectedWater, DateOnly today,
             CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<ContractMutationResult> SaveRegisteredVehicleCountAsync(
+            int contractId, int managerId, int registeredVehicleCount, CancellationToken cancellationToken) =>
+            Task.FromResult(new ContractMutationResult(ContractMutationStatus.Updated,
+                CreateContractReadModel(contractId) with { RegisteredVehicleCount = registeredVehicleCount }));
 
         public Task<bool> ExistsAsync(int contractId) => Task.FromResult(ExistingContractId == contractId);
 

@@ -5,7 +5,10 @@ import { ManagementLoadingState } from "@/components/management/ManagementState"
 import { useAuth } from "@/auth/AuthContext"
 import { getBooking } from "@/services/bookingService"
 import { createContract } from "@/services/contractService"
+import { getRoomTypeServices } from "@/services/roomTypeService"
+import { getPropertyServiceRates } from "@/services/serviceRateService"
 import type { BookingDto } from "@/types/booking"
+import type { PropertyServiceRateDto } from "@/types/serviceRate"
 import { parsePositiveRouteId, routes } from "@/constants/routes"
 import { bookingErrorMessage, formatBookingDepositTermText } from "@/utils/bookingDisplay"
 import { refundBlocksContract } from "@/utils/bookingRefund"
@@ -17,6 +20,8 @@ const quickTerms = [
   { label: "1 năm", months: 12 },
   { label: "2 năm", months: 24 },
 ]
+
+type InitialOccupant = { fullName: string; identityNumber: string; phoneNumber: string }
 
 export default function CreateContractPage() {
   const [params] = useSearchParams()
@@ -49,6 +54,16 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [startDate, setStartDate] = useState(today)
   const [endDate, setEndDate] = useState("")
+  const [occupantCount, setOccupantCount] = useState(1)
+  const [occupants, setOccupants] = useState<InitialOccupant[]>([])
+  const [holderIdentityNumber, setHolderIdentityNumber] = useState("")
+  const [registeredVehicleCount, setRegisteredVehicleCount] = useState("0")
+  const [manualSecurityDepositAmount, setManualSecurityDepositAmount] = useState("0")
+  const [securityDepositHandoverAcknowledged, setSecurityDepositHandoverAcknowledged] = useState(false)
+  const [occupantCountChangeConfirmed, setOccupantCountChangeConfirmed] = useState(false)
+  const [serviceRates, setServiceRates] = useState<PropertyServiceRateDto[]>([])
+  const [assignedServices, setAssignedServices] = useState<{ serviceId: number; name: string }[]>([])
+  const [servicePreviewError, setServicePreviewError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -65,11 +80,57 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
     return () => controller.abort()
   }, [accessToken, bookingId])
 
+  useEffect(() => {
+    if (!booking) return
+    const max = Math.max(1, booking.maxOccupants ?? 1)
+    const initialCount = Math.min(Math.max(1, booking.occupantCount ?? 1), max)
+    setOccupantCount(initialCount)
+    setOccupants(Array.from({ length: initialCount - 1 }, () => ({ fullName: "", identityNumber: "", phoneNumber: "" })))
+    setRegisteredVehicleCount("0")
+  }, [booking?.bookingId, booking?.occupantCount, booking?.maxOccupants])
+
+  useEffect(() => {
+    if (!accessToken || !booking?.roomTypeId) return
+    const controller = new AbortController()
+    Promise.all([
+      getRoomTypeServices(accessToken, booking.roomTypeId, controller.signal),
+      getPropertyServiceRates(accessToken, booking.propertyId, controller.signal),
+    ])
+      .then(([roomServices, rates]) => {
+        if (controller.signal.aborted) return
+        setAssignedServices(roomServices.map(({ serviceId, name }) => ({ serviceId, name })))
+        setServiceRates(rates)
+        setServicePreviewError(null)
+      })
+      .catch((serviceError: unknown) => {
+        if (!controller.signal.aborted) setServicePreviewError(serviceError instanceof Error ? serviceError.message : "Không tải được giá dịch vụ.")
+      })
+    return () => controller.abort()
+  }, [accessToken, booking?.propertyId, booking?.roomTypeId])
+
   if (loadError) return <Warning message={loadError} />
   if (!booking) return <ManagementLoadingState variant="inline" message="Đang tải booking..." />
   if (booking.contractId !== null) return <Warning message="Booking này đã được lập hợp đồng." />
   if (booking.status !== "Deposited") return <Warning message="Chỉ booking đã đặt cọc mới lập được hợp đồng." />
   if (refundBlocksContract(booking.refundStatus)) return <Warning message="Booking đang có yêu cầu hoàn cọc hoặc đã hoàn cọc, chưa thể lập hợp đồng." />
+
+  const bookingOccupants = booking.occupantCount ?? 1
+  const selectedServiceMonth = `${startDate.slice(0, 7)}-01`
+  const applicableServices = assignedServices.map((service) => ({
+    service,
+    rate: serviceRates.find((item) => item.serviceId === service.serviceId &&
+      item.effectiveFrom <= selectedServiceMonth &&
+      (item.effectiveTo === null || item.effectiveTo > selectedServiceMonth)),
+  }))
+
+  const updateOccupantCount = (nextCount: number) => {
+    const safeCount = Math.min(Math.max(1, nextCount), booking.maxOccupants ?? 1)
+    setOccupantCount(safeCount)
+    setOccupants((current) => Array.from({ length: safeCount - 1 }, (_, index) =>
+      current[index] ?? { fullName: "", identityNumber: "", phoneNumber: "" }))
+    setRegisteredVehicleCount((current) => String(Math.min(Number(current) || 0, safeCount)))
+    setError(null)
+  }
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -82,10 +143,55 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
       setError("Ngày kết thúc phải sau ngày bắt đầu.")
       return
     }
+    if (!/^\d{12}$/.test(holderIdentityNumber)) {
+      setError("CCCD người đứng tên phải gồm đúng 12 chữ số.")
+      return
+    }
+    if (occupants.some((occupant) => !occupant.fullName.trim() || !/^\d{12}$/.test(occupant.identityNumber))) {
+      setError("Vui lòng nhập họ tên và CCCD 12 số cho từng người ở cùng.")
+      return
+    }
+    const identityNumbers = [holderIdentityNumber, ...occupants.map((occupant) => occupant.identityNumber)]
+    if (new Set(identityNumbers).size !== identityNumbers.length) {
+      setError("Mỗi người phải đăng ký một CCCD riêng.")
+      return
+    }
+    const vehicleCount = Number(registeredVehicleCount)
+    if (!Number.isInteger(vehicleCount) || vehicleCount < 0 || vehicleCount > occupantCount) {
+      setError("Số xe phải từ 0 đến bằng số người đăng ký trong hợp đồng.")
+      return
+    }
+    const manualDeposit = Number(manualSecurityDepositAmount)
+    if (!Number.isFinite(manualDeposit) || manualDeposit < 0 || Math.round(manualDeposit * 100) !== manualDeposit * 100) {
+      setError("Tiền bảo đảm bàn giao phải từ 0 trở lên và tối đa 2 chữ số thập phân.")
+      return
+    }
+    if (!securityDepositHandoverAcknowledged) {
+      setError("Vui lòng xác nhận tiền bảo đảm đã được bàn giao; nhập 0 nếu không thu khoản này.")
+      return
+    }
+    if (occupantCount !== bookingOccupants && !occupantCountChangeConfirmed) {
+      setError("Số người đăng ký khác booking. Vui lòng xác nhận thay đổi số người.")
+      return
+    }
     setSaving(true)
     setError(null)
     try {
-      const contract = await createContract(accessToken, { bookingId: booking.bookingId, startDate, endDate })
+      const contract = await createContract(accessToken, {
+        bookingId: booking.bookingId,
+        startDate,
+        endDate,
+        holderIdentityNumber,
+        occupants: occupants.map(({ fullName, identityNumber, phoneNumber }) => ({
+          fullName: fullName.trim(),
+          identityNumber,
+          phoneNumber: phoneNumber.trim() || null,
+        })),
+        registeredVehicleCount: vehicleCount,
+        manualSecurityDepositAmount: manualDeposit,
+        securityDepositHandoverAcknowledged,
+        occupantCountChangeConfirmed,
+      })
       navigate(routes.managementContracts, { replace: true, state: { createdContractId: contract.contractId } })
     } catch (createError) {
       setError(bookingErrorMessage(createError, "Booking vừa thay đổi hoặc phòng đã có hợp đồng khác. Vui lòng tải lại trang."))
@@ -99,7 +205,7 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
         <p className="text-xs font-bold uppercase tracking-wider text-[#087775]">Booking #{booking.bookingId} · Đã đặt cọc</p>
         <h3 className="mt-2 text-lg font-bold text-slate-800">{booking.propertyName} · Phòng {booking.roomCode}</h3>
         <p className="mt-2 text-sm text-slate-500">
-          Tiền cọc đã nhận: {formatVnd(booking.depositAmount)}. Giá thuê lấy theo giá phòng hiện tại khi lập hợp đồng.
+          Tiền booking đã nhận: {formatVnd(booking.depositAmount)}. Giá thuê thỏa thuận: {formatVnd(booking.agreedMonthlyRent ?? 0)} / tháng.
         </p>
         <p className="mt-1 text-sm text-slate-600">
           {formatBookingDepositTermText(booking)}
@@ -111,7 +217,94 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
         <div className="grid gap-4 sm:grid-cols-2">
           <ReadOnlyField label="Họ và tên người thuê" value={booking.customerName} />
           <ReadOnlyField label="Số điện thoại người thuê" value={booking.customerPhone || "Chưa có thông tin"} />
+          <label className="block text-sm font-semibold text-slate-700">
+            CCCD người đứng tên <span className="text-rose-600">*</span>
+            <input required inputMode="numeric" maxLength={12} value={holderIdentityNumber}
+              onChange={(event) => { setHolderIdentityNumber(event.target.value.replace(/\D/g, "").slice(0, 12)); setError(null) }}
+              className="mt-2 h-12 w-full rounded-xl border border-slate-200 px-3.5 font-normal outline-none focus:border-[#087775]" />
+            <span className="mt-1 block text-xs font-normal text-slate-500">Nhập CCCD sau khi đối chiếu bản gốc. Hồ sơ mới sẽ ở trạng thái chờ duyệt.</span>
+          </label>
         </div>
+      </section>
+
+      <section aria-labelledby="occupants-heading" className="border-t border-slate-100 pt-6">
+        <h3 id="occupants-heading" className="mb-2 text-lg font-bold text-slate-800">Người ở đăng ký ban đầu</h3>
+        <p className="mb-4 text-sm text-slate-500">Tổng số người gồm người đứng tên và người ở cùng; tối đa {booking.maxOccupants ?? 1} người theo sức chứa phòng.</p>
+        <label className="block max-w-xs text-sm font-semibold text-slate-700">
+          Tổng số người đăng ký
+          <input aria-label="Tổng số người đăng ký" type="number" min={1} max={booking.maxOccupants ?? 1} step={1}
+            value={occupantCount} disabled={saving} onChange={(event) => updateOccupantCount(Number(event.target.value))}
+            className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3.5 font-normal" />
+        </label>
+        {occupantCount !== bookingOccupants && (
+          <label className="mt-3 flex items-start gap-2 text-sm text-amber-800">
+            <input type="checkbox" checked={occupantCountChangeConfirmed} disabled={saving}
+              onChange={(event) => setOccupantCountChangeConfirmed(event.target.checked)} className="mt-1" />
+            <span>Xác nhận số người trên hợp đồng thay đổi từ {bookingOccupants} thành {occupantCount} so với booking.</span>
+          </label>
+        )}
+        {occupants.map((occupant, index) => (
+          <div key={index} className="mt-4 rounded-xl border border-slate-100 p-4">
+            <p className="mb-3 text-sm font-bold text-slate-700">Người ở cùng {index + 1}</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="text-sm font-semibold text-slate-700">Họ và tên <span className="text-rose-600">*</span>
+                <input required value={occupant.fullName} disabled={saving}
+                  aria-label={`Họ tên người ở cùng ${index + 1}`}
+                  onChange={(event) => setOccupants((current) => current.map((item, i) => i === index ? { ...item, fullName: event.target.value } : item))}
+                  className="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 font-normal" />
+              </label>
+              <label className="text-sm font-semibold text-slate-700">CCCD <span className="text-rose-600">*</span>
+                <input required inputMode="numeric" maxLength={12} value={occupant.identityNumber} disabled={saving}
+                  aria-label={`CCCD người ở cùng ${index + 1}`}
+                  onChange={(event) => setOccupants((current) => current.map((item, i) => i === index ? { ...item, identityNumber: event.target.value.replace(/\D/g, "").slice(0, 12) } : item))}
+                  className="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 font-normal" />
+              </label>
+              <label className="text-sm font-semibold text-slate-700">Số điện thoại
+                <input value={occupant.phoneNumber} disabled={saving}
+                  onChange={(event) => setOccupants((current) => current.map((item, i) => i === index ? { ...item, phoneNumber: event.target.value } : item))}
+                  className="mt-2 h-11 w-full rounded-lg border border-slate-200 px-3 font-normal" />
+              </label>
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section aria-labelledby="handover-heading" className="border-t border-slate-100 pt-6">
+        <h3 id="handover-heading" className="mb-4 text-lg font-bold text-slate-800">Xe và tiền bảo đảm</h3>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="text-sm font-semibold text-slate-700">Số xe đăng ký
+            <input aria-label="Số xe đăng ký" type="number" min={0} max={occupantCount} step={1} required
+              value={registeredVehicleCount} disabled={saving} onChange={(event) => setRegisteredVehicleCount(event.target.value)}
+              className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3.5 font-normal" />
+            <span className="mt-1 block text-xs font-normal text-slate-500">Tối đa {occupantCount} xe theo số người trong hợp đồng.</span>
+          </label>
+          <label className="text-sm font-semibold text-slate-700">Tiền bảo đảm nhận trực tiếp (VND)
+            <input aria-label="Tiền bảo đảm nhận trực tiếp" type="number" min={0} step="0.01" required
+              value={manualSecurityDepositAmount} disabled={saving} onChange={(event) => setManualSecurityDepositAmount(event.target.value)}
+              className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3.5 font-normal" />
+            <span className="mt-1 block text-xs font-normal text-slate-500">Khoản này tách biệt với tiền booking. Nhập 0 nếu không nhận thêm.</span>
+          </label>
+        </div>
+        <label className="mt-4 flex items-start gap-2 text-sm text-slate-700">
+          <input type="checkbox" required checked={securityDepositHandoverAcknowledged} disabled={saving}
+            onChange={(event) => setSecurityDepositHandoverAcknowledged(event.target.checked)} className="mt-1" />
+          <span>Tôi xác nhận đã đối chiếu và ghi nhận tiền bảo đảm bàn giao là {formatVnd(Number(manualSecurityDepositAmount) || 0)}.</span>
+        </label>
+      </section>
+
+      <section aria-labelledby="service-preview-heading" className="border-t border-slate-100 pt-6">
+        <h3 id="service-preview-heading" className="mb-2 text-lg font-bold text-slate-800">Dịch vụ theo loại phòng</h3>
+        <p className="mb-3 text-sm text-slate-500">Giá dưới đây áp dụng trong tháng bắt đầu; tháng ở không trọn được tính theo số ngày thực tế.</p>
+        {servicePreviewError && <p role="alert" className="text-sm text-amber-700">Không tải được phần xem trước giá dịch vụ: {servicePreviewError}</p>}
+        {!servicePreviewError && applicableServices.length === 0 && <p className="text-sm text-slate-500">Chưa gắn dịch vụ cho loại phòng này.</p>}
+        <ul className="divide-y divide-slate-100 rounded-xl border border-slate-100">
+          {applicableServices.map(({ service, rate }) => (
+            <li key={service.serviceId} className="flex flex-wrap justify-between gap-2 px-4 py-3 text-sm">
+              <span className="font-semibold text-slate-700">{service.name}</span>
+              <span className="text-slate-600">{rate ? `${formatVnd(rate.price)} / ${serviceRateUnit(rate)}` : "Chưa cấu hình giá hiệu lực"}</span>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section aria-labelledby="term-heading" className="border-t border-slate-100 pt-6">
@@ -180,6 +373,14 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
       <input readOnly value={value} className="mt-2 h-12 w-full rounded-xl border border-transparent bg-slate-50 px-3.5 font-normal text-slate-600" />
     </label>
   )
+}
+
+function serviceRateUnit(rate: PropertyServiceRateDto) {
+  if (rate.billingBasis === "vehicle") return "xe/tháng"
+  if (rate.billingBasis === "occupant") return "người/tháng"
+  if (rate.billingBasis === "additional_occupant") return "người ở cùng/tháng"
+  if (rate.billingBasis === "fixed_room") return "phòng/tháng"
+  return rate.unitCode
 }
 
 function Warning({ message }: { message: string }) {

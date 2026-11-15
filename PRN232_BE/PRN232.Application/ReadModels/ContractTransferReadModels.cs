@@ -34,4 +34,8 @@ public sealed record ContractTransferCompletion(
     DateTime CompletedAtUtc,
     decimal DepositCarriedOver,
     decimal? InitialElectricReading,
-    decimal? InitialWaterReading);
+    decimal? InitialWaterReading,
+    int? RegisteredVehicleCount = null,
+    decimal? ManualSecurityDepositAmount = null,
+    DateTime? SecurityDepositAcknowledgedAtUtc = null,
+    int? SecurityDepositRecordedByManagerId = null);

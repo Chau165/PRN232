@@ -18,7 +18,13 @@ const rate = (changes: Partial<PropertyServiceRateDto> = {}): PropertyServiceRat
 beforeEach(() => {
   mocks.role = "ADMIN"
   mocks.rates.mockReset().mockResolvedValue([rate(), rate({ rateId: 2, serviceId: 3, serviceName: "Wifi", price: 100000, unitCode: "room_month", billingBasis: "fixed_room", effectiveFrom: "2020-01-01", effectiveTo: "2020-07-01" })])
-  mocks.catalog.mockReset().mockResolvedValue([{ serviceId: 2, name: "Nước", price: 0 }])
+  mocks.catalog.mockReset().mockResolvedValue([{
+    serviceId: 2,
+    name: "Nước",
+    price: 0,
+    defaultUnitCode: "m3",
+    defaultBillingBasis: "usage",
+  }])
   mocks.create.mockReset().mockResolvedValue(rate({ rateId: 3, serviceId: 2, serviceName: "Nước", price: 18000, unitCode: "m3" }))
 })
 
@@ -38,11 +44,11 @@ describe("PropertyServiceRatesPanel", () => {
   it("lets an Admin add a supported rate and reloads the table", async () => {
     render(<PropertyServiceRatesPanel propertyId={5} />)
     await screen.findByRole("option", { name: "Nước" })
+    expect(screen.queryByLabelText("Cách tính tiền")).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Thêm mức giá" }))
     expect(screen.getByRole("alert").textContent).toBe("Vui lòng chọn dịch vụ.")
 
     fireEvent.change(screen.getByLabelText("Dịch vụ"), { target: { value: "2" } })
-    fireEvent.change(screen.getByLabelText("Cách tính tiền"), { target: { value: "m3" } })
     fireEvent.change(screen.getByLabelText("Đơn giá (VND)"), { target: { value: "18.000" } })
     fireEvent.change(screen.getByLabelText("Áp dụng từ tháng"), { target: { value: "2026-12" } })
     fireEvent.click(screen.getByRole("button", { name: "Thêm mức giá" }))
@@ -54,38 +60,44 @@ describe("PropertyServiceRatesPanel", () => {
     await waitFor(() => expect(mocks.rates).toHaveBeenCalledTimes(2))
   })
 
-  it("only offers billing methods that invoices can calculate", async () => {
-    render(<PropertyServiceRatesPanel propertyId={5} />)
-    const select = await screen.findByLabelText("Cách tính tiền")
-    const labels = Array.from((select as HTMLSelectElement).options).map((option) => option.textContent)
-    expect(labels).toEqual([
-      "Chọn cách tính",
-      "Theo số điện (kWh)",
-      "Theo số nước (m³)",
-      "Cố định mỗi phòng/tháng",
-      "Theo đầu người/tháng",
-    ])
-  })
-
-  it("lets Admin select person_month billing with occupant note (C22)", async () => {
+  it("submits the backend default for Additional Occupant without a billing selector", async () => {
     mocks.create.mockResolvedValueOnce(
-      rate({ rateId: 4, serviceId: 2, serviceName: "Rác", price: 50000, unitCode: "person_month", billingBasis: "occupant" }),
+      rate({
+        rateId: 4,
+        serviceId: 8,
+        serviceName: "Additional Occupant",
+        price: 50000,
+        unitCode: "person_month",
+        billingBasis: "additional_occupant",
+      }),
     )
+    mocks.catalog.mockResolvedValueOnce([
+      {
+        serviceId: 8,
+        name: "Additional Occupant",
+        price: 0,
+        defaultUnitCode: "person_month",
+        defaultBillingBasis: "additional_occupant",
+      },
+    ])
     render(<PropertyServiceRatesPanel propertyId={5} />)
-    await screen.findByRole("option", { name: "Nước" })
+    await screen.findByRole("option", { name: "Additional Occupant" })
 
-    fireEvent.change(screen.getByLabelText("Dịch vụ"), { target: { value: "2" } })
-    fireEvent.change(screen.getByLabelText("Cách tính tiền"), { target: { value: "person" } })
-    expect(
-      screen.getByText("Tính theo số người trong danh sách người ở cùng, người vào/ra giữa tháng tính theo số ngày."),
-    ).toBeTruthy()
+    fireEvent.change(screen.getByLabelText("Dịch vụ"), { target: { value: "8" } })
     fireEvent.change(screen.getByLabelText("Đơn giá (VND)"), { target: { value: "50000" } })
     fireEvent.change(screen.getByLabelText("Áp dụng từ tháng"), { target: { value: "2026-12" } })
     fireEvent.click(screen.getByRole("button", { name: "Thêm mức giá" }))
 
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith("token", 5, {
-      serviceId: 2, price: 50000, unitCode: "person_month", billingBasis: "occupant", effectiveFrom: "2026-12-01", effectiveTo: null,
-    }))
+    await waitFor(() =>
+      expect(mocks.create).toHaveBeenCalledWith("token", 5, {
+        serviceId: 8,
+        price: 50000,
+        unitCode: "person_month",
+        billingBasis: "additional_occupant",
+        effectiveFrom: "2026-12-01",
+        effectiveTo: null,
+      }),
+    )
     expect(await screen.findByText(/50\.000\s₫\/người\/tháng/)).toBeTruthy()
   })
 
@@ -94,7 +106,6 @@ describe("PropertyServiceRatesPanel", () => {
     render(<PropertyServiceRatesPanel propertyId={5} />)
     await screen.findByRole("option", { name: "Nước" })
     fireEvent.change(screen.getByLabelText("Dịch vụ"), { target: { value: "2" } })
-    fireEvent.change(screen.getByLabelText("Cách tính tiền"), { target: { value: "room" } })
     fireEvent.change(screen.getByLabelText("Đơn giá (VND)"), { target: { value: "50000" } })
     fireEvent.click(screen.getByRole("button", { name: "Thêm mức giá" }))
     expect((await screen.findByRole("alert")).textContent).toBe(
@@ -117,7 +128,6 @@ describe("PropertyServiceRatesPanel", () => {
     await screen.findByRole("option", { name: "Nước" })
 
     fireEvent.change(screen.getByLabelText("Dịch vụ"), { target: { value: "2" } })
-    fireEvent.change(screen.getByLabelText("Cách tính tiền"), { target: { value: "kwh" } })
     fireEvent.change(screen.getByLabelText("Đơn giá (VND)"), { target: { value: "0" } })
     fireEvent.click(screen.getByRole("button", { name: "Thêm mức giá" }))
     expect(screen.getByRole("alert").textContent).toBe("Đơn giá phải lớn hơn 0.")

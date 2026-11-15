@@ -27,6 +27,7 @@ export interface BookingDto {
   contractId: number | null
   moveInDate?: string | null
   occupantCount?: number | null
+  agreedMonthlyRent?: number | null
   refundStatus?: string | null
   canRequestRefund?: boolean
   latestPaymentRequestId?: number | null
@@ -40,5 +41,8 @@ export interface BookingDto {
   depositReturnedAtUtc?: string | null
   depositReturnedByName?: string | null
   depositAppliesToFirstMonth?: boolean
+  maxOccupants?: number
+  roomTypeId?: number
+  roomTypeName?: string
   contacts?: BookingContactDto[] | null
 }

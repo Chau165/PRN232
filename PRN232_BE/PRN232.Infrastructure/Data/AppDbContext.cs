@@ -337,6 +337,18 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
                 .HasForeignKey(booking => booking.DepositReturnedById).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<Contracts>().HasKey(x => x.ContractId);
+        modelBuilder.Entity<Contracts>().ToTable("Contracts", table =>
+        {
+            table.HasCheckConstraint("CK_Contracts_RegisteredVehicleCount_NonNegative",
+                "\"RegisteredVehicleCount\" IS NULL OR \"RegisteredVehicleCount\" >= 0");
+            table.HasCheckConstraint("CK_Contracts_ManualSecurityDeposit_Recorded",
+                "\"ManualSecurityDepositAmount\" IS NULL OR (\"ManualSecurityDepositAmount\" >= 0 AND \"SecurityDepositAcknowledgedAtUtc\" IS NOT NULL AND \"SecurityDepositRecordedByManagerId\" IS NOT NULL)");
+        });
+        modelBuilder.Entity<Contracts>()
+            .Property(contract => contract.ManualSecurityDepositAmount).HasPrecision(18, 2);
+        modelBuilder.Entity<Contracts>()
+            .HasOne(contract => contract.SecurityDepositRecordedByManager).WithMany()
+            .HasForeignKey(contract => contract.SecurityDepositRecordedByManagerId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Contracts>()
             .HasOne(contract => contract.MoveOutNoticeBy).WithMany()
             .HasForeignKey(contract => contract.MoveOutNoticeById).OnDelete(DeleteBehavior.Restrict);
@@ -397,7 +409,7 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
                 .HasConversion(CccdProtection.CreateConverter(_dataProtectionProvider));
             entity.Property(occupant => occupant.Note).HasMaxLength(500);
             entity.HasIndex(occupant => occupant.ContractId);
-            entity.HasOne(occupant => occupant.Contract).WithMany()
+            entity.HasOne(occupant => occupant.Contract).WithMany(contract => contract.Occupants)
                 .HasForeignKey(occupant => occupant.ContractId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(occupant => occupant.AddedBy).WithMany()
                 .HasForeignKey(occupant => occupant.AddedById).OnDelete(DeleteBehavior.Restrict);
@@ -705,6 +717,7 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
                         "(\"UnitCode\" = 'm3' AND \"BillingBasis\" = 'usage') OR " +
                         "(\"UnitCode\" = 'room_month' AND \"BillingBasis\" = 'fixed_room') OR " +
                         "(\"UnitCode\" = 'person_month' AND \"BillingBasis\" = 'occupant') OR " +
+                        "(\"UnitCode\" = 'person_month' AND \"BillingBasis\" = 'additional_occupant') OR " +
                         "(\"UnitCode\" = 'vehicle_month' AND \"BillingBasis\" = 'vehicle')");
                 });
             }

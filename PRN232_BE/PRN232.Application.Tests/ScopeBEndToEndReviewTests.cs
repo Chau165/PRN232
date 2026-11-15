@@ -70,7 +70,10 @@ public class ScopeBEndToEndReviewTests
         await BookingsApiTests.LoginAsync(client, "manager-b@example.test");
         var contract = await PostAsync(client, "/api/contracts", new
         {
-            bookingId, startDate = today, endDate = today.AddYears(1)
+            bookingId, startDate = today, endDate = today.AddYears(1),
+            holderIdentityNumber = "079201000001", occupants = Array.Empty<object>(),
+            registeredVehicleCount = 0, manualSecurityDepositAmount = 0m,
+            securityDepositHandoverAcknowledged = true, occupantCountChangeConfirmed = false
         }, HttpStatusCode.Created);
         var contractId = contract.GetProperty("contractId").GetInt32();
         // Hóa đơn tháng này đủ tháng, không phụ thuộc ngày chạy test (tiền phòng tháng đầu tính theo ngày).

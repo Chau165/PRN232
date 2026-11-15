@@ -86,7 +86,8 @@ public class PropertyService : IPropertyService
         }
         var validBasis = (dto.UnitCode, dto.BillingBasis) is
             ("kwh", "usage") or ("m3", "usage") or ("room_month", "fixed_room") or
-            ("person_month", "occupant") or ("vehicle_month", "vehicle");
+            ("person_month", "occupant") or ("person_month", "additional_occupant") or
+            ("vehicle_month", "vehicle");
         if (!validBasis)
         {
             throw new PropertyValidationException("Invalid unitCode/billingBasis pair.");
@@ -95,9 +96,19 @@ public class PropertyService : IPropertyService
         {
             throw new PropertyRateNotFoundException("Property does not exist.");
         }
-        if (!await _repository.ServiceExistsAsync(dto.ServiceId, cancellationToken))
+        var serviceName = await _repository.GetServiceNameByIdAsync(dto.ServiceId, cancellationToken);
+        if (serviceName is null)
         {
             throw new PropertyRateNotFoundException("Service does not exist.");
+        }
+        var billingDefault = ServiceRateBillingDefaults.ForServiceName(serviceName);
+        if (billingDefault is null)
+        {
+            throw new PropertyValidationException("The service does not have a configured default billing basis.");
+        }
+        if (dto.UnitCode != billingDefault.UnitCode || dto.BillingBasis != billingDefault.BillingBasis)
+        {
+            throw new PropertyValidationException("UnitCode and BillingBasis must match the selected service's configured default.");
         }
 
         var rate = new PRN232.Domain.Entities.PropertyServiceRates

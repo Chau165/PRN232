@@ -384,7 +384,10 @@ export default function ManagementContractsPage() {
             )}
             {selected.processedByStaffName && <Detail label="Người lập" value={selected.processedByStaffName} />}
           </dl>
-          <ContractOccupantsSection contract={selected} />
+          <ContractOccupantsSection contract={selected} onContractUpdated={(updated) => {
+            setContracts((items) => items.map((item) => item.contractId === updated.contractId ? updated : item))
+            setSelected(updated)
+          }} />
           <ContractTransferSection
             contract={selected}
             onTransferCompleted={() => setReload((value) => value + 1)}

@@ -6,6 +6,8 @@ public interface IContractService
 {
     Task<ContractDto> SaveMeterHandoverAsync(int contractId, SaveContractMeterHandoverDto request,
         int userId, string role, CancellationToken cancellationToken);
+    Task<ContractDto> SaveRegisteredVehicleCountAsync(int contractId, UpdateContractRegisteredVehicleCountDto request,
+        int userId, string role, CancellationToken cancellationToken);
     Task<ContractDto> CreateFromBookingAsync(CreateContractDto dto, int userId, string role);
     Task<List<ContractDto>> GetAllAsync(int userId, string role);
     Task<ContractDto?> GetByIdAsync(int id, int userId, string role);

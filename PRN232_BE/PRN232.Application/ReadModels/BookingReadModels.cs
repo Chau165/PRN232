@@ -33,7 +33,10 @@ public sealed record BookingReadModel(
     bool DepositPaid = false,
     DateTime? DepositReturnedAtUtc = null,
     string? DepositReturnedByName = null,
-    bool DepositAppliesToFirstMonth = false);
+    bool DepositAppliesToFirstMonth = false,
+    int MaxOccupants = 1,
+    int RoomTypeId = 0,
+    string RoomTypeName = "");
 
 // Người khách liên hệ để nhận lại tiền cọc (hệ thống không chuyển tiền hoàn). UserId không trả ra API,
 // chỉ dùng để gửi thông báo cho đúng người.
