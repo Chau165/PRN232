@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest"
-import { createPropertyLocationSearch, propertyAddressQueries } from "@/services/propertyLocationService"
+import { createPropertyAreaLocator, createPropertyLocationSearch, propertyAddressQueries } from "@/services/propertyLocationService"
 const address = { addressText: "121, đường Lê Văn Việt", provinceCode: "79", wardCode: "01", provinceName: "Thành phố Hồ Chí Minh", wardName: "Phường Thủ Đức" }
 const feature = (properties = {}, coordinates = [106.77, 10.85]) => ({ geometry: { type: "Point", coordinates }, properties: { street: "Lê Văn Việt", housenumber: "119", countrycode: "VN", ...properties } })
 const response = (features: unknown[]) => new Response(JSON.stringify({ features }))
@@ -57,4 +57,34 @@ it("returns unavailable after the search deadline", async () => {
     options?.signal?.addEventListener("abort", ()=>reject(new DOMException("Aborted", "AbortError")))
   }))
   expect((await createPropertyLocationSearch({fetcher,timeoutMs:5})(address)).status).toBe("Unavailable")
+})
+const area = (name: string, coordinates: number[], properties = {}) => ({ geometry: { type: "Point", coordinates }, properties: { name, countrycode: "VN", ...properties } })
+it("locates the ward inside the selected province and uses its extent", async () => {
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response([
+    area("Phường Long Bình", [106.8, 10.95], { state: "Đồng Nai" }),
+    area("Long Bình", [106.83, 10.88], { city: "Thành phố Hồ Chí Minh", extent: [106.8, 10.9, 106.86, 10.86] }),
+  ]))
+  const focus = await createPropertyAreaLocator({ fetcher })({ wardName: "Phường Long Bình", provinceName: "Thành phố Hồ Chí Minh" })
+  expect(focus).toEqual({ latitude: 10.88, longitude: 106.83, zoom: 15, bounds: [[10.86, 106.8], [10.9, 106.86]] })
+  const url = new URL(String(fetcher.mock.calls[0][0]))
+  expect(url.searchParams.get("q")).toBe("Phường Long Bình, Thành phố Hồ Chí Minh")
+  expect(url.searchParams.getAll("layer")).toContain("district")
+  expect(fetcher.mock.calls[0][1]?.credentials).toBe("omit")
+})
+it("falls back to the province when the merged ward is not on the map yet", async () => {
+  const fetcher = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(response([area("Phường Bến Thành", [106.7, 10.77], { city: "Thành phố Hồ Chí Minh" })]))
+    .mockResolvedValueOnce(response([area("Thành phố Hồ Chí Minh", [106.66, 10.78])]))
+  const locate = createPropertyAreaLocator({ fetcher })
+  expect(await locate({ wardName: "Phường Long Bình", provinceName: "Thành phố Hồ Chí Minh" })).toEqual({ latitude: 10.78, longitude: 106.66, zoom: 11 })
+  expect(new URL(String(fetcher.mock.calls[1][0])).searchParams.get("q")).toBe("Thành phố Hồ Chí Minh")
+  await locate({ wardName: "Phường Long Bình", provinceName: "Thành phố Hồ Chí Minh" })
+  expect(fetcher).toHaveBeenCalledTimes(2)
+})
+it("ignores an ambiguous ward name outside the province and gives up quietly on errors", async () => {
+  const fetcher = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(response([area("Phường An Lạc", [105, 21], { state: "Hà Nội" }), area("Phường An Lạc", [106, 11], { state: "Bình Dương" })]))
+    .mockResolvedValueOnce(new Response("", { status: 503 }))
+  expect(await createPropertyAreaLocator({ fetcher })({ wardName: "Phường An Lạc", provinceName: "Thành phố Hồ Chí Minh" })).toBeNull()
+  expect(await createPropertyAreaLocator({ fetcher: vi.fn() })({ wardName: "Phường An Lạc" })).toBeNull()
 })

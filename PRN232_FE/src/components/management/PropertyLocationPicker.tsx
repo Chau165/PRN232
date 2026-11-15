@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react"
-import { previewPropertyLocation, type LocationAddress, type LocationPreview } from "@/services/propertyLocationService"
+import { locatePropertyArea, previewPropertyLocation, type AreaFocus, type LocationAddress, type LocationPreview } from "@/services/propertyLocationService"
 import { isSupportedPropertyLocation } from "@/utils/propertyLocation"
 import type { LocationPoint } from "./PropertyLocationMap"
 
@@ -22,7 +22,23 @@ export default function PropertyLocationPicker({ address, initialPoint, disabled
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
+  const [focus, setFocus] = useState<AreaFocus | null>(null)
+  const areaKey = `${address.provinceCode}|${address.wardCode}`
+  const initialAreaKey = useRef(areaKey)
+  const hasInitialPoint = Boolean(initialPoint)
+
   useEffect(() => () => request.current?.abort(), [])
+  // When the province/ward changes, fly the map there so the pin can be placed nearby.
+  // A stored location keeps its own view until the Admin picks another ward.
+  useEffect(() => {
+    if (!address.provinceName?.trim()) return
+    if (hasInitialPoint && areaKey === initialAreaKey.current) return
+    const controller = new AbortController()
+    locatePropertyArea({ wardName: address.wardName, provinceName: address.provinceName }, controller.signal)
+      .then((found) => { if (!controller.signal.aborted && found) setFocus(found) })
+      .catch(() => undefined)
+    return () => controller.abort()
+  }, [areaKey, address.wardName, address.provinceName, hasInitialPoint])
   useEffect(() => {
     request.current?.abort()
     setBusy(false)
@@ -91,7 +107,7 @@ export default function PropertyLocationPicker({ address, initialPoint, disabled
     </ul>}
     <p className="text-xs text-slate-500">Gợi ý địa chỉ: <a href="https://photon.komoot.io" target="_blank" rel="noreferrer">Photon</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>. Gợi ý có thể khác số nhà hoặc phường đã nhập; hãy kiểm tra ghim.</p>
     <Suspense fallback={<p>Đang tải bản đồ…</p>}>
-      <LocationMap point={point} initialPoint={initialPoint} disabled={disabled || !ready} onPick={next => pick(next)} />
+      <LocationMap point={point} initialPoint={initialPoint} focus={focus} disabled={disabled || !ready} onPick={next => pick(next)} />
     </Suspense>
     {point && <p role="status" className="text-xs text-slate-600">
       {source === "stored" ? "Vị trí đã lưu" : source === "suggestion" ? "Đã chọn gợi ý" : "Đã chỉnh ghim"}: {point.latitude.toFixed(6)}, {point.longitude.toFixed(6)}
