@@ -50,7 +50,7 @@ public class BookingRepository : IBookingRepository
     public async Task<BookingAddResult> AddIfRoomRentableAsync(
         Bookings booking, Func<int, Notifications> notificationFactory, DateTimeOffset asOfUtc)
     {
-        await using var transaction = await _context.Database.BeginTransactionAsync();
+        await using var transaction = _context.Database.CurrentTransaction is null ? await _context.Database.BeginTransactionAsync() : null;
 
         if (_context.Database.IsNpgsql())
         {
@@ -124,7 +124,7 @@ public class BookingRepository : IBookingRepository
         await _context.SaveChangesAsync();
         await _context.Notifications.AddAsync(notificationFactory(booking.BookingId));
         await _context.SaveChangesAsync();
-        await transaction.CommitAsync();
+        if (transaction is not null) await transaction.CommitAsync();
         return BookingAddResult.Added;
     }
 

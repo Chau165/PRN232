@@ -164,7 +164,8 @@ public class RoomRepository : IRoomRepository
 
     public async Task<bool> HasDependentsAsync(int roomId)
     {
-        return await _context.Equipments.AnyAsync(equipment => equipment.RoomId == roomId) ||
+        return await _context.BookingApplications.AnyAsync(application => application.RoomId == roomId) ||
+            await _context.Equipments.AnyAsync(equipment => equipment.RoomId == roomId) ||
             await _context.Contracts.AnyAsync(contract => contract.RoomId == roomId) ||
             await _context.Bookings.AnyAsync(booking => booking.RoomId == roomId) ||
             await _context.RoomImages.AnyAsync(image => image.RoomId == roomId) ||
