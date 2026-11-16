@@ -145,16 +145,6 @@ class BookingService {
     );
   }
 
-  /// Lấy trạng thái yêu cầu thanh toán
-  Future<Map<String, dynamic>> getPaymentRequestStatus(int requestId) async {
-    try {
-      final response = await _dio.get(ApiEndpoints.paymentRequestStatus(requestId));
-      return response.data as Map<String, dynamic>;
-    } catch (_) {
-      return {'status': 'Pending'};
-    }
-  }
-
   /// Thanh toán tiền cọc qua cổng giả lập (VNPay hoặc MoMo)
   Future<CustomerBookingModel> payBooking(int bookingId, String paymentMethod) async {
     try {
@@ -204,5 +194,39 @@ class BookingService {
         CustomerMockData.bookings[idx].status = 'Cancelled';
       }
     }
+  }
+
+  /// Lấy trạng thái của PaymentRequest từ payOS (polling / kiểm tra kết quả thanh toán)
+  Future<PaymentRequestStatusModel> getPaymentRequestStatus(int requestId) async {
+    try {
+      final response = await _dio.get(ApiEndpoints.paymentRequestStatus(requestId));
+      final data = response.data as Map<String, dynamic>;
+      return PaymentRequestStatusModel.fromJson(data);
+    } on DioException catch (e) {
+      if (!AuthState.isCurrentDemo && e.response?.statusCode != 404) {
+        final msg = e.response?.data is Map && e.response?.data['detail'] != null
+            ? e.response?.data['detail'].toString()
+            : (e.error?.toString() ?? 'Chưa thể xác nhận kết quả với máy chủ.');
+        throw Exception(msg);
+      }
+      return _mockPaymentRequestStatus(requestId);
+    } catch (_) {
+      return _mockPaymentRequestStatus(requestId);
+    }
+  }
+
+  PaymentRequestStatusModel _mockPaymentRequestStatus(int requestId) {
+    return PaymentRequestStatusModel(
+      paymentRequestId: requestId,
+      customerId: 1,
+      propertyId: 1,
+      status: 'Pending',
+      bookingStatus: 'Pending',
+      amount: 2000,
+      createdAtUtc: DateTime.now().subtract(const Duration(minutes: 1)),
+      updatedAtUtc: DateTime.now(),
+      expiresAtUtc: DateTime.now().add(const Duration(minutes: 14)),
+      canOpenCheckout: true,
+    );
   }
 }

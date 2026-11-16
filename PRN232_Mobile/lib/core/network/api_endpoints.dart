@@ -22,6 +22,20 @@ class ApiEndpoints {
   static String cancelBooking(int id) => '/bookings/$id/cancel';
   static String paymentRequestStatus(int id) => '/payment-requests/$id';
 
+  // Booking Applications & CCCD Identity
+  static const String bookingApplications = '/booking-applications';
+  static String bookingApplicationDetail(int id) => '/booking-applications/$id';
+  static String bookingApplicationByBooking(int bookingId) =>
+      '/booking-applications/by-booking/$bookingId';
+  static String bookingApplicationPerson(int appId, int personId) =>
+      '/booking-applications/$appId/people/$personId';
+  static String bookingApplicationImage(int appId, int personId, String side) =>
+      '/booking-applications/$appId/people/$personId/images/$side';
+  static String bookingApplicationReadUrl(int appId, int personId, String side) =>
+      '/booking-applications/$appId/people/$personId/images/$side/read-url';
+  static String bookingApplicationSubmit(int appId) =>
+      '/booking-applications/$appId/submit';
+
   // Contracts
   static const String contracts = '/contracts';
   static String contractDetail(int id) => '/contracts/$id';
@@ -34,6 +48,7 @@ class ApiEndpoints {
   static const String invoices = '/invoices';
   static String invoiceDetail(int id) => '/invoices/$id';
   static const String previewInvoice = '/invoices/preview';
+  static String invoicePaymentLink(int id) => '/invoices/$id/payment-link';
   static String payInvoice(int id) => '/invoices/$id/pay';
   static String recordCashInvoice(int id) => '/invoices/$id/record-cash';
   static const String invoiceComplaints = '/invoice-complaints';

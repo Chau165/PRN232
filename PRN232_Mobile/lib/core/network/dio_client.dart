@@ -49,12 +49,15 @@ class DioClient {
           return handler.next(response);
         },
         onError: (DioException error, handler) {
-          // Xử lý thông điệp lỗi ProblemDetails từ ASP.NET Core
+          // Xử lý thông điệp lỗi ProblemDetails từ ASP.NET Core & lỗi mạng
           String message = 'Đã có lỗi xảy ra. Vui lòng thử lại.';
           final statusCode = error.response?.statusCode;
 
-          if (statusCode == 401) {
-            message = 'Phiên đăng nhập đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.';
+          if (error.type == DioExceptionType.connectionError ||
+              error.type == DioExceptionType.connectionTimeout ||
+              error.type == DioExceptionType.sendTimeout ||
+              error.type == DioExceptionType.receiveTimeout) {
+            message = 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối Wi-Fi/4G của bạn.';
           } else if (error.response?.data is Map) {
             final data = error.response!.data as Map;
             if (data.containsKey('detail') && data['detail'] != null) {
@@ -64,6 +67,14 @@ class DioClient {
             } else if (data.containsKey('message') && data['message'] != null) {
               message = data['message'].toString();
             }
+          } else if (statusCode == 401) {
+            if (error.requestOptions.path.contains('/auth/login')) {
+              message = 'Email hoặc mật khẩu không chính xác.';
+            } else {
+              message = 'Phiên đăng nhập đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.';
+            }
+          } else if (statusCode == 502 || statusCode == 503) {
+            message = 'Hệ thống máy chủ tạm thời không khả dụng. Vui lòng thử lại sau ít giây.';
           }
 
           // Dịch các thông báo phổ biến sang tiếng Việt

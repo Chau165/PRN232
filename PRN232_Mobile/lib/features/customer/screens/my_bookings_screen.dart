@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/auth/auth_state.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
@@ -120,26 +121,54 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
     );
 
     BookingPaymentLinkModel? link;
+    String? payError;
     try {
       link = await _bookingService.createPaymentLink(booking.id);
-    } catch (_) {}
+    } catch (e) {
+      payError = e.toString().replaceFirst('Exception: ', '');
+    }
 
     if (!mounted) return;
     Navigator.of(context).pop();
 
-    PayOSQRCodeDialog.show(
-      context,
-      booking: booking,
-      paymentLink: link,
-      onPaymentSuccess: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Đã nhận xác nhận thanh toán cọc qua payOS!'),
-            backgroundColor: Color(0xFF087775),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        _loadData();
+    if (link == null || link.checkoutUrl == null || link.checkoutUrl!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(payError ?? 'Không thể tạo liên kết thanh toán payOS.'),
+          backgroundColor: const Color(0xFFE11D48),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // 1. Mở trang checkout payOS thật với mã VietQR PRO thật
+    final checkoutUri = Uri.parse(link.checkoutUrl!);
+    try {
+      final launched = await launchUrl(
+        checkoutUri,
+        mode: LaunchMode.inAppBrowserView,
+      );
+      if (!launched) {
+        await launchUrl(checkoutUri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+      try {
+        await launchUrl(checkoutUri, mode: LaunchMode.externalApplication);
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+
+    // 2. Chuyển sang màn hình "Đang chờ xác nhận tiền cọc" (giống ảnh Web)
+    context.push(
+      AppRoutes.paymentResult,
+      extra: {
+        'requestId': link.paymentRequestId,
+        'bookingId': booking.id,
+        'amount': booking.depositAmount,
+        'checkoutUrl': link.checkoutUrl,
+        'isBooking': true,
       },
     );
   }
@@ -159,7 +188,7 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
       if (!mounted) return;
       Navigator.of(context).pop();
 
-      final statusStr = status['status']?.toString() ?? 'Pending';
+      final statusStr = status.status;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Trạng thái giao dịch #$reqId: $statusStr'),

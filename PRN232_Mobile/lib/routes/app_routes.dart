@@ -14,6 +14,7 @@ class AppRoutes {
   static const String propertyDetail = '/property-detail';
   static const String roomDetail = '/room-detail';
   static const String deposit = '/deposit';
+  static const String paymentResult = '/payment-result';
   static const String paymentSuccess = '/payment-success';
 
   // Customer Routes (Shell)
