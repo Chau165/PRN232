@@ -69,8 +69,13 @@ public class ViewingScheduleService : IViewingScheduleService
             roomTypeId = room.RoomTypeId;
             selectedRoomId = room.RoomId;
             selectedRoomCode = room.RoomCode;
-            propertyName = string.Empty;
-            roomTypeName = string.Empty;
+            var propertyRoomType = await _repository.GetActivePropertyRoomTypeAsync(propertyId, roomTypeId);
+            if (propertyRoomType is null)
+            {
+                throw new ViewingConflictException("This room type is not active for the selected property.");
+            }
+            propertyName = propertyRoomType.PropertyName;
+            roomTypeName = propertyRoomType.RoomTypeName;
         }
         else
         {
@@ -96,14 +101,17 @@ public class ViewingScheduleService : IViewingScheduleService
         }
 
         var viewing = ConvertToEntity(propertyId, roomTypeId, selectedRoomId, dto, customerId);
-        IReadOnlyCollection<int> adminIds = _notificationService is null
-            ? Array.Empty<int>()
-            : await _notificationService.GetActiveAdminUserIdsAsync();
+        // Direct Manager approval: notify only active Managers of this viewing's property.
+        var managerIds = await _repository.GetActiveManagerIdsByPropertyAsync(propertyId);
+        if (managerIds.Count == 0)
+        {
+            throw new ViewingConflictException("This property has no active assigned Manager to handle viewing requests.");
+        }
         IReadOnlyCollection<Notifications> notifications = [];
         await _repository.AddAsync(viewing, viewingId =>
         {
-            notifications = adminIds.Distinct().Select(adminId => CreateNotification(
-                adminId,
+            notifications = managerIds.Distinct().Select(managerId => CreateNotification(
+                managerId,
                 viewingId,
                 selectedRoomCode is null ? "Có yêu cầu xem loại phòng mới" : $"Có yêu cầu xem phòng {selectedRoomCode}",
                 selectedRoomCode is null
@@ -140,6 +148,10 @@ public class ViewingScheduleService : IViewingScheduleService
             }
             throw new ViewingNotFoundException("Viewing request does not exist.");
         }
+        if (viewing.AssignedTo != userId)
+        {
+            throw new ViewingAuthorizationException("Only the Manager who approved this viewing can select its room.");
+        }
         if (viewing.Status != ViewingStatuses.Approved || viewing.RoomId.HasValue)
         {
             return [];
@@ -175,6 +187,10 @@ public class ViewingScheduleService : IViewingScheduleService
                 throw new ViewingAuthorizationException("You are no longer assigned to this viewing or property.");
             }
             throw new ViewingNotFoundException("Viewing request does not exist.");
+        }
+        if (viewing.AssignedTo != userId)
+        {
+            throw new ViewingAuthorizationException("Only the Manager who approved this viewing can select its room.");
         }
         if (viewing.Status != ViewingStatuses.Approved)
         {
@@ -236,21 +252,11 @@ public class ViewingScheduleService : IViewingScheduleService
 
     public async Task<ViewingScheduleDto> ApproveAsync(int id, ApproveViewingScheduleDto dto, int userId, string role)
     {
-        EnsureAdmin(role);
-        var viewing = await GetPendingForAdminAsync(id, userId);
-        if (dto.AssignedTo is not > 0)
+        EnsureManager(role);
+        var viewing = await GetPendingForManagerAsync(id, userId);
+        if (!await _repository.HasActiveManagerAssignmentAsync(viewing.PropertyId, userId))
         {
-            throw new ViewingBusinessRuleException("An active Manager is required for assignment.");
-        }
-
-        var manager = await _repository.GetManagerAsync(dto.AssignedTo.Value);
-        if (manager is null || !manager.IsActive || manager.RoleName != RoleNames.Manager)
-        {
-            throw new ViewingBusinessRuleException("Assignee must be an active Manager.");
-        }
-        if (!await _repository.HasActiveManagerAssignmentAsync(viewing.PropertyId, manager.UserId))
-        {
-            throw new ViewingBusinessRuleException("Manager must have an active assignment to this property.");
+            throw new ViewingAuthorizationException("You are not an active Manager of this property.");
         }
 
         var managerNote = NormalizeNote(dto.ManagerNote);
@@ -269,37 +275,29 @@ public class ViewingScheduleService : IViewingScheduleService
         {
             customerBody += $" Ghi chú: {managerNote}";
         }
-        var notifications = new[]
-        {
-            CreateNotification(
-                viewing.CustomerId,
-                viewing.ViewingId,
-                $"Lịch xem {viewingDescription} đã được chấp thuận",
-                customerBody),
-            CreateNotification(
-                manager.UserId,
-                viewing.ViewingId,
-                $"Bạn được giao lịch xem {viewingDescription}",
-                managerNote ?? $"Thời gian đã xác nhận: {scheduledAtText}.")
-        };
 
         return await DecideAsync(
             viewing,
             ViewingStatuses.Approved,
-            manager.UserId,
+            userId,
             managerNote,
             userId,
             now.UtcDateTime,
             scheduledAtUtc,
-            notifications);
+            [CreateNotification(viewing.CustomerId, viewing.ViewingId,
+                $"Lịch xem {viewingDescription} đã được chấp thuận", customerBody)]);
     }
 
     public async Task<ViewingScheduleDto> RejectAsync(int id, RejectViewingScheduleDto dto, int userId, string role)
     {
-        EnsureAdmin(role);
-        var viewing = await GetPendingForAdminAsync(id, userId);
-        var reason = NormalizeNote(dto.Reason, required: true)!;
+        EnsureManager(role);
+        var viewing = await GetPendingForManagerAsync(id, userId);
+        if (!await _repository.HasActiveManagerAssignmentAsync(viewing.PropertyId, userId))
+        {
+            throw new ViewingAuthorizationException("You are not an active Manager of this property.");
+        }
 
+        var reason = NormalizeNote(dto.Reason, required: true)!;
         var now = _timeProvider.GetUtcNow();
         var notification = CreateNotification(
             viewing.CustomerId,
@@ -317,9 +315,9 @@ public class ViewingScheduleService : IViewingScheduleService
             [notification]);
     }
 
-    private async Task<ViewingScheduleDto> GetPendingForAdminAsync(int id, int userId)
+    private async Task<ViewingScheduleDto> GetPendingForManagerAsync(int id, int userId)
     {
-        var viewing = await GetByIdAsync(id, userId, RoleNames.Admin);
+        var viewing = await GetByIdAsync(id, userId, RoleNames.Manager);
         if (viewing is null)
         {
             throw new ViewingNotFoundException("Viewing request does not exist.");
@@ -412,11 +410,11 @@ public class ViewingScheduleService : IViewingScheduleService
         return count;
     }
 
-    private static void EnsureAdmin(string role)
+    private static void EnsureManager(string role)
     {
-        if (role != RoleNames.Admin)
+        if (role != RoleNames.Manager)
         {
-            throw new ViewingAuthorizationException("Only Admins can approve or reject viewing requests.");
+            throw new ViewingAuthorizationException("Only Managers assigned to the property can approve or reject viewing requests.");
         }
     }
 

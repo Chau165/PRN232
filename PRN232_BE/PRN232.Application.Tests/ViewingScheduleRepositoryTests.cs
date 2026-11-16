@@ -58,7 +58,7 @@ public sealed class ViewingScheduleRepositoryTests
         var managerRows = await repository.GetAllAsync(null, 7, null);
         var otherManagerRows = await repository.GetAllAsync(null, 8, null);
         Assert.Equal([1], managerRows.Select(viewing => viewing.ViewingId));
-        Assert.Empty(otherManagerRows);
+        Assert.Equal([2], otherManagerRows.Select(viewing => viewing.ViewingId));
 
         context.PropertyManagerAssignments.Remove(
             await context.PropertyManagerAssignments.SingleAsync(assignment => assignment.PropertyId == 1));
@@ -132,7 +132,7 @@ public sealed class ViewingScheduleRepositoryTests
             ViewingStatuses.Approved,
             7,
             "Assignment note",
-            9,
+            7,
             DateTime.UtcNow,
             DateTime.UtcNow.AddDays(1),
             [invalidNotification]));

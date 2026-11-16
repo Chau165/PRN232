@@ -37,7 +37,7 @@ export function selectViewingRoom(accessToken: string, viewingId: number, roomId
 export function approveViewingSchedule(
   accessToken: string,
   viewingId: number,
-  request: { scheduledAt: string | null; assignedTo: number; managerNote: string | null },
+  request: { scheduledAt: string | null; managerNote: string | null },
 ) {
   return apiRequest<ViewingScheduleDto>(`/viewing-schedules/${viewingId}/approve`, {
     accessToken,

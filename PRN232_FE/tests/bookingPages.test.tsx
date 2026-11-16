@@ -339,7 +339,7 @@ describe("MyBookingsPage", () => {
 
     expect(await screen.findByText("Sunrise · Studio")).toBeTruthy()
     expect(screen.getByText(/Giá tham khảo hiện tại: 3\.000\.000/)).toBeTruthy()
-    expect(screen.getByText("Thời gian: Chờ Admin phân lịch")).toBeTruthy()
+    expect(screen.getByText("Thời gian: Chờ Manager khu trọ xác nhận giờ")).toBeTruthy()
     expect(screen.getByText("Chờ xác nhận")).toBeTruthy()
   })
 
