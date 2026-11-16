@@ -26,6 +26,30 @@ public class PropertyServiceRatesApiTests
     }
 
     [Fact]
+    public async Task Vietnamese_garbage_catalog_defaults_can_be_used_by_admin_to_create_a_property_rate()
+    {
+        using var factory = new BookingsApiFactory();
+        using var client = factory.CreateClient();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Services.Add(new Service { ServiceId = 4, Name = "Rác" });
+            await db.SaveChangesAsync();
+        }
+        var catalog = (await client.GetFromJsonAsync<List<ServiceDto>>("/api/services"))!;
+        var garbage = Assert.Single(catalog, service => service.ServiceId == 4);
+        Assert.Equal("Rác", garbage.Name);
+        Assert.Equal(("room_month", "fixed_room"), (garbage.DefaultUnitCode, garbage.DefaultBillingBasis));
+        await LoginAsync(client, "admin@example.test");
+        var response = await client.PostAsJsonAsync("/api/properties/1/service-rates", new CreatePropertyServiceRateDto(
+            garbage.ServiceId, 1222m, garbage.DefaultUnitCode!, garbage.DefaultBillingBasis!, new DateOnly(2027, 1, 1)));
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var rate = (await response.Content.ReadFromJsonAsync<PropertyServiceRateDto>())!;
+        Assert.Equal((4, "Rác", 1222m, "room_month", "fixed_room"),
+            (rate.ServiceId, rate.ServiceName, rate.Price, rate.UnitCode, rate.BillingBasis));
+    }
+
+    [Fact]
     public async Task Service_catalog_returns_backend_billing_defaults_for_the_current_catalog()
     {
         using var factory = new BookingsApiFactory();

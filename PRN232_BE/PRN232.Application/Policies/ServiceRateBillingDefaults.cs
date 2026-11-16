@@ -7,6 +7,14 @@ public static class ServiceRateBillingDefaults
     private static readonly IReadOnlyDictionary<string, ServiceRateBillingDefault> DefaultsByServiceName =
         new Dictionary<string, ServiceRateBillingDefault>(StringComparer.OrdinalIgnoreCase)
         {
+            // Keep English names compatible with historical catalogs; Vietnamese names match the current UI.
+            ["Điện"] = new("kwh", "usage"),
+            ["Nước"] = new("m3", "usage"),
+            ["Rác"] = new("room_month", "fixed_room"),
+            ["Gửi xe"] = new("vehicle_month", "vehicle"),
+            ["Vệ sinh"] = new("room_month", "fixed_room"),
+            ["An ninh"] = new("room_month", "fixed_room"),
+            ["Người ở thêm"] = new("person_month", "additional_occupant"),
             ["Electricity"] = new("kwh", "usage"),
             ["Water"] = new("m3", "usage"),
             ["Internet"] = new("room_month", "fixed_room"),
