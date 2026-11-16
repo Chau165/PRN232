@@ -224,6 +224,24 @@ describe("Management maintenance API flow", () => {
     expect(screen.getByText("Báo cáo không có hình ảnh.")).toBeTruthy()
   })
 
+  it("resets the open viewer and failed-image state when another report uses the same image id", async () => {
+    mocks.getMaintenanceRequests.mockResolvedValue([request({status:"Completed"}),request({requestId:42,status:"Completed"})])
+    mocks.getMaintenanceRequest.mockImplementation(async(_token,id)=>request({requestId:id,status:"Completed"}))
+    mocks.getMaintenanceReport.mockImplementation(async(_token,id)=>({reportId:id,requestId:id,description:"Report "+id,reportedBy:9,reportedByName:"Manager",createdAt:"2026-10-17T08:02:11Z",images:[{imageId:1,imageUrl:"https://storage.test/"+id+".jpg"}]}))
+    renderPage()
+    fireEvent.click(await screen.findByRole("button",{name:/#41/}))
+    fireEvent.click(await screen.findByRole("button",{name:"Phóng to ảnh 1"}))
+    await screen.findByRole("dialog",{name:"Ảnh hoàn thành sửa chữa 1"})
+    fireEvent.error(screen.getAllByRole("img",{name:"Ảnh hoàn thành sửa chữa 1"})[0])
+    fireEvent.click(screen.getByRole("button",{name:/#42/}))
+    await screen.findByText("Report 42")
+    expect(screen.queryByRole("dialog",{name:/Ảnh hoàn thành sửa chữa/})).toBeNull()
+    const thumbnail=screen.getByRole("img",{name:"Ảnh hoàn thành sửa chữa 1"}) as HTMLImageElement
+    expect(thumbnail.src).toBe("https://storage.test/42.jpg")
+    fireEvent.click(screen.getByRole("button",{name:"Phóng to ảnh 1"}))
+    await screen.findByRole("dialog",{name:"Ảnh hoàn thành sửa chữa 1"})
+  })
+
   it("shows forbidden report access without exposing report details", async () => {
     mocks.getMaintenanceRequests.mockResolvedValue([request({ status: "Completed" })])
     mocks.getMaintenanceRequest.mockImplementation(async (_token, id) => request({ requestId: id, status: "Completed" }))
