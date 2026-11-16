@@ -4,7 +4,7 @@ using PRN232.Application.Services;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
 namespace PRN232.Infrastructure.Repositories;
-public sealed class BookingApplicationRepository(AppDbContext db, IBookingRepository bookings) : IBookingApplicationRepository
+public sealed partial class BookingApplicationRepository(AppDbContext db, IBookingRepository bookings) : IBookingApplicationRepository
 {
     public Task<BookingApplication?> FindAsync(int id,int customerId,CancellationToken token) =>
         db.BookingApplications.Include(a=>a.People).ThenInclude(p=>p.Images)

@@ -56,6 +56,7 @@ const groups: SidebarGroup[] = [
       { label: "Lịch xem phòng", href: routes.managementViewings, icon: "calendar" },
       { label: "Đặt phòng & Đặt cọc", href: routes.managementBookings, icon: "calendar" },
       { label: "Hợp đồng", href: routes.managementContracts, icon: "file" },
+      { label: "Hồ sơ CCCD đặt cọc", href: routes.managementBookingIdentity, icon: "file" },
     ],
   },
   {

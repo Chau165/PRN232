@@ -16,6 +16,10 @@ public sealed class BookingApplicationsController(BookingApplicationService serv
 {
     [HttpPost] public Task<ActionResult<BookingApplicationDto>> Create(CreateBookingApplicationDto dto,CancellationToken token) =>
         Run(()=>service.CreateAsync(dto,user.UserId!.Value,token));
+    [HttpGet("by-booking/{bookingId:int}")] public Task<ActionResult<BookingApplicationDto>> ByBooking(int bookingId,CancellationToken token) =>
+        Run(()=>service.GetByBookingAsync(bookingId,user.UserId!.Value,token));
+    [HttpPost("{id:int}/roster-resubmit")] public Task<ActionResult<BookingApplicationDto>> ResubmitRoster(int id,SubmitBookingApplicationDto dto,CancellationToken token) =>
+        Run(()=>service.ResubmitRosterAsync(id,dto.Version,user.UserId!.Value,token));
     [HttpGet("{id:int}")] public Task<ActionResult<BookingApplicationDto>> Get(int id,CancellationToken token) =>
         Run(()=>service.GetAsync(id,user.UserId!.Value,token));
     [HttpPatch("{id:int}")] public Task<ActionResult<BookingApplicationDto>> Update(int id,UpdateBookingApplicationDto dto,CancellationToken token) =>

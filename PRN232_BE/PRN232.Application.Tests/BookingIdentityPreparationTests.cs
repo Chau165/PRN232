@@ -52,7 +52,8 @@ public class BookingIdentityPreparationTests
     {
         using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=localhost;Database=unused").Options);
         var migrations=db.Database.GetMigrations().ToArray();
-        var sql=db.GetService<IMigrator>().GenerateScript(migrations[^2],migrations[^1]);
+        var index=Array.FindIndex(migrations,m=>m.EndsWith("_AddBookingIdentityPreparation"));
+        var sql=db.GetService<IMigrator>().GenerateScript(migrations[index-1],migrations[index]);
         foreach(var table in new[]{"BookingApplications","BookingApplicationPeople","BookingIdentityImages"})
             Assert.Contains($"ALTER TABLE public.\"{table}\" ENABLE ROW LEVEL SECURITY",sql);
         Assert.Contains("pg_roles",sql);

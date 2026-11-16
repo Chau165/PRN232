@@ -13,6 +13,11 @@ public class BookingApplication
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
     public DateTime? SubmittedAtUtc { get; set; }
+    public string RosterChangeStatus { get; set; } = "None";
+    public string? RosterChangeNote { get; set; }
+    public int? RosterReviewedById { get; set; }
+    public DateTime? RosterReviewedAtUtc { get; set; }
+    public DateTime? RosterRequestedAtUtc { get; set; }
     public Guid Version { get; set; } = Guid.NewGuid();
     public ICollection<BookingApplicationPerson> People { get; set; } = new List<BookingApplicationPerson>();
 }

@@ -22,6 +22,7 @@ public static class BookingApplicationPolicy
 
     public static bool ReadyForContract(BookingApplication application) =>
         application.Status == "Submitted" && application.BookingId.HasValue &&
+        application.RosterChangeStatus is not ("Pending" or "Rejected") &&
         application.OccupantCount >= 1 && application.People.Count == application.OccupantCount &&
         application.People.Select(p => p.Position).Order().SequenceEqual(Enumerable.Range(0, application.OccupantCount)) &&
         application.People.All(p => p.Status == "Approved" && HasCompleteIdentity(p));

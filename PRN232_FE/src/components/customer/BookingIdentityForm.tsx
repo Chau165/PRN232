@@ -71,7 +71,7 @@ function BookingIdentityFormSession(props:Props){
   </button>
  </section>
 }
-function PersonEditor({person,disabled,onDirty,onSave,onUpload,onDelete,onRead}:{person:ApplicationPerson;disabled:boolean;onDirty:(dirty:boolean)=>void;
+export function PersonEditor({person,disabled,onDirty,onSave,onUpload,onDelete,onRead}:{person:ApplicationPerson;disabled:boolean;onDirty:(dirty:boolean)=>void;
  onSave:(name:string,number:string|null,consent:boolean)=>Promise<boolean>;onUpload:(side:"Front"|"Back",file:File)=>Promise<boolean>;onDelete:(side:"Front"|"Back")=>Promise<boolean>;onRead:(side:"Front"|"Back")=>Promise<{url:string}>}){
  const [name,setName]=useState(person.fullName),[number,setNumber]=useState(""),[consent,setConsent]=useState(person.consentConfirmed)
  const [dirty,setDirty]=useState(false),[error,setError]=useState("")
@@ -83,13 +83,15 @@ function PersonEditor({person,disabled,onDirty,onSave,onUpload,onDelete,onRead}:
  const label=person.position===0?"Bạn — Người đứng tên dự kiến":`Người ở cùng ${person.position}`
  return <fieldset disabled={disabled} className="space-y-3 rounded-xl border border-slate-200 p-4">
   <legend className="font-bold">{label}</legend>
+  <p className="text-sm">Trạng thái: {({Incomplete:"Thiếu thông tin",PendingReview:"Chờ xét duyệt",Approved:"Đã duyệt",Rejected:"Bị từ chối"} as Record<string,string>)[person.status]??person.status}</p>
+  {person.reviewNote && <p className="text-sm text-rose-700">Lý do/ghi chú: {person.reviewNote}</p>}
   <label className="block text-sm">Họ tên {person.position===0?"của bạn":"người ở cùng"}<input aria-label={`Họ tên ${label}`} className={inputClass} value={name} maxLength={100} onChange={event=>{setName(event.target.value);changed()}}/></label>
   <label className="block text-sm">Số CCCD (12 chữ số)<input aria-label={`Số CCCD ${label}`} className={inputClass} value={number} placeholder={person.maskedIdentityNumber??"Nhập 12 chữ số"} inputMode="numeric" maxLength={12} autoComplete="off" onChange={event=>{setNumber(event.target.value.replace(/\D/g,""));changed()}}/></label>
   <label className="flex gap-2 text-sm"><input type="checkbox" checked={consent} onChange={event=>{setConsent(event.target.checked);changed()}}/>{person.position===0?"Tôi đồng ý cung cấp thông tin và ảnh CCCD để thực hiện thuê phòng.":"Tôi đã được người ở cùng đồng ý cung cấp thông tin và ảnh CCCD."}</label>
   <button type="button" className="rounded-lg border border-teal-700 px-3 py-2 text-sm" onClick={async()=>{
    if(number && number.length!==12){setError("Số CCCD phải đủ 12 chữ số.");return}
    const saved=await onSave(name,number||null,consent)
-   if(saved){setDirty(false);onDirty(false);setNumber("");setError("")}
+   if(saved){setDirty(false);onDirty(false);setNumber("");setError("");setPreview(null)}
   }}>Lưu thông tin {person.position===0?"của bạn":`người ở cùng ${person.position}`}</button>
   {dirty && <p className="text-xs text-amber-800">Lưu thông tin trước khi tải ảnh hoặc giữ phòng.</p>}
   {(["Front","Back"] as const).map(side=><div key={side} className="space-y-1 text-sm">

@@ -40,6 +40,7 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         }
     }
 
+    public DbSet<BookingApplicationReview> BookingApplicationReviews => Set<BookingApplicationReview>();
     public DbSet<BookingApplication> BookingApplications => Set<BookingApplication>();
     public DbSet<BookingApplicationPerson> BookingApplicationPeople => Set<BookingApplicationPerson>();
     public DbSet<BookingIdentityImage> BookingIdentityImages => Set<BookingIdentityImage>();
@@ -599,9 +600,24 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         modelBuilder.Entity<Notifications>()
             .Property(notification => notification.Body)
             .HasColumnType("text");
+        modelBuilder.Entity<BookingApplicationReview>(e => {
+            e.HasKey(x=>x.BookingApplicationReviewId);
+            e.HasOne<BookingApplication>().WithMany().HasForeignKey(x=>x.BookingApplicationId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Users>().WithMany().HasForeignKey(x=>x.ReviewerId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(x=>x.Kind).HasMaxLength(12);
+            e.Property(x=>x.Decision).HasMaxLength(12);
+            e.Property(x=>x.Note).HasMaxLength(500);
+            e.ToTable(t=>{
+                t.HasCheckConstraint("CK_BookingApplicationReviews_Decision", "\"Decision\" IN ('Approved','Rejected') AND \"Kind\" IN ('Identity','Roster')");
+                t.HasCheckConstraint("CK_BookingApplicationReviews_Note", "\"Decision\" <> 'Rejected' OR (\"Note\" IS NOT NULL AND length(trim(\"Note\")) > 0)");
+            });
+        });
         modelBuilder.Entity<BookingApplication>(e =>
         {
             e.HasKey(x => x.BookingApplicationId);
+            e.Property(x=>x.RosterChangeStatus).HasMaxLength(12);
+            e.Property(x=>x.RosterChangeNote).HasMaxLength(500);
+            e.HasOne<Users>().WithMany().HasForeignKey(x=>x.RosterReviewedById).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.Status).HasMaxLength(20);
             e.Property(x => x.Version).IsConcurrencyToken();
             e.HasOne<Users>().WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
@@ -609,6 +625,7 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
             e.HasOne<Bookings>().WithMany().HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => x.BookingId).IsUnique().HasFilter("\"BookingId\" IS NOT NULL");
             e.ToTable(t => {
+                t.HasCheckConstraint("CK_BookingApplications_Roster", "\"RosterChangeStatus\" IN ('None','Pending','Approved','Rejected')");
                 t.HasCheckConstraint("CK_BookingApplications_Count", "\"OccupantCount\" >= 1");
                 t.HasCheckConstraint("CK_BookingApplications_Status", "\"Status\" IN ('Draft','Submitted','Cancelled','Converted')");
             });

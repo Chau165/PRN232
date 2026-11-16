@@ -157,6 +157,24 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<int>("RoomId")
                         .HasColumnType("integer");
 
+                    b.Property<string>("RosterChangeNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("RosterChangeStatus")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<DateTime?>("RosterRequestedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RosterReviewedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("RosterReviewedById")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -182,9 +200,13 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.HasIndex("RoomId");
 
+                    b.HasIndex("RosterReviewedById");
+
                     b.ToTable("BookingApplications", t =>
                         {
                             t.HasCheckConstraint("CK_BookingApplications_Count", "\"OccupantCount\" >= 1");
+
+                            t.HasCheckConstraint("CK_BookingApplications_Roster", "\"RosterChangeStatus\" IN ('None','Pending','Approved','Rejected')");
 
                             t.HasCheckConstraint("CK_BookingApplications_Status", "\"Status\" IN ('Draft','Submitted','Cancelled','Converted')");
                         });
@@ -258,6 +280,60 @@ namespace PRN232.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_BookingApplicationPeople_Review", "\"Status\" NOT IN ('Approved','Rejected') OR (\"ReviewedByUserId\" IS NOT NULL AND \"ReviewedAtUtc\" IS NOT NULL)");
 
                             t.HasCheckConstraint("CK_BookingApplicationPeople_Status", "\"Status\" IN ('Incomplete','PendingReview','Approved','Rejected')");
+                        });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingApplicationReview", b =>
+                {
+                    b.Property<int>("BookingApplicationReviewId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("BookingApplicationReviewId"));
+
+                    b.Property<int>("BookingApplicationId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Decision")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<Guid>("ExpectedApplicationVersion")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int?>("PersonId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("PersonRevision")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ReviewedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ReviewerId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("BookingApplicationReviewId");
+
+                    b.HasIndex("BookingApplicationId");
+
+                    b.HasIndex("ReviewerId");
+
+                    b.ToTable("BookingApplicationReviews", t =>
+                        {
+                            t.HasCheckConstraint("CK_BookingApplicationReviews_Decision", "\"Decision\" IN ('Approved','Rejected') AND \"Kind\" IN ('Identity','Roster')");
+
+                            t.HasCheckConstraint("CK_BookingApplicationReviews_Note", "\"Decision\" <> 'Rejected' OR (\"Note\" IS NOT NULL AND length(trim(\"Note\")) > 0)");
                         });
                 });
 
@@ -2380,6 +2456,11 @@ namespace PRN232.Infrastructure.Migrations
                         .HasForeignKey("RoomId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", null)
+                        .WithMany()
+                        .HasForeignKey("RosterReviewedById")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.BookingApplicationPerson", b =>
@@ -2396,6 +2477,21 @@ namespace PRN232.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Application");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingApplicationReview", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.BookingApplication", null)
+                        .WithMany()
+                        .HasForeignKey("BookingApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.BookingIdentityImage", b =>

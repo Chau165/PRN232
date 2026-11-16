@@ -14,7 +14,7 @@ using Xunit;
 namespace PRN232.Application.Tests;
 public class BookingApplicationApiTests
 {
-    private sealed class Storage : IBookingIdentityImageStorage
+    internal sealed class Storage : IBookingIdentityImageStorage
     {
         public int Deleted; public Func<Task>? BeforeUpload;
         public async Task<StoredBookingIdentityImage> UploadAsync(int applicationId,int personId,string side,BookingIdentityUpload image,CancellationToken token=default)
@@ -25,26 +25,26 @@ public class BookingApplicationApiTests
         public Task<string> GetReadUrlAsync(string path,CancellationToken token=default)=>Task.FromResult("https://example.supabase.co/private?token=test");
         public Task DeleteAsync(string path,CancellationToken token=default){Deleted++;return Task.CompletedTask;}
     }
-    private static WebApplicationFactory<PRN232.Api.Controllers.BookingsController> Configure(BookingsApiFactory root,Storage storage)=>root.WithWebHostBuilder(builder=>builder.ConfigureTestServices(services=>{
+    internal static WebApplicationFactory<PRN232.Api.Controllers.BookingsController> Configure(BookingsApiFactory root,Storage storage)=>root.WithWebHostBuilder(builder=>builder.ConfigureTestServices(services=>{
         services.RemoveAll<IBookingIdentityImageStorage>();services.AddSingleton<IBookingIdentityImageStorage>(storage);
     }));
-    private static async Task<BookingApplicationDto> Draft(HttpClient client,int count=1)
+    internal static async Task<BookingApplicationDto> Draft(HttpClient client,int count=1)
     {
         var response=await client.PostAsJsonAsync("/api/booking-applications",new{roomId=1,moveInDate=BookingRules.Today(TimeProvider.System),occupantCount=count});
         Assert.True(response.IsSuccessStatusCode,await response.Content.ReadAsStringAsync());return (await response.Content.ReadFromJsonAsync<BookingApplicationDto>())!;
     }
-    private static async Task<BookingApplicationDto> Person(HttpClient client,BookingApplicationDto a,int index=0)
+    internal static async Task<BookingApplicationDto> Person(HttpClient client,BookingApplicationDto a,int index=0)
     {
         var p=a.People[index];var response=await client.PutAsJsonAsync($"/api/booking-applications/{a.BookingApplicationId}/people/{p.PersonId}",new{fullName=index==0?"Customer A":"Người ở cùng",identityNumber=index==0?"012345678901":"012345678902",consentConfirmed=true,version=a.Version});
         Assert.True(response.IsSuccessStatusCode,await response.Content.ReadAsStringAsync());return (await response.Content.ReadFromJsonAsync<BookingApplicationDto>())!;
     }
-    private static async Task<HttpResponseMessage> Upload(HttpClient client,BookingApplicationDto a,string side,int index=0)
+    internal static async Task<HttpResponseMessage> Upload(HttpClient client,BookingApplicationDto a,string side,int index=0)
     {
         using var form=new MultipartFormDataContent();var file=new ByteArrayContent(new byte[]{137,80,78,71,13,10,26,10,0,0,0,0});
         file.Headers.ContentType=new("image/png");form.Add(file,"file","test.png");
         return await client.PostAsync($"/api/booking-applications/{a.BookingApplicationId}/people/{a.People[index].PersonId}/images/{side}?version={a.Version}",form);
     }
-    private static async Task<BookingApplicationDto> Complete(HttpClient client,BookingApplicationDto a)
+    internal static async Task<BookingApplicationDto> Complete(HttpClient client,BookingApplicationDto a)
     {
         a=await Person(client,a);
         foreach(var side in new[]{"Front","Back"}){var response=await Upload(client,a,side);Assert.True(response.IsSuccessStatusCode,await response.Content.ReadAsStringAsync());a=(await response.Content.ReadFromJsonAsync<BookingApplicationDto>())!;}
