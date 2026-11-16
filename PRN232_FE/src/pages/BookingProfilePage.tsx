@@ -49,7 +49,11 @@ function Profile({token,bookingId}:{token:string;bookingId:number}){
    {app.people.map(person=><PersonEditor key={`${person.personId}:${generation}`} person={person} disabled={busy||!app.canEdit}
     onDirty={v=>setDirty(old=>({...old,[person.personId]:v}))}
     onSave={(name,number,consent)=>mutate(()=>saveBookingPerson(token,app,person.personId,name,number,consent))}
-    onUpload={(side,file)=>mutate(()=>uploadBookingIdentity(token,app,person.personId,side,file))}
+    onUpload={(side,file,details)=>mutate(async()=>{
+     let current=app
+     if(details){current=await saveBookingPerson(token,current,person.personId,details.fullName,details.identityNumber,details.consentConfirmed);if(!active.current)throw new DOMException("Session ended","AbortError");setApp(current)}
+     return uploadBookingIdentity(token,current,person.personId,side,file)
+    })}
     onDelete={side=>mutate(()=>deleteBookingIdentity(token,app,person.personId,side))}
     onRead={side=>readBookingIdentity(token,app,person.personId,side)}/>)}
   </>}
