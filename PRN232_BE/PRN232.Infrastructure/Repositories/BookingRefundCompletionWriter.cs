@@ -82,7 +82,7 @@ internal static class BookingRefundCompletionWriter
             OriginalPaymentId = payment.PaymentId, BookingId = booking.BookingId, CustomerId = request.CustomerId,
             Amount = attempt.Amount, Currency = attempt.Currency, RecordedAtUtc = now, TransferredAtUtc = attempt.TransferredAtUtc });
 
-        var propertyId = await context.Rooms.Where(item => item.RoomId == booking.RoomId).Select(item => item.PropertyId).SingleAsync(cancellationToken);
+        var propertyId = booking.PropertyId;
         if (context.Database.IsNpgsql())
             await context.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"PropertyManagerAssignments\" WHERE \"PropertyId\" = {propertyId} FOR SHARE", cancellationToken);
         var recipients = await context.Users.Where(item => item.IsActive && item.Role!.RoleName == RoleNames.Admin).Select(item => item.UserId).ToListAsync(cancellationToken);

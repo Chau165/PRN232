@@ -28,9 +28,20 @@ public class BookingRepository : IBookingRepository
                 room.RoomCode,
                 room.Property!.OwnerId,
                 room.PropertyRoomType!.MonthlyRent,
-                room.MaxOccupants))
+                room.MaxOccupants, room.PropertyId, room.RoomTypeId))
             .FirstOrDefaultAsync();
     }
+
+    public Task<BookingRoomReadModel?> GetRoomTypeAsync(int propertyId, int roomTypeId)
+        => _context.PropertyRoomTypes.AsNoTracking()
+            .Where(type => type.PropertyId == propertyId && type.RoomTypeId == roomTypeId && type.IsActive)
+            .Select(type => new BookingRoomReadModel(null, type.RoomType!.TypeName, type.Property!.OwnerId,
+                type.MonthlyRent, type.Rooms.Where(room => room.Status == RoomStatuses.Available)
+                    .Select(room => (int?)room.MaxOccupants).Max() ?? 1, type.PropertyId, type.RoomTypeId))
+            .SingleOrDefaultAsync();
+
+    public Task<List<PRN232.Application.DTOs.EligibleContractRoomDto>> GetEligibleContractRoomsAsync(int bookingId, DateTimeOffset asOfUtc)
+        => RoomInventoryQueries.EligibleRoomsAsync(_context, bookingId, asOfUtc);
 
     public Task<ViewingBookingReadModel?> GetViewingForBookingAsync(int viewingId, int customerId)
     {
@@ -52,17 +63,23 @@ public class BookingRepository : IBookingRepository
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
 
+        // Old direct-room callers can omit the type identifiers; derive them without changing a supplied location.
+        if (booking.RoomId.HasValue && (booking.PropertyId == 0 || booking.RoomTypeId == 0))
+        {
+            var room = await _context.Rooms.AsNoTracking().SingleOrDefaultAsync(item => item.RoomId == booking.RoomId);
+            if (room is null) return BookingAddResult.RoomUnavailable;
+            if (booking.PropertyId == 0) booking.PropertyId = room.PropertyId;
+            if (booking.RoomTypeId == 0) booking.RoomTypeId = room.RoomTypeId;
+        }
+        await RoomInventoryQueries.LockAsync(_context, booking.PropertyId, booking.RoomTypeId);
         if (_context.Database.IsNpgsql())
         {
-            // Keep the same lock order as Manager room selection: ViewingSchedule, then Room.
+            // Inventory/type and rooms are locked before optional viewing metadata and the customer.
             if (booking.ViewingId.HasValue)
             {
                 await _context.Database.ExecuteSqlInterpolatedAsync(
                     $"SELECT 1 FROM \"ViewingSchedules\" WHERE \"ViewingId\" = {booking.ViewingId.Value} FOR UPDATE");
             }
-            // Locking Room serializes direct bookings and bookings originating from separate viewings.
-            await _context.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT 1 FROM \"Rooms\" WHERE \"RoomId\" = {booking.RoomId} FOR UPDATE");
             // B4: lock the customer last, so two parallel requests for different rooms by the
             // same customer are serialized and the second one sees the first Pending booking.
             await _context.Database.ExecuteSqlInterpolatedAsync(
@@ -89,7 +106,8 @@ public class BookingRepository : IBookingRepository
             var viewingIsValid = await _context.ViewingSchedules.AnyAsync(viewing =>
                 viewing.ViewingId == booking.ViewingId.Value &&
                 viewing.CustomerId == booking.CustomerId &&
-                viewing.RoomId == booking.RoomId &&
+                viewing.PropertyId == booking.PropertyId && viewing.RoomTypeId == booking.RoomTypeId &&
+                (booking.RoomId == null || viewing.RoomId == booking.RoomId) &&
                 viewing.Status == ViewingStatuses.Approved);
             var alreadyBookedFromViewing = await _context.Bookings.AnyAsync(item => item.ViewingId == booking.ViewingId);
             if (!viewingIsValid || alreadyBookedFromViewing)
@@ -98,21 +116,12 @@ public class BookingRepository : IBookingRepository
             }
         }
 
-        var isRentable = await RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc)
-            .AnyAsync(room => room.RoomId == booking.RoomId);
-        if (!isRentable) return BookingAddResult.RoomUnavailable;
+        if (!await RoomInventoryQueries.CanReserveAsync(_context, booking.PropertyId, booking.RoomTypeId,
+                booking.OccupantCount ?? 1, booking.RoomId, null, asOfUtc)) return BookingAddResult.RoomUnavailable;
 
-        if (_context.Database.IsNpgsql())
-        {
-            await _context.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT 1 FROM \"PropertyRoomTypes\" WHERE \"PropertyId\" = (SELECT \"PropertyId\" FROM \"Rooms\" WHERE \"RoomId\" = {booking.RoomId}) AND \"RoomTypeId\" = (SELECT \"RoomTypeId\" FROM \"Rooms\" WHERE \"RoomId\" = {booking.RoomId}) AND \"IsActive\" = TRUE FOR SHARE");
-        }
-
-        var agreedMonthlyRent = await _context.Rooms
-            .Where(room => room.RoomId == booking.RoomId &&
-                room.PropertyRoomType != null && room.PropertyRoomType.IsActive)
-            .Select(room => (decimal?)room.PropertyRoomType!.MonthlyRent)
-            .FirstOrDefaultAsync();
+        var agreedMonthlyRent = await _context.PropertyRoomTypes
+            .Where(type => type.PropertyId == booking.PropertyId && type.RoomTypeId == booking.RoomTypeId && type.IsActive)
+            .Select(type => (decimal?)type.MonthlyRent).SingleOrDefaultAsync();
         if (agreedMonthlyRent is not > 0m)
         {
             return BookingAddResult.RoomUnavailable;
@@ -164,8 +173,8 @@ public class BookingRepository : IBookingRepository
             .Select(booking => new BookingPaymentReadModel(
             booking.BookingId,
             booking.CustomerId,
-            booking.Room!.Property!.OwnerId,
-            booking.Room.RoomCode,
+            booking.Property!.OwnerId,
+            booking.Room != null ? booking.Room.RoomCode : booking.PropertyRoomType!.RoomType!.TypeName,
             booking.DepositAmount,
             booking.Status,
             booking.ExpiryDate))
@@ -182,6 +191,8 @@ public class BookingRepository : IBookingRepository
             (item.Status == PaymentRequestStatuses.Creating || item.Status == PaymentRequestStatuses.Pending || item.Status == PaymentRequestStatuses.RequiresReview)))
             return false;
 
+        var currentRoomId = await _context.Bookings.Where(item => item.BookingId == bookingId).Select(item => item.RoomId).SingleOrDefaultAsync();
+        if (!await BookingPaymentLock.RoomCanAcceptDepositAsync(_context, currentRoomId, bookingId, instantUtc, default)) return false;
         // Điều kiện Pending + còn hạn nằm ngay trong câu UPDATE: hai lần thanh toán chạy song song thì
         // lần sau không còn khớp dòng nào (0 dòng) nên một booking không thể được ghi nhận cọc hai lần.
         var updated = await _context.Bookings
@@ -240,7 +251,7 @@ public class BookingRepository : IBookingRepository
             if (managerId.HasValue)
             {
                 await _context.Database.ExecuteSqlInterpolatedAsync(
-                    $"SELECT assignment.\"PropertyId\" FROM \"PropertyManagerAssignments\" assignment JOIN \"Rooms\" room ON room.\"PropertyId\" = assignment.\"PropertyId\" JOIN \"Bookings\" booking ON booking.\"RoomId\" = room.\"RoomId\" WHERE booking.\"BookingId\" = {bookingId} AND assignment.\"ManagerId\" = {managerId.Value} FOR SHARE OF assignment");
+                    $"SELECT assignment.\"PropertyId\" FROM \"PropertyManagerAssignments\" assignment JOIN \"Bookings\" booking ON booking.\"PropertyId\" = assignment.\"PropertyId\" WHERE booking.\"BookingId\" = {bookingId} AND assignment.\"ManagerId\" = {managerId.Value} FOR SHARE OF assignment");
             }
         }
 
@@ -248,7 +259,7 @@ public class BookingRepository : IBookingRepository
         {
             var propertyId = await _context.Bookings
                 .Where(booking => booking.BookingId == bookingId)
-                .Select(booking => (int?)booking.Room!.PropertyId)
+                .Select(booking => (int?)booking.PropertyId)
                 .FirstOrDefaultAsync();
             var hasActiveAssignment = propertyId.HasValue &&
                 await _context.PropertyManagerAssignments.AnyAsync(assignment =>
@@ -293,7 +304,7 @@ public class BookingRepository : IBookingRepository
         return _context.Bookings
             .AsNoTracking()
             .Where(booking => customerId == null || booking.CustomerId == customerId)
-            .Where(booking => managerId == null || booking.Room!.Property!.ManagerAssignments.Any(assignment =>
+            .Where(booking => managerId == null || booking.Property!.ManagerAssignments.Any(assignment =>
                 assignment.ManagerId == managerId &&
                 assignment.Manager!.IsActive &&
                 assignment.Manager.Role!.RoleName == RoleNames.Manager));
@@ -302,9 +313,9 @@ public class BookingRepository : IBookingRepository
     private static readonly Expression<Func<Bookings, BookingReadModel>> ToReadModel = booking => new BookingReadModel(
         booking.BookingId,
         booking.RoomId,
-        booking.Room!.RoomCode,
-        booking.Room.PropertyId,
-        booking.Room.Property!.PropertyName,
+        booking.Room != null ? booking.Room.RoomCode : "",
+        booking.PropertyId,
+        booking.Property!.PropertyName,
         booking.CustomerId,
         booking.Customer!.FullName,
         booking.DepositAmount,
@@ -339,14 +350,15 @@ public class BookingRepository : IBookingRepository
         booking.DepositReturnedAtUtc,
         booking.DepositReturnedBy != null ? booking.DepositReturnedBy.FullName : null,
         booking.DepositAppliesToFirstMonth,
-        booking.Room.MaxOccupants,
-        booking.Room.RoomTypeId,
-        booking.Room.RoomType!.TypeName);
+        booking.Room != null ? booking.Room.MaxOccupants : booking.PropertyRoomType!.Rooms.Select(room => (int?)room.MaxOccupants).Max() ?? 1,
+        booking.RoomTypeId,
+        booking.PropertyRoomType!.RoomType!.TypeName);
 
     public async Task<bool> ConfirmDepositReturnedAsync(
         int bookingId, int confirmedById, DateTimeOffset asOfUtc, Notifications customerNotification)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
+        await BookingPaymentLock.LockAsync(_context, bookingId);
         // Điều kiện "chưa xác nhận" nằm trong câu UPDATE: bấm hai lần thì lần sau khớp 0 dòng.
         var updated = await _context.Bookings
             .Where(booking => booking.BookingId == bookingId &&

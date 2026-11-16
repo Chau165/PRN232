@@ -2,7 +2,7 @@ namespace PRN232.Application.DTOs;
 
 public record BookingDto(
     int BookingId,
-    int RoomId,
+    int? RoomId,
     string RoomCode,
     int PropertyId,
     string PropertyName,
@@ -27,6 +27,11 @@ public record BookingDto(
 public record BookingContactDto(string FullName, string PhoneNumber, string Email, string Role);
 
 // MoveInDate/OccupantCount: không gửi thì BE lấy "hôm nay" (giờ VN) và 1 người (API-CHANGES C9).
-public record CreateBookingDto(int RoomId, int? ViewingId = null, DateOnly? MoveInDate = null, int? OccupantCount = null);
+public record CreateBookingDto(int? RoomId = null, int? ViewingId = null, DateOnly? MoveInDate = null,
+    int? OccupantCount = null, int? PropertyId = null, int? RoomTypeId = null);
+
+public record EligibleContractRoomDto(int RoomId, string RoomCode, int PropertyId, int RoomTypeId,
+    int MaxOccupants, decimal AreaSqm);
+
 
 public record PayBookingDto(string PaymentMethod);

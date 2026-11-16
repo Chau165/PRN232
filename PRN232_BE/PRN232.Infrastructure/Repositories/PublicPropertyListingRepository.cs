@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using PRN232.Application.DTOs;
 using PRN232.Application.Interfaces;
 using PRN232.Application.Normalizers;
+using PRN232.Application.Policies;
 using PRN232.Application.ReadModels;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
@@ -66,11 +67,9 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
             property.Ward,
             property.District,
             property.City,
-            AvailableRoomCount = matchingRooms
-                .Where(room => room.PropertyId == property.PropertyId)
-                .Select(room => room.RoomId)
-                .Distinct()
-                .Count(),
+            AvailableRoomCount = RoomAvailabilityQueries.GetPropertyAvailability(_context.Properties, matchingRooms, asOfUtc)
+                .Where(availability => availability.PropertyId == property.PropertyId)
+                .Select(availability => availability.AvailableRoomCount).FirstOrDefault(),
             StartingPrice = matchingRooms
                 .Where(room => room.PropertyId == property.PropertyId)
                 .Select(room => (decimal?)room.PropertyRoomType!.MonthlyRent)
@@ -190,11 +189,9 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 property.Latitude,
                 property.Longitude,
                 property.PrimaryImageUrl,
-                AvailableRoomCount = rentableRooms
-                    .Where(room => room.PropertyId == property.PropertyId)
-                    .Select(room => room.RoomId)
-                    .Distinct()
-                    .Count(),
+                AvailableRoomCount = RoomAvailabilityQueries.GetPropertyAvailability(_context.Properties, rentableRooms, asOfUtc)
+                    .Where(availability => availability.PropertyId == property.PropertyId)
+                    .Select(availability => availability.AvailableRoomCount).FirstOrDefault(),
                 StartingPrice = rentableRooms
                     .Where(room => room.PropertyId == property.PropertyId)
                     .Select(room => (decimal?)room.PropertyRoomType!.MonthlyRent)
@@ -272,11 +269,9 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 property.District,
                 property.City,
                 property.PrimaryImageUrl,
-                AvailableRoomCount = rentableRooms
-                    .Where(room => room.PropertyId == property.PropertyId)
-                    .Select(room => room.RoomId)
-                    .Distinct()
-                    .Count(),
+                AvailableRoomCount = RoomAvailabilityQueries.GetPropertyAvailability(_context.Properties, rentableRooms, asOfUtc)
+                    .Where(availability => availability.PropertyId == property.PropertyId)
+                    .Select(availability => availability.AvailableRoomCount).FirstOrDefault(),
                 StartingPrice = rentableRooms
                     .Where(room => room.PropertyId == property.PropertyId)
                     .Select(room => (decimal?)room.PropertyRoomType!.MonthlyRent)
@@ -535,11 +530,9 @@ public sealed class PublicPropertyListingRepository : IPublicPropertyListingRepo
                 configuration.RoomTypeId,
                 RoomTypeName = configuration.RoomType!.TypeName,
                 configuration.MonthlyRent,
-                AvailableRoomCount = matchingRooms
-                    .Where(room => room.RoomTypeId == configuration.RoomTypeId)
-                    .Select(room => room.RoomId)
-                    .Distinct()
-                    .Count(),
+                AvailableRoomCount = Math.Max(0, matchingRooms.Count(room => room.RoomTypeId == configuration.RoomTypeId) -
+                    configuration.Bookings.AsQueryable().Where(RoomInventoryPolicy.HoldsCapacityAt(asOfUtc))
+                        .Count(booking => booking.RoomId == null)),
                 TotalRoomCount = _context.Rooms.Count(room =>
                     room.PropertyId == configuration.PropertyId &&
                     room.RoomTypeId == configuration.RoomTypeId),

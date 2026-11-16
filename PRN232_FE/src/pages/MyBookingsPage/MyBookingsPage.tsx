@@ -1,3 +1,4 @@
+import { bookingRoomLabel } from "@/utils/bookingDisplay"
 import { useEffect, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
@@ -36,14 +37,14 @@ export default function MyBookingsPage() {
     const isDeposited = booking.status === "Deposited"
     const confirmMessage = isDeposited
       ? `Nếu hủy, bạn sẽ mất tiền cọc ${formatVnd(booking.depositAmount)}. Bạn chắc chắn?`
-      : `Huỷ giữ phòng ${booking.roomCode}?`
+      : `Huỷ giữ ${bookingRoomLabel(booking)}?`
     if (!window.confirm(confirmMessage)) return
     try {
       const cancelled = await cancelById(booking.bookingId)
       setToast(
         isDeposited
-          ? `Đã hủy đặt cọc phòng ${cancelled.roomCode}.`
-          : `Đã huỷ giữ phòng ${cancelled.roomCode}.`,
+          ? `Đã hủy đặt cọc ${bookingRoomLabel(cancelled)}.`
+          : `Đã huỷ giữ ${bookingRoomLabel(cancelled)}.`,
       )
     } catch (cancelError) {
       setToast(bookingErrorMessage(cancelError, "Booking vừa đổi trạng thái, vui lòng tải lại trang."))
@@ -93,7 +94,7 @@ export default function MyBookingsPage() {
                     <h2 className="mt-2 font-display text-[20px] font-bold text-slate-900">
                       {booking.propertyName}
                     </h2>
-                    <p className="mt-1 text-[13px] text-slate-500">Phòng {booking.roomCode}</p>
+                    <p className="mt-1 text-[13px] text-slate-500">{bookingRoomLabel(booking)}</p>
                     {formatBookingMoveInSummary(booking) && (
                       <p className="mt-1 text-[12px] font-medium text-slate-600">{formatBookingMoveInSummary(booking)}</p>
                     )}
@@ -243,10 +244,10 @@ function MyViewings() {
     : null
 
   function bookSelectedRoom(viewing: (typeof viewings)[number]) {
-    if (!accessToken || viewing.roomId === null || bookingViewingId !== null) return
+    if (!accessToken || bookingViewingId !== null) return
     setBookingViewingId(viewing.viewingId)
     setBookingError("")
-    navigate(`${routes.deposit}?roomId=${viewing.roomId}&viewingId=${viewing.viewingId}`)
+    navigate(`${routes.deposit}?propertyId=${viewing.propertyId}&roomTypeId=${viewing.roomTypeId}&viewingId=${viewing.viewingId}`)
   }
 
   useEffect(() => {
@@ -293,13 +294,14 @@ function MyViewings() {
                   )}
                   {viewing.managerNote && <p className="mt-1 whitespace-pre-wrap text-[13px] text-slate-600">{viewing.status === "Rejected" ? "Lý do từ chối" : "Ghi chú"}: {viewing.managerNote}</p>}
                   {viewing.roomId === null ? (
-                    <p className="mt-2 text-[13px] text-slate-500">Manager chưa chọn phòng cụ thể.</p>
+                    <p className="mt-2 text-[13px] text-slate-500">Đặt cọc theo loại phòng; Manager chọn phòng khi tạo hợp đồng.</p>
                   ) : (
                     <>
-                      <Link to={`${availableRoomsPath(viewing.propertyId)}?roomId=${viewing.roomId}`} className="mt-2 inline-block text-[13px] font-semibold text-[#087775] underline underline-offset-2">Phòng đã xác nhận: {viewing.roomCode}</Link>
-                      {viewing.status === "Approved" && <button type="button" disabled={bookingViewingId !== null} onClick={() => void bookSelectedRoom(viewing)} className="ml-4 rounded-lg bg-[#087775] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{bookingViewingId === viewing.viewingId ? "Đang đặt..." : "Đặt cọc phòng này"}</button>}
+                      <Link to={`${availableRoomsPath(viewing.propertyId)}?roomId=${viewing.roomId}`} className="mt-2 inline-block text-[13px] font-semibold text-[#087775] underline underline-offset-2">Phòng đã xem: {viewing.roomCode} (không giữ riêng phòng)</Link>
+
                     </>
                   )}
+                  {viewing.status === "Approved" && <button type="button" disabled={bookingViewingId !== null} onClick={() => void bookSelectedRoom(viewing)} className="mt-3 rounded-lg bg-[#087775] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Đặt cọc loại phòng này</button>}
                 </div>
                 <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
               </article>

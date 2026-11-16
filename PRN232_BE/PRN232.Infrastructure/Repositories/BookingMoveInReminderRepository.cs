@@ -23,10 +23,10 @@ public sealed class BookingMoveInReminderRepository(AppDbContext context) : IBoo
                 booking.BookingId,
                 booking.CustomerId,
                 CustomerName = booking.Customer!.FullName,
-                booking.Room!.RoomCode,
+                RoomCode = booking.Room != null ? booking.Room.RoomCode : booking.PropertyRoomType!.RoomType!.TypeName + " — Chưa phân phòng cụ thể",
                 MoveInDate = booking.MoveInDate!.Value,
-                booking.Room.Property!.OwnerId,
-                ManagerIds = booking.Room.Property.ManagerAssignments
+                booking.Property!.OwnerId,
+                ManagerIds = booking.Property!.ManagerAssignments
                     .Where(assignment => assignment.Manager!.IsActive &&
                                          assignment.Manager.Role!.RoleName == RoleNames.Manager)
                     .Select(assignment => assignment.ManagerId)

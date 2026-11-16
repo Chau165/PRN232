@@ -1,3 +1,4 @@
+import { bookingRoomLabel } from "@/utils/bookingDisplay"
 import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 import { ApiError } from "@/api/apiClient"
@@ -36,6 +37,8 @@ export default function DepositPage() {
   const [params] = useSearchParams()
   const bookingId = parsePositiveRouteId(params.get("bookingId") ?? undefined)
   const roomId = parsePositiveRouteId(params.get("roomId") ?? undefined)
+  const propertyId = parsePositiveRouteId(params.get("propertyId") ?? undefined)
+  const roomTypeId = parsePositiveRouteId(params.get("roomTypeId") ?? undefined)
   const viewingId = parsePositiveRouteId(params.get("viewingId") ?? undefined)
 
   return (
@@ -43,8 +46,8 @@ export default function DepositPage() {
       <div className="w-full rounded-2xl bg-white p-5 shadow-[0_5px_24px_rgba(16,65,67,.08)] sm:p-8">
         {bookingId ? (
           <PayDepositStep key={bookingId} bookingId={bookingId} />
-        ) : roomId ? (
-          <HoldRoomStep roomId={roomId} viewingId={viewingId} />
+        ) : roomId || propertyId && roomTypeId ? (
+          <HoldRoomStep roomId={roomId} propertyId={propertyId} roomTypeId={roomTypeId} viewingId={viewingId} />
         ) : (
           <Notice message="Không tìm thấy phòng cần đặt cọc." />
         )}
@@ -53,10 +56,24 @@ export default function DepositPage() {
   )
 }
 
-function HoldRoomStep({ roomId, viewingId }: { roomId: number; viewingId?: number | null }) {
+function HoldRoomStep({ roomId, propertyId, roomTypeId, viewingId }: {
+  roomId?: number | null; propertyId?: number | null; roomTypeId?: number | null; viewingId?: number | null
+}) {
   const { accessToken, user } = useAuth()
   const navigate = useNavigate()
-  const resource = usePublicApiResource(String(roomId), (signal) => publicApi.getRoom(roomId, signal))
+  const resource = usePublicApiResource(`${roomId}:${propertyId}:${roomTypeId}`, async (signal) => {
+    if (propertyId && roomTypeId) {
+      const types = await publicApi.listRoomTypes(propertyId, {}, signal)
+      const type = types.find((item) => item.roomTypeId === roomTypeId)
+      if (!type || type.availableRoomCount < 1) throw new Error("Loại phòng hiện không còn suất đặt cọc.")
+      return { propertyId, roomTypeId, propertyName: type.propertyName, roomTypeName: type.roomTypeName,
+        monthlyRent: type.monthlyRent, maxOccupants: undefined as number | undefined }
+    }
+    const room = await publicApi.getRoom(roomId!, signal)
+    return { propertyId: room.property.propertyId, roomTypeId: room.roomType.roomTypeId,
+      propertyName: room.property.propertyName, roomTypeName: room.roomType.roomTypeName,
+      monthlyRent: room.baseRent, maxOccupants: room.maxOccupants }
+  })
   const [moveInDate, setMoveInDate] = useState<string>(() => getVietnamIsoDateOffset(0))
   const [occupantCount, setOccupantCount] = useState<string>("1")
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<"moveInDate" | "occupantCount", string>>>({})
@@ -84,7 +101,7 @@ function HoldRoomStep({ roomId, viewingId }: { roomId: number; viewingId?: numbe
     const nextFieldErrors: Partial<Record<"moveInDate" | "occupantCount", string>> = {}
     const moveInErr = bookingMoveInDateError(moveInDate)
     if (moveInErr) nextFieldErrors.moveInDate = moveInErr
-    const occupantErr = bookingOccupantCountError(occupantCount, room)
+    const occupantErr = bookingOccupantCountError(occupantCount, { roomCode: room.roomTypeName, maxOccupants: room.maxOccupants })
     if (occupantErr) nextFieldErrors.occupantCount = occupantErr
 
     if (Object.keys(nextFieldErrors).length > 0) {
@@ -99,7 +116,8 @@ function HoldRoomStep({ roomId, viewingId }: { roomId: number; viewingId?: numbe
     setExistingPendingBookingId(null)
     try {
       const booking = await createBooking(accessToken, {
-        roomId: room.roomId,
+        propertyId: room.propertyId,
+        roomTypeId: room.roomTypeId,
         ...(viewingId ? { viewingId } : {}),
         moveInDate: moveInDate.trim() || undefined,
         occupantCount: occupantCount.trim() ? Number(occupantCount) : undefined,
@@ -134,11 +152,11 @@ function HoldRoomStep({ roomId, viewingId }: { roomId: number; viewingId?: numbe
     <div className="space-y-6">
       <Summary
         rows={[
-          ["Khu trọ", room.property.propertyName],
-          ["Phòng", `${room.roomCode} · ${room.roomType.roomTypeName}`],
+          ["Khu trọ", room.propertyName],
+          ["Loại phòng", `${room.roomTypeName} — Chưa phân phòng cụ thể`],
           ["Người đặt", user ? `${user.name} · ${user.phone}` : ""],
         ]}
-        amount={room.baseRent}
+        amount={room.monthlyRent}
       />
 
       <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-2">
@@ -183,7 +201,7 @@ function HoldRoomStep({ roomId, viewingId }: { roomId: number; viewingId?: numbe
           />
           <span className="block text-xs text-slate-500">
             {room.maxOccupants != null
-              ? `Tối đa ${room.maxOccupants} người cho phòng ${room.roomCode}`
+              ? `Tối đa ${room.maxOccupants} người cho phòng ${room.roomTypeName}`
               : `Từ ${BOOKING_OCCUPANTS_MIN} đến ${BOOKING_OCCUPANTS_MAX} người`}
           </span>
           {fieldErrors.occupantCount && <span className="block text-xs text-rose-600">{fieldErrors.occupantCount}</span>}
@@ -250,7 +268,7 @@ function PayDepositStep({ bookingId }: { bookingId: number }) {
   if (loadError) return <Notice message={loadError} />
   if (!booking) return <p role="status" className="text-sm text-slate-500">Đang tải thông tin đặt cọc...</p>
   if (booking.customerId !== Number(user?.id)) return <Notice message="Bạn không có quyền thanh toán booking này." />
-  if (booking.status === "Deposited") return <Notice message="Booking này đã được thanh toán cọc." />
+  if (booking.status === "Deposited") return <Notice message={booking.roomId === null ? `Đã đặt cọc ${bookingRoomLabel(booking)}.` : "Booking này đã được thanh toán cọc."} />
   if (booking.status === "Cancelled") return <Notice message="Booking này đã bị huỷ." />
   if (isBookingExpired(booking)) {
     return <Notice message="Đã quá thời gian giữ phòng. Vui lòng đặt lại nếu phòng vẫn còn trống." />
@@ -281,7 +299,7 @@ function PayDepositStep({ bookingId }: { bookingId: number }) {
       <Summary
         rows={[
           ["Khu trọ", booking.propertyName],
-          ["Phòng", booking.roomCode],
+          ["Phòng / Loại phòng", bookingRoomLabel(booking)],
           ["Dự kiến nhận phòng", formatBookingMoveInSummary(booking) ?? ""],
           ["Hạn thanh toán cọc", formatDateTime(booking.expiryDate)],
         ]}

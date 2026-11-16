@@ -23,6 +23,11 @@ public sealed class CreateBookingDtoValidator : AbstractValidator<CreateBookingD
 {
     public CreateBookingDtoValidator(TimeProvider clock)
     {
+        RuleFor(dto => dto.RoomId).Must(id => id is null or > 0);
+        RuleFor(dto => dto.PropertyId).Must(id => id is null or > 0);
+        RuleFor(dto => dto.RoomTypeId).Must(id => id is null or > 0);
+        RuleFor(dto => dto).Must(dto => dto.RoomId.HasValue || dto.PropertyId is > 0 && dto.RoomTypeId is > 0)
+            .WithMessage("PropertyId and RoomTypeId are required when RoomId is not supplied.");
         RuleFor(dto => dto.MoveInDate)
             .Must(date => date is null || date >= BookingRules.Today(clock))
             .WithMessage("Ngày dọn vào không được ở quá khứ.")

@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   openCheckout: vi.fn(),
   cancelBooking: vi.fn(),
   getRoom: vi.fn(),
+  listRoomTypes: vi.fn(),
   getViewingSchedules: vi.fn(),
 }))
 
@@ -44,7 +45,7 @@ vi.mock("@/utils/invoicePayment", async original => ({ ...await original<typeof 
 vi.mock("@/services/viewingScheduleService", () => ({ getViewingSchedules: mocks.getViewingSchedules }))
 vi.mock("@/services/publicBrowsingService", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/publicBrowsingService")>()),
-  publicApi: { getRoom: mocks.getRoom },
+  publicApi: { getRoom: mocks.getRoom, listRoomTypes: mocks.listRoomTypes },
 }))
 
 const inMinutes = (minutes: number) => new Date(Date.now() + minutes * 60_000).toISOString()
@@ -79,6 +80,7 @@ function renderAt(path: string) {
 beforeEach(() => {
   sessionStorage.clear()
   mocks.createLink.mockResolvedValue({ paymentRequestId: 12, bookingId: 7, amount: 3000000, currency: "VND", status: "Pending", checkoutUrl: "https://pay.payos.vn/web/booking-link", expiresAtUtc: "2099-01-01T00:00:00Z", reused: true })
+  mocks.listRoomTypes.mockResolvedValue([{ propertyId: 1, propertyName: "Sunrise", roomTypeId: 2, roomTypeName: "Studio", monthlyRent: 3000000, availableRoomCount: 2 }])
   mocks.getRoom.mockResolvedValue(room)
   mocks.createBooking.mockResolvedValue(booking())
   mocks.getBooking.mockResolvedValue(booking())
@@ -90,13 +92,14 @@ beforeEach(() => {
 describe("DepositPage", () => {
   it("holds the room and opens a real payOS checkout once without calling the simulated payment API", async () => {
     renderAt("/deposit?roomId=501")
-    await screen.findByText("A101 · Studio")
+    await screen.findByText("Studio — Chưa phân phòng cụ thể")
     fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
 
     await screen.findByText("Thanh toán cọc qua payOS")
     expect(screen.getByText("Hạn thanh toán cọc")).toBeTruthy()
     expect(mocks.createBooking).toHaveBeenCalledWith("customer-token", {
-      roomId: 501,
+      propertyId: 1,
+      roomTypeId: 1,
       moveInDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       occupantCount: 1,
     })
@@ -115,7 +118,7 @@ describe("DepositPage", () => {
 
   it("explains before the hold that the deposit is held as security deposit until checkout and holds the room until moveInDate + 3 days, updating dynamically and validating empty moveInDate (C10 items 7 & 9, C13)", async () => {
     renderAt("/deposit?roomId=501")
-    await screen.findByText("A101 · Studio")
+    await screen.findByText("Studio — Chưa phân phòng cụ thể")
 
     fireEvent.change(screen.getByLabelText("Ngày dọn vào"), { target: { value: "2026-11-20" } })
     const rules = screen.getByText(/Tiền cọc được giữ làm tiền đảm bảo trong suốt thời gian thuê/)
@@ -134,11 +137,11 @@ describe("DepositPage", () => {
     mocks.getRoom.mockResolvedValue({ ...room, maxOccupants: 2 })
     mocks.getBooking.mockResolvedValue(booking({ moveInDate: "2026-11-20", occupantCount: 2 }))
     renderAt("/deposit?roomId=501")
-    await screen.findByText("A101 · Studio")
+    await screen.findByText("Studio — Chưa phân phòng cụ thể")
 
     fireEvent.change(screen.getByLabelText("Số người ở"), { target: { value: "3" } })
     fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
-    expect(await screen.findByText("Phòng A101 chỉ được ở tối đa 2 người.")).toBeTruthy()
+    expect(await screen.findByText("Phòng Studio chỉ được ở tối đa 2 người.")).toBeTruthy()
     expect(mocks.createBooking).not.toHaveBeenCalled()
 
     fireEvent.change(screen.getByLabelText("Số người ở"), { target: { value: "2" } })
@@ -325,7 +328,7 @@ describe("MyBookingsPage", () => {
     expect(mocks.cancelBooking).not.toHaveBeenCalled()
 
     fireEvent.click(cancelDepositBtn)
-    await screen.findByText("Đã hủy đặt cọc phòng B202.")
+    await screen.findByText("Đã hủy đặt cọc Phòng B202.")
     expect(mocks.cancelBooking).toHaveBeenCalledWith("customer-token", 9)
     expect(screen.getByText(/Lý do hủy: Khách hủy đặt cọc/)).toBeTruthy()
   })
@@ -363,15 +366,16 @@ describe("MyBookingsPage", () => {
     ])
     renderAt("/my-bookings")
 
-    fireEvent.click(await screen.findByRole("button", { name: "Đặt cọc phòng này" }))
-    await screen.findByText("A101 · Studio")
+    fireEvent.click(await screen.findByRole("button", { name: "Đặt cọc loại phòng này" }))
+    await screen.findByText("Studio — Chưa phân phòng cụ thể")
     fireEvent.change(screen.getByLabelText("Số người ở"), { target: { value: "2" } })
     fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
 
     await screen.findByText("Thanh toán cọc qua payOS")
     expect(screen.getByText("Hạn thanh toán cọc")).toBeTruthy()
     expect(mocks.createBooking).toHaveBeenCalledWith("customer-token", {
-      roomId: 501,
+      propertyId: 1,
+      roomTypeId: 2,
       viewingId: 3,
       moveInDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       occupantCount: 2,
@@ -386,5 +390,21 @@ describe("MyBookingsPage", () => {
 
     await screen.findByText("Bạn chưa đặt cọc phòng nào.")
     expect(mocks.getBookings).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe("room-type deposit display", () => {
+  it("shows an unassigned type booking without a fabricated room code", async () => {
+    mocks.getBookings.mockResolvedValue([booking({ roomId: null, roomCode: "", roomTypeId: 2, roomTypeName: "Studio", status: "Deposited" })])
+    renderAt("/my-bookings")
+    expect(await screen.findByText("Loại phòng Studio — Chưa phân phòng cụ thể")).toBeTruthy()
+    expect(screen.queryByText("Phòng A101")).toBeNull()
+  })
+
+  it("renders room type on the PayOS payment step and retains the booking target", async () => {
+    mocks.getBooking.mockResolvedValue(booking({ roomId: null, roomCode: "", roomTypeName: "Studio" }))
+    renderAt("/deposit?bookingId=7")
+    expect(await screen.findByText("Loại phòng Studio — Chưa phân phòng cụ thể")).toBeTruthy()
+    expect(mocks.createBooking).not.toHaveBeenCalled()
   })
 })

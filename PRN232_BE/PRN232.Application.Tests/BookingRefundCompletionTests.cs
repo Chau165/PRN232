@@ -48,15 +48,22 @@ public class BookingRefundCompletionTests
         return await scope.ServiceProvider.GetRequiredService<IBookingRefundCompletionRepository>().CompleteAsync(attemptId, now, default);
     }
 
-    [Fact]
-    public async Task Reconciliation_records_actual_refund_and_cancels_booking_with_notifications_once()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reconciliation_records_actual_refund_and_cancels_booking_with_notifications_once(bool unassigned)
     {
         using var factory = new BookingsApiFactory(); using var client = factory.CreateClient(); var attempt = await SeedAsync(factory, client);
         var clock = new PayoutReconciliationTests.Clock();
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            Assert.False(await db.Rooms.Where(RoomRentabilityPolicy.IsRentableAt(new DateTimeOffset(clock.Now))).AnyAsync(item => item.RoomId == 1));
+            if (unassigned)
+            {
+                await db.Bookings.ExecuteUpdateAsync(setters => setters.SetProperty(item => item.RoomId, (int?)null).SetProperty(item => item.OccupantCount, 1).SetProperty(item => item.MoveInDate, DateOnly.FromDateTime(clock.Now)));
+                Assert.True(await db.Bookings.Where(RoomInventoryPolicy.HoldsCapacityAt(new DateTimeOffset(clock.Now))).AnyAsync());
+            }
+            else Assert.False(await db.Rooms.Where(RoomRentabilityPolicy.IsRentableAt(new DateTimeOffset(clock.Now))).AnyAsync(item => item.RoomId == 1));
         }
         await ReconcileAsync(factory.Services, attempt, clock);
         Assert.True(await CompleteAsync(factory.Services, attempt.PayoutAttemptId, clock.Now.AddMinutes(1)));
@@ -69,7 +76,8 @@ public class BookingRefundCompletionTests
         Assert.Equal(clock.Now, refund.RecordedAtUtc); Assert.Equal(clock.Now.AddMinutes(-1), refund.TransferredAtUtc);
         Assert.Equal("Refunded", request.Status); Assert.Equal(refund.RecordedAtUtc, request.RefundedAtUtc);
         Assert.Equal("Cancelled", booking.Status);
-        Assert.True(await context.Rooms.Where(RoomRentabilityPolicy.IsRentableAt(new DateTimeOffset(clock.Now))).AnyAsync(item => item.RoomId == booking.RoomId));
+        Assert.True(await context.Rooms.Where(RoomRentabilityPolicy.IsRentableAt(new DateTimeOffset(clock.Now))).AnyAsync(item => item.RoomId == 1));
+        if (unassigned) { Assert.Null(booking.RoomId); Assert.False(await context.Bookings.Where(RoomInventoryPolicy.HoldsCapacityAt(new DateTimeOffset(clock.Now))).AnyAsync()); }
         Assert.Equal("Success", (await context.Payments.SingleAsync()).Status); Assert.Equal(3000000m, (await context.Payments.SingleAsync()).Amount);
         Assert.Equal("Succeeded", (await context.PaymentRequests.SingleAsync()).Status);
         var title = $"Đã hoàn cọc và hủy booking #{booking.BookingId}";

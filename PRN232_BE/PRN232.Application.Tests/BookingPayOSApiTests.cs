@@ -180,14 +180,27 @@ public class BookingPayOSApiTests
         Assert.Equal(0, gateway.Creates);
     }
 
-    [Fact]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     // Rebuild 3.2: staff may now cancel a deposited booking during the hold (landlord cancel, refunded
     // outside the system), so this test no longer expects the cancel endpoint to refuse.
-    public async Task Verified_webhook_settles_once_and_keeps_original_deadline()
+    public async Task Verified_webhook_settles_once_and_keeps_original_deadline(bool typeBased)
     {
         var gateway = new Gateway();
         using var factory = new BookingsApiFactory(); using var app = factory.WithWebHostBuilder(builder => Configure(builder, gateway));
-        using var client = app.CreateClient(); var booking = await CreateBookingAsync(client); var link = await CreateLinkAsync(client, booking.BookingId);
+        using var client = app.CreateClient();
+        BookingDto booking;
+        if (typeBased)
+        {
+            await BookingsApiTests.LoginAsync(client, "customer@example.test");
+            var created = await client.PostAsJsonAsync("/api/bookings", new { propertyId = 1, roomTypeId = 1 });
+            Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+            booking = (await created.Content.ReadFromJsonAsync<BookingDto>())!;
+            Assert.Null(booking.RoomId);
+        }
+        else booking = await CreateBookingAsync(client);
+        var link = await CreateLinkAsync(client, booking.BookingId);
         var payload = Signed(gateway);
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Webhook, payload)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync(Webhook, payload)).StatusCode);
@@ -196,11 +209,12 @@ public class BookingPayOSApiTests
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             Assert.Equal("Deposited", (await db.Bookings.SingleAsync()).Status);
             Assert.Equal(booking.ExpiryDate.Ticks, (await db.Bookings.SingleAsync()).ExpiryDate.Ticks);
+            Assert.Equal(booking.RoomId, (await db.Bookings.SingleAsync()).RoomId);
             var payment = await db.Payments.SingleAsync(); Assert.Equal(booking.BookingId, payment.BookingId); Assert.Null(payment.InvoiceId);
             Assert.Equal("PayOS", payment.PaymentMethod); Assert.Equal(3000000, payment.Amount); Assert.NotNull(payment.PaidAtUtc);
             var request = await db.PaymentRequests.SingleAsync(); Assert.Equal("Succeeded", request.Status); Assert.Equal(payment.PaymentId, request.PaymentId);
             Assert.Equal("Settled", (await db.PaymentWebhookReceipts.SingleAsync()).Outcome);
-            Assert.Equal(2, await db.Notifications.CountAsync(item => item.Title.Contains("qua payOS")));
+            Assert.Equal(3, await db.Notifications.CountAsync(item => item.Title.Contains("qua payOS")));
         }
         await BookingsApiTests.LoginAsync(client, "manager@example.test");
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/payment-requests/{link.PaymentRequestId}")).StatusCode);
@@ -287,12 +301,19 @@ public class BookingPayOSApiTests
         Assert.Equal(status, (await db.PaymentRequests.SingleAsync()).Status); Assert.Equal(0, await db.Payments.CountAsync());
     }
 
-    [Fact]
-    public async Task Reconciliation_recovers_creating_then_settles_missing_webhook_without_another_create()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reconciliation_recovers_creating_then_settles_missing_webhook_without_another_create(bool typeBased)
     {
         var gateway = new Gateway { CreateError = new TimeoutException() };
         using var factory = new BookingsApiFactory(); using var app = factory.WithWebHostBuilder(builder => Configure(builder, gateway));
-        using var client = app.CreateClient(); var booking = await CreateBookingAsync(client); var link = await CreateLinkAsync(client, booking.BookingId);
+        using var client = app.CreateClient(); var booking = await CreateBookingAsync(client);
+        if (typeBased) {
+            using var prepare = app.Services.CreateScope();
+            var prepareDb = prepare.ServiceProvider.GetRequiredService<AppDbContext>();
+            await prepareDb.Bookings.Where(row => row.BookingId == booking.BookingId).ExecuteUpdateAsync(setters => setters.SetProperty(row => row.RoomId, (int?)null));
+        } var link = await CreateLinkAsync(client, booking.BookingId);
         await BookingsApiTests.LoginAsync(client, "manager@example.test");
         async Task Due()
         {

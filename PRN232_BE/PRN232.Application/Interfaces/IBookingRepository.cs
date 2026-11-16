@@ -6,6 +6,8 @@ namespace PRN232.Application.Interfaces;
 public interface IBookingRepository
 {
     Task<BookingRoomReadModel?> GetRoomAsync(int roomId);
+    Task<BookingRoomReadModel?> GetRoomTypeAsync(int propertyId, int roomTypeId);
+    Task<List<PRN232.Application.DTOs.EligibleContractRoomDto>> GetEligibleContractRoomsAsync(int bookingId, DateTimeOffset asOfUtc);
     Task<ViewingBookingReadModel?> GetViewingForBookingAsync(int viewingId, int customerId);
     // Adds the booking only if the room is rentable and the customer has no live unpaid booking
     // (B4); both checks run in one transaction under row locks.

@@ -6,10 +6,14 @@ public class Bookings
     {
         get; set;
     }
-    public int RoomId
+    public int? RoomId
     {
         get; set;
     }
+    public int PropertyId { get; set; }
+    public int RoomTypeId { get; set; }
+    public Property? Property { get; set; }
+    public PropertyRoomTypes? PropertyRoomType { get; set; }
     public int CustomerId
     {
         get; set;

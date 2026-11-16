@@ -128,7 +128,7 @@ describe("ManagementBookingsPage", () => {
     expect(mocks.cancelBooking).not.toHaveBeenCalled()
 
     fireEvent.click(releaseBtn)
-    await screen.findByText("Đã giải phóng phòng A101 (booking #9) và thông báo cho khách.")
+    await screen.findByText("Đã giải phóng Phòng A101 (booking #9) và thông báo cho khách.")
     expect(mocks.cancelBooking).toHaveBeenCalledWith("manager-token", 9)
     expect(screen.queryByRole("button", { name: "Nhả phòng (khách mất cọc) #9" })).toBeNull()
 

@@ -17,11 +17,11 @@ public class BookingPaymentLinkRepository(AppDbContext context) : IBookingPaymen
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         await BookingPaymentLock.LockAsync(context, bookingId, cancellationToken);
         var booking = await context.Bookings.AsNoTracking().Where(item => item.BookingId == bookingId)
-            .Select(item => new { item.CustomerId, item.RoomId, item.Status, item.DepositAmount, item.ExpiryDate, HasContract = item.Contract != null })
+            .Select(item => new { item.CustomerId, item.RoomId, item.Status, item.DepositAmount, item.AgreedMonthlyRent, item.ExpiryDate, HasContract = item.Contract != null })
             .SingleOrDefaultAsync(cancellationToken);
         if (booking is null) throw new BookingNotFoundException("Booking does not exist.");
         if (booking.CustomerId != customerId) throw new BookingAuthorizationException("You cannot pay another customer's booking.");
-        if (booking.Status != BookingStatuses.Pending || booking.HasContract || booking.ExpiryDate <= nowUtc ||
+        if (booking.AgreedMonthlyRent is not > 0m || booking.Status != BookingStatuses.Pending || booking.HasContract || booking.ExpiryDate <= nowUtc ||
             await context.Payments.AnyAsync(item => item.BookingId == bookingId && item.Status == PaymentStatuses.Success, cancellationToken) ||
             !await BookingPaymentLock.RoomCanAcceptDepositAsync(context, booking.RoomId, bookingId, nowUtc, cancellationToken))
             throw new BookingStatusConflictException("Booking expired, already paid, contracted or the room is no longer available.");

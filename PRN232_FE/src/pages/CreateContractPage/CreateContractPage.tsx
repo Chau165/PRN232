@@ -1,13 +1,15 @@
+import { ApiError } from "@/api/apiClient"
+import { bookingRoomLabel } from "@/utils/bookingDisplay"
 import { useEffect, useState, type FormEvent } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 import ManagementPage from "@/components/management/ManagementPage"
 import { ManagementLoadingState } from "@/components/management/ManagementState"
 import { useAuth } from "@/auth/AuthContext"
-import { getBooking } from "@/services/bookingService"
+import { getBooking, getEligibleContractRooms } from "@/services/bookingService"
 import { createContract } from "@/services/contractService"
 import { getRoomTypeServices } from "@/services/roomTypeService"
 import { getPropertyServiceRates } from "@/services/serviceRateService"
-import type { BookingDto } from "@/types/booking"
+import type { BookingDto, EligibleContractRoomDto } from "@/types/booking"
 import type { PropertyServiceRateDto } from "@/types/serviceRate"
 import { parsePositiveRouteId, routes } from "@/constants/routes"
 import { bookingErrorMessage, formatBookingDepositTermText } from "@/utils/bookingDisplay"
@@ -51,6 +53,10 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
   const navigate = useNavigate()
   const today = localToday()
   const [booking, setBooking] = useState<BookingDto | null>(null)
+  const [eligibleRooms, setEligibleRooms] = useState<EligibleContractRoomDto[]>([])
+  const [selectedRoomId, setSelectedRoomId] = useState("")
+  const [roomSelectionAcknowledged, setRoomSelectionAcknowledged] = useState(false)
+  const [roomsError, setRoomsError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [startDate, setStartDate] = useState(today)
   const [endDate, setEndDate] = useState("")
@@ -79,6 +85,17 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
       })
     return () => controller.abort()
   }, [accessToken, bookingId])
+
+  useEffect(() => {
+    if (!accessToken || !booking || booking.roomId !== null || booking.status !== "Deposited" || booking.contractId != null) return
+    const controller = new AbortController()
+    setSelectedRoomId("")
+    setRoomSelectionAcknowledged(false)
+    getEligibleContractRooms(accessToken, bookingId, controller.signal)
+      .then((rooms) => { if (!controller.signal.aborted) { setEligibleRooms(rooms); setRoomsError(null) } })
+      .catch((cause: unknown) => { if (!controller.signal.aborted) setRoomsError(bookingErrorMessage(cause, "Không tải được phòng đủ điều kiện.")) })
+    return () => controller.abort()
+  }, [accessToken, bookingId, booking?.roomId, booking?.status, booking?.contractId])
 
   useEffect(() => {
     if (!booking) return
@@ -114,6 +131,11 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
   if (booking.status !== "Deposited") return <Warning message="Chỉ booking đã đặt cọc mới lập được hợp đồng." />
   if (refundBlocksContract(booking.refundStatus)) return <Warning message="Booking đang có yêu cầu hoàn cọc hoặc đã hoàn cọc, chưa thể lập hợp đồng." />
 
+  if (!(booking.agreedMonthlyRent && booking.agreedMonthlyRent > 0)) return <Warning message="Booking chưa có giá thuê thỏa thuận đã xác minh. Cần đối soát trước khi lập hợp đồng; không suy ra giá thuê từ tiền cọc." />
+
+  const needsRoomSelection = booking.roomId === null
+  const availableOptions = eligibleRooms.filter((room) => room.propertyId === booking.propertyId &&
+    room.roomTypeId === booking.roomTypeId && room.maxOccupants >= Math.max(occupantCount, booking.occupantCount ?? 1))
   const bookingOccupants = booking.occupantCount ?? 1
   const selectedServiceMonth = `${startDate.slice(0, 7)}-01`
   const applicableServices = assignedServices.map((service) => ({
@@ -174,11 +196,16 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
       setError("Số người đăng ký khác booking. Vui lòng xác nhận thay đổi số người.")
       return
     }
+    if (needsRoomSelection && (!availableOptions.some((room) => room.roomId === Number(selectedRoomId)) || !roomSelectionAcknowledged)) {
+      setError("Chọn phòng cụ thể và xác nhận khách đồng ý nhận phòng được chọn.")
+      return
+    }
     setSaving(true)
     setError(null)
     try {
       const contract = await createContract(accessToken, {
         bookingId: booking.bookingId,
+        ...(needsRoomSelection ? { roomId: Number(selectedRoomId), customerRoomSelectionAcknowledged: roomSelectionAcknowledged } : {}),
         startDate,
         endDate,
         holderIdentityNumber,
@@ -194,7 +221,13 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
       })
       navigate(routes.managementContracts, { replace: true, state: { createdContractId: contract.contractId } })
     } catch (createError) {
-      setError(bookingErrorMessage(createError, "Booking vừa thay đổi hoặc phòng đã có hợp đồng khác. Vui lòng tải lại trang."))
+      if (createError instanceof ApiError && createError.status === 409 && needsRoomSelection) {
+        setSelectedRoomId("")
+        setRoomSelectionAcknowledged(false)
+        try { setEligibleRooms(await getEligibleContractRooms(accessToken, bookingId)); setRoomsError(null) }
+        catch { setEligibleRooms([]); setRoomsError("Không tải lại được danh sách phòng. Vui lòng tải lại trang.") }
+      }
+      setError(bookingErrorMessage(createError, needsRoomSelection ? "Phòng hoặc booking vừa thay đổi. Danh sách đã được kiểm tra lại; vui lòng chọn phòng và xác nhận lại." : "Booking vừa thay đổi hoặc phòng đã có hợp đồng khác. Vui lòng tải lại trang."))
       setSaving(false)
     }
   }
@@ -203,14 +236,34 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
     <form onSubmit={submit} className="max-w-3xl space-y-7 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm sm:p-8">
       <div className="rounded-xl bg-teal-50 p-4">
         <p className="text-xs font-bold uppercase tracking-wider text-[#087775]">Booking #{booking.bookingId} · Đã đặt cọc</p>
-        <h3 className="mt-2 text-lg font-bold text-slate-800">{booking.propertyName} · Phòng {booking.roomCode}</h3>
+        <h3 className="mt-2 text-lg font-bold text-slate-800">{booking.propertyName} · {bookingRoomLabel(booking)}</h3>
         <p className="mt-2 text-sm text-slate-500">
-          Tiền booking đã nhận: {formatVnd(booking.depositAmount)}. Giá thuê thỏa thuận: {formatVnd(booking.agreedMonthlyRent ?? 0)} / tháng.
+          Tiền booking đã nhận: {formatVnd(booking.depositAmount)}. Giá thuê thỏa thuận: {formatVnd(booking.agreedMonthlyRent)} / tháng.
         </p>
         <p className="mt-1 text-sm text-slate-600">
           {formatBookingDepositTermText(booking)}
         </p>
       </div>
+
+      {needsRoomSelection && (
+        <section className="space-y-3 rounded-xl border border-teal-100 p-4">
+          <label className="block text-sm font-semibold text-slate-700">Chọn phòng cụ thể
+            <select aria-label="Chọn phòng cụ thể" required value={selectedRoomId} disabled={saving || !!roomsError}
+              onChange={(event) => { setSelectedRoomId(event.target.value); setRoomSelectionAcknowledged(false) }}
+              className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-normal">
+              <option value="">— Chọn phòng sau khi trao đổi với khách —</option>
+              {availableOptions.map((room) => <option key={room.roomId} value={room.roomId}>{room.roomCode} · {room.areaSqm} m² · tối đa {room.maxOccupants} người</option>)}
+            </select>
+          </label>
+          {roomsError && <p role="alert" className="text-sm text-rose-700">{roomsError}</p>}
+          {!roomsError && availableOptions.length === 0 && <p role="status" className="text-sm text-amber-700">Hiện chưa có phòng đủ điều kiện. Trao đổi với khách để xử lý hoặc hoàn cọc theo chính sách.</p>}
+          <label className="flex items-start gap-2 text-sm text-slate-700">
+            <input type="checkbox" required checked={roomSelectionAcknowledged} disabled={saving || !selectedRoomId}
+              onChange={(event) => setRoomSelectionAcknowledged(event.target.checked)} />
+            <span>Tôi đã trao đổi với khách và khách đồng ý nhận phòng được chọn. Đây là ghi nhận của Manager, không thay thế chữ ký của khách.</span>
+          </label>
+        </section>
+      )}
 
       <section aria-labelledby="tenant-heading">
         <h3 id="tenant-heading" className="mb-4 text-lg font-bold text-slate-800">Thông tin người thuê</h3>

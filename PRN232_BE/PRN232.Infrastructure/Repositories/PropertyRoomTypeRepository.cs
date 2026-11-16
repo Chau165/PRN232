@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PRN232.Application.Interfaces;
 using PRN232.Application.ReadModels;
+using PRN232.Application.Policies;
 using PRN232.Application.States;
 using PRN232.Domain.Entities;
 using PRN232.Infrastructure.Data;
@@ -83,6 +84,7 @@ public sealed class PropertyRoomTypeRepository : IPropertyRoomTypeRepository
                 item.MonthlyRent,
                 item.IsActive,
                 _context.Rooms.Count(room => room.PropertyId == item.PropertyId && room.RoomTypeId == item.RoomTypeId),
-                rentableRooms.Count(room => room.PropertyId == item.PropertyId && room.RoomTypeId == item.RoomTypeId)));
+                Math.Max(0, rentableRooms.Count(room => room.PropertyId == item.PropertyId && room.RoomTypeId == item.RoomTypeId) -
+                    item.Bookings.AsQueryable().Where(RoomInventoryPolicy.HoldsCapacityAt(asOfUtc)).Count(booking => booking.RoomId == null))));
     }
 }

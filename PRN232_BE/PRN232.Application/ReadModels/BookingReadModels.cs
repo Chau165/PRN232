@@ -1,6 +1,6 @@
 namespace PRN232.Application.ReadModels;
 
-public sealed record BookingRoomReadModel(int RoomId, string RoomCode, int OwnerId, decimal MonthlyRent, int MaxOccupants = 1);
+public sealed record BookingRoomReadModel(int? RoomId, string RoomCode, int OwnerId, decimal MonthlyRent, int MaxOccupants = 1, int PropertyId = 0, int RoomTypeId = 0);
 
 public sealed record BookingPaymentReadModel(
     int BookingId,
@@ -13,7 +13,7 @@ public sealed record BookingPaymentReadModel(
 
 public sealed record BookingReadModel(
     int BookingId,
-    int RoomId,
+    int? RoomId,
     string RoomCode,
     int PropertyId,
     string PropertyName,

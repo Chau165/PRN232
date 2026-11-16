@@ -4,6 +4,7 @@ namespace PRN232.Application.Interfaces;
 
 public interface IBookingService
 {
+    Task<List<EligibleContractRoomDto>> GetEligibleContractRoomsAsync(int id, int userId, string role);
     Task<BookingDto> CreateAsync(CreateBookingDto dto, int customerId);
     Task<List<BookingDto>> GetAllAsync(int userId, string role, string? status);
     Task<BookingDto?> GetByIdAsync(int id, int userId, string role);

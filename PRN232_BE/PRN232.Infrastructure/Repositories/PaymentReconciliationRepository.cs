@@ -14,9 +14,9 @@ public class PaymentReconciliationRepository(AppDbContext context) : IPaymentRec
     public Task<PaymentReconciliationReadModel?> GetAsync(int id, CancellationToken cancellationToken) =>
         context.PaymentRequests.AsNoTracking().Where(item => item.PaymentRequestId == id && item.Provider == "PayOS")
             .Select(item => new PaymentReconciliationReadModel(item.PaymentRequestId, item.OrderCode,
-                item.InvoiceId.HasValue ? item.Invoice!.Contract!.Room!.Property!.OwnerId : item.Booking!.Room!.Property!.OwnerId,
+                item.InvoiceId.HasValue ? item.Invoice!.Contract!.Room!.Property!.OwnerId : item.Booking!.Property!.OwnerId,
                 item.Status, item.LastErrorCode, item.UpdatedAtUtc,
-                item.InvoiceId.HasValue ? item.Invoice!.Contract!.Room!.PropertyId : item.Booking!.Room!.PropertyId))
+                item.InvoiceId.HasValue ? item.Invoice!.Contract!.Room!.PropertyId : item.Booking!.PropertyId))
             .SingleOrDefaultAsync(cancellationToken);
 
     public Task<List<int>> FindDueAsync(DateTime cutoffUtc, int limit, CancellationToken cancellationToken) =>
@@ -60,7 +60,7 @@ public class PaymentReconciliationRepository(AppDbContext context) : IPaymentRec
         else
         {
             var booking = await context.Bookings.AsNoTracking().Where(item => item.BookingId == target.BookingId)
-                .Select(item => new { item.Status, item.CustomerId, item.Room!.PropertyId, item.DepositAmount, HasContract = item.Contract != null })
+                .Select(item => new { item.Status, item.CustomerId, item.PropertyId, item.DepositAmount, HasContract = item.Contract != null })
                 .SingleAsync(cancellationToken);
             customerId = booking.CustomerId; propertyId = booking.PropertyId; amount = booking.DepositAmount;
             payable = booking.Status == BookingStatuses.Pending && !booking.HasContract;

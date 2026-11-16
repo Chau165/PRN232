@@ -27,7 +27,9 @@ public static class RoomRentabilityPolicy
                 (ignoredBookingId == null || booking.BookingId != ignoredBookingId) && ((booking.Status == BookingStatuses.Deposited &&
                     (booking.Contract == null || booking.Contract.Status != ContractStatuses.Terminated)) ||
                 (booking.Status == BookingStatuses.Pending && booking.ExpiryDate > instantUtc) ||
-                !RecognizedBookingStatuses.Contains(booking.Status))) &&
+                !RecognizedBookingStatuses.Contains(booking.Status) ||
+                booking.PaymentRequests.Any(request => request.Status == PaymentRequestStatuses.Creating ||
+                    request.Status == PaymentRequestStatuses.Pending || request.Status == PaymentRequestStatuses.RequiresReview))) &&
             !room.Contracts.Any(contract =>
                 contract.Status == ContractStatuses.Active ||
                 !RecognizedContractStatuses.Contains(contract.Status));

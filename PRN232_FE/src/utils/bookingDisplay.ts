@@ -176,3 +176,7 @@ export function bookingErrorMessage(error: unknown, conflictMessage: string) {
   if (error instanceof ApiError && error.status === 409) return conflictMessage
   return error instanceof Error ? error.message : "Yêu cầu không thành công. Vui lòng thử lại."
 }
+
+export function bookingRoomLabel(booking: Pick<BookingDto, "roomId" | "roomCode" | "roomTypeName">) {
+  return booking.roomId !== null ? `Phòng ${booking.roomCode}` : `Loại phòng ${booking.roomTypeName ?? ""} — Chưa phân phòng cụ thể`
+}

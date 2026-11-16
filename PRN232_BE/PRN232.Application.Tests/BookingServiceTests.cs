@@ -550,6 +550,9 @@ public class BookingServiceTests
             get; private set;
         }
 
+        public Task<BookingRoomReadModel?> GetRoomTypeAsync(int propertyId, int roomTypeId) => Task.FromResult<BookingRoomReadModel?>(null);
+        public Task<List<EligibleContractRoomDto>> GetEligibleContractRoomsAsync(int bookingId, DateTimeOffset asOfUtc) => Task.FromResult(new List<EligibleContractRoomDto>());
+
         public Task<BookingRoomReadModel?> GetRoomAsync(int roomId) =>
             Task.FromResult(Room?.RoomId == roomId ? Room : null);
 

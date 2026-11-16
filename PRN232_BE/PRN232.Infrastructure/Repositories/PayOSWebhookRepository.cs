@@ -194,7 +194,9 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
     {
         var booking = await context.Bookings.AsNoTracking().Where(item => item.BookingId == request.BookingId)
             .Select(item => new { item.BookingId, item.RoomId, item.CustomerId, item.DepositAmount, item.Status, item.ExpiryDate,
-                HasContract = item.Contract != null, item.Room!.RoomCode, item.Room.Property!.OwnerId }).SingleAsync(cancellationToken);
+                HasContract = item.Contract != null,
+                RoomDescription = item.Room != null ? "Phòng " + item.Room.RoomCode : "Loại phòng " + item.PropertyRoomType!.RoomType!.TypeName + " — Chưa phân phòng cụ thể",
+                item.Property!.OwnerId, item.PropertyId }).SingleAsync(cancellationToken);
         var validTime = PayOSTransactionTime.TryGetUtc(receipt.TransactionDateTime, out var paidAtUtc) &&
             BookingPaymentTimePolicy.IsAfterCreation(paidAtUtc, request.CreatedAtUtc) && request.ExpiresAtUtc.HasValue && paidAtUtc < request.ExpiresAtUtc &&
             paidAtUtc < booking.ExpiryDate && paidAtUtc <= receipt.ReceivedAtUtc;
@@ -239,9 +241,12 @@ public class PayOSWebhookRepository(AppDbContext context) : IPayOSWebhookReposit
         request.LastErrorCode = null;
         request.LastErrorMessage = null;
         receipt.Outcome = "Settled";
-        foreach (var userId in new[] { request.CustomerId, booking.OwnerId }.Distinct())
+        var managerIds = await context.PropertyManagerAssignments.Where(assignment => assignment.PropertyId == booking.PropertyId &&
+            assignment.Manager!.IsActive && assignment.Manager.Role!.RoleName == RoleNames.Manager)
+            .Select(assignment => assignment.ManagerId).ToListAsync(cancellationToken);
+        foreach (var userId in managerIds.Concat(new[] { request.CustomerId, booking.OwnerId }).Distinct())
             context.Notifications.Add(new Notifications { UserId = userId, Type = NotificationTypes.Booking, IsRead = false,
-                Title = $"Đã nhận cọc booking #{booking.BookingId} - Phòng {booking.RoomCode} qua payOS" });
+                Title = $"Đã nhận cọc booking #{booking.BookingId} - {booking.RoomDescription} qua payOS" });
     }
 
     private static bool Equivalent(PaymentWebhookReceipts first, PaymentWebhookReceipts second) =>

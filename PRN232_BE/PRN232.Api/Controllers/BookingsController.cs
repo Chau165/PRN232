@@ -68,6 +68,17 @@ public class BookingsController : ControllerBase
         }
     }
 
+    [HttpGet("{id:int}/eligible-contract-rooms")]
+    [Authorize(Roles = RoleNames.Manager)]
+    public async Task<ActionResult<List<EligibleContractRoomDto>>> EligibleContractRooms(int id)
+    {
+        if (!TryGetCurrentUser(out var userId, out var role)) return Unauthorized();
+        try { return Ok(await _bookingService.GetEligibleContractRoomsAsync(id, userId, role)); }
+        catch (BookingNotFoundException exception) { return NotFound(new ProblemDetails { Detail = exception.Message }); }
+        catch (BookingAuthorizationException exception) { return ForbidWithProblem(exception.Message); }
+        catch (BookingStatusConflictException exception) { return Conflict(new ProblemDetails { Detail = exception.Message }); }
+    }
+
     [HttpPost]
     [Authorize(Roles = RoleNames.Customer)]
     [EnableRateLimiting("BookingPolicy")]
@@ -111,6 +122,14 @@ public class BookingsController : ControllerBase
                 Detail = exception.Message,
                 Status = StatusCodes.Status400BadRequest
             });
+        }
+        catch (BookingStatusConflictException exception)
+        {
+            return Conflict(new ProblemDetails { Detail = exception.Message });
+        }
+        catch (BookingBusinessRuleException exception)
+        {
+            return BadRequest(new ProblemDetails { Detail = exception.Message });
         }
         catch (PhoneNumberRequiredException exception)
         {

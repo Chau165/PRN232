@@ -16,7 +16,9 @@ export function getBooking(accessToken: string, bookingId: number, signal?: Abor
 }
 
 export interface CreateBookingRequest {
-  roomId: number
+  roomId?: number | null
+  propertyId?: number
+  roomTypeId?: number
   viewingId?: number
   moveInDate?: string | null
   occupantCount?: number | null
@@ -48,4 +50,10 @@ export function cancelBooking(accessToken: string, bookingId: number) {
 
 export function markBookingDepositReturned(accessToken: string, bookingId: number) {
   return apiRequest<BookingDto>(`/bookings/${bookingId}/deposit-returned`, { accessToken, method: "POST" })
+}
+
+export function getEligibleContractRooms(accessToken: string, bookingId: number, signal?: AbortSignal) {
+  return apiRequest<import("@/types/booking").EligibleContractRoomDto[]>(`/bookings/${bookingId}/eligible-contract-rooms`, {
+    accessToken, signal, cache: "no-store",
+  })
 }

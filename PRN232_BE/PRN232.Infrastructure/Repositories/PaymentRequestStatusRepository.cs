@@ -14,12 +14,12 @@ public class PaymentRequestStatusRepository(AppDbContext context) : IPaymentRequ
             .Where(request => customerId == null || request.CustomerId == customerId)
             .Where(request => managerId == null || context.PropertyManagerAssignments.Any(assignment =>
                 assignment.PropertyId == (request.InvoiceId.HasValue
-                    ? request.Invoice!.Contract!.Room!.PropertyId : request.Booking!.Room!.PropertyId) &&
+                    ? request.Invoice!.Contract!.Room!.PropertyId : request.Booking!.PropertyId) &&
                 assignment.ManagerId == managerId && assignment.Manager!.IsActive &&
                 assignment.Manager.Role!.RoleName == RoleNames.Manager))
             .Select(request => new PaymentRequestStatusReadModel(
                 request.PaymentRequestId, request.InvoiceId, request.CustomerId,
-                request.InvoiceId.HasValue ? request.Invoice!.Contract!.Room!.PropertyId : request.Booking!.Room!.PropertyId,
+                request.InvoiceId.HasValue ? request.Invoice!.Contract!.Room!.PropertyId : request.Booking!.PropertyId,
                 request.Status, request.InvoiceId.HasValue ? request.Invoice!.Status : null, request.Amount, request.Currency,
                 request.CreatedAtUtc, request.UpdatedAtUtc, request.ExpiresAtUtc, request.ConfirmedAtUtc,
                 request.PaymentId, request.Payment == null ? null : request.Payment.PaidAtUtc, request.CheckoutUrl,

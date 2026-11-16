@@ -59,13 +59,21 @@ public class BookingService : IBookingService
         await PhoneNumberRequiredException.EnsureAsync(
             _contactLookup, customerId, PhoneNumberRequiredException.SelfMessage);
 
-        var room = await _repository.GetRoomAsync(dto.RoomId);
+        if (dto.RoomId is null && (dto.PropertyId is not > 0 || dto.RoomTypeId is not > 0))
+            throw new BookingBusinessRuleException("PropertyId and RoomTypeId are required for a room-type booking.");
+        var room = dto.RoomId.HasValue
+            ? await _repository.GetRoomAsync(dto.RoomId.Value)
+            : await _repository.GetRoomTypeAsync(dto.PropertyId!.Value, dto.RoomTypeId!.Value);
         if (room is null)
         {
             throw new BookingNotFoundException("Room does not exist.");
         }
 
+        if (dto.PropertyId.HasValue && dto.PropertyId != room.PropertyId ||
+            dto.RoomTypeId.HasValue && dto.RoomTypeId != room.RoomTypeId)
+            throw new BookingBusinessRuleException("The room does not belong to the requested property and room type.");
         var occupantCount = dto.OccupantCount ?? 1;
+        if (occupantCount < 1) throw new BookingBusinessRuleException("Occupant count must be positive.");
         if (occupantCount > room.MaxOccupants)
         {
             throw new BookingOccupancyExceededException(BookingRules.OccupancyExceeded(room.RoomCode, room.MaxOccupants));
@@ -76,15 +84,19 @@ public class BookingService : IBookingService
             var viewing = await _repository.GetViewingForBookingAsync(dto.ViewingId.Value, customerId);
             if (viewing is null ||
                 viewing.Status != ViewingStatuses.Approved ||
-                viewing.RoomId != dto.RoomId)
+                viewing.PropertyId != room.PropertyId || viewing.RoomTypeId != room.RoomTypeId ||
+                dto.RoomId.HasValue && viewing.RoomId != dto.RoomId)
             {
                 throw new BookingStatusConflictException(
-                    "Booking from a viewing requires your approved viewing and its confirmed physical room.");
+                    "Booking requires your approved viewing for the same property and room type.");
             }
         }
 
         var now = _timeProvider.GetUtcNow();
         var booking = CreateBookingEntity(room, customerId, now, dto.ViewingId);
+        booking.RoomId = dto.RoomId;
+        booking.PropertyId = room.PropertyId;
+        booking.RoomTypeId = room.RoomTypeId;
         booking.MoveInDate = dto.MoveInDate ?? BookingRules.Today(_timeProvider);
         booking.OccupantCount = occupantCount;
         booking.DepositAppliesToFirstMonth = _depositSettings.AppliesToFirstMonth;
@@ -119,6 +131,17 @@ public class BookingService : IBookingService
             await _realtimePublisher.PublishCreatedAsync([pendingNotification]);
         }
         return await ToDtoAsync(created);
+    }
+
+    public async Task<List<EligibleContractRoomDto>> GetEligibleContractRoomsAsync(int id, int userId, string role)
+    {
+        if (role != RoleNames.Manager) throw new BookingAuthorizationException("Only assigned Managers may allocate rooms.");
+        var booking = await GetByIdAsync(id, userId, role);
+        if (booking is null) throw new BookingNotFoundException("Booking does not exist.");
+        if (booking.Status != BookingStatuses.Deposited || booking.ContractId != null ||
+            booking.RefundStatus is not (null or BookingRefundRequestStatuses.Rejected))
+            throw new BookingStatusConflictException("Booking is not eligible for contract creation.");
+        return await _repository.GetEligibleContractRoomsAsync(id, _timeProvider.GetUtcNow());
     }
 
     public async Task<List<BookingDto>> GetAllAsync(int userId, string role, string? status)

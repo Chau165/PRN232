@@ -4,7 +4,7 @@ namespace PRN232.Application.ReadModels;
 
 public sealed record ContractBookingReadModel(
     int BookingId,
-    int RoomId,
+    int? RoomId,
     string RoomCode,
     int CustomerId,
     int OwnerId,
@@ -64,7 +64,9 @@ public sealed record ContractCreationCommand(
     Contracts Contract,
     IReadOnlyList<ContractOccupants> Occupants,
     IdentityDocuments PendingHolderIdentityDocument,
-    bool OccupantCountChangeConfirmed);
+    bool OccupantCountChangeConfirmed,
+    bool CustomerRoomSelectionAcknowledged = false,
+    DateTime? RoomSelectionConfirmedAtUtc = null);
 
 public enum ContractCreationStatus
 {

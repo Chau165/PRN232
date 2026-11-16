@@ -343,7 +343,13 @@ namespace PRN232.Infrastructure.Migrations
                     b.Property<int?>("OccupantCount")
                         .HasColumnType("integer");
 
-                    b.Property<int>("RoomId")
+                    b.Property<int>("PropertyId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("RoomId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RoomTypeId")
                         .HasColumnType("integer");
 
                     b.Property<string>("Status")
@@ -359,18 +365,24 @@ namespace PRN232.Infrastructure.Migrations
 
                     b.HasIndex("DepositReturnedById");
 
-                    b.HasIndex("RoomId");
-
                     b.HasIndex("ViewingId")
                         .IsUnique()
                         .HasDatabaseName("UX_Bookings_ViewingId")
                         .HasFilter("\"ViewingId\" IS NOT NULL");
 
+                    b.HasIndex("PropertyId", "RoomTypeId", "RoomId");
+
+                    b.HasIndex("PropertyId", "RoomTypeId", "Status", "ExpiryDate");
+
                     b.ToTable("Bookings", null, t =>
                         {
                             t.HasCheckConstraint("CK_Bookings_AgreedMonthlyRent_Positive", "\"AgreedMonthlyRent\" IS NULL OR \"AgreedMonthlyRent\" > 0");
 
+                            t.HasCheckConstraint("CK_Bookings_Location_Positive", "\"PropertyId\" > 0 AND \"RoomTypeId\" > 0");
+
                             t.HasCheckConstraint("CK_Bookings_OccupantCount_Range", "\"OccupantCount\" IS NULL OR \"OccupantCount\" BETWEEN 1 AND 10");
+
+                            t.HasCheckConstraint("CK_Bookings_Unassigned_Terms", "\"RoomId\" IS NOT NULL OR (\"AgreedMonthlyRent\" IS NOT NULL AND \"AgreedMonthlyRent\" > 0 AND \"DepositAmount\" > 0 AND \"OccupantCount\" IS NOT NULL AND \"MoveInDate\" IS NOT NULL)");
                         });
                 });
 
@@ -2265,10 +2277,10 @@ namespace PRN232.Infrastructure.Migrations
                         .HasForeignKey("DepositReturnedById")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("PRN232.Domain.Entities.Rooms", "Room")
-                        .WithMany("Bookings")
-                        .HasForeignKey("RoomId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                    b.HasOne("PRN232.Domain.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("PRN232.Domain.Entities.ViewingSchedules", "Viewing")
@@ -2276,9 +2288,25 @@ namespace PRN232.Infrastructure.Migrations
                         .HasForeignKey("ViewingId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("PRN232.Domain.Entities.PropertyRoomTypes", "PropertyRoomType")
+                        .WithMany("Bookings")
+                        .HasForeignKey("PropertyId", "RoomTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Rooms", "Room")
+                        .WithMany("Bookings")
+                        .HasForeignKey("PropertyId", "RoomTypeId", "RoomId")
+                        .HasPrincipalKey("PropertyId", "RoomTypeId", "RoomId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Customer");
 
                     b.Navigation("DepositReturnedBy");
+
+                    b.Navigation("Property");
+
+                    b.Navigation("PropertyRoomType");
 
                     b.Navigation("Room");
 
@@ -3113,6 +3141,8 @@ namespace PRN232.Infrastructure.Migrations
 
             modelBuilder.Entity("PRN232.Domain.Entities.PropertyRoomTypes", b =>
                 {
+                    b.Navigation("Bookings");
+
                     b.Navigation("Rooms");
                 });
 

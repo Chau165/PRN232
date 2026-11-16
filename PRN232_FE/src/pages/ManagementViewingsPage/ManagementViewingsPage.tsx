@@ -218,7 +218,7 @@ export default function ManagementViewingsPage() {
                         <small className="mt-1 block text-amber-700">Chưa xác nhận phòng cụ thể.</small>
                       ) : (
                         <Link to={`${availableRoomsPath(viewing.propertyId)}?roomId=${viewing.roomId}`} className="mt-1 block text-[#087775] underline underline-offset-2">
-                          Phòng {viewing.roomCode} · Xem phòng
+                          Phòng đã xem {viewing.roomCode} · Không giữ riêng phòng
                         </Link>
                       )}
                     </span>

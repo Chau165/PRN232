@@ -121,12 +121,6 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
 
-        if (_context.Database.IsNpgsql())
-        {
-            await _context.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT 1 FROM \"ViewingSchedules\" WHERE \"ViewingId\" = {viewingId} FOR UPDATE");
-        }
-
         var viewing = await _context.ViewingSchedules
             .Where(item => item.ViewingId == viewingId)
             .Select(item => new { item.PropertyId, item.RoomTypeId })
@@ -134,6 +128,13 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
         if (viewing is null)
         {
             return false;
+        }
+
+        await RoomInventoryQueries.LockAsync(_context, viewing.PropertyId, viewing.RoomTypeId);
+        if (_context.Database.IsNpgsql())
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"ViewingSchedules\" WHERE \"ViewingId\" = {viewingId} FOR UPDATE");
         }
 
         if (_context.Database.IsNpgsql())

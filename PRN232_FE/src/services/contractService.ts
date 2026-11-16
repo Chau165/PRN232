@@ -48,6 +48,8 @@ export function createContract(
   accessToken: string,
   request: {
     bookingId: number
+    roomId?: number
+    customerRoomSelectionAcknowledged?: boolean
     startDate: string
     endDate: string
     holderIdentityNumber: string

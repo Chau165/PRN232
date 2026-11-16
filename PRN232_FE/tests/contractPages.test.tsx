@@ -13,6 +13,7 @@ import { addIsoDays } from "@/utils/moveOutNoticeValidation"
 
 const mocks = vi.hoisted(() => ({
   getBooking: vi.fn(),
+  getEligibleContractRooms: vi.fn(),
   getRoomTypeServices: vi.fn(),
   getPropertyServiceRates: vi.fn(),
   getContracts: vi.fn(),
@@ -52,7 +53,7 @@ vi.mock("@/auth/AuthContext", () => ({
 vi.mock("@/components/management/ManagementPage", () => ({
   default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
 }))
-vi.mock("@/services/bookingService", () => ({ getBooking: mocks.getBooking }))
+vi.mock("@/services/bookingService", () => ({ getBooking: mocks.getBooking, getEligibleContractRooms: mocks.getEligibleContractRooms }))
 vi.mock("@/services/roomTypeService", () => ({ getRoomTypeServices: mocks.getRoomTypeServices }))
 vi.mock("@/services/serviceRateService", () => ({ getPropertyServiceRates: mocks.getPropertyServiceRates }))
 vi.mock("@/services/contractService", () => ({
@@ -153,6 +154,11 @@ function renderCreatePage() {
 
 beforeEach(() => {
   mocks.role = "MANAGER"
+  mocks.getEligibleContractRooms.mockResolvedValue([
+    { roomId: 3, roomCode: "A103", propertyId: 1, roomTypeId: 4, maxOccupants: 3, areaSqm: 24 },
+    { roomId: 4, roomCode: "Wrong type", propertyId: 1, roomTypeId: 9, maxOccupants: 3, areaSqm: 24 },
+    { roomId: 5, roomCode: "Wrong property", propertyId: 9, roomTypeId: 4, maxOccupants: 3, areaSqm: 24 },
+  ])
   mocks.getBooking.mockResolvedValue(booking())
   mocks.getRoomTypeServices.mockResolvedValue([])
   mocks.getPropertyServiceRates.mockResolvedValue([])
@@ -1318,5 +1324,52 @@ describe("ManagementContractsPage", () => {
         /Đã chuyển sang hợp đồng #18/,
       ),
     ).toBeTruthy()
+  })
+})
+
+describe("room-type contract allocation", () => {
+  async function fillForm() {
+    fireEvent.change(screen.getByLabelText(/CCCD người đứng tên/), { target: { value: "079201000001" } })
+    fireEvent.click(screen.getByRole("button", { name: "6 tháng" }))
+    fireEvent.click(screen.getByRole("checkbox", { name: /Tôi xác nhận đã đối chiếu/ }))
+  }
+
+  it("requires explicit room selection and customer agreement before sending the selected room", async () => {
+    mocks.getBooking.mockResolvedValue(booking({ roomId: null, roomCode: "" }))
+    renderCreatePage()
+    await screen.findByRole("option", { name: /A103/ })
+    const picker = screen.getByRole("combobox", { name: "Chọn phòng cụ thể" }) as HTMLSelectElement
+    expect(picker.value).toBe("")
+    expect(screen.queryByRole("option", { name: /Wrong/ })).toBeNull()
+    await fillForm()
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận hợp đồng" }))
+    expect(mocks.createContract).not.toHaveBeenCalled()
+    fireEvent.change(picker, { target: { value: "3" } })
+    fireEvent.click(screen.getByRole("checkbox", { name: /Tôi đã trao đổi với khách/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận hợp đồng" }))
+    await screen.findByText("contract list page")
+    expect(mocks.createContract).toHaveBeenCalledWith("manager-token", expect.objectContaining({ roomId: 3, customerRoomSelectionAcknowledged: true }))
+  })
+
+  it("refreshes rooms after HTTP 409 and requires selection and acknowledgement again", async () => {
+    mocks.getBooking.mockResolvedValue(booking({ roomId: null, roomCode: "" }))
+    mocks.createContract.mockRejectedValueOnce(new ApiError("allocation conflict", { status: 409 }))
+    renderCreatePage()
+    await screen.findByRole("option", { name: /A103/ })
+    await fillForm()
+    fireEvent.change(screen.getByRole("combobox", { name: "Chọn phòng cụ thể" }), { target: { value: "3" } })
+    fireEvent.click(screen.getByRole("checkbox", { name: /Tôi đã trao đổi với khách/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận hợp đồng" }))
+    await waitFor(() => expect(mocks.getEligibleContractRooms).toHaveBeenCalledTimes(2))
+    expect((screen.getByRole("combobox", { name: "Chọn phòng cụ thể" }) as HTMLSelectElement).value).toBe("")
+    expect((screen.getByRole("checkbox", { name: /Tôi đã trao đổi với khách/ }) as HTMLInputElement).checked).toBe(false)
+    expect(screen.queryByText("contract list page")).toBeNull()
+  })
+
+  it("blocks unknown historical agreed rent instead of rendering zero or using the deposit", async () => {
+    mocks.getBooking.mockResolvedValue(booking({ agreedMonthlyRent: null }))
+    renderCreatePage()
+    expect(await screen.findByText(/Booking chưa có giá thuê thỏa thuận đã xác minh/)).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Xác nhận hợp đồng" })).toBeNull()
   })
 })

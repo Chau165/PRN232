@@ -1,3 +1,4 @@
+import { bookingRoomLabel } from "@/utils/bookingDisplay"
 import { useState } from "react"
 import { Link } from "react-router"
 import { useAuth } from "@/auth/AuthContext"
@@ -73,11 +74,11 @@ export default function ManagementBookingsPage() {
   const release = async (booking: BookingDto) => {
     if (cancellingId !== null) return
     const holdLabel = formatHoldUntilDate(booking.holdUntilUtc)
-    const question = `Giải phóng phòng ${booking.roomCode} (booking #${booking.bookingId}) vì khách ${booking.customerName} quá hạn nhận phòng${holdLabel ? ` (${holdLabel})` : ""}? Phòng sẽ mở cho người khác thuê và tiền cọc không được hoàn.`
+    const question = `Giải phóng ${bookingRoomLabel(booking)} (booking #${booking.bookingId}) vì khách ${booking.customerName} quá hạn nhận phòng${holdLabel ? ` (${holdLabel})` : ""}? Phòng sẽ mở cho người khác thuê và tiền cọc không được hoàn.`
     if (!window.confirm(question)) return
     try {
       await cancelById(booking.bookingId)
-      setToast(`Đã giải phóng phòng ${booking.roomCode} (booking #${booking.bookingId}) và thông báo cho khách.`)
+      setToast(`Đã giải phóng ${bookingRoomLabel(booking)} (booking #${booking.bookingId}) và thông báo cho khách.`)
     } catch (releaseError) {
       setToast(bookingErrorMessage(releaseError, "Booking vừa đổi trạng thái hoặc khách vừa xin hoàn cọc, vui lòng tải lại trang."))
     }
@@ -132,7 +133,7 @@ export default function ManagementBookingsPage() {
                     <span className="text-[13px] text-slate-600">{booking.customerName}</span>
                     <span className="text-[13px] text-slate-600">
                       {booking.propertyName}
-                      <small className="block text-slate-400">Phòng {booking.roomCode}</small>
+                      <small className="block text-slate-400">{bookingRoomLabel(booking)}</small>
                       {formatBookingMoveInSummary(booking) && (
                         <small className="block text-slate-500">{formatBookingMoveInSummary(booking)}</small>
                       )}
@@ -243,7 +244,7 @@ export default function ManagementBookingsPage() {
             </h2>
             <p className="mt-3 text-sm text-slate-700">
               Khách <strong>{confirmingReturnBooking.customerName}</strong> ({confirmingReturnBooking.customerPhone}) · Booking #
-              {confirmingReturnBooking.bookingId} · Phòng {confirmingReturnBooking.roomCode}
+              {confirmingReturnBooking.bookingId} · {bookingRoomLabel(confirmingReturnBooking)}
             </p>
             <p className="mt-3 text-2xl font-extrabold text-[#087775]">
               {formatVnd(confirmingReturnBooking.depositAmount)}

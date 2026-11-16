@@ -30,6 +30,37 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         _dataProtectionProvider = dataProtectionProvider;
     }
 
+    private void CompleteLegacyBookingLocations()
+    {
+        foreach (var entry in ChangeTracker.Entries<Bookings>().Where(entry => entry.State == EntityState.Added &&
+                     entry.Entity.RoomId.HasValue && (entry.Entity.PropertyId == 0 || entry.Entity.RoomTypeId == 0)).ToArray())
+        {
+            var room = entry.Entity.Room ?? Rooms.Find(entry.Entity.RoomId!.Value);
+            if (room is null) continue;
+            if (entry.Entity.PropertyId == 0) entry.Entity.PropertyId = room.PropertyId;
+            if (entry.Entity.RoomTypeId == 0) entry.Entity.RoomTypeId = room.RoomTypeId;
+        }
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        CompleteLegacyBookingLocations();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        foreach (var entry in ChangeTracker.Entries<Bookings>().Where(entry => entry.State == EntityState.Added &&
+                     entry.Entity.RoomId.HasValue && (entry.Entity.PropertyId == 0 || entry.Entity.RoomTypeId == 0)).ToArray())
+        {
+            var room = entry.Entity.Room ?? await Rooms.FindAsync([entry.Entity.RoomId!.Value], cancellationToken);
+            if (room is null) continue;
+            if (entry.Entity.PropertyId == 0) entry.Entity.PropertyId = room.PropertyId;
+            if (entry.Entity.RoomTypeId == 0) entry.Entity.RoomTypeId = room.RoomTypeId;
+        }
+        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
     // Data Protection key ring (A9): persisted in the database so encrypted CCCD numbers stay
     // readable after each Railway redeploy.
     public DbSet<DataProtectionKey> DataProtectionKeys
@@ -318,12 +349,22 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         modelBuilder.Entity<Bookings>().HasKey(x => x.BookingId);
         modelBuilder.Entity<Bookings>(entity =>
         {
+            entity.HasIndex(booking => new { booking.PropertyId, booking.RoomTypeId, booking.Status, booking.ExpiryDate });
+            entity.HasOne(booking => booking.Property).WithMany()
+                .HasForeignKey(booking => booking.PropertyId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(booking => booking.PropertyRoomType).WithMany(type => type.Bookings)
+                .HasForeignKey(booking => new { booking.PropertyId, booking.RoomTypeId }).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(booking => booking.Room).WithMany(room => room.Bookings)
+                .HasForeignKey(booking => new { booking.PropertyId, booking.RoomTypeId, booking.RoomId })
+                .HasPrincipalKey(room => new { room.PropertyId, room.RoomTypeId, room.RoomId }).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(booking => booking.ViewingId)
                 .IsUnique()
                 .HasDatabaseName("UX_Bookings_ViewingId")
                 .HasFilter("\"ViewingId\" IS NOT NULL");
             entity.ToTable("Bookings", table =>
             {
+                table.HasCheckConstraint("CK_Bookings_Location_Positive", "\"PropertyId\" > 0 AND \"RoomTypeId\" > 0");
+                table.HasCheckConstraint("CK_Bookings_Unassigned_Terms", "\"RoomId\" IS NOT NULL OR (\"AgreedMonthlyRent\" IS NOT NULL AND \"AgreedMonthlyRent\" > 0 AND \"DepositAmount\" > 0 AND \"OccupantCount\" IS NOT NULL AND \"MoveInDate\" IS NOT NULL)");
                 table.HasCheckConstraint(
                     "CK_Bookings_AgreedMonthlyRent_Positive",
                     "\"AgreedMonthlyRent\" IS NULL OR \"AgreedMonthlyRent\" > 0");

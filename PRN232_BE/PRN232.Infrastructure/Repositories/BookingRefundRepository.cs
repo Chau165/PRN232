@@ -17,7 +17,7 @@ public sealed class BookingRefundRepository(AppDbContext context) : IBookingRefu
         // Scope remains in the final query too, so reassignment cannot leak a manager's old property history.
         var bookings = context.Bookings.Where(item => item.BookingId == bookingId &&
             (customerId == null || item.CustomerId == customerId) &&
-            (managerId == null || item.Room!.Property!.ManagerAssignments.Any(assignment => assignment.ManagerId == managerId &&
+            (managerId == null || item.Property!.ManagerAssignments.Any(assignment => assignment.ManagerId == managerId &&
                 assignment.Manager!.IsActive && assignment.Manager.Role!.RoleName == RoleNames.Manager)));
         if (!await bookings.AnyAsync(cancellationToken)) return null;
         return await context.BookingRefundRequests.AsNoTracking().Where(item => bookings.Any(booking => booking.BookingId == item.BookingId))

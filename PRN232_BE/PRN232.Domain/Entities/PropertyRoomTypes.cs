@@ -9,5 +9,6 @@ public class PropertyRoomTypes
 
     public Property? Property { get; set; }
     public RoomTypes? RoomType { get; set; }
+    public ICollection<Bookings> Bookings { get; set; } = new List<Bookings>();
     public ICollection<Rooms> Rooms { get; set; } = new List<Rooms>();
 }

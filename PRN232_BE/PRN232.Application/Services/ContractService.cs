@@ -140,6 +140,11 @@ public class ContractService : IContractService
             throw new ContractConflictException(
                 "This historical booking has no verified agreed rent. Reconcile the accepted rent before creating a contract.");
         }
+        if (booking.RoomId.HasValue && dto.RoomId.HasValue && dto.RoomId != booking.RoomId)
+            throw new ContractConflictException("An existing room-based booking cannot switch rooms.");
+        if (booking.RoomId is null && (dto.RoomId is not > 0 || !dto.CustomerRoomSelectionAcknowledged))
+            throw new ContractBusinessRuleException("Chọn phòng cụ thể và xác nhận đã trao đổi, khách đồng ý nhận phòng được chọn.");
+
         // The contract records the tenant's contact details.
         await PhoneNumberRequiredException.EnsureAsync(
             _contactLookup, booking.CustomerId, PhoneNumberRequiredException.CustomerMessage);
@@ -228,7 +233,7 @@ public class ContractService : IContractService
             IsRead = false
         };
         var creationStatus = await _repository.AddFromBookingAsync(new ContractCreationCommand(
-            contract, contract.Occupants.ToArray(), pendingHolderIdentity, dto.OccupantCountChangeConfirmed), notification);
+            contract, contract.Occupants.ToArray(), pendingHolderIdentity, dto.OccupantCountChangeConfirmed, dto.CustomerRoomSelectionAcknowledged, createdAtUtc), notification);
         if (creationStatus == ContractCreationStatus.HolderIdentityConflict)
         {
             throw new ContractConflictException("CCCD người đứng tên không khớp hồ sơ đã duyệt hoặc đã được dùng cho khách hàng khác.");
@@ -544,7 +549,7 @@ public class ContractService : IContractService
     {
         return new Contracts
         {
-            RoomId = booking.RoomId,
+            RoomId = booking.RoomId ?? dto.RoomId!.Value,
             CustomerId = booking.CustomerId,
             BookingId = booking.BookingId,
             ProcessedByStaffId = userId,

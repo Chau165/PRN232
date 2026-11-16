@@ -30,9 +30,9 @@ public class ContractRepository : IContractRepository
             .Select(booking => new ContractBookingReadModel(
                 booking.BookingId,
                 booking.RoomId,
-                booking.Room!.RoomCode,
+                booking.Room != null ? booking.Room.RoomCode : "",
                 booking.CustomerId,
-                booking.Room.Property!.OwnerId,
+                booking.Property!.OwnerId,
                 booking.Status,
                 booking.DepositAmount,
                 booking.AgreedMonthlyRent,
@@ -41,14 +41,14 @@ public class ContractRepository : IContractRepository
                     payment.Status == PaymentStatuses.Success &&
                     payment.UserId == booking.CustomerId &&
                     payment.Amount == booking.DepositAmount),
-                booking.Room.Property.Owner!.FullName,
-                booking.Room.Property.AddressText,
-                booking.Room.PropertyId,
+                booking.Property!.Owner!.FullName,
+                booking.Property!.AddressText,
+                booking.PropertyId,
                 booking.Customer!.FullName,
                 booking.OccupantCount,
-                booking.Room.MaxOccupants,
-                booking.Room.RoomTypeId,
-                booking.Room.RoomType!.TypeName))
+                booking.Room != null ? booking.Room.MaxOccupants : booking.PropertyRoomType!.Rooms.Select(room => (int?)room.MaxOccupants).Max() ?? 1,
+                booking.RoomTypeId,
+                booking.PropertyRoomType!.RoomType!.TypeName))
             .FirstOrDefaultAsync();
     }
 
@@ -178,19 +178,17 @@ public class ContractRepository : IContractRepository
         var holderDocument = creation.PendingHolderIdentityDocument;
         holderDocument.CCCDNumberHash = _cccdHasher.Hash(holderDocument.CCCDNumber);
         await using var transaction = await _context.Database.BeginTransactionAsync();
-        //Nghia
         await BookingPaymentLock.LockAsync(_context, contract.BookingId.Value);
-        //Nghia
-
+        var location = await _context.Bookings.AsNoTracking().Where(booking => booking.BookingId == contract.BookingId)
+            .Select(booking => new { booking.PropertyId, booking.RoomTypeId, booking.RoomId }).SingleOrDefaultAsync();
+        if (location is null || location.RoomId.HasValue && location.RoomId != contract.RoomId ||
+            !await _context.Rooms.AnyAsync(room => room.RoomId == contract.RoomId &&
+                room.PropertyId == location.PropertyId && room.RoomTypeId == location.RoomTypeId))
+            return ContractCreationStatus.Conflict;
 
         if (_context.Database.IsNpgsql())
         {
-            // Khoá booking để không ai huỷ nó giữa chừng (huỷ booking cũng khoá dòng này),
-            // và khoá phòng để hai hợp đồng không thể cùng được lập cho một phòng.
-            await _context.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT 1 FROM \"Bookings\" WHERE \"BookingId\" = {contract.BookingId} FOR UPDATE");
-            await _context.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT 1 FROM \"Rooms\" WHERE \"RoomId\" = {contract.RoomId} FOR UPDATE");
+            // Inventory and booking are already locked; protect the current Manager assignment.
             await _context.Database.ExecuteSqlInterpolatedAsync(
                 $"SELECT assignment.\"PropertyId\" FROM \"PropertyManagerAssignments\" assignment JOIN \"Rooms\" room ON room.\"PropertyId\" = assignment.\"PropertyId\" WHERE room.\"RoomId\" = {contract.RoomId} AND assignment.\"ManagerId\" = {contract.ProcessedByStaffId} FOR SHARE OF assignment");
             await _context.Database.ExecuteSqlInterpolatedAsync(
@@ -209,10 +207,16 @@ public class ContractRepository : IContractRepository
 
         var bookingStillDeposited = await _context.Bookings.AnyAsync(booking =>
             booking.BookingId == contract.BookingId &&
-            booking.RoomId == contract.RoomId &&
+            (booking.RoomId == null || booking.RoomId == contract.RoomId) &&
+            booking.PropertyId == _context.Rooms.Where(room => room.RoomId == contract.RoomId).Select(room => room.PropertyId).FirstOrDefault() &&
+            booking.RoomTypeId == _context.Rooms.Where(room => room.RoomId == contract.RoomId).Select(room => room.RoomTypeId).FirstOrDefault() &&
+            booking.AgreedMonthlyRent == contract.MonthlyRent && booking.DepositAmount == contract.DepositAmount &&
             booking.CustomerId == contract.CustomerId &&
             booking.Status == BookingStatuses.Deposited &&
             !booking.RefundRequests.Any(refund => refund.Status != BookingRefundRequestStatuses.Rejected) &&
+            !booking.PaymentRequests.Any(request => request.Status == PaymentRequestStatuses.Creating ||
+                request.Status == PaymentRequestStatuses.Pending || request.Status == PaymentRequestStatuses.RequiresReview) &&
+            booking.Payments.Count(payment => payment.Status == PaymentStatuses.Success) == 1 &&
             booking.Payments.Any(payment =>
                 payment.Status == PaymentStatuses.Success &&
                 payment.UserId == booking.CustomerId &&
@@ -220,8 +224,12 @@ public class ContractRepository : IContractRepository
             booking.Contract == null);
         var bookingFacts = await _context.Bookings
             .Where(booking => booking.BookingId == contract.BookingId)
-            .Select(booking => new { booking.OccupantCount, booking.Room!.MaxOccupants })
+            .Select(booking => new { booking.RoomId, booking.PropertyId, booking.RoomTypeId, booking.OccupantCount,
+                MaxOccupants = _context.Rooms.Where(room => room.RoomId == contract.RoomId).Select(room => room.MaxOccupants).FirstOrDefault() })
             .SingleOrDefaultAsync();
+        if (bookingFacts is null || bookingFacts.RoomId == null &&
+            (!creation.CustomerRoomSelectionAcknowledged || creation.RoomSelectionConfirmedAtUtc == null))
+            return ContractCreationStatus.Conflict;
         var registeredOccupantCount = creation.Occupants.Count + 1;
         if (bookingFacts is null || registeredOccupantCount > bookingFacts.MaxOccupants ||
             (registeredOccupantCount != (bookingFacts.OccupantCount ?? 1) && !creation.OccupantCountChangeConfirmed) ||
@@ -235,6 +243,12 @@ public class ContractRepository : IContractRepository
         {
             return ContractCreationStatus.Conflict;
         }
+
+        var allocationInstant = new DateTimeOffset(DateTime.SpecifyKind(
+            creation.RoomSelectionConfirmedAtUtc ?? DateTime.UtcNow, DateTimeKind.Utc));
+        if (!await RoomInventoryQueries.CanReserveAsync(_context, bookingFacts.PropertyId, bookingFacts.RoomTypeId,
+                Math.Max(registeredOccupantCount, bookingFacts.OccupantCount ?? 1), contract.RoomId,
+                contract.BookingId, allocationInstant)) return ContractCreationStatus.Conflict;
 
         var existingHolderDocuments = await _context.IdentityDocuments
             .Where(document => document.CustomerId == contract.CustomerId)
@@ -254,6 +268,24 @@ public class ContractRepository : IContractRepository
         {
             occupant.Contract = contract;
         }
+        // Assignment, consent evidence, contract, room state and notifications share this transaction.
+        // ExecuteUpdate avoids leaking a tracked RoomId assignment if a later insert is rolled back.
+        var assigned = await _context.Bookings.Where(booking => booking.BookingId == contract.BookingId &&
+                (booking.RoomId == null || booking.RoomId == contract.RoomId) && booking.Contract == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(booking => booking.RoomId, contract.RoomId));
+        if (assigned != 1) return ContractCreationStatus.Conflict;
+        if (creation.CustomerRoomSelectionAcknowledged)
+            _context.Set<AuditLogs>().Add(new AuditLogs
+            {
+                UserId = contract.ProcessedByStaffId, Role = RoleNames.Manager, Action = "ConfirmContractRoomSelection",
+                HttpMethod = "POST", Path = "/api/contracts", EntityType = "Booking", EntityId = contract.BookingId.ToString(),
+                StatusCode = 201, Succeeded = true, CreatedAtUtc = creation.RoomSelectionConfirmedAtUtc!.Value,
+                NewValues = System.Text.Json.JsonSerializer.Serialize(new { BookingId = contract.BookingId,
+                    RoomId = contract.RoomId, ManagerId = contract.ProcessedByStaffId,
+                    ConfirmedAtUtc = creation.RoomSelectionConfirmedAtUtc, CustomerAgreed = true })
+            });
+        var roomCode = await _context.Rooms.Where(room => room.RoomId == contract.RoomId).Select(room => room.RoomCode).SingleAsync();
+        customerNotification.Title = $"Hợp đồng thuê phòng {roomCode} đã được lập";
         await _context.Contracts.AddAsync(contract);
         if (activeHolderDocuments.Count == 0)
         {

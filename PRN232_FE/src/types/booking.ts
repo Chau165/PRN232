@@ -14,7 +14,7 @@ export interface BookingContactDto {
 
 export interface BookingDto {
   bookingId: number
-  roomId: number
+  roomId: number | null
   roomCode: string
   propertyId: number
   propertyName: string
@@ -45,4 +45,13 @@ export interface BookingDto {
   roomTypeId?: number
   roomTypeName?: string
   contacts?: BookingContactDto[] | null
+}
+
+export interface EligibleContractRoomDto {
+  roomId: number
+  roomCode: string
+  propertyId: number
+  roomTypeId: number
+  maxOccupants: number
+  areaSqm: number
 }
