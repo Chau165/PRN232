@@ -48,7 +48,13 @@ function formatVietnameseDate(value: string) {
   }).format(new Date(timestamp))
 }
 
-export default function MaintenanceManagementDrawer({
+export default function MaintenanceManagementDrawer(props: Props) {
+  // Reset image state synchronously when changing requests/reports. A passive reset
+  // effect can otherwise close a lightbox opened as the report first appears.
+  return <MaintenanceManagementDrawerSession key={`${props.request.requestId}:${props.report?.reportId ?? "loading"}`} {...props}/>
+}
+
+function MaintenanceManagementDrawerSession({
   request,
   propertyName,
   detailLoading,
@@ -80,11 +86,6 @@ export default function MaintenanceManagementDrawer({
   const lightboxCloseButton = useRef<HTMLButtonElement>(null)
   const returnFocusButton = useRef<HTMLButtonElement | null>(null)
   const images = report?.images ?? []
-
-  useEffect(() => {
-    setSelectedImageIndex(null)
-    setFailedImages({})
-  }, [report?.reportId])
 
   useEffect(() => {
     if (selectedImageIndex !== null) {
