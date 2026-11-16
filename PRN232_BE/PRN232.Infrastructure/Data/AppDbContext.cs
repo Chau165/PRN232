@@ -40,6 +40,9 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         }
     }
 
+    public DbSet<ContractIdentitySnapshot> ContractIdentitySnapshots => Set<ContractIdentitySnapshot>();
+    public DbSet<BookingIdentityCleanupTask> BookingIdentityCleanupTasks => Set<BookingIdentityCleanupTask>();
+    public DbSet<BookingIdentityRetentionAudit> BookingIdentityRetentionAudits => Set<BookingIdentityRetentionAudit>();
     public DbSet<BookingApplicationReview> BookingApplicationReviews => Set<BookingApplicationReview>();
     public DbSet<BookingApplication> BookingApplications => Set<BookingApplication>();
     public DbSet<BookingApplicationPerson> BookingApplicationPeople => Set<BookingApplicationPerson>();
@@ -600,6 +603,24 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         modelBuilder.Entity<Notifications>()
             .Property(notification => notification.Body)
             .HasColumnType("text");
+        modelBuilder.Entity<ContractIdentitySnapshot>(e=>{
+            e.HasKey(x=>x.ContractIdentitySnapshotId);
+            e.HasOne(x=>x.Contract).WithMany(x=>x.IdentitySnapshots).HasForeignKey(x=>x.ContractId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x=>new{x.ContractId,x.Position}).IsUnique();
+            e.Property(x=>x.FullName).HasMaxLength(100);
+            e.Property(x=>x.IdentityNumber).HasConversion(CccdProtection.CreateConverter(_dataProtectionProvider));
+            e.Property(x=>x.FrontObjectPath).HasMaxLength(512);e.Property(x=>x.BackObjectPath).HasMaxLength(512);
+        });
+        modelBuilder.Entity<BookingIdentityCleanupTask>(e=>{
+            e.HasKey(x=>x.BookingIdentityCleanupTaskId);
+            e.Property(x=>x.ObjectPath).HasMaxLength(512);e.HasIndex(x=>x.ObjectPath).IsUnique();
+            e.Property(x=>x.State).HasMaxLength(12);e.Property(x=>x.LastErrorCode).HasMaxLength(40);
+            e.HasIndex(x=>new{x.State,x.NextAttemptAtUtc});
+            e.ToTable(t=>t.HasCheckConstraint("CK_IdentityCleanup_State","\"State\" IN ('Pending','Leased','Succeeded','Retained')"));
+        });
+        modelBuilder.Entity<BookingIdentityRetentionAudit>(e=>{
+            e.HasKey(x=>x.BookingIdentityRetentionAuditId);e.Property(x=>x.Event).HasMaxLength(40);
+        });
         modelBuilder.Entity<BookingApplicationReview>(e => {
             e.HasKey(x=>x.BookingApplicationReviewId);
             e.HasOne<BookingApplication>().WithMany().HasForeignKey(x=>x.BookingApplicationId).OnDelete(DeleteBehavior.Restrict);

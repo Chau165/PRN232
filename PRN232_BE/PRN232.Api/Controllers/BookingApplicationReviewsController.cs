@@ -11,6 +11,8 @@ namespace PRN232.Api.Controllers;
 public sealed class BookingApplicationReviewsController(BookingApplicationService service,ICurrentUserService user):ControllerBase
 {
     [HttpGet] public Task<ActionResult<List<BookingApplicationDto>>> List([FromQuery]int page=1,CancellationToken token=default)=>Run(()=>service.ReviewListAsync(user.UserId!.Value,user.Role!,page,token));
+    [HttpGet("by-booking/{bookingId:int}/contract-source")][Authorize(Roles="Manager")]
+    public Task<ActionResult<BookingApplicationDto>> Source(int bookingId,CancellationToken token)=>Run(()=>service.ContractSourceAsync(bookingId,user.UserId!.Value,user.Role!,token));
     [HttpGet("{id:int}")] public Task<ActionResult<BookingApplicationDto>> Get(int id,CancellationToken token)=>Run(()=>service.GetReviewAsync(id,user.UserId!.Value,user.Role!,token));
     [HttpPost("{id:int}/people/{personId:int}/review")]
     public Task<ActionResult<BookingApplicationDto>> Review(int id,int personId,ReviewBookingApplicationDto dto,CancellationToken token)=>Run(()=>service.ReviewPersonAsync(id,personId,dto,user.UserId!.Value,user.Role!,token));

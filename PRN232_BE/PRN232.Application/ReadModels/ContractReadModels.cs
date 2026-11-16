@@ -64,7 +64,7 @@ public sealed record ContractCreationCommand(
     Contracts Contract,
     IReadOnlyList<ContractOccupants> Occupants,
     IdentityDocuments PendingHolderIdentityDocument,
-    bool OccupantCountChangeConfirmed);
+    bool OccupantCountChangeConfirmed, Guid? BookingApplicationVersion = null);
 
 public enum ContractCreationStatus
 {

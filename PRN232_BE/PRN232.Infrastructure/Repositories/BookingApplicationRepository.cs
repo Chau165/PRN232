@@ -37,6 +37,10 @@ public sealed partial class BookingApplicationRepository(AppDbContext db, IBooki
             foreach(var id in ids)
                 await db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"BookingApplications\" WHERE \"BookingApplicationId\" = {id} FOR UPDATE",token);
         }
+        foreach(var image in db.ChangeTracker.Entries<BookingIdentityImage>().Where(e=>e.State==EntityState.Added).Select(e=>e.Entity)) {
+            if(db.Database.IsNpgsql())await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({image.ObjectPath}))",token);
+            if(await db.BookingIdentityCleanupTasks.AnyAsync(t=>t.ObjectPath==image.ObjectPath && (t.State=="Leased" || t.State=="Succeeded"),token))throw new BookingApplicationConflictException("Ảnh đã được đưa vào quy trình dọn dữ liệu. Hãy tải lại ảnh.");
+        }
         try {await db.SaveChangesAsync(token);if(tx is not null)await tx.CommitAsync(token);}
         catch(DbUpdateConcurrencyException) {throw new BookingApplicationConflictException("Hồ sơ đã thay đổi. Hãy tải lại trước khi tiếp tục.");}
     }

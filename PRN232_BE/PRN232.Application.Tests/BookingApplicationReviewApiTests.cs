@@ -20,7 +20,7 @@ public class BookingApplicationReviewApiTests
         Assert.Contains("ALTER TABLE public.\"BookingApplicationReviews\" ENABLE ROW LEVEL SECURITY",sql);
         Assert.DoesNotContain("DROP TABLE",sql);Assert.False(db.Database.HasPendingModelChanges());
     }
-    private static async Task<BookingApplicationDto> Deposited(HttpClient client)
+    internal static async Task<BookingApplicationDto> Deposited(HttpClient client)
     {
         var a=await Complete(client,await Draft(client));
         var submitted=await client.PostAsJsonAsync($"/api/booking-applications/{a.BookingApplicationId}/submit",new{version=a.Version});submitted.EnsureSuccessStatusCode();
@@ -28,7 +28,7 @@ public class BookingApplicationReviewApiTests
         var paid=await client.PostAsJsonAsync($"/api/bookings/{b.BookingId}/pay",new{paymentMethod="VNPay"});Assert.True(paid.IsSuccessStatusCode,await paid.Content.ReadAsStringAsync());
         return (await client.GetFromJsonAsync<BookingApplicationDto>($"/api/booking-applications/{a.BookingApplicationId}"))!;
     }
-    private static async Task<BookingApplicationDto> Review(HttpClient client,BookingApplicationDto a,string decision,string? note=null,int index=0)
+    internal static async Task<BookingApplicationDto> Review(HttpClient client,BookingApplicationDto a,string decision,string? note=null,int index=0)
     {
         var response=await client.PostAsJsonAsync($"/api/booking-application-reviews/{a.BookingApplicationId}/people/{a.People[index].PersonId}/review",new{decision,note,version=a.Version});
         Assert.True(response.IsSuccessStatusCode,await response.Content.ReadAsStringAsync());return (await response.Content.ReadFromJsonAsync<BookingApplicationDto>())!;

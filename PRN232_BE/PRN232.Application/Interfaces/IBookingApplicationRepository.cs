@@ -17,5 +17,6 @@ public interface IBookingApplicationRepository
     Task<BookingApplication?> FindForReviewAsync(int id,int userId,string role,CancellationToken token);
     Task<List<BookingApplication>> ReviewListAsync(int userId,string role,int page,CancellationToken token);
     Task SaveSubmittedAsync(BookingApplication application,int actorId,string role,int? confirmedCount,CancellationToken token);
+    Task<BookingApplication?> FindReviewByBookingAsync(int bookingId,int userId,string role,CancellationToken token);
     void AddReview(BookingApplicationReview review);
 }

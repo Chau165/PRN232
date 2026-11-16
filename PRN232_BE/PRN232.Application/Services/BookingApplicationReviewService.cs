@@ -5,6 +5,8 @@ using PRN232.Domain.Entities;
 namespace PRN232.Application.Services;
 public sealed partial class BookingApplicationService
 {
+    public async Task<BookingApplicationDto> ContractSourceAsync(int bookingId,int actorId,string role,CancellationToken token)=>
+        await Dto(await repository.FindReviewByBookingAsync(bookingId,actorId,role,token) ?? throw new BookingApplicationNotFoundException(),token);
     private async Task<BookingApplication> ForReview(int id,int actorId,string role,CancellationToken token)=>
         await repository.FindForReviewAsync(id,actorId,role,token) ?? throw new BookingApplicationNotFoundException();
     public async Task<BookingApplicationDto> GetByBookingAsync(int bookingId,int customerId,CancellationToken token)=>

@@ -11,7 +11,7 @@ namespace PRN232.Application.Services;
 public sealed partial class BookingApplicationService(IBookingApplicationRepository repository, IBookingRepository bookings,
     IBookingService bookingService, IBookingIdentityImageStorage storage, ICccdHasher hasher, IIdentityDocumentRepository identities,
     TimeProvider clock, BookingDepositSettings depositSettings, IUserContactLookup contacts,
-    ILogger<BookingApplicationService> logger, INotificationRealtimePublisher realtime)
+    ILogger<BookingApplicationService> logger, INotificationRealtimePublisher realtime, IBookingIdentityCleanupQueue? cleanupQueue = null)
 {
     private async Task<BookingApplicationDto> Dto(BookingApplication a,CancellationToken token)
     {
@@ -21,7 +21,7 @@ public sealed partial class BookingApplicationService(IBookingApplicationReposit
             a.People.OrderBy(p=>p.Position).Select(p=>new BookingApplicationPersonDto(p.BookingApplicationPersonId,p.Position,p.FullName,
                 string.IsNullOrEmpty(p.IdentityNumber)?null:CccdMasking.MaskNumber(p.IdentityNumber),p.ConsentRecordedAtUtc.HasValue,p.Status,
                 p.Images.Any(i=>i.Side=="Front" && i.IsCurrent && i.PersonRevision==p.Revision),p.Images.Any(i=>i.Side=="Back" && i.IsCurrent && i.PersonRevision==p.Revision),p.ReviewNote,p.Revision)).ToArray(),
-            depositSettings.AppliesToFirstMonth,a.RosterChangeStatus,a.RosterChangeNote,canEdit,context.ConfirmedOccupantCount,context.BookingStatus,context.PropertyName,context.RoomCode);
+            depositSettings.AppliesToFirstMonth,a.RosterChangeStatus,a.RosterChangeNote,canEdit,context.ConfirmedOccupantCount,context.BookingStatus,context.PropertyName,context.RoomCode,canEdit && BookingApplicationPolicy.ReadyForContract(a) && context.ConfirmedOccupantCount==a.OccupantCount);
     }
     private async Task<BookingApplication> Owned(int id,int customerId,CancellationToken token) =>
         await repository.FindAsync(id,customerId,token) ?? throw new BookingApplicationNotFoundException();
@@ -119,6 +119,7 @@ public sealed partial class BookingApplicationService(IBookingApplicationReposit
         if(!p.ConsentRecordedAtUtc.HasValue) throw new BookingApplicationValidationException("Lưu xác nhận đồng ý cung cấp CCCD trước khi tải ảnh.");
         StoredBookingIdentityImage uploaded;
         try {uploaded=await storage.UploadAsync(id,personId,side,image,token);}
+        catch(BookingIdentityUploadUncertainException ex) {await Cleanup(ex.ObjectPath);throw new BookingApplicationStorageException();}
         catch(ArgumentException) {throw new BookingApplicationValidationException("Ảnh phải là JPEG, PNG hoặc WebP hợp lệ, tối đa 5 MiB.");}
         catch(Exception ex) when(ex is HttpRequestException or InvalidOperationException || ex is TaskCanceledException && !token.IsCancellationRequested) {throw new BookingApplicationStorageException();}
         try {
@@ -171,7 +172,7 @@ public sealed partial class BookingApplicationService(IBookingApplicationReposit
     }
     private async Task Cleanup(string path)
     {
-        try {using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(10));await storage.DeleteAsync(path,timeout.Token);}
+        try {using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(10));if(cleanupQueue is not null) await cleanupQueue.EnqueueAsync(path,clock.GetUtcNow().UtcDateTime,timeout.Token);}
         catch {logger.LogWarning("Booking identity object cleanup needs retry; no identity data logged.");}
     }
 }

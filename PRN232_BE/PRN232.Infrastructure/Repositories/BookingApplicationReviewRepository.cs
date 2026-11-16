@@ -15,6 +15,8 @@ public sealed partial class BookingApplicationRepository
         return query.Where(a=>db.Rooms.Any(r=>r.RoomId==a.RoomId && db.PropertyManagerAssignments.Any(m=>
             m.PropertyId==r.PropertyId && m.ManagerId==actorId && m.Manager!.IsActive && m.Manager.Role!.RoleName=="Manager")));
     }
+    public Task<BookingApplication?> FindReviewByBookingAsync(int bookingId,int userId,string role,CancellationToken token)=>
+        ReviewScope(userId,role).Include(a=>a.People).ThenInclude(p=>p.Images).SingleOrDefaultAsync(a=>a.BookingId==bookingId,token);
     public Task<BookingApplication?> FindForReviewAsync(int id,int userId,string role,CancellationToken token)=>
         ReviewScope(userId,role).Include(a=>a.People).ThenInclude(p=>p.Images).SingleOrDefaultAsync(a=>a.BookingApplicationId==id,token);
     public async Task<List<BookingApplication>> ReviewListAsync(int userId,string role,int page,CancellationToken token)

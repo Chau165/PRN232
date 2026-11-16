@@ -47,8 +47,10 @@ public sealed class SupabaseBookingIdentityImageStorage(HttpClient client, IConf
         request.Headers.TryAddWithoutValidation("x-upsert", "false");
         request.Content = new ByteArrayContent(image.Content);
         request.Content.Headers.ContentType = new MediaTypeHeaderValue(image.ContentType);
-        using var response = await client.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException("Identity image upload failed.");
+        try {
+            using var response = await client.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode) throw new InvalidOperationException("Identity image upload failed.");
+        } catch {throw new BookingIdentityUploadUncertainException(path); }
         return new(path, image.ContentType, image.Content.LongLength);
     }
     // Checks MIME against file signatures; not OCR, malware scanning or full image decoding.
@@ -96,6 +98,6 @@ public sealed class SupabaseBookingIdentityImageStorage(HttpClient client, IConf
         using var request = Request(HttpMethod.Delete, $"object/{Bucket}");
         request.Content = JsonContent.Create(new { prefixes = new[] { objectPath } });
         using var response = await client.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException("Identity image deletion failed.");
+        if (!response.IsSuccessStatusCode && response.StatusCode != System.Net.HttpStatusCode.NotFound) throw new InvalidOperationException("Identity image deletion failed.");
     }
 }

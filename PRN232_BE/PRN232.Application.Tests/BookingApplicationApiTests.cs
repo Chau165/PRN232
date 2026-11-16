@@ -16,14 +16,14 @@ public class BookingApplicationApiTests
 {
     internal sealed class Storage : IBookingIdentityImageStorage
     {
-        public int Deleted; public Func<Task>? BeforeUpload;
+        public int Deleted; public bool FailDelete; public Func<Task>? BeforeUpload;
         public async Task<StoredBookingIdentityImage> UploadAsync(int applicationId,int personId,string side,BookingIdentityUpload image,CancellationToken token=default)
         {
             if(BeforeUpload is not null)await BeforeUpload();
             return new($"applications/{applicationId}/people/{personId}/{side.ToLowerInvariant()}/{Guid.NewGuid():N}.png","image/png",image.Content.Length);
         }
         public Task<string> GetReadUrlAsync(string path,CancellationToken token=default)=>Task.FromResult("https://example.supabase.co/private?token=test");
-        public Task DeleteAsync(string path,CancellationToken token=default){Deleted++;return Task.CompletedTask;}
+        public Task DeleteAsync(string path,CancellationToken token=default){if(FailDelete)throw new HttpRequestException("storage unavailable");Deleted++;return Task.CompletedTask;}
     }
     internal static WebApplicationFactory<PRN232.Api.Controllers.BookingsController> Configure(BookingsApiFactory root,Storage storage)=>root.WithWebHostBuilder(builder=>builder.ConfigureTestServices(services=>{
         services.RemoveAll<IBookingIdentityImageStorage>();services.AddSingleton<IBookingIdentityImageStorage>(storage);
@@ -76,13 +76,13 @@ public class BookingApplicationApiTests
         Assert.Equal(HttpStatusCode.NotFound,(await client.PostAsync($"/api/booking-applications/{a.BookingApplicationId}/people/{a.People[0].PersonId}/images/Front/read-url",null)).StatusCode);
         await BookingsApiTests.LoginAsync(client,"manager@example.test");Assert.Equal(HttpStatusCode.Forbidden,(await client.GetAsync($"/api/booking-applications/{a.BookingApplicationId}")).StatusCode);
     }
-    [Fact] public async Task Upload_losing_concurrency_cleans_the_new_object_without_saving_image()
+    [Fact] public async Task Upload_losing_concurrency_queues_the_new_object_without_saving_image()
     {
         using var root=new BookingsApiFactory();var storage=new Storage();using var factory=Configure(root,storage);using var client=factory.CreateClient();
         await BookingsApiTests.LoginAsync(client,"customer@example.test");var a=await Person(client,await Draft(client));
         storage.BeforeUpload=async()=>{using var scope=factory.Services.CreateScope();var nextVersion=Guid.NewGuid();await scope.ServiceProvider.GetRequiredService<AppDbContext>().BookingApplications.Where(x=>x.BookingApplicationId==a.BookingApplicationId).ExecuteUpdateAsync(s=>s.SetProperty(x=>x.Version,nextVersion));};
-        var response=await Upload(client,a,"Front");Assert.Equal(HttpStatusCode.Conflict,response.StatusCode);Assert.Equal(1,storage.Deleted);
-        using var check=factory.Services.CreateScope();Assert.Empty(await check.ServiceProvider.GetRequiredService<AppDbContext>().BookingIdentityImages.ToListAsync());
+        var response=await Upload(client,a,"Front");Assert.Equal(HttpStatusCode.Conflict,response.StatusCode);Assert.Equal(0,storage.Deleted);
+        using var check=factory.Services.CreateScope();Assert.Empty(await check.ServiceProvider.GetRequiredService<AppDbContext>().BookingIdentityImages.ToListAsync());Assert.Single(await check.ServiceProvider.GetRequiredService<AppDbContext>().BookingIdentityCleanupTasks.ToListAsync());
     }
     [Fact] public async Task Unavailable_room_rolls_back_submission_and_keeps_the_draft()
     {
@@ -101,7 +101,7 @@ public class BookingApplicationApiTests
         var upload=await Upload(client,a,"Front",1);Assert.True(upload.IsSuccessStatusCode,await upload.Content.ReadAsStringAsync());a=(await upload.Content.ReadFromJsonAsync<BookingApplicationDto>())!;
         var declined=await client.PatchAsJsonAsync($"/api/booking-applications/{a.BookingApplicationId}",new{moveInDate=a.MoveInDate,occupantCount=1,version=a.Version});Assert.Equal(HttpStatusCode.Conflict,declined.StatusCode);
         var accepted=await client.PatchAsJsonAsync($"/api/booking-applications/{a.BookingApplicationId}",new{moveInDate=a.MoveInDate,occupantCount=1,version=a.Version,confirmRemovePeople=true});Assert.True(accepted.IsSuccessStatusCode,await accepted.Content.ReadAsStringAsync());
-        Assert.Single((await accepted.Content.ReadFromJsonAsync<BookingApplicationDto>())!.People);Assert.Equal(1,storage.Deleted);
+        Assert.Single((await accepted.Content.ReadFromJsonAsync<BookingApplicationDto>())!.People);Assert.Equal(0,storage.Deleted);
     }
     [Fact] public async Task Invalid_viewing_does_not_create_booking_and_submission_can_be_retried()
     {

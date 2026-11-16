@@ -2,6 +2,7 @@ namespace PRN232.Domain.Entities;
 
 public class Contracts
 {
+    public ICollection<ContractIdentitySnapshot> IdentitySnapshots { get; set; } = new List<ContractIdentitySnapshot>();
     public int ContractId
     {
         get; set;

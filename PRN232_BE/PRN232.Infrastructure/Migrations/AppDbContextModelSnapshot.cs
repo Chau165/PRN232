@@ -337,6 +337,62 @@ namespace PRN232.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingIdentityCleanupTask", b =>
+                {
+                    b.Property<int>("BookingIdentityCleanupTaskId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("BookingIdentityCleanupTaskId"));
+
+                    b.Property<int?>("ApplicationId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid?>("LeaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("LeaseUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ObjectPath")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.HasKey("BookingIdentityCleanupTaskId");
+
+                    b.HasIndex("ObjectPath")
+                        .IsUnique();
+
+                    b.HasIndex("State", "NextAttemptAtUtc");
+
+                    b.ToTable("BookingIdentityCleanupTasks", t =>
+                        {
+                            t.HasCheckConstraint("CK_IdentityCleanup_State", "\"State\" IN ('Pending','Leased','Succeeded','Retained')");
+                        });
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.BookingIdentityImage", b =>
                 {
                     b.Property<int>("BookingIdentityImageId")
@@ -392,6 +448,33 @@ namespace PRN232.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_BookingIdentityImages_Type", "\"ContentType\" IN ('image/jpeg','image/png','image/webp')");
                         });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingIdentityRetentionAudit", b =>
+                {
+                    b.Property<int>("BookingIdentityRetentionAuditId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("BookingIdentityRetentionAuditId"));
+
+                    b.Property<int?>("ApplicationId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Event")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int?>("TaskId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("BookingIdentityRetentionAuditId");
+
+                    b.ToTable("BookingIdentityRetentionAudits");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.BookingRefundRequests", b =>
@@ -702,6 +785,62 @@ namespace PRN232.Infrastructure.Migrations
                         {
                             t.HasCheckConstraint("CK_ContractEvidenceFiles_Kind", "\"Kind\" IN ('MoveIn', 'MoveOut', 'SignedContract')");
                         });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.ContractIdentitySnapshot", b =>
+                {
+                    b.Property<int>("ContractIdentitySnapshotId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ContractIdentitySnapshotId"));
+
+                    b.Property<string>("BackObjectPath")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FrontObjectPath")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("IdentityNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SourceApplicationId")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SourceApplicationVersion")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SourcePersonId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SourceRevision")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ContractIdentitySnapshotId");
+
+                    b.HasIndex("ContractId", "Position")
+                        .IsUnique();
+
+                    b.ToTable("ContractIdentitySnapshots");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.ContractOccupants", b =>
@@ -2641,6 +2780,17 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("UploadedBy");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.ContractIdentitySnapshot", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Contracts", "Contract")
+                        .WithMany("IdentitySnapshots")
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Contract");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.ContractOccupants", b =>
                 {
                     b.HasOne("PRN232.Domain.Entities.Users", "AddedBy")
@@ -3389,6 +3539,8 @@ namespace PRN232.Infrastructure.Migrations
 
             modelBuilder.Entity("PRN232.Domain.Entities.Contracts", b =>
                 {
+                    b.Navigation("IdentitySnapshots");
+
                     b.Navigation("Invoices");
 
                     b.Navigation("MaintenanceRequests");
