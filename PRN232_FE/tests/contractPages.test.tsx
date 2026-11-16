@@ -13,6 +13,7 @@ import { addIsoDays } from "@/utils/moveOutNoticeValidation"
 
 const mocks = vi.hoisted(() => ({
   getBooking: vi.fn(),
+  getContractApplicationSource: vi.fn(),
   getRoomTypeServices: vi.fn(),
   getPropertyServiceRates: vi.fn(),
   getContracts: vi.fn(),
@@ -52,6 +53,7 @@ vi.mock("@/auth/AuthContext", () => ({
 vi.mock("@/components/management/ManagementPage", () => ({
   default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
 }))
+vi.mock("@/services/bookingApplicationService", () => ({getContractApplicationSource:mocks.getContractApplicationSource}))
 vi.mock("@/services/bookingService", () => ({ getBooking: mocks.getBooking }))
 vi.mock("@/services/roomTypeService", () => ({ getRoomTypeServices: mocks.getRoomTypeServices }))
 vi.mock("@/services/serviceRateService", () => ({ getPropertyServiceRates: mocks.getPropertyServiceRates }))
@@ -152,6 +154,7 @@ function renderCreatePage() {
 }
 
 beforeEach(() => {
+  mocks.getContractApplicationSource.mockRejectedValue(new ApiError("Not found", {status:404}))
   mocks.role = "MANAGER"
   mocks.getBooking.mockResolvedValue(booking())
   mocks.getRoomTypeServices.mockResolvedValue([])
@@ -215,6 +218,27 @@ beforeEach(() => {
 })
 
 describe("CreateContractPage", () => {
+  it("uses the reviewed version without returning plaintext identity to the server", async () => {
+    mocks.getContractApplicationSource.mockResolvedValue({version:"reviewed-v1",readyForContract:true,people:[{personId:1,position:0,fullName:"Nguyễn An",maskedIdentityNumber:"********0001"}]})
+    renderCreatePage()
+    await screen.findByLabelText("Hồ sơ đã duyệt")
+    expect(screen.queryByLabelText(/CCCD người đứng tên/)).toBeNull()
+    fireEvent.click(screen.getByRole("checkbox"))
+    fireEvent.click(screen.getByRole("button",{name:"1 năm"}))
+    fireEvent.click(screen.getByRole("button",{name:"Xác nhận hợp đồng"}))
+    await screen.findByText("contract list page")
+    expect(mocks.createContract).toHaveBeenCalledWith("manager-token",expect.objectContaining({bookingApplicationVersion:"reviewed-v1",holderIdentityNumber:undefined,occupants:undefined}))
+  })
+  it("blocks contract creation until identity and roster reviews finish", async () => {
+    mocks.getContractApplicationSource.mockResolvedValue({version:"pending",readyForContract:false,people:[]})
+    renderCreatePage();await screen.findByLabelText("Hồ sơ đã duyệt")
+    expect(screen.getByRole("button",{name:"Xác nhận hợp đồng"}).hasAttribute("disabled")).toBe(true)
+  })
+  it("does not fall back to manual identity when loading the reviewed source fails", async () => {
+    mocks.getContractApplicationSource.mockRejectedValue(new ApiError("Không tải được hồ sơ",{status:500}))
+    renderCreatePage();await screen.findByText("Không tải được hồ sơ")
+    expect(screen.queryByLabelText(/CCCD người đứng tên/)).toBeNull()
+  })
   it("creates a contract from a deposited booking with a quick term, then opens the contract list", async () => {
     mocks.getBooking.mockResolvedValue(booking({ depositAppliesToFirstMonth: false }))
     renderCreatePage()
@@ -233,7 +257,7 @@ describe("CreateContractPage", () => {
     const today = localToday()
     expect(mocks.createContract).toHaveBeenCalledWith("manager-token", {
       bookingId: 9, startDate: today, endDate: addContractMonths(today, 12),
-      holderIdentityNumber: "079201000001", occupants: [], registeredVehicleCount: 0,
+      bookingApplicationVersion: undefined, holderIdentityNumber: "079201000001", occupants: [], registeredVehicleCount: 0,
       manualSecurityDepositAmount: 0, securityDepositHandoverAcknowledged: true,
       occupantCountChangeConfirmed: false,
     })

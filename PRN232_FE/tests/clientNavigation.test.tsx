@@ -62,6 +62,7 @@ describe("client-side navigation links", () => {
       "Lịch xem phòng",
       "Đặt phòng & Đặt cọc",
       "Hợp đồng",
+      "Hồ sơ CCCD đặt cọc",
     ])
 
     const financeGroup = screen.getByRole("group", { name: "Tài chính" })
@@ -91,6 +92,7 @@ describe("client-side navigation links", () => {
     expect(screen.getByRole("group", { name: "Tổng quan" })).toBeTruthy()
     expect(screen.getByRole("group", { name: "Khu trọ & Phòng" })).toBeTruthy()
     expect(screen.getByRole("group", { name: "Cho thuê" })).toBeTruthy()
+    expect(screen.getByRole("link", { name: "Hồ sơ CCCD đặt cọc" }).getAttribute("href")).toBe("/management/booking-identities")
     expect(within(screen.getByRole("group", { name: "Tài chính" })).getAllByRole("link").map((link) => link.textContent)).toEqual([
       "Hóa đơn",
     ])

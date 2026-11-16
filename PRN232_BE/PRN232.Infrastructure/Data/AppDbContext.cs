@@ -40,6 +40,14 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         }
     }
 
+    public DbSet<ContractIdentitySnapshot> ContractIdentitySnapshots => Set<ContractIdentitySnapshot>();
+    public DbSet<BookingIdentityCleanupTask> BookingIdentityCleanupTasks => Set<BookingIdentityCleanupTask>();
+    public DbSet<BookingIdentityRetentionAudit> BookingIdentityRetentionAudits => Set<BookingIdentityRetentionAudit>();
+    public DbSet<BookingApplicationReview> BookingApplicationReviews => Set<BookingApplicationReview>();
+    public DbSet<BookingApplication> BookingApplications => Set<BookingApplication>();
+    public DbSet<BookingApplicationPerson> BookingApplicationPeople => Set<BookingApplicationPerson>();
+    public DbSet<BookingIdentityImage> BookingIdentityImages => Set<BookingIdentityImage>();
+
     public DbSet<Roles> Roles
     {
         get
@@ -595,6 +603,89 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         modelBuilder.Entity<Notifications>()
             .Property(notification => notification.Body)
             .HasColumnType("text");
+        modelBuilder.Entity<ContractIdentitySnapshot>(e=>{
+            e.HasKey(x=>x.ContractIdentitySnapshotId);
+            e.HasOne(x=>x.Contract).WithMany(x=>x.IdentitySnapshots).HasForeignKey(x=>x.ContractId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x=>new{x.ContractId,x.Position}).IsUnique();
+            e.Property(x=>x.FullName).HasMaxLength(100);
+            e.Property(x=>x.IdentityNumber).HasConversion(CccdProtection.CreateConverter(_dataProtectionProvider));
+            e.Property(x=>x.FrontObjectPath).HasMaxLength(512);e.Property(x=>x.BackObjectPath).HasMaxLength(512);
+        });
+        modelBuilder.Entity<BookingIdentityCleanupTask>(e=>{
+            e.HasKey(x=>x.BookingIdentityCleanupTaskId);
+            e.Property(x=>x.ObjectPath).HasMaxLength(512);e.HasIndex(x=>x.ObjectPath).IsUnique();
+            e.Property(x=>x.State).HasMaxLength(12);e.Property(x=>x.LastErrorCode).HasMaxLength(40);
+            e.HasIndex(x=>new{x.State,x.NextAttemptAtUtc});
+            e.ToTable(t=>t.HasCheckConstraint("CK_IdentityCleanup_State","\"State\" IN ('Pending','Leased','Succeeded','Retained')"));
+        });
+        modelBuilder.Entity<BookingIdentityRetentionAudit>(e=>{
+            e.HasKey(x=>x.BookingIdentityRetentionAuditId);e.Property(x=>x.Event).HasMaxLength(40);
+        });
+        modelBuilder.Entity<BookingApplicationReview>(e => {
+            e.HasKey(x=>x.BookingApplicationReviewId);
+            e.HasOne<BookingApplication>().WithMany().HasForeignKey(x=>x.BookingApplicationId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Users>().WithMany().HasForeignKey(x=>x.ReviewerId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(x=>x.Kind).HasMaxLength(12);
+            e.Property(x=>x.Decision).HasMaxLength(12);
+            e.Property(x=>x.Note).HasMaxLength(500);
+            e.ToTable(t=>{
+                t.HasCheckConstraint("CK_BookingApplicationReviews_Decision", "\"Decision\" IN ('Approved','Rejected') AND \"Kind\" IN ('Identity','Roster')");
+                t.HasCheckConstraint("CK_BookingApplicationReviews_Note", "\"Decision\" <> 'Rejected' OR (\"Note\" IS NOT NULL AND length(trim(\"Note\")) > 0)");
+            });
+        });
+        modelBuilder.Entity<BookingApplication>(e =>
+        {
+            e.HasKey(x => x.BookingApplicationId);
+            e.Property(x=>x.RosterChangeStatus).HasMaxLength(12);
+            e.Property(x=>x.RosterChangeNote).HasMaxLength(500);
+            e.HasOne<Users>().WithMany().HasForeignKey(x=>x.RosterReviewedById).OnDelete(DeleteBehavior.Restrict);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasOne<Users>().WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Rooms>().WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Bookings>().WithMany().HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => x.BookingId).IsUnique().HasFilter("\"BookingId\" IS NOT NULL");
+            e.ToTable(t => {
+                t.HasCheckConstraint("CK_BookingApplications_Roster", "\"RosterChangeStatus\" IN ('None','Pending','Approved','Rejected')");
+                t.HasCheckConstraint("CK_BookingApplications_Count", "\"OccupantCount\" >= 1");
+                t.HasCheckConstraint("CK_BookingApplications_Status", "\"Status\" IN ('Draft','Submitted','Cancelled','Converted')");
+            });
+        });
+        modelBuilder.Entity<BookingApplicationPerson>(e =>
+        {
+            e.HasKey(x => x.BookingApplicationPersonId);
+            e.HasOne(x => x.Application).WithMany(x => x.People).HasForeignKey(x => x.BookingApplicationId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => new { x.BookingApplicationId, x.Position }).IsUnique();
+            e.Property(x => x.FullName).HasMaxLength(100);
+            e.Property(x => x.IdentityNumber).HasConversion(CccdProtection.CreateConverter(_dataProtectionProvider));
+            e.Property(x => x.IdentityNumberHash).HasMaxLength(128);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.ReviewNote).HasMaxLength(500);
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasOne<Users>().WithMany().HasForeignKey(x => x.ReviewedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.ToTable(t => {
+                t.HasCheckConstraint("CK_BookingApplicationPeople_Position", "\"Position\" >= 0 AND \"Revision\" >= 1");
+                t.HasCheckConstraint("CK_BookingApplicationPeople_Status", "\"Status\" IN ('Incomplete','PendingReview','Approved','Rejected')");
+                t.HasCheckConstraint("CK_BookingApplicationPeople_Review", "\"Status\" NOT IN ('Approved','Rejected') OR (\"ReviewedByUserId\" IS NOT NULL AND \"ReviewedAtUtc\" IS NOT NULL)");
+                t.HasCheckConstraint("CK_BookingApplicationPeople_Rejection", "\"Status\" <> 'Rejected' OR length(trim(\"ReviewNote\")) > 0 AND \"ReviewNote\" IS NOT NULL");
+            });
+        });
+        modelBuilder.Entity<BookingIdentityImage>(e =>
+        {
+            e.HasKey(x => x.BookingIdentityImageId);
+            e.HasOne(x => x.Person).WithMany(x => x.Images).HasForeignKey(x => x.BookingApplicationPersonId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(x => x.Side).HasMaxLength(5);
+            e.Property(x => x.ContentType).HasMaxLength(20);
+            e.Property(x => x.ObjectPath).HasMaxLength(512);
+            e.HasIndex(x => x.ObjectPath).IsUnique();
+            e.HasIndex(x => new { x.BookingApplicationPersonId, x.Side }).IsUnique().HasFilter("\"IsCurrent\" = TRUE");
+            e.ToTable(t => {
+                t.HasCheckConstraint("CK_BookingIdentityImages_Side", "\"Side\" IN ('Front','Back')");
+                t.HasCheckConstraint("CK_BookingIdentityImages_Size", "\"SizeBytes\" > 0 AND \"SizeBytes\" <= 5242880 AND \"PersonRevision\" >= 1");
+                t.HasCheckConstraint("CK_BookingIdentityImages_Type", "\"ContentType\" IN ('image/jpeg','image/png','image/webp')");
+            });
+        });
+
         modelBuilder.Entity<IdentityDocuments>().HasKey(x => x.IdentityDocumentId);
         modelBuilder.Entity<IdentityDocuments>()
             .Property(document => document.ReviewNote)

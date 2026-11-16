@@ -52,7 +52,16 @@ public class RebuildTableSecurityMigrationTests
             .ToList();
 
         Assert.NotEmpty(created);
-        Assert.All(created, table => Assert.Contains(table, Tables));
+        using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Database=unused;Username=test;Password=test").Options);
+        // New tables can secure themselves in their own migration. Verify the generated SQL,
+        // rather than requiring them to appear in the historical rebuild migration's table list.
+        var sql = db.GetService<IMigrator>().GenerateScript();
+        Assert.All(created, table =>
+        {
+            Assert.Contains($"ALTER TABLE public.\"{table}\" ENABLE ROW LEVEL SECURITY", sql);
+            Assert.Contains($"REVOKE ALL PRIVILEGES ON TABLE public.\"{table}\" FROM PUBLIC", sql);
+        });
     }
 
     [Phase31BPostgreSqlFact]

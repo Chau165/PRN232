@@ -1,3 +1,4 @@
+import ContractIdentitySnapshots from "@/components/customer/ContractIdentitySnapshots"
 import ContractMeterHandover from "@/components/customer/ContractMeterHandover"
 import ContractEquipmentHandover from "@/components/customer/ContractEquipmentHandover"
 import ContractEvidenceSection from "@/components/customer/ContractEvidenceSection"
@@ -300,6 +301,7 @@ function ContractBillingTimeline({
 
   return (
     <section className="mt-6 space-y-7 border-t border-slate-100 pt-6" aria-label={`Chi tiết hợp đồng ${contract.contractId}`}>
+      <ContractIdentitySnapshots key={contract.contractId} contractId={contract.contractId} />
       <section aria-labelledby={`contract-detail-${contract.contractId}`}>
         <h3 id={`contract-detail-${contract.contractId}`} className="font-display text-lg font-bold text-slate-900">
           Thông tin hợp đồng

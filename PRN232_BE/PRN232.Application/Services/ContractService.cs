@@ -23,6 +23,7 @@ public class ContractService : IContractService
     private readonly IUserContactLookup? _contactLookup;
     private readonly IDepositSettlementRepository? _settlements;
     private readonly IAuditTrail? _audit;
+    private readonly IBookingApplicationRepository? _applications;
 
     public ContractService(
         IContractRepository repository,
@@ -31,9 +32,10 @@ public class ContractService : IContractService
         ILogger<ContractService>? logger = null,
         IUserContactLookup? contactLookup = null,
         IDepositSettlementRepository? settlements = null,
-        IAuditTrail? audit = null)
+        IAuditTrail? audit = null, IBookingApplicationRepository? applications = null)
     {
         _audit = audit;
+        _applications = applications;
         _contactLookup = contactLookup;
         _settlements = settlements;
         _repository = repository;
@@ -154,6 +156,16 @@ public class ContractService : IContractService
             throw new ContractBusinessRuleException("End date must be after the start date.");
         }
 
+        var application = _applications is null ? null : await _applications.FindByBookingAsync(dto.BookingId,booking.CustomerId,CancellationToken.None);
+        if(application is not null) {
+            if(dto.BookingApplicationVersion!=application.Version || !BookingApplicationPolicy.ReadyForContract(application) || application.OccupantCount!=booking.BookingOccupantCount)
+                throw new ContractConflictException("Hồ sơ CCCD chưa được duyệt đủ, danh sách chưa xác nhận hoặc phiên bản đã thay đổi. Hãy tải lại.");
+            dto=dto with {
+                HolderIdentityNumber=application.People.Single(p=>p.Position==0).IdentityNumber,
+                Occupants=application.People.Where(p=>p.Position>0).OrderBy(p=>p.Position).Select(p=>new CreateContractOccupantDto(p.FullName,p.IdentityNumber)).ToArray(),
+                OccupantCountChangeConfirmed=false
+            };
+        } else if(dto.BookingApplicationVersion.HasValue)throw new ContractConflictException("Không tìm thấy hồ sơ đã chọn.");
         var occupants = dto.Occupants ?? [];
         var registeredOccupantCount = occupants.Count + 1;
         var bookedOccupantCount = booking.BookingOccupantCount ?? 1;
@@ -228,7 +240,7 @@ public class ContractService : IContractService
             IsRead = false
         };
         var creationStatus = await _repository.AddFromBookingAsync(new ContractCreationCommand(
-            contract, contract.Occupants.ToArray(), pendingHolderIdentity, dto.OccupantCountChangeConfirmed), notification);
+            contract, contract.Occupants.ToArray(), pendingHolderIdentity, dto.OccupantCountChangeConfirmed, dto.BookingApplicationVersion), notification);
         if (creationStatus == ContractCreationStatus.HolderIdentityConflict)
         {
             throw new ContractConflictException("CCCD người đứng tên không khớp hồ sơ đã duyệt hoặc đã được dùng cho khách hàng khác.");
