@@ -10,15 +10,13 @@ import {
 import StatusBadge from "@/components/customer/StatusBadge"
 import Toast from "@/components/customer/Toast"
 import { useAuth } from "@/auth/AuthContext"
+import { ApiError } from "@/api/apiClient"
 import {
   approveViewingSchedule,
   getAvailableViewingRooms,
   rejectViewingSchedule,
   selectViewingRoom,
 } from "@/services/viewingScheduleService"
-import { getRoles, getUsers } from "@/services/userService"
-import { getPropertyManagerAssignments } from "@/services/propertyManagerAssignmentService"
-import type { BackendUserDto } from "@/types/auth"
 import type { ViewingAvailableRoomDto, ViewingScheduleDto } from "@/types/viewingSchedule"
 import { useViewingSchedules } from "@/hooks/useViewingSchedules"
 import { bookingErrorMessage } from "@/utils/bookingDisplay"
@@ -28,6 +26,16 @@ import { localInputToIso, toLocalInput, viewingStatusDisplay, viewingTimeLabel }
 
 function hasUpcomingTime(viewing: ViewingScheduleDto) {
   return viewing.scheduledAt !== null && Date.parse(viewing.scheduledAt) > Date.now()
+}
+
+function viewingActionErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof ApiError && error.status === 403) {
+    return "Bạn không có quyền xử lý lịch này hoặc không còn được phân công quản lý khu trọ."
+  }
+  if (error instanceof ApiError && error.status === 409) {
+    return "Lịch xem vừa được xử lý hoặc đã thay đổi. Danh sách đã được tải lại."
+  }
+  return bookingErrorMessage(error, fallback)
 }
 
 function positiveQueryId(search: string, key: string): number | null {
@@ -44,13 +52,9 @@ export default function ManagementViewingsPage() {
   const location = useLocation()
   const selectedViewingId = positiveQueryId(location.search, "viewingId")
   const { viewings, loading, error, retry, replace } = useViewingSchedules()
-  const [managers, setManagers] = useState<BackendUserDto[]>([])
-  const [managerError, setManagerError] = useState<string | null>(null)
-  const [managersLoading, setManagersLoading] = useState(false)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [picker, setPicker] = useState<ViewingScheduleDto | null>(null)
   const [pickerTime, setPickerTime] = useState("")
-  const [assignedTo, setAssignedTo] = useState("")
   const [managerNote, setManagerNote] = useState("")
   const [pickerError, setPickerError] = useState<string | null>(null)
   const [roomPicker, setRoomPicker] = useState<ViewingScheduleDto | null>(null)
@@ -62,34 +66,7 @@ export default function ManagementViewingsPage() {
   const [rejectReason, setRejectReason] = useState("")
   const [rejectError, setRejectError] = useState<string | null>(null)
   const [toast, setToast] = useState("")
-  const pickerPropertyId = picker?.propertyId
-
-  useEffect(() => {
-    if (!isAdmin || !accessToken || pickerPropertyId === undefined) return
-    let active = true
-    setManagers([])
-    setManagerError(null)
-    setManagersLoading(true)
-    void Promise.all([getRoles(), getPropertyManagerAssignments(accessToken, pickerPropertyId)])
-      .then(async ([roles, assignments]) => {
-        const managerRole = roles.find((role) => role.roleName.trim().toLowerCase() === "manager")
-        if (!managerRole) throw new Error("Backend chưa khai báo role Manager.")
-        const rows = await getUsers(accessToken, managerRole.roleId)
-        const assignedIds = new Set(assignments
-          .filter((assignment) => assignment.propertyId === pickerPropertyId && assignment.managerIsActive)
-          .map((assignment) => assignment.managerId))
-        return rows.filter((manager) => assignedIds.has(Number(manager.userId))
-          && manager.roleName.trim().toUpperCase() === "MANAGER" && manager.isActive === true)
-      })
-      .then((rows) => {
-        if (active) setManagers(rows)
-      })
-      .catch((cause: unknown) => {
-        if (active) setManagerError(cause instanceof Error ? cause.message : "Không thể tải danh sách Manager.")
-      })
-      .finally(() => { if (active) setManagersLoading(false) })
-    return () => { active = false }
-  }, [accessToken, isAdmin, pickerPropertyId])
+  const currentUserId = user?.id ? Number(user.id) : null
 
   useEffect(() => {
     if (selectedViewingId === null || loading) return
@@ -110,7 +87,12 @@ export default function ManagementViewingsPage() {
       setRoomPicker(null)
       setRejecting(null)
     } catch (actionError) {
-      setToast(bookingErrorMessage(actionError, "Yêu cầu này vừa được xử lý, vui lòng tải lại trang."))
+      setToast(viewingActionErrorMessage(actionError, "Không thể cập nhật lịch xem. Vui lòng thử lại."))
+      if (actionError instanceof ApiError && (actionError.status === 403 || actionError.status === 409)) {
+        setPicker(null)
+        setRoomPicker(null)
+        setRejecting(null)
+      }
       retry()
     } finally {
       setBusyId(null)
@@ -118,23 +100,14 @@ export default function ManagementViewingsPage() {
   }
 
   const openPicker = (viewing: ViewingScheduleDto) => {
-    setManagers([])
-    setManagerError(null)
-    setManagersLoading(true)
     setPicker(viewing)
     setPickerTime(hasUpcomingTime(viewing) ? toLocalInput(new Date(viewing.scheduledAt!)) : "")
-    setAssignedTo("")
     setManagerNote("")
     setPickerError(null)
   }
 
   const approve = () => {
-    if (!picker || managersLoading || managerError) return
-    const managerId = Number(assignedTo)
-    if (!Number.isSafeInteger(managerId) || managerId < 1 || !managers.some((manager) => Number(manager.userId) === managerId)) {
-      setPickerError("Vui lòng chọn Manager đang hoạt động được phân quyền cho khu trọ này.")
-      return
-    }
+    if (!picker) return
     if (!pickerTime || Date.parse(pickerTime) <= Date.now()) {
       setPickerError("Vui lòng chọn thời điểm xem trong tương lai.")
       return
@@ -145,9 +118,8 @@ export default function ManagementViewingsPage() {
     }
     void run(picker, (token) => approveViewingSchedule(token, picker.viewingId, {
       scheduledAt: localInputToIso(pickerTime),
-      assignedTo: managerId,
       managerNote: managerNote.trim() || null,
-    }), `Đã phân công Manager và xác nhận lịch xem ${picker.roomTypeName}.`)
+    }), `Đã chấp thuận lịch xem ${picker.roomTypeName}.`)
   }
 
   const reject = () => {
@@ -175,7 +147,7 @@ export default function ManagementViewingsPage() {
     try {
       setAvailableRooms(await getAvailableViewingRooms(accessToken, viewing.viewingId))
     } catch (cause) {
-      setRoomPickerError(bookingErrorMessage(cause, "Không thể tải các phòng còn phù hợp cho lịch xem này."))
+      setRoomPickerError(viewingActionErrorMessage(cause, "Không thể tải các phòng còn phù hợp cho lịch xem này."))
     } finally {
       setRoomsLoading(false)
     }
@@ -199,8 +171,8 @@ export default function ManagementViewingsPage() {
     <ManagementPage
       title="Lịch xem phòng"
       description={isAdmin
-        ? "Xem mọi yêu cầu, phân công Manager và xác nhận hoặc từ chối lịch hẹn."
-        : "Các lịch được phân công cho bạn. Chọn phòng cụ thể trước khi khách có thể đặt cọc."}
+        ? "Xem toàn bộ yêu cầu xem phòng để giám sát."
+        : "Xem các yêu cầu tại khu trọ bạn quản lý, trực tiếp xác nhận lịch và chọn phòng dẫn khách xem."}
     >
       {loading && (
         <ManagementLoadingState
@@ -212,14 +184,14 @@ export default function ManagementViewingsPage() {
         <ManagementErrorState message={error} onRetry={retry} />
       )}
       {!loading && !error && (
-        <ManagementDataTable headers={["Khách đặt", "Số điện thoại", "Ngày xem", "Khu trọ / phòng", "Trạng thái", ...(isAdmin || isManager ? ["Thao tác"] : [])]}>
+        <ManagementDataTable headers={["Khách đặt", "Số điện thoại", "Ngày xem", "Khu trọ / phòng", "Trạng thái", ...(isManager ? ["Thao tác"] : [])]}>
           {viewings.length === 0 ? (
             <ManagementEmptyState
               icon="calendar"
               message={
                 isAdmin
                   ? "Chưa có yêu cầu xem phòng nào."
-                  : "Chưa có lịch xem phòng được phân công cho bạn."
+                  : "Chưa có yêu cầu xem phòng nào tại khu trọ bạn quản lý."
               }
             />
           ) : (
@@ -243,7 +215,7 @@ export default function ManagementViewingsPage() {
                       {viewing.propertyName} · {viewing.roomTypeName}
                       {viewing.currentMonthlyRent !== null && <small className="mt-1 block text-slate-500">Giá hiện tại: {formatVnd(viewing.currentMonthlyRent)}/tháng</small>}
                       {viewing.roomId === null ? (
-                        <small className="mt-1 block text-amber-700">Manager chưa chọn phòng cụ thể.</small>
+                        <small className="mt-1 block text-amber-700">Chưa xác nhận phòng cụ thể.</small>
                       ) : (
                         <Link to={`${availableRoomsPath(viewing.propertyId)}?roomId=${viewing.roomId}`} className="mt-1 block text-[#087775] underline underline-offset-2">
                           Phòng {viewing.roomCode} · Xem phòng
@@ -255,18 +227,19 @@ export default function ManagementViewingsPage() {
                       {viewing.assignedManagerName && <p className="mt-2 text-xs text-slate-500">Manager: {viewing.assignedManagerName}{viewing.assignedManagerPhone ? ` · ${viewing.assignedManagerPhone}` : ""}</p>}
                       {viewing.managerNote && <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600">Ghi chú: {viewing.managerNote}</p>}
                     </div>
-                    {isAdmin && (
+                    {isManager && pending && (
                       <div className="flex flex-wrap gap-2">
-                        {pending ? <>
-                          <button type="button" disabled={busyId !== null} onClick={() => openPicker(viewing)} className="rounded-lg bg-teal-50 px-3 py-2 text-[12px] font-bold text-[#087775] disabled:opacity-40">Phân công & duyệt</button>
-                          <button type="button" disabled={busyId !== null} onClick={() => { setRejecting(viewing); setRejectReason(""); setRejectError(null) }} className="rounded-lg bg-rose-50 px-3 py-2 text-[12px] font-bold text-rose-600 disabled:opacity-40">Từ chối</button>
-                        </> : <span className="text-xs text-slate-400">Đã xử lý</span>}
+                        <button type="button" disabled={busyId !== null} onClick={() => openPicker(viewing)} className="rounded-lg bg-teal-50 px-3 py-2 text-[12px] font-bold text-[#087775] disabled:opacity-40">Chấp thuận</button>
+                        <button type="button" disabled={busyId !== null} onClick={() => { setRejecting(viewing); setRejectReason(""); setRejectError(null) }} className="rounded-lg bg-rose-50 px-3 py-2 text-[12px] font-bold text-rose-600 disabled:opacity-40">Từ chối</button>
                       </div>
                     )}
-                    {isManager && viewing.status === "Approved" && viewing.roomId === null && (
+                    {isManager && viewing.status === "Approved" && viewing.roomId === null && viewing.assignedTo === currentUserId && (
                       <button type="button" disabled={busyId !== null} onClick={() => void openRoomPicker(viewing)} className="rounded-lg bg-teal-50 px-3 py-2 text-[12px] font-bold text-[#087775] disabled:opacity-40">
                         Chọn phòng dẫn khách xem
                       </button>
+                    )}
+                    {isManager && viewing.status === "Approved" && viewing.roomId === null && viewing.assignedTo !== currentUserId && viewing.assignedManagerName && (
+                      <span className="text-xs text-slate-400">Manager {viewing.assignedManagerName} phụ trách chọn phòng.</span>
                     )}
                   </article>
                 )
@@ -276,33 +249,26 @@ export default function ManagementViewingsPage() {
         </ManagementDataTable>
       )}
 
-      {picker && isAdmin && (
+      {picker && isManager && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-6">
           <div role="dialog" aria-modal="true" aria-labelledby="viewing-picker-title" className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
-            <h2 id="viewing-picker-title" className="font-display text-xl font-bold text-slate-900">Phân công và xác nhận lịch</h2>
+            <h2 id="viewing-picker-title" className="font-display text-xl font-bold text-slate-900">Chấp thuận lịch xem</h2>
             <p className="mt-2 text-sm text-slate-500">{picker.customerName} · {picker.propertyName} · {picker.roomTypeName}</p>
-            <label className="mt-5 block text-sm font-semibold text-slate-700" htmlFor="viewing-manager">Manager phụ trách</label>
-            <select id="viewing-manager" required disabled={managersLoading || !!managerError || managers.length === 0} value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
-              <option value="">{managersLoading ? "Đang tải Manager của khu trọ..." : "Chọn Manager được phân quyền cho khu trọ"}</option>
-              {managers.map((manager) => <option key={manager.userId} value={manager.userId}>{manager.fullName}{manager.phoneNumber ? ` · ${manager.phoneNumber}` : ""}</option>)}
-            </select>
-            {managerError && <p role="alert" className="mt-2 text-xs text-rose-600">{managerError}</p>}
-            {!managersLoading && managers.length === 0 && !managerError && <p className="mt-2 text-xs text-amber-700">Khu trọ này chưa có Manager đang hoạt động được phân quyền.</p>}
             <label className="mt-4 block text-sm font-semibold text-slate-700" htmlFor="viewing-time">Thời gian xác nhận</label>
             <input id="viewing-time" type="datetime-local" required min={toLocalInput()} value={pickerTime} onChange={(event) => setPickerTime(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm" />
-            <label className="mt-4 block text-sm font-semibold text-slate-700" htmlFor="viewing-note">Ghi chú cho Manager / khách (không bắt buộc)</label>
+            <label className="mt-4 block text-sm font-semibold text-slate-700" htmlFor="viewing-note">Ghi chú cho khách (không bắt buộc)</label>
             <textarea id="viewing-note" maxLength={500} rows={3} value={managerNote} onChange={(event) => setManagerNote(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
             <p className="mt-1 text-right text-xs text-slate-400">{managerNote.length}/500</p>
             {pickerError && <p role="alert" className="mt-3 text-sm text-rose-600">{pickerError}</p>}
             <div className="mt-5 flex gap-2">
               <button type="button" onClick={() => setPicker(null)} className="flex-1 rounded-lg bg-slate-100 py-3 text-sm font-bold text-slate-600">Huỷ</button>
-              <button type="button" disabled={busyId !== null || managersLoading || !!managerError || managers.length === 0} onClick={approve} className="flex-1 rounded-lg bg-[#087775] py-3 text-sm font-bold text-white disabled:opacity-40">Xác nhận & thông báo</button>
+              <button type="button" disabled={busyId !== null} onClick={approve} className="flex-1 rounded-lg bg-[#087775] py-3 text-sm font-bold text-white disabled:opacity-40">Chấp thuận & thông báo</button>
             </div>
           </div>
         </div>
       )}
 
-      {rejecting && isAdmin && (
+      {rejecting && isManager && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-6">
           <div role="dialog" aria-modal="true" aria-labelledby="viewing-reject-title" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
             <h2 id="viewing-reject-title" className="font-display text-xl font-bold text-slate-900">Từ chối yêu cầu xem phòng</h2>

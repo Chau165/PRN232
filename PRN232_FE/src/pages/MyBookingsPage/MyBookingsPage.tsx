@@ -123,7 +123,7 @@ export default function MyBookingsPage() {
                     Nếu chưa lập hợp đồng khi hết hạn, chủ trọ có thể mở lại phòng và tiền cọc không được hoàn.
                   </p>
                 )}
-                {(booking.status === "Pending" || booking.status === "Deposited") && (
+                {(awaitingPayment || booking.status === "Deposited") && (
                   <p className="mt-2 text-[13px] text-slate-500">
                     {formatBookingDepositTermText(booking)}
                   </p>
@@ -218,7 +218,7 @@ export default function MyBookingsPage() {
                     </button>
                   </div>
                 )}
-                {booking.status === "Pending" && booking.latestPaymentRequestId && <Link to={`${routes.paymentResult}?requestId=${booking.latestPaymentRequestId}`}
+                {awaitingPayment && booking.latestPaymentRequestId && <Link to={`${routes.paymentResult}?requestId=${booking.latestPaymentRequestId}`}
                   className="mt-3 inline-block text-sm font-semibold text-[#087775]">Kiểm tra giao dịch cọc #{booking.latestPaymentRequestId}</Link>}
               </article>
             )

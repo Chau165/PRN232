@@ -1,6 +1,12 @@
 namespace PRN232.Application.ReadModels;
 
-public sealed record ViewingRoomReadModel(int RoomId, string RoomCode, int PropertyId, int RoomTypeId, int OwnerId);
+public sealed record ViewingRoomReadModel(
+    int RoomId,
+    string RoomCode,
+    int PropertyId,
+    int RoomTypeId,
+    string PropertyName,
+    string RoomTypeName);
 
 public sealed record ViewingPropertyRoomTypeReadModel(
     int PropertyId,
@@ -10,8 +16,6 @@ public sealed record ViewingPropertyRoomTypeReadModel(
     decimal CurrentMonthlyRent);
 
 public sealed record ViewingAvailableRoomReadModel(int RoomId, string RoomCode, decimal AreaSqm, string Status);
-
-public sealed record ViewingManagerReadModel(int UserId, string FullName, string? PhoneNumber, string RoleName, bool IsActive);
 
 public sealed record ViewingScheduleReadModel(
     int ViewingId,

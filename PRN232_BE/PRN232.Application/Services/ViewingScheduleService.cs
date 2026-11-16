@@ -14,21 +14,18 @@ public class ViewingScheduleService : IViewingScheduleService
     private static readonly TimeZoneInfo BusinessTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh");
     private readonly IViewingScheduleRepository _repository;
     private readonly TimeProvider _timeProvider;
-    private readonly INotificationService? _notificationService;
     private readonly INotificationRealtimePublisher? _realtimePublisher;
     private readonly IUserContactLookup? _contactLookup;
 
     public ViewingScheduleService(
         IViewingScheduleRepository repository,
         TimeProvider timeProvider,
-        INotificationService? notificationService = null,
         INotificationRealtimePublisher? realtimePublisher = null,
         IUserContactLookup? contactLookup = null)
     {
         _contactLookup = contactLookup;
         _repository = repository;
         _timeProvider = timeProvider;
-        _notificationService = notificationService;
         _realtimePublisher = realtimePublisher;
     }
 
@@ -69,8 +66,8 @@ public class ViewingScheduleService : IViewingScheduleService
             roomTypeId = room.RoomTypeId;
             selectedRoomId = room.RoomId;
             selectedRoomCode = room.RoomCode;
-            propertyName = string.Empty;
-            roomTypeName = string.Empty;
+            propertyName = room.PropertyName;
+            roomTypeName = room.RoomTypeName;
         }
         else
         {
@@ -96,21 +93,29 @@ public class ViewingScheduleService : IViewingScheduleService
         }
 
         var viewing = ConvertToEntity(propertyId, roomTypeId, selectedRoomId, dto, customerId);
-        IReadOnlyCollection<int> adminIds = _notificationService is null
-            ? Array.Empty<int>()
-            : await _notificationService.GetActiveAdminUserIdsAsync();
         IReadOnlyCollection<Notifications> notifications = [];
-        await _repository.AddAsync(viewing, viewingId =>
+        var customerName = await _repository.GetCustomerNameAsync(customerId) ?? $"#{customerId}";
+        var added = await _repository.AddAsync(viewing, (viewingId, managerIds) =>
         {
-            notifications = adminIds.Distinct().Select(adminId => CreateNotification(
-                adminId,
+            var requestedItem = selectedRoomCode is null
+                ? $"loại phòng {roomTypeName}"
+                : $"phòng {selectedRoomCode} ({roomTypeName})";
+            var requestedTime = viewing.ScheduledAt is DateTime scheduledAt
+                ? $" vào lúc {FormatVietnamTime(scheduledAt)}"
+                : " và để Manager khu trọ sắp xếp thời gian";
+            var body = $"Khách hàng {customerName} muốn xem {requestedItem}{requestedTime}.";
+            notifications = managerIds.Distinct().Select(managerId => CreateNotification(
+                managerId,
                 viewingId,
-                selectedRoomCode is null ? "Có yêu cầu xem loại phòng mới" : $"Có yêu cầu xem phòng {selectedRoomCode}",
-                selectedRoomCode is null
-                    ? $"{propertyName} · {roomTypeName} · khách hàng #{customerId} đã gửi yêu cầu xem phòng."
-                    : $"Khách hàng #{customerId} đã gửi yêu cầu xem {selectedRoomCode}.")).ToArray();
+                $"Có yêu cầu xem phòng mới tại {propertyName}",
+                body)).ToArray();
             return notifications;
         });
+        if (!added)
+        {
+            throw new ViewingBusinessRuleException(
+                "This property has no active assigned Manager. Ask an Admin to assign a Manager before requesting a viewing.");
+        }
 
         if (_realtimePublisher is not null)
         {
@@ -139,6 +144,10 @@ public class ViewingScheduleService : IViewingScheduleService
                 throw new ViewingAuthorizationException("You are no longer assigned to this viewing or property.");
             }
             throw new ViewingNotFoundException("Viewing request does not exist.");
+        }
+        if (viewing.AssignedTo != userId)
+        {
+            throw new ViewingAuthorizationException("Only the Manager who approved this viewing can select its room.");
         }
         if (viewing.Status != ViewingStatuses.Approved || viewing.RoomId.HasValue)
         {
@@ -175,6 +184,10 @@ public class ViewingScheduleService : IViewingScheduleService
                 throw new ViewingAuthorizationException("You are no longer assigned to this viewing or property.");
             }
             throw new ViewingNotFoundException("Viewing request does not exist.");
+        }
+        if (viewing.AssignedTo != userId)
+        {
+            throw new ViewingAuthorizationException("Only the Manager who approved this viewing can select its room.");
         }
         if (viewing.Status != ViewingStatuses.Approved)
         {
@@ -218,15 +231,15 @@ public class ViewingScheduleService : IViewingScheduleService
             throw new ViewingBusinessRuleException("Status must be Pending, Approved, or Rejected.");
         }
 
-        var (customerId, assignedTo) = GetScope(userId, role);
-        var viewings = await _repository.GetAllAsync(customerId, assignedTo, status);
+        var (customerId, managerId) = GetScope(userId, role);
+        var viewings = await _repository.GetAllAsync(customerId, managerId, status);
         return viewings.Select(ConvertToDto).ToList();
     }
 
     public async Task<ViewingScheduleDto?> GetByIdAsync(int id, int userId, string role)
     {
-        var (customerId, assignedTo) = GetScope(userId, role);
-        var viewing = await _repository.GetByIdAsync(id, customerId, assignedTo);
+        var (customerId, managerId) = GetScope(userId, role);
+        var viewing = await _repository.GetByIdAsync(id, customerId, managerId);
         if (viewing is null && (role is RoleNames.Customer or RoleNames.Manager) && await _repository.ExistsAsync(id))
         {
             throw new ViewingAuthorizationException("You cannot access this viewing request.");
@@ -236,22 +249,8 @@ public class ViewingScheduleService : IViewingScheduleService
 
     public async Task<ViewingScheduleDto> ApproveAsync(int id, ApproveViewingScheduleDto dto, int userId, string role)
     {
-        EnsureAdmin(role);
-        var viewing = await GetPendingForAdminAsync(id, userId);
-        if (dto.AssignedTo is not > 0)
-        {
-            throw new ViewingBusinessRuleException("An active Manager is required for assignment.");
-        }
-
-        var manager = await _repository.GetManagerAsync(dto.AssignedTo.Value);
-        if (manager is null || !manager.IsActive || manager.RoleName != RoleNames.Manager)
-        {
-            throw new ViewingBusinessRuleException("Assignee must be an active Manager.");
-        }
-        if (!await _repository.HasActiveManagerAssignmentAsync(viewing.PropertyId, manager.UserId))
-        {
-            throw new ViewingBusinessRuleException("Manager must have an active assignment to this property.");
-        }
+        EnsureManager(role);
+        var viewing = await GetPendingForManagerAsync(id, userId);
 
         var managerNote = NormalizeNote(dto.ManagerNote);
         var now = _timeProvider.GetUtcNow();
@@ -275,20 +274,14 @@ public class ViewingScheduleService : IViewingScheduleService
                 viewing.CustomerId,
                 viewing.ViewingId,
                 $"Lịch xem {viewingDescription} đã được chấp thuận",
-                customerBody),
-            CreateNotification(
-                manager.UserId,
-                viewing.ViewingId,
-                $"Bạn được giao lịch xem {viewingDescription}",
-                managerNote ?? $"Thời gian đã xác nhận: {scheduledAtText}.")
+                customerBody)
         };
 
         return await DecideAsync(
             viewing,
             ViewingStatuses.Approved,
-            manager.UserId,
-            managerNote,
             userId,
+            managerNote,
             now.UtcDateTime,
             scheduledAtUtc,
             notifications);
@@ -296,8 +289,8 @@ public class ViewingScheduleService : IViewingScheduleService
 
     public async Task<ViewingScheduleDto> RejectAsync(int id, RejectViewingScheduleDto dto, int userId, string role)
     {
-        EnsureAdmin(role);
-        var viewing = await GetPendingForAdminAsync(id, userId);
+        EnsureManager(role);
+        var viewing = await GetPendingForManagerAsync(id, userId);
         var reason = NormalizeNote(dto.Reason, required: true)!;
 
         var now = _timeProvider.GetUtcNow();
@@ -309,17 +302,16 @@ public class ViewingScheduleService : IViewingScheduleService
         return await DecideAsync(
             viewing,
             ViewingStatuses.Rejected,
-            null,
-            reason,
             userId,
+            reason,
             now.UtcDateTime,
             null,
             [notification]);
     }
 
-    private async Task<ViewingScheduleDto> GetPendingForAdminAsync(int id, int userId)
+    private async Task<ViewingScheduleDto> GetPendingForManagerAsync(int id, int userId)
     {
-        var viewing = await GetByIdAsync(id, userId, RoleNames.Admin);
+        var viewing = await GetByIdAsync(id, userId, RoleNames.Manager);
         if (viewing is null)
         {
             throw new ViewingNotFoundException("Viewing request does not exist.");
@@ -334,9 +326,8 @@ public class ViewingScheduleService : IViewingScheduleService
     private async Task<ViewingScheduleDto> DecideAsync(
         ViewingScheduleDto viewing,
         string status,
-        int? assignedTo,
+        int managerId,
         string? managerNote,
-        int respondedBy,
         DateTime respondedAtUtc,
         DateTime? scheduledAtUtc,
         IReadOnlyCollection<Notifications> notifications)
@@ -344,9 +335,8 @@ public class ViewingScheduleService : IViewingScheduleService
         if (!await _repository.DecideAsync(
                 viewing.ViewingId,
                 status,
-                assignedTo,
+                managerId,
                 managerNote,
-                respondedBy,
                 respondedAtUtc,
                 scheduledAtUtc,
                 notifications))
@@ -412,11 +402,11 @@ public class ViewingScheduleService : IViewingScheduleService
         return count;
     }
 
-    private static void EnsureAdmin(string role)
+    private static void EnsureManager(string role)
     {
-        if (role != RoleNames.Admin)
+        if (role != RoleNames.Manager)
         {
-            throw new ViewingAuthorizationException("Only Admins can approve or reject viewing requests.");
+            throw new ViewingAuthorizationException("Only a Manager assigned to this property can approve or reject viewing requests.");
         }
     }
 

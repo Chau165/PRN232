@@ -11,10 +11,9 @@ const mocks = vi.hoisted(() => ({
   getMaintenanceLogs: vi.fn(),
   getMaintenanceReport: vi.fn(),
   getMaintenanceRooms: vi.fn(),
+  getPropertyManagerAssignments: vi.fn(),
   assignMaintenanceRequest: vi.fn(),
   submitMaintenanceReport: vi.fn(),
-  getRoles: vi.fn(),
-  getUsers: vi.fn(),
   role: "ADMIN" as "ADMIN" | "MANAGER",
 }))
 
@@ -42,9 +41,11 @@ vi.mock("@/services/maintenanceService", async (importOriginal) => ({
 }))
 vi.mock("@/services/userService", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/userService")>()),
-  getRoles: mocks.getRoles,
-  getUsers: mocks.getUsers,
   getMaintenanceRooms: mocks.getMaintenanceRooms,
+}))
+vi.mock("@/services/propertyManagerAssignmentService", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/services/propertyManagerAssignmentService")>()),
+  getPropertyManagerAssignments: mocks.getPropertyManagerAssignments,
 }))
 vi.mock("@/api/apiClient", () => ({ ApiError: class ApiError extends Error { status?: number; constructor(message: string, options: { status?: number } = {}) { super(message); this.status = options.status } } }))
 
@@ -70,6 +71,39 @@ function renderPage() {
   return render(<MemoryRouter><ManagementMaintenancePage /></MemoryRouter>)
 }
 
+function managerAssignment(
+  propertyId: number,
+  managerId: number,
+  managerName: string,
+  managerIsActive = true,
+) {
+  return {
+    propertyId,
+    propertyName: propertyId === 1 ? "Khu trọ A" : "Khu trọ B",
+    managerId,
+    managerName,
+    managerEmail: `${managerId}@example.test`,
+    managerIsActive,
+  }
+}
+
+function maintenanceRoom(
+  roomId = 3,
+  propertyId = 1,
+  propertyName = "Khu trọ A",
+  roomCode = "A103",
+) {
+  return { roomId, propertyId, propertyName, roomCode }
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.role = "ADMIN"
@@ -79,9 +113,10 @@ beforeEach(() => {
   mocks.getMaintenanceReport.mockReset().mockResolvedValue({ reportId: 7, requestId: 41, description: "Đã sửa máy lạnh", reportedBy: 9, reportedByName: "Manager thật", createdAt: "2026-10-17T08:02:11", images: [{ imageId: 1, imageUrl: "https://storage.test/evidence.jpg" }, { imageId: 2, imageUrl: "https://storage.test/evidence-2.jpg" }] })
   mocks.assignMaintenanceRequest.mockResolvedValue(request({ status: "Approved", assignedTo: 5, assignedStaffName: "Manager thật" }))
   mocks.submitMaintenanceReport.mockResolvedValue(undefined)
-  mocks.getRoles.mockResolvedValue([{ roleId: 2, roleName: "Manager" }])
-  mocks.getUsers.mockResolvedValue([{ userId: 5, fullName: "Manager thật", roleId: 2, roleName: "Manager", email: "m@example.test", phoneNumber: "", isActive: true }])
-  mocks.getMaintenanceRooms.mockResolvedValue([])
+  mocks.getPropertyManagerAssignments.mockResolvedValue([
+    managerAssignment(1, 5, "Manager thật"),
+  ])
+  mocks.getMaintenanceRooms.mockResolvedValue([maintenanceRoom()])
 })
 
 describe("Management maintenance API flow", () => {
@@ -90,6 +125,7 @@ describe("Management maintenance API flow", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /#41/ }))
     expect(await screen.findByText("Nguyễn An")).toBeTruthy()
+    await screen.findByRole("option", { name: "Manager thật" })
     fireEvent.change(screen.getByLabelText("Manager phụ trách"), { target: { value: "5" } })
     fireEvent.change(screen.getByLabelText("Ghi chú phân công"), { target: { value: "Mang linh kiện thay thế" } })
     fireEvent.click(screen.getByRole("button", { name: "Phân công Manager" }))
@@ -100,6 +136,174 @@ describe("Management maintenance API flow", () => {
     }))
     await waitFor(() => expect(mocks.getMaintenanceRequests).toHaveBeenCalledTimes(2))
     expect(await screen.findByText("Đã phân công Manager thành công.")).toBeTruthy()
+  })
+
+  it("shows only active Managers assigned to the property of the selected room", async () => {
+    mocks.getPropertyManagerAssignments.mockResolvedValue([
+      managerAssignment(1, 5, "Manager A1"),
+      managerAssignment(1, 6, "Manager A2"),
+      managerAssignment(2, 7, "Manager B"),
+    ])
+    renderPage()
+
+    fireEvent.click(await screen.findByRole("button", { name: /#41/ }))
+    const select = await screen.findByLabelText("Manager phụ trách") as HTMLSelectElement
+    await waitFor(() => expect(mocks.getPropertyManagerAssignments).toHaveBeenCalledWith(
+      "test-token",
+      1,
+      expect.any(AbortSignal),
+    ))
+    await screen.findByRole("option", { name: "Manager A2" })
+
+    expect(Array.from(select.options).map((option) => option.textContent)).toEqual([
+      "Chọn Manager đang hoạt động",
+      "Manager A1",
+      "Manager A2",
+    ])
+  })
+
+  it("omits inactive Managers even when they are assigned to the repair property", async () => {
+    mocks.getPropertyManagerAssignments.mockResolvedValue([
+      managerAssignment(1, 5, "Manager đang hoạt động"),
+      managerAssignment(1, 6, "Manager đã khóa", false),
+    ])
+    renderPage()
+
+    fireEvent.click(await screen.findByRole("button", { name: /#41/ }))
+    const select = await screen.findByLabelText("Manager phụ trách") as HTMLSelectElement
+    await screen.findByRole("option", { name: "Manager đang hoạt động" })
+
+    expect(screen.queryByRole("option", { name: "Manager đã khóa" })).toBeNull()
+    expect(select.options).toHaveLength(2)
+  })
+
+  it("disables assignment and explains when the property has no active Managers", async () => {
+    mocks.getPropertyManagerAssignments.mockResolvedValue([])
+    renderPage()
+
+    fireEvent.click(await screen.findByRole("button", { name: /#41/ }))
+
+    expect(await screen.findByText("Khu trọ này chưa có Manager đang hoạt động được phân công.")).toBeTruthy()
+    expect(screen.getByLabelText("Manager phụ trách")).toHaveProperty("disabled", true)
+    expect(screen.getByRole("button", { name: "Phân công Manager" })).toHaveProperty("disabled", true)
+  })
+
+  it("shows assignment API errors without falling back to all Managers", async () => {
+    mocks.getPropertyManagerAssignments.mockRejectedValue(
+      new ApiError("Assignments unavailable", { status: 503 }),
+    )
+    renderPage()
+
+    fireEvent.click(await screen.findByRole("button", { name: /#41/ }))
+
+    expect(await screen.findByText("Không thể hoàn tất yêu cầu: Assignments unavailable")).toBeTruthy()
+    expect(screen.getByLabelText("Manager phụ trách")).toHaveProperty("disabled", true)
+    expect(screen.getByRole("button", { name: "Phân công Manager" })).toHaveProperty("disabled", true)
+    expect(screen.queryByRole("option", { name: "Manager thật" })).toBeNull()
+  })
+
+  it("aborts old Manager loads and resets the selection when switching requests", async () => {
+    const firstAssignments = deferred<ReturnType<typeof managerAssignment>[]>()
+    const secondAssignments = [managerAssignment(2, 22, "Manager B")]
+    mocks.getMaintenanceRequests.mockResolvedValue([
+      request(),
+      request({ requestId: 42, roomId: 4, roomCode: "B204" }),
+    ])
+    mocks.getMaintenanceRequest.mockImplementation(async (_token, id) =>
+      request({ requestId: id, roomId: id === 41 ? 3 : 4, roomCode: id === 41 ? "A103" : "B204" }),
+    )
+    mocks.getMaintenanceRooms.mockResolvedValue([
+      maintenanceRoom(3, 1, "Khu trọ A", "A103"),
+      maintenanceRoom(4, 2, "Khu trọ B", "B204"),
+    ])
+    mocks.getPropertyManagerAssignments.mockImplementation((_token, propertyId) =>
+      propertyId === 1 ? firstAssignments.promise : Promise.resolve(secondAssignments),
+    )
+    renderPage()
+
+    fireEvent.click(await screen.findByRole("button", { name: /#41/ }))
+    await waitFor(() => expect(mocks.getPropertyManagerAssignments).toHaveBeenCalledWith(
+      "test-token",
+      1,
+      expect.any(AbortSignal),
+    ))
+    fireEvent.click(screen.getByRole("button", { name: /#42/ }))
+
+    const select = await screen.findByLabelText("Manager phụ trách") as HTMLSelectElement
+    await screen.findByRole("option", { name: "Manager B" })
+    expect(select.value).toBe("")
+    expect(screen.queryByRole("option", { name: "Manager A" })).toBeNull()
+
+    firstAssignments.resolve([managerAssignment(1, 11, "Manager A")])
+    await waitFor(() => expect(screen.queryByRole("option", { name: "Manager A" })).toBeNull())
+    expect(mocks.getPropertyManagerAssignments.mock.calls[0]?.[2]?.aborted).toBe(true)
+  })
+
+  it("aborts the Manager load when the request drawer closes", async () => {
+    const pendingAssignments = deferred<ReturnType<typeof managerAssignment>[]>()
+    mocks.getPropertyManagerAssignments.mockReturnValue(pendingAssignments.promise)
+    renderPage()
+
+    fireEvent.click(await screen.findByRole("button", { name: /#41/ }))
+    await waitFor(() => expect(mocks.getPropertyManagerAssignments).toHaveBeenCalledTimes(1))
+    const signal = mocks.getPropertyManagerAssignments.mock.calls[0]?.[2] as AbortSignal
+
+    fireEvent.click(screen.getByRole("button", { name: "Đóng" }))
+
+    expect(signal.aborted).toBe(true)
+    expect(screen.queryByLabelText("Manager phụ trách")).toBeNull()
+    pendingAssignments.resolve([managerAssignment(1, 5, "Manager thật")])
+  })
+
+  it("clears the previously selected Manager when opening another request", async () => {
+    mocks.getMaintenanceRequests.mockResolvedValue([
+      request(),
+      request({ requestId: 42, roomId: 4, roomCode: "B204" }),
+    ])
+    mocks.getMaintenanceRequest.mockImplementation(async (_token, id) =>
+      request({ requestId: id, roomId: id === 41 ? 3 : 4, roomCode: id === 41 ? "A103" : "B204" }),
+    )
+    mocks.getMaintenanceRooms.mockResolvedValue([
+      maintenanceRoom(3, 1, "Khu trọ A", "A103"),
+      maintenanceRoom(4, 2, "Khu trọ B", "B204"),
+    ])
+    mocks.getPropertyManagerAssignments.mockImplementation(async (_token, propertyId) => [
+      managerAssignment(propertyId, propertyId * 10, `Manager khu ${propertyId}`),
+    ])
+    renderPage()
+
+    fireEvent.click(await screen.findByRole("button", { name: /#41/ }))
+    const firstSelect = await screen.findByLabelText("Manager phụ trách") as HTMLSelectElement
+    await screen.findByRole("option", { name: "Manager khu 1" })
+    fireEvent.change(firstSelect, { target: { value: "10" } })
+    expect(firstSelect.value).toBe("10")
+
+    fireEvent.click(screen.getByRole("button", { name: /#42/ }))
+    const secondSelect = await screen.findByLabelText("Manager phụ trách") as HTMLSelectElement
+    await screen.findByRole("option", { name: "Manager khu 2" })
+
+    expect(secondSelect.value).toBe("")
+    expect(screen.queryByRole("option", { name: "Manager khu 1" })).toBeNull()
+  })
+
+  it("reloads property Managers after the backend rejects a revoked assignment", async () => {
+    mocks.getPropertyManagerAssignments
+      .mockResolvedValueOnce([managerAssignment(1, 5, "Manager vừa bị thu hồi")])
+      .mockResolvedValueOnce([])
+    mocks.assignMaintenanceRequest.mockRejectedValueOnce(
+      new ApiError("Assignee must be actively assigned to this property.", { status: 400 }),
+    )
+    renderPage()
+
+    fireEvent.click(await screen.findByRole("button", { name: /#41/ }))
+    await screen.findByRole("option", { name: "Manager vừa bị thu hồi" })
+    fireEvent.change(await screen.findByLabelText("Manager phụ trách"), { target: { value: "5" } })
+    fireEvent.click(screen.getByRole("button", { name: "Phân công Manager" }))
+
+    expect(await screen.findByText(/Assignee must be actively assigned to this property/)).toBeTruthy()
+    await waitFor(() => expect(mocks.getPropertyManagerAssignments).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText("Khu trọ này chưa có Manager đang hoạt động được phân công.")).toBeTruthy()
+    expect(screen.getByLabelText("Manager phụ trách")).toHaveProperty("disabled", true)
   })
 
   it("submits report description and actual image files for an assigned Manager", async () => {

@@ -174,10 +174,24 @@ describe("management property and room CRUD", () => {
     const province = screen.getByRole("combobox", { name: "Tỉnh/Thành phố" })
     fireEvent.focus(province)
     fireEvent.change(province, { target: { value: "Hà Nội" } })
-    fireEvent.click(await screen.findByRole("option", { name: "Thành phố Hà Nội" }))
+    fireEvent.click(
+      within(
+        await screen.findByRole("listbox", {
+          name: "Danh sách Tỉnh/Thành phố",
+        }),
+      ).getByRole("option", { name: "Thành phố Hà Nội" }),
+    )
+    await waitFor(() =>
+      expect(calls.some(({ url }) => url.includes("/locations/wards"))).toBe(true),
+    )
     const ward = await screen.findByRole("combobox", { name: "Phường/Xã" })
+    await waitFor(() => expect((ward as HTMLInputElement).disabled).toBe(false))
     fireEvent.focus(ward)
-    fireEvent.click(await screen.findByRole("option", { name: "Phường Ba Đình" }))
+    fireEvent.click(
+      within(
+        await screen.findByRole("listbox", { name: "Danh sách Phường/Xã" }),
+      ).getByRole("option", { name: "Phường Ba Đình" }),
+    )
     fireEvent.change(screen.getByLabelText("Số nhà, tên đường"), {
       target: { value: "12 đường Lê Lợi" },
     })
@@ -329,8 +343,9 @@ describe("management property and room CRUD", () => {
     renderScopedRoomsPage()
 
     expect(
-      await screen.findByText("Quản lý phòng của Nhà trọ Bình An"),
+      await screen.findByRole("heading", { name: "Phòng của Nhà trọ Bình An" }),
     ).toBeTruthy()
+    expect(screen.queryByText("Quản lý phòng của Nhà trọ Bình An")).toBeNull()
     expect(screen.queryByLabelText("Lọc khu trọ")).toBeNull()
     fireEvent.click(await screen.findByRole("button", { name: "+ Thêm phòng" }))
     const propertySelect = screen.getByLabelText("Khu trọ") as HTMLSelectElement

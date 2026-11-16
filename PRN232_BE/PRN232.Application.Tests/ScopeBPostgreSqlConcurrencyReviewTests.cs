@@ -286,6 +286,66 @@ public class ScopeBPostgreSqlConcurrencyReviewTests
             : service.PayAsync(1, new PayInvoiceDto("MoMo"), 10);
     }
 
+    [ScopeBPostgreSqlFact]
+    public async Task Two_property_managers_deciding_same_viewing_commit_only_one_decision()
+    {
+        await using var db = await ScopeBReviewPostgres.CreateAsync();
+        await using (var seed = db.Context())
+        {
+            seed.Users.Add(new Users
+            {
+                UserId = 8,
+                RoleId = 2,
+                FullName = "Review 8",
+                Email = "8@codex-review.invalid",
+                PasswordHash = "isolated-test-only",
+                PhoneNumber = "0000000000",
+                IsActive = true
+            });
+            seed.PropertyManagerAssignments.Add(new PropertyManagerAssignment { PropertyId = 1, ManagerId = 8 });
+            seed.ViewingSchedules.Add(new ViewingSchedules
+            {
+                ViewingId = 1,
+                PropertyId = 1,
+                RoomTypeId = 1,
+                CustomerId = 10,
+                Status = ViewingStatuses.Pending
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        var gate = new ScopeBSqlPause("UPDATE \"ViewingSchedules\"");
+        await using var first = db.Context(gate);
+        await using var second = db.Context();
+        var firstDecision = new ViewingScheduleRepository(first).DecideAsync(
+            1,
+            ViewingStatuses.Approved,
+            7,
+            "First manager",
+            DateTime.UtcNow,
+            DateTime.UtcNow.AddDays(1),
+            [new Notifications { UserId = 10, Title = "Viewing approved", Type = NotificationTypes.Viewing, IsRead = false }]);
+        await gate.Entered.WaitAsync(Deadline);
+        var secondDecision = new ViewingScheduleRepository(second).DecideAsync(
+            1,
+            ViewingStatuses.Rejected,
+            8,
+            "Second manager",
+            DateTime.UtcNow,
+            null,
+            [new Notifications { UserId = 10, Title = "Viewing rejected", Type = NotificationTypes.Viewing, IsRead = false }]);
+        try { await db.AssertBlockedByAsync(first); }
+        finally { gate.Release(); }
+
+        Assert.True(await firstDecision.WaitAsync(Deadline));
+        Assert.False(await secondDecision.WaitAsync(Deadline));
+        await using var verify = db.Context();
+        var viewing = await verify.ViewingSchedules.SingleAsync();
+        Assert.Equal((ViewingStatuses.Approved, 7, 7), (viewing.Status, viewing.AssignedTo, viewing.RespondedBy));
+        Assert.Equal("First manager", viewing.ManagerNote);
+        Assert.Single(await verify.Notifications.ToListAsync());
+    }
+
     private static CreateUtilityReadingDto Reading() => new(1, Month, 150, 14, 100, 10);
     private static Notifications Notice(int userId) => new() { UserId = userId, Title = "Concurrency review", Type = "Invoice", IsRead = false };
     // B4: the same customer booking two different rooms at once. The second request waits on the
