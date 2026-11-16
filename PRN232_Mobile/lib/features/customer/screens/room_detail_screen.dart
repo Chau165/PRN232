@@ -5,7 +5,6 @@ import '../../../core/constants/app_typography.dart';
 import '../../../core/services/property_service.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
-import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../models/customer_models.dart';
 import '../widgets/viewing_request_bottom_sheet.dart';
@@ -52,8 +51,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
     if (success == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          backgroundColor: AppColors.success,
-          content: Text('Yêu cầu xem phòng đã được gửi đến Quản lý!'),
+          backgroundColor: Color(0xFF087775),
+          content: Text('Yêu cầu xem phòng đã được gửi thành công!'),
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
@@ -72,194 +72,402 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
     final prop = widget.property;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            expandedHeight: 250,
-            pinned: true,
-            leading: IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.arrow_back_ios_new_rounded,
-                    size: 16, color: AppColors.textPrimary),
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+              size: 18, color: AppColors.textPrimary),
+          onPressed: () => context.pop(),
+        ),
+        actions: [
+          IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                shape: BoxShape.circle,
               ),
-              onPressed: () => context.pop(),
+              child: const Icon(Icons.close_rounded,
+                  size: 18, color: Color(0xFF64748B)),
             ),
-            flexibleSpace: FlexibleSpaceBar(
-              background: Stack(
-                fit: StackFit.expand,
-                children: [
-                  PageView.builder(
-                    itemCount:
-                        room.images.isNotEmpty ? room.images.length : 1,
-                    onPageChanged: (idx) =>
-                        setState(() => _currentImageIndex = idx),
-                    itemBuilder: (context, index) {
-                      final url = room.images.isNotEmpty
-                          ? room.images[index]
-                          : prop.primaryImageUrl;
-                      return url != null
-                          ? Image.network(url, fit: BoxFit.cover)
-                          : Container(
-                              color: AppColors.primaryLight,
-                              child: const Icon(Icons.meeting_room_rounded,
-                                  size: 64, color: AppColors.primary),
-                            );
-                    },
-                  ),
-                  if (room.images.length > 1)
-                    Positioned(
-                      bottom: 16,
-                      right: 16,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '${_currentImageIndex + 1}/${room.images.length}',
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(room.roomCode, style: AppTypography.displayLarge),
-                      StatusBadge(
-                        label: room.isAvailable ? 'Còn phòng' : 'Đang thuê',
-                        tone: room.isAvailable
-                            ? StatusTone.green
-                            : StatusTone.slate,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(room.typeName, style: AppTypography.headingSmall),
-                  Text('${prop.propertyName} • ${prop.fullAddress}',
-                      style: AppTypography.bodySmall),
-                  const Divider(height: 28),
-
-                  // Specifications Grid
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildSpecBox('Giá thuê/tháng',
-                            Formatters.formatCurrency(room.price), Icons.payments_outlined),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _buildSpecBox('Tiền cọc giữ chỗ',
-                            Formatters.formatCurrency(room.depositAmount), Icons.lock_clock_outlined),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildSpecBox('Diện tích sử dụng',
-                            Formatters.formatArea(room.area), Icons.square_foot_outlined),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _buildSpecBox('Sức chứa tối đa',
-                            '${room.maxOccupancy} người', Icons.people_outline_rounded),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Room Description
-                  Text('Mô tả chi tiết phòng',
-                      style: AppTypography.headingSmall),
-                  const SizedBox(height: 8),
-                  Text(room.description, style: AppTypography.bodyMedium),
-                  const SizedBox(height: 24),
-
-                  // Room Amenities
-                  Text('Trang thiết bị & Tiện nghi phòng',
-                      style: AppTypography.headingSmall),
-                  const SizedBox(height: 12),
-                  AppCard(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      children: room.amenities.map((amenity) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: const BoxDecoration(
-                                  color: AppColors.primaryLight,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(Icons.check_rounded,
-                                    size: 14, color: AppColors.primary),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(amenity, style: AppTypography.labelLarge),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                  const SizedBox(height: 80),
-                ],
-              ),
-            ),
+            onPressed: () => context.pop(),
           ),
         ],
       ),
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header: Property Name + Room Type Name
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    prop.propertyName.toUpperCase(),
+                    style: const TextStyle(
+                      color: Color(0xFF087775),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    room.typeName,
+                    style: const TextStyle(
+                      color: Color(0xFF0F172A),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 22,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
 
+            // Image Carousel (Hình 1)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: SizedBox(
+                  height: 220,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      PageView.builder(
+                        itemCount: room.images.isNotEmpty ? room.images.length : 1,
+                        onPageChanged: (idx) =>
+                            setState(() => _currentImageIndex = idx),
+                        itemBuilder: (context, index) {
+                          final url = room.images.isNotEmpty
+                              ? room.images[index]
+                              : prop.primaryImageUrl;
+                          return url != null
+                              ? Image.network(url, fit: BoxFit.cover)
+                              : Container(
+                                  color: const Color(0xFFE6F4F2),
+                                  child: const Icon(Icons.meeting_room_rounded,
+                                      size: 64, color: Color(0xFF087775)),
+                                );
+                        },
+                      ),
+                      if (room.images.length > 1)
+                        Positioned(
+                          bottom: 12,
+                          right: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.6),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '${_currentImageIndex + 1}/${room.images.length}',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Rent price, Area, Max Occupants
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Giá thuê',
+                    style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        Formatters.formatCurrency(room.price),
+                        style: const TextStyle(
+                          color: Color(0xFF087775),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 24,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${room.area > 0 ? room.area.round() : 19} m²',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Text(
+                        'Tối đa ${room.maxOccupancy > 0 ? room.maxOccupancy : 2} người',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Mô tả phòng
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Mô tả phòng',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    room.description.trim().isNotEmpty
+                        ? room.description
+                        : 'Chưa có mô tả',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Địa chỉ
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Địa chỉ',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    prop.propertyName,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF334155),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    prop.fullAddress,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Tiện ích phòng (Chips)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Tiện ích phòng',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: (room.amenities.isNotEmpty
+                            ? room.amenities
+                            : [
+                                'Máy nước nóng',
+                                'Cửa sổ',
+                                'Tủ quần áo',
+                                'Nhà vệ sinh riêng'
+                              ])
+                        .map((amenity) => _buildChip(amenity))
+                        .toList(),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Dịch vụ (Bảng dịch vụ theo Hình 2)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Dịch vụ',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    child: Column(
+                      children: [
+                        _buildServiceRow('Electricity', '3.300 đ/kWh'),
+                        const Divider(height: 18),
+                        _buildServiceRow('Water', '21.000 đ/m³'),
+                        const Divider(height: 18),
+                        _buildServiceRow('Internet', '150.000 đ/phòng/tháng'),
+                        const Divider(height: 18),
+                        _buildServiceRow(
+                            'Garbage Collection', '40.000 đ/phòng/tháng'),
+                        const Divider(height: 18),
+                        _buildServiceRow('Cleaning', '70.000 đ/phòng/tháng'),
+                        const Divider(height: 18),
+                        _buildServiceRow('Security', '70.000 đ/phòng/tháng'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Thiết bị trong phòng (Chips theo Hình 2)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Thiết bị trong phòng',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _buildChip('Quạt treo tường'),
+                      _buildChip('Khóa cửa cơ'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 100),
+          ],
+        ),
+      ),
+
+      // Bottom Bar với 2 nút: [Đặt lịch xem phòng] và [Đặt cọc giữ phòng]
       bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: const BoxDecoration(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: BoxDecoration(
           color: Colors.white,
-          border: Border(top: BorderSide(color: AppColors.borderLight)),
+          border: const Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, -3),
+            ),
+          ],
         ),
         child: SafeArea(
           child: Row(
             children: [
+              // Nút: Đặt lịch xem phòng
               Expanded(
-                child: AppButton(
-                  text: 'Hẹn xem phòng',
-                  variant: AppButtonVariant.outline,
-                  icon: const Icon(Icons.calendar_today_rounded,
-                      size: 16, color: AppColors.primary),
+                child: OutlinedButton(
                   onPressed: _openViewing,
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF0FDF4),
+                    side: const BorderSide(color: Color(0xFFCCFBF1), width: 1.5),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text(
+                    'Đặt lịch xem phòng',
+                    style: TextStyle(
+                      color: Color(0xFF087775),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
+
+              // Nút: Đặt cọc giữ phòng
               Expanded(
-                child: AppButton(
-                  text: 'Đặt cọc giữ chỗ',
-                  icon: const Icon(Icons.bookmark_add_rounded,
-                      size: 16, color: Colors.white),
+                child: ElevatedButton(
                   onPressed: room.isAvailable ? _goToDeposit : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF087775),
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: const Color(0xFFCBD5E1),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text(
+                    'Đặt cọc giữ phòng',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -269,31 +477,44 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
     );
   }
 
-  Widget _buildSpecBox(String label, String value, IconData icon) {
+  Widget _buildChip(String label) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
       decoration: BoxDecoration(
-        color: AppColors.surfaceVariant,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderLight),
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(20),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: AppColors.primary),
-              const SizedBox(width: 6),
-              Text(label,
-                  style: AppTypography.bodySmall.copyWith(fontSize: 11)),
-            ],
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: Color(0xFF334155),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildServiceRow(String name, String price) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          name,
+          style: const TextStyle(
+            fontSize: 13,
+            color: Color(0xFF475569),
           ),
-          const SizedBox(height: 4),
-          Text(value,
-              style: AppTypography.headingSmall
-                  .copyWith(fontSize: 14, color: AppColors.textPrimary)),
-        ],
-      ),
+        ),
+        Text(
+          price,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+      ],
     );
   }
 }

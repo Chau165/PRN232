@@ -386,6 +386,43 @@ class CustomerViewingModel {
   }
 }
 
+class BookingPaymentLinkModel {
+  final int paymentRequestId;
+  final int bookingId;
+  final String status;
+  final num amount;
+  final String currency;
+  final String? checkoutUrl;
+  final DateTime? expiresAtUtc;
+  final bool reused;
+
+  const BookingPaymentLinkModel({
+    required this.paymentRequestId,
+    required this.bookingId,
+    required this.status,
+    required this.amount,
+    this.currency = 'VND',
+    this.checkoutUrl,
+    this.expiresAtUtc,
+    this.reused = false,
+  });
+
+  factory BookingPaymentLinkModel.fromJson(Map<String, dynamic> json) {
+    return BookingPaymentLinkModel(
+      paymentRequestId: json['paymentRequestId'] ?? 0,
+      bookingId: json['bookingId'] ?? 0,
+      status: json['status'] ?? 'Pending',
+      amount: json['amount'] ?? 0,
+      currency: json['currency'] ?? 'VND',
+      checkoutUrl: json['checkoutUrl']?.toString(),
+      expiresAtUtc: json['expiresAtUtc'] != null
+          ? DateTime.tryParse(json['expiresAtUtc'].toString())?.toLocal()
+          : null,
+      reused: json['reused'] ?? false,
+    );
+  }
+}
+
 class CustomerBookingModel {
   final int id;
   final String bookingCode;
@@ -399,9 +436,15 @@ class CustomerBookingModel {
   final num monthlyPrice;
   final String paymentMethod;
   final DateTime bookingDate;
+  final DateTime? expiryDate;
   final DateTime moveInDate;
+  final int occupantCount;
   String status; // Pending, Confirmed, Deposited, Cancelled, Expired
   final int? contractId;
+  final int? latestPaymentRequestId;
+  final String? customerName;
+  final String? customerPhone;
+  final bool depositAppliesToFirstMonth;
 
   CustomerBookingModel({
     required this.id,
@@ -416,21 +459,33 @@ class CustomerBookingModel {
     required this.monthlyPrice,
     required this.paymentMethod,
     required this.bookingDate,
+    this.expiryDate,
     required this.moveInDate,
+    this.occupantCount = 1,
     required this.status,
     this.contractId,
+    this.latestPaymentRequestId,
+    this.customerName,
+    this.customerPhone,
+    this.depositAppliesToFirstMonth = false,
   });
 
   bool get isPending => status == 'Pending' && !isExpired;
   bool get isConfirmed => status == 'Confirmed' || status == 'Deposited';
   bool get isCancelled => status == 'Cancelled';
-  bool get isExpired => (status == 'Pending' && moveInDate.isBefore(DateTime.now())) || status == 'Expired';
+  bool get isExpired => (status == 'Pending' && expiryDate != null && expiryDate!.isBefore(DateTime.now())) || status == 'Expired';
 
   factory CustomerBookingModel.fromJson(Map<String, dynamic> json) {
     final rawExpiry = DateTime.tryParse(json['expiryDate']?.toString() ?? '');
-    final expiry = rawExpiry != null ? rawExpiry.toLocal() : DateTime.now().add(const Duration(days: 7));
+    final expiry = rawExpiry?.toLocal();
+
+    final rawMoveIn = DateTime.tryParse(json['moveInDate']?.toString() ?? '');
+    final moveIn = rawMoveIn?.toLocal() ?? DateTime.now().add(const Duration(days: 7));
 
     final rawId = json['bookingId'] ?? json['id'] ?? 0;
+    final rTypeName = json['roomTypeName']?.toString().isNotEmpty == true
+        ? json['roomTypeName'].toString()
+        : 'Phòng tiêu chuẩn';
 
     return CustomerBookingModel(
       id: rawId,
@@ -440,14 +495,20 @@ class CustomerBookingModel {
       propertyAddress: json['propertyAddress'] ?? 'Phòng ${json['roomCode'] ?? ''}',
       roomId: json['roomId'] ?? 0,
       roomCode: json['roomCode'] ?? '',
-      roomTypeName: 'Phòng tiêu chuẩn',
+      roomTypeName: rTypeName,
       depositAmount: json['depositAmount'] ?? 0,
-      monthlyPrice: json['depositAmount'] ?? 0,
-      paymentMethod: 'Cổng trực tuyến',
+      monthlyPrice: json['agreedMonthlyRent'] ?? json['depositAmount'] ?? 0,
+      paymentMethod: 'payOS',
       bookingDate: DateTime.now(),
-      moveInDate: expiry,
+      expiryDate: expiry,
+      moveInDate: moveIn,
+      occupantCount: json['occupantCount'] ?? 1,
       status: json['status'] ?? 'Pending',
       contractId: json['contractId'],
+      latestPaymentRequestId: json['latestPaymentRequestId'],
+      customerName: json['customerName']?.toString(),
+      customerPhone: json['customerPhone']?.toString(),
+      depositAppliesToFirstMonth: json['depositAppliesToFirstMonth'] ?? false,
     );
   }
 }
