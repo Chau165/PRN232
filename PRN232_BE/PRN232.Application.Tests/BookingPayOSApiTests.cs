@@ -25,7 +25,7 @@ public class BookingPayOSApiTests
 {
     private const string Key = PayOSTestMerchant.Key;
     private const string Webhook = "/api/payments/payos/webhook";
-    private sealed class Gateway : IBookingCheckoutGateway, IPayOSReconciliationGateway
+    internal sealed class Gateway : IBookingCheckoutGateway, IPayOSReconciliationGateway
     {
         public int Creates;
         public long Order;
@@ -52,7 +52,7 @@ public class BookingPayOSApiTests
         }
     }
 
-    private static void Configure(IWebHostBuilder builder, Gateway gateway) => builder.ConfigureAppConfiguration((_, config) =>
+    internal static void Configure(IWebHostBuilder builder, Gateway gateway) => builder.ConfigureAppConfiguration((_, config) =>
         config.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["PayOS:Enabled"] = "true", ["PayOS:BookingPaymentsEnabled"] = "true", ["PayOS:ReconciliationEnabled"] = "false",
@@ -73,13 +73,13 @@ public class BookingPayOSApiTests
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<BookingDto>())!;
     }
-    private static async Task<BookingPaymentLinkDto> CreateLinkAsync(HttpClient client, int bookingId)
+    internal static async Task<BookingPaymentLinkDto> CreateLinkAsync(HttpClient client, int bookingId)
     {
         var response = await client.PostAsJsonAsync($"/api/bookings/{bookingId}/payment-link", new { amount = 1, customerId = 20 });
         Assert.Contains(response.StatusCode, new[] { HttpStatusCode.Created, HttpStatusCode.OK, HttpStatusCode.Accepted });
         return (await response.Content.ReadFromJsonAsync<BookingPaymentLinkDto>())!;
     }
-    private static object Signed(Gateway gateway, string? paidAt = null, string reference = "booking-ref", string? mismatch = null)
+    internal static object Signed(Gateway gateway, string? paidAt = null, string reference = "booking-ref", string? mismatch = null)
     {
         var data = new SortedDictionary<string, object>(StringComparer.Ordinal)
         {

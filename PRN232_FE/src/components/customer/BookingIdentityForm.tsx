@@ -57,7 +57,11 @@ function BookingIdentityFormSession(props:Props){
   {app?.status==="Draft" && app.people.map(person=><PersonEditor key={`${person.personId}:${reloadGeneration}`} person={person} disabled={busy||mismatch}
    onDirty={value=>setDirty(old=>({...old,[person.personId]:value}))}
    onSave={(name,number,consent)=>mutate(()=>saveBookingPerson(token,app,person.personId,name,number,consent))}
-   onUpload={(side,file)=>mutate(()=>uploadBookingIdentity(token,app,person.personId,side,file))}
+   onUpload={(side,file,details)=>mutate(async()=>{
+    let current=app
+    if(details){current=await saveBookingPerson(token,current,person.personId,details.fullName,details.identityNumber,details.consentConfirmed);if(!mounted.current)throw new DOMException("Session ended","AbortError");remember(current)}
+    return uploadBookingIdentity(token,current,person.personId,side,file)
+   })}
    onDelete={side=>mutate(()=>deleteBookingIdentity(token,app,person.personId,side))}
    onRead={side=>readBookingIdentity(token,app,person.personId,side)}/>)}
   {app && <p className="rounded-lg bg-teal-50 p-3 text-sm">{app.depositAppliesToFirstMonth?"Cọc được khấu trừ vào tiền phòng theo điều khoản booking; phần tiền phòng còn lại và dịch vụ được tính trong hóa đơn.":"Cọc là khoản bảo đảm, không tự khấu trừ tiền phòng tháng đầu; việc hoàn cọc theo điều khoản booking."}</p>}
@@ -71,8 +75,9 @@ function BookingIdentityFormSession(props:Props){
   </button>
  </section>
 }
+export type IdentityEdits={fullName:string;identityNumber:string|null;consentConfirmed:boolean}
 export function PersonEditor({person,disabled,onDirty,onSave,onUpload,onDelete,onRead}:{person:ApplicationPerson;disabled:boolean;onDirty:(dirty:boolean)=>void;
- onSave:(name:string,number:string|null,consent:boolean)=>Promise<boolean>;onUpload:(side:"Front"|"Back",file:File)=>Promise<boolean>;onDelete:(side:"Front"|"Back")=>Promise<boolean>;onRead:(side:"Front"|"Back")=>Promise<{url:string}>}){
+ onSave:(name:string,number:string|null,consent:boolean)=>Promise<boolean>;onUpload:(side:"Front"|"Back",file:File,details?:IdentityEdits)=>Promise<boolean>;onDelete:(side:"Front"|"Back")=>Promise<boolean>;onRead:(side:"Front"|"Back")=>Promise<{url:string}>}){
  const [name,setName]=useState(person.fullName),[number,setNumber]=useState(""),[consent,setConsent]=useState(person.consentConfirmed)
  const [dirty,setDirty]=useState(false),[error,setError]=useState("")
  const [preview,setPreview]=useState<string|null>(null)
@@ -93,13 +98,19 @@ export function PersonEditor({person,disabled,onDirty,onSave,onUpload,onDelete,o
    const saved=await onSave(name,number||null,consent)
    if(saved){setDirty(false);onDirty(false);setNumber("");setError("");setPreview(null)}
   }}>Lưu thông tin {person.position===0?"của bạn":`người ở cùng ${person.position}`}</button>
-  {dirty && <p className="text-xs text-amber-800">Lưu thông tin trước khi tải ảnh hoặc giữ phòng.</p>}
+  {dirty && <p className="text-xs text-amber-800">Thông tin chưa lưu. Khi chọn ảnh, hệ thống sẽ lưu thông tin trước rồi tải ảnh lên.</p>}
+  <p className="text-sm text-slate-600">{consent?"Chọn ảnh mặt trước và mặt sau (JPEG, PNG hoặc WebP, tối đa 5 MiB mỗi ảnh). Nếu chưa lưu, thông tin của người này sẽ được lưu tự động trước khi tải ảnh.":"Để bật nút chọn ảnh, hãy tích ô đồng ý cung cấp thông tin và ảnh CCCD ở trên."}</p>
   {(["Front","Back"] as const).map(side=><div key={side} className="space-y-1 text-sm">
    <label className="block">CCCD {side==="Front"?"mặt trước":"mặt sau"} · {(side==="Front"?person.hasFront:person.hasBack)?"Đã tải":"Chưa tải"}
-    <input aria-label={`${label} CCCD ${side==="Front"?"mặt trước":"mặt sau"}`} type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled||dirty||!person.consentConfirmed} onChange={async event=>{
+    <input aria-label={`${label} CCCD ${side==="Front"?"mặt trước":"mặt sau"}`} type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled||!consent} onChange={async event=>{
      const file=event.target.files?.[0];event.target.value="";if(!file)return
      if(file.size<=0||file.size>5*1024*1024||!["image/jpeg","image/png","image/webp"].includes(file.type)){setError("Chọn ảnh JPEG, PNG hoặc WebP tối đa 5 MiB.");return}
-     setError("");setPreview(null);await onUpload(side,file)
+     if(!name.trim() || (!number && !person.maskedIdentityNumber) || (number && !/^\d{12}$/.test(number))){setError("Nhập họ tên và CCCD đủ 12 chữ số trước khi tải ảnh.");return}
+     if(!consent){setError("Vui lòng đồng ý cung cấp thông tin và ảnh CCCD.");return}
+     setError("");setPreview(null)
+     const details=dirty||!person.consentConfirmed?{fullName:name,identityNumber:number||null,consentConfirmed:consent}:undefined
+     const uploaded=await onUpload(side,file,details)
+     if(uploaded&&active.current){setDirty(false);onDirty(false);setNumber("")}
     }}/>
    </label>
    {(side==="Front"?person.hasFront:person.hasBack) && <div className="flex gap-3">
