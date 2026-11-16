@@ -1,5 +1,9 @@
+<<<<<<< HEAD
 import { ApiError } from "@/api/apiClient"
 import { bookingRoomLabel } from "@/utils/bookingDisplay"
+=======
+import { getContractApplicationSource, type BookingApplication } from "@/services/bookingApplicationService"
+>>>>>>> origin/main
 import { useEffect, useState, type FormEvent } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 import ManagementPage from "@/components/management/ManagementPage"
@@ -52,6 +56,8 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
   const { accessToken } = useAuth()
   const navigate = useNavigate()
   const today = localToday()
+  const [source, setSource] = useState<BookingApplication | null>(null)
+  const [sourceLoaded, setSourceLoaded] = useState(false)
   const [booking, setBooking] = useState<BookingDto | null>(null)
   const [eligibleRooms, setEligibleRooms] = useState<EligibleContractRoomDto[]>([])
   const [selectedRoomId, setSelectedRoomId] = useState("")
@@ -76,8 +82,11 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
   useEffect(() => {
     if (!accessToken) return
     const controller = new AbortController()
-    getBooking(accessToken, bookingId, controller.signal)
-      .then(setBooking)
+    Promise.all([getBooking(accessToken, bookingId, controller.signal),
+      getContractApplicationSource(accessToken, bookingId, controller.signal).catch((error: unknown) => {
+        if (typeof error === "object" && error !== null && "status" in error && error.status === 404) return null
+        throw error
+      })]).then(([bookingData, application]) => {if (!controller.signal.aborted) {setBooking(bookingData);setSource(application);setSourceLoaded(true)}})
       .catch((fetchError: unknown) => {
         if (!controller.signal.aborted) {
           setLoadError(fetchError instanceof Error ? fetchError.message : "Không thể tải booking.")
@@ -87,6 +96,7 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
   }, [accessToken, bookingId])
 
   useEffect(() => {
+<<<<<<< HEAD
     if (!accessToken || !booking || booking.roomId !== null || booking.status !== "Deposited" || booking.contractId != null) return
     const controller = new AbortController()
     setSelectedRoomId("")
@@ -99,6 +109,9 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
 
   useEffect(() => {
     if (!booking) return
+=======
+    if (!booking || !sourceLoaded) return
+>>>>>>> origin/main
     const max = Math.max(1, booking.maxOccupants ?? 1)
     const initialCount = Math.min(Math.max(1, booking.occupantCount ?? 1), max)
     setOccupantCount(initialCount)
@@ -157,6 +170,7 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!accessToken || saving) return
+    if (source && !source.readyForContract) {setError("Cần duyệt đầy đủ hồ sơ CCCD trước khi lập hợp đồng.");return}
     if (!isContractDate(startDate) || startDate < today) {
       setError("Ngày bắt đầu phải từ hôm nay trở đi.")
       return
@@ -165,16 +179,16 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
       setError("Ngày kết thúc phải sau ngày bắt đầu.")
       return
     }
-    if (!/^\d{12}$/.test(holderIdentityNumber)) {
+    if (!source && !/^\d{12}$/.test(holderIdentityNumber)) {
       setError("CCCD người đứng tên phải gồm đúng 12 chữ số.")
       return
     }
-    if (occupants.some((occupant) => !occupant.fullName.trim() || !/^\d{12}$/.test(occupant.identityNumber))) {
+    if (!source && occupants.some((occupant) => !occupant.fullName.trim() || !/^\d{12}$/.test(occupant.identityNumber))) {
       setError("Vui lòng nhập họ tên và CCCD 12 số cho từng người ở cùng.")
       return
     }
     const identityNumbers = [holderIdentityNumber, ...occupants.map((occupant) => occupant.identityNumber)]
-    if (new Set(identityNumbers).size !== identityNumbers.length) {
+    if (!source && new Set(identityNumbers).size !== identityNumbers.length) {
       setError("Mỗi người phải đăng ký một CCCD riêng.")
       return
     }
@@ -208,8 +222,9 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
         ...(needsRoomSelection ? { roomId: Number(selectedRoomId), customerRoomSelectionAcknowledged: roomSelectionAcknowledged } : {}),
         startDate,
         endDate,
-        holderIdentityNumber,
-        occupants: occupants.map(({ fullName, identityNumber, phoneNumber }) => ({
+        bookingApplicationVersion: source?.version,
+        holderIdentityNumber: source ? undefined : holderIdentityNumber,
+        occupants: source ? undefined : occupants.map(({ fullName, identityNumber, phoneNumber }) => ({
           fullName: fullName.trim(),
           identityNumber,
           phoneNumber: phoneNumber.trim() || null,
@@ -245,6 +260,7 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
         </p>
       </div>
 
+<<<<<<< HEAD
       {needsRoomSelection && (
         <section className="space-y-3 rounded-xl border border-teal-100 p-4">
           <label className="block text-sm font-semibold text-slate-700">Chọn phòng cụ thể
@@ -266,6 +282,13 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
       )}
 
       <section aria-labelledby="tenant-heading">
+=======
+      {source ? <section aria-label="Hồ sơ đã duyệt"><h3 className="font-bold">Hồ sơ người thuê</h3>
+        {source.people.map(person => <p key={person.personId}>{person.position === 0 ? "Người đứng tên" : "Người ở cùng"}: {person.fullName} · {person.maskedIdentityNumber}</p>)}
+        <p>{source.readyForContract ? "Hồ sơ đã duyệt. Hợp đồng sẽ lưu bản sao hồ sơ này." : "Hồ sơ chưa sẵn sàng. Hãy duyệt đầy đủ CCCD và danh sách người ở."}</p>
+        <Link to="/management/booking-identities" className="text-teal-700 underline">Xem hồ sơ CCCD</Link>
+      </section> : <><section aria-labelledby="tenant-heading">
+>>>>>>> origin/main
         <h3 id="tenant-heading" className="mb-4 text-lg font-bold text-slate-800">Thông tin người thuê</h3>
         <div className="grid gap-4 sm:grid-cols-2">
           <ReadOnlyField label="Họ và tên người thuê" value={booking.customerName} />
@@ -321,6 +344,8 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
           </div>
         ))}
       </section>
+
+      </>}
 
       <section aria-labelledby="handover-heading" className="border-t border-slate-100 pt-6">
         <h3 id="handover-heading" className="mb-4 text-lg font-bold text-slate-800">Xe và tiền bảo đảm</h3>
@@ -388,7 +413,7 @@ function CreateContractForm({ bookingId }: { bookingId: number }) {
       {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-600">{error}</p>}
       <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-6">
         <Link to={routes.managementBookings} className="rounded-lg bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-600">Quay lại</Link>
-        <button type="submit" disabled={saving} className="rounded-lg bg-[#087775] px-5 py-3 text-sm font-bold text-white hover:bg-[#066a68] disabled:cursor-not-allowed disabled:opacity-40">
+        <button type="submit" disabled={saving || !!source && !source.readyForContract} className="rounded-lg bg-[#087775] px-5 py-3 text-sm font-bold text-white hover:bg-[#066a68] disabled:cursor-not-allowed disabled:opacity-40">
           {saving ? "Đang lưu…" : "Xác nhận hợp đồng"}
         </button>
       </div>

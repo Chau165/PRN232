@@ -131,6 +131,352 @@ namespace PRN232.Infrastructure.Migrations
                     b.ToTable("AuditLogs");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingApplication", b =>
+                {
+                    b.Property<int>("BookingApplicationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("BookingApplicationId"));
+
+                    b.Property<int?>("BookingId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("MoveInDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("OccupantCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RoomId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RosterChangeNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("RosterChangeStatus")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<DateTime?>("RosterRequestedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RosterReviewedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("RosterReviewedById")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("SubmittedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uuid");
+
+                    b.HasKey("BookingApplicationId");
+
+                    b.HasIndex("BookingId")
+                        .IsUnique()
+                        .HasFilter("\"BookingId\" IS NOT NULL");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("RoomId");
+
+                    b.HasIndex("RosterReviewedById");
+
+                    b.ToTable("BookingApplications", t =>
+                        {
+                            t.HasCheckConstraint("CK_BookingApplications_Count", "\"OccupantCount\" >= 1");
+
+                            t.HasCheckConstraint("CK_BookingApplications_Roster", "\"RosterChangeStatus\" IN ('None','Pending','Approved','Rejected')");
+
+                            t.HasCheckConstraint("CK_BookingApplications_Status", "\"Status\" IN ('Draft','Submitted','Cancelled','Converted')");
+                        });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingApplicationPerson", b =>
+                {
+                    b.Property<int>("BookingApplicationPersonId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("BookingApplicationPersonId"));
+
+                    b.Property<int>("BookingApplicationId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ConsentRecordedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("IdentityNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("IdentityNumberHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ReviewNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("ReviewedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ReviewedByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uuid");
+
+                    b.HasKey("BookingApplicationPersonId");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("BookingApplicationId", "Position")
+                        .IsUnique();
+
+                    b.ToTable("BookingApplicationPeople", t =>
+                        {
+                            t.HasCheckConstraint("CK_BookingApplicationPeople_Position", "\"Position\" >= 0 AND \"Revision\" >= 1");
+
+                            t.HasCheckConstraint("CK_BookingApplicationPeople_Rejection", "\"Status\" <> 'Rejected' OR length(trim(\"ReviewNote\")) > 0 AND \"ReviewNote\" IS NOT NULL");
+
+                            t.HasCheckConstraint("CK_BookingApplicationPeople_Review", "\"Status\" NOT IN ('Approved','Rejected') OR (\"ReviewedByUserId\" IS NOT NULL AND \"ReviewedAtUtc\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_BookingApplicationPeople_Status", "\"Status\" IN ('Incomplete','PendingReview','Approved','Rejected')");
+                        });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingApplicationReview", b =>
+                {
+                    b.Property<int>("BookingApplicationReviewId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("BookingApplicationReviewId"));
+
+                    b.Property<int>("BookingApplicationId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Decision")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<Guid>("ExpectedApplicationVersion")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int?>("PersonId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("PersonRevision")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ReviewedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ReviewerId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("BookingApplicationReviewId");
+
+                    b.HasIndex("BookingApplicationId");
+
+                    b.HasIndex("ReviewerId");
+
+                    b.ToTable("BookingApplicationReviews", t =>
+                        {
+                            t.HasCheckConstraint("CK_BookingApplicationReviews_Decision", "\"Decision\" IN ('Approved','Rejected') AND \"Kind\" IN ('Identity','Roster')");
+
+                            t.HasCheckConstraint("CK_BookingApplicationReviews_Note", "\"Decision\" <> 'Rejected' OR (\"Note\" IS NOT NULL AND length(trim(\"Note\")) > 0)");
+                        });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingIdentityCleanupTask", b =>
+                {
+                    b.Property<int>("BookingIdentityCleanupTaskId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("BookingIdentityCleanupTaskId"));
+
+                    b.Property<int?>("ApplicationId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid?>("LeaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("LeaseUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ObjectPath")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.HasKey("BookingIdentityCleanupTaskId");
+
+                    b.HasIndex("ObjectPath")
+                        .IsUnique();
+
+                    b.HasIndex("State", "NextAttemptAtUtc");
+
+                    b.ToTable("BookingIdentityCleanupTasks", t =>
+                        {
+                            t.HasCheckConstraint("CK_IdentityCleanup_State", "\"State\" IN ('Pending','Leased','Succeeded','Retained')");
+                        });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingIdentityImage", b =>
+                {
+                    b.Property<int>("BookingIdentityImageId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("BookingIdentityImageId"));
+
+                    b.Property<int>("BookingApplicationPersonId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ObjectPath")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<int>("PersonRevision")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Side")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("BookingIdentityImageId");
+
+                    b.HasIndex("ObjectPath")
+                        .IsUnique();
+
+                    b.HasIndex("BookingApplicationPersonId", "Side")
+                        .IsUnique()
+                        .HasFilter("\"IsCurrent\" = TRUE");
+
+                    b.ToTable("BookingIdentityImages", t =>
+                        {
+                            t.HasCheckConstraint("CK_BookingIdentityImages_Side", "\"Side\" IN ('Front','Back')");
+
+                            t.HasCheckConstraint("CK_BookingIdentityImages_Size", "\"SizeBytes\" > 0 AND \"SizeBytes\" <= 5242880 AND \"PersonRevision\" >= 1");
+
+                            t.HasCheckConstraint("CK_BookingIdentityImages_Type", "\"ContentType\" IN ('image/jpeg','image/png','image/webp')");
+                        });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingIdentityRetentionAudit", b =>
+                {
+                    b.Property<int>("BookingIdentityRetentionAuditId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("BookingIdentityRetentionAuditId"));
+
+                    b.Property<int?>("ApplicationId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Event")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int?>("TaskId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("BookingIdentityRetentionAuditId");
+
+                    b.ToTable("BookingIdentityRetentionAudits");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.BookingRefundRequests", b =>
                 {
                     b.Property<int>("BookingRefundRequestId")
@@ -451,6 +797,62 @@ namespace PRN232.Infrastructure.Migrations
                         {
                             t.HasCheckConstraint("CK_ContractEvidenceFiles_Kind", "\"Kind\" IN ('MoveIn', 'MoveOut', 'SignedContract')");
                         });
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.ContractIdentitySnapshot", b =>
+                {
+                    b.Property<int>("ContractIdentitySnapshotId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ContractIdentitySnapshotId"));
+
+                    b.Property<string>("BackObjectPath")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FrontObjectPath")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("IdentityNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SourceApplicationId")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SourceApplicationVersion")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SourcePersonId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SourceRevision")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ContractIdentitySnapshotId");
+
+                    b.HasIndex("ContractId", "Position")
+                        .IsUnique();
+
+                    b.ToTable("ContractIdentitySnapshots");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.ContractOccupants", b =>
@@ -2187,6 +2589,73 @@ namespace PRN232.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingApplication", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Bookings", null)
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PRN232.Domain.Entities.Users", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Rooms", null)
+                        .WithMany()
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", null)
+                        .WithMany()
+                        .HasForeignKey("RosterReviewedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingApplicationPerson", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.BookingApplication", "Application")
+                        .WithMany("People")
+                        .HasForeignKey("BookingApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Application");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingApplicationReview", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.BookingApplication", null)
+                        .WithMany()
+                        .HasForeignKey("BookingApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PRN232.Domain.Entities.Users", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingIdentityImage", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.BookingApplicationPerson", "Person")
+                        .WithMany("Images")
+                        .HasForeignKey("BookingApplicationPersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Person");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.BookingRefundRequests", b =>
                 {
                     b.HasOne("PRN232.Domain.Entities.Bookings", "Booking")
@@ -2337,6 +2806,17 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("HiddenBy");
 
                     b.Navigation("UploadedBy");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.ContractIdentitySnapshot", b =>
+                {
+                    b.HasOne("PRN232.Domain.Entities.Contracts", "Contract")
+                        .WithMany("IdentitySnapshots")
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Contract");
                 });
 
             modelBuilder.Entity("PRN232.Domain.Entities.ContractOccupants", b =>
@@ -3059,6 +3539,16 @@ namespace PRN232.Infrastructure.Migrations
                     b.Navigation("RoomAmenities");
                 });
 
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingApplication", b =>
+                {
+                    b.Navigation("People");
+                });
+
+            modelBuilder.Entity("PRN232.Domain.Entities.BookingApplicationPerson", b =>
+                {
+                    b.Navigation("Images");
+                });
+
             modelBuilder.Entity("PRN232.Domain.Entities.BookingRefundRequests", b =>
                 {
                     b.Navigation("PayoutAttempts");
@@ -3077,6 +3567,8 @@ namespace PRN232.Infrastructure.Migrations
 
             modelBuilder.Entity("PRN232.Domain.Entities.Contracts", b =>
                 {
+                    b.Navigation("IdentitySnapshots");
+
                     b.Navigation("Invoices");
 
                     b.Navigation("MaintenanceRequests");

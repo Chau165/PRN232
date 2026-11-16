@@ -1,3 +1,4 @@
+import ContractIdentitySnapshots from "@/components/customer/ContractIdentitySnapshots"
 import MeterHandoverModal from "@/components/management/MeterHandoverModal"
 import ContractMeterHandover from "@/components/customer/ContractMeterHandover"
 import ContractEquipmentHandover from "@/components/customer/ContractEquipmentHandover"
@@ -425,6 +426,7 @@ export default function ManagementContractsPage() {
               }))
             }
           />
+          <ContractIdentitySnapshots key={selected.contractId} contractId={selected.contractId} />
           <ContractEvidenceSection
             contract={selected}
             isDepositSettled={Boolean(

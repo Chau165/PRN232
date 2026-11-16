@@ -84,15 +84,12 @@ public class RoomTypeBookingTests
     }
 
     [Fact]
-    public async Task Public_and_management_availability_subtract_unassigned_reservations_once()
+    public async Task Management_type_availability_subtracts_unassigned_reservations_once()
     {
         using var factory = new BookingsApiFactory(); using var client = factory.CreateClient();
         using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<AppDbContext>(); await PrepareAsync(db);
         await Service(db).CreateAsync(TypeRequest(), 10);
-        // SQLite cannot aggregate decimal rent; exercise the capacity projection independently.
-        var remaining = await RoomAvailabilityQueries.GetPropertyAvailability(db.Properties, db.Rooms, DateTimeOffset.UtcNow)
-            .Select(availability => availability.AvailableRoomCount).SingleAsync();
-        Assert.Equal(2, remaining);
+        // The full availability aggregate (including decimal MIN) is verified on PostgreSQL.
         var type = await new PropertyRoomTypeRepository(db).GetByIdAsync(1, 1, DateTimeOffset.UtcNow);
         Assert.Equal(2, type!.AvailableRoomCount);
     }

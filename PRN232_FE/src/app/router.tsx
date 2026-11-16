@@ -21,6 +21,8 @@ import HomePage from "@/pages/HomePage/HomePage"
 
 const AvailableRoomsPage = lazy(() => import("@/pages/AvailableRoomsPage/AvailableRoomsPage"))
 const MyBillsPage = lazy(() => import("@/pages/MyBillsPage/MyBillsPage"))
+const BookingProfilePage = lazy(() => import("@/pages/BookingProfilePage"))
+const ManagementBookingIdentityPage = lazy(() => import("@/pages/ManagementBookingIdentityPage"))
 const MyBookingsPage = lazy(() => import("@/pages/MyBookingsPage/MyBookingsPage"))
 const MyContractsPage = lazy(() => import("@/pages/MyContractsPage/MyContractsPage"))
 const MyRoomPage = lazy(() => import("@/pages/MyRoomPage/MyRoomPage"))
@@ -109,6 +111,10 @@ export const router = createBrowserRouter([
         element: protectedElement(<MyBillsPage />, customerOnly),
       },
 
+      {
+        path: routes.bookingProfile, element: protectedElement(<BookingProfilePage />,customerOnly),
+      },
+      {path:routes.managementBookingIdentity,element:protectedElement(<ManagementBookingIdentityPage />,managementRoles)},
       {
         path: routes.myBookings,
         element: protectedElement(<MyBookingsPage />, customerOnly),

@@ -69,9 +69,13 @@ public record CreateContractDto(
     int RegisteredVehicleCount = 0,
     decimal ManualSecurityDepositAmount = 0m,
     bool SecurityDepositHandoverAcknowledged = false,
+<<<<<<< HEAD
     bool OccupantCountChangeConfirmed = false,
     int? RoomId = null,
     bool CustomerRoomSelectionAcknowledged = false);
+=======
+    bool OccupantCountChangeConfirmed = false, Guid? BookingApplicationVersion = null);
+>>>>>>> origin/main
 
 public record CreateContractOccupantDto(string? FullName, string? IdentityNumber, string? PhoneNumber = null);
 

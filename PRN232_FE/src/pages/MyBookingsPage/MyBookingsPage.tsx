@@ -177,6 +177,7 @@ export default function MyBookingsPage() {
                     )}
                   </div>
                 ) : null}
+                {booking.status === "Deposited" && <Link className="mt-3 inline-block text-sm font-semibold text-teal-700 underline" to={`${routes.bookingProfile}?bookingId=${booking.bookingId}`}>Bổ sung & xem hồ sơ CCCD</Link>}
                 {booking.refundStatus && <div className="mt-3"><StatusBadge tone={refundDisplay(booking.refundStatus).tone}>{refundDisplay(booking.refundStatus).label}</StatusBadge></div>}
                 {(Boolean(booking.refundStatus) || (ONLINE_REFUND_REQUESTS_ENABLED && booking.status === "Deposited" && booking.contractId === null)) && <button type="button"
                   onClick={() => setOpenedRefund(value => value === booking.bookingId ? null : booking.bookingId)}

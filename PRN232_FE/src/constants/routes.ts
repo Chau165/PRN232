@@ -11,6 +11,8 @@ export const routes = {
 
   myBills: "/my-bills",
 
+  bookingProfile: "/booking-profile",
+  managementBookingIdentity: "/management/booking-identities",
   myBookings: "/my-bookings",
 
   notifications: "/notifications",

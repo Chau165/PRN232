@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Security.Claims;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -292,6 +292,8 @@ builder.Services.AddScoped<INotificationRealtimePublisher, NotificationRealtimeP
 builder.Services.AddSignalR();
 builder.Services.AddHttpClient<IMaintenanceReportImageStorage, SupabaseMaintenanceReportImageStorage>();
 builder.Services.AddHttpClient<IPropertyImageStorage, SupabasePropertyImageStorage>();
+builder.Services.AddHttpClient<IBookingIdentityImageStorage, SupabaseBookingIdentityImageStorage>()
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient<IRoomImageStorage, SupabaseRoomImageStorage>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<IPropertyGeocodingService, NominatimPropertyGeocodingService>();
@@ -344,6 +346,19 @@ builder.Services.AddScoped<IEquipmentRepository, EquipmentRepository>();
 builder.Services.AddScoped<IEquipmentService, EquipmentService>();
 builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 builder.Services.AddScoped<IBookingService, BookingService>();
+builder.Services.AddScoped<IBookingApplicationRepository, BookingApplicationRepository>();
+builder.Services.AddScoped<BookingApplicationService>();
+var identityCleanupSettings = new BookingIdentityCleanupSettings();
+builder.Configuration.GetSection("BookingIdentityCleanup").Bind(identityCleanupSettings);
+identityCleanupSettings.Validate();
+builder.Services.AddSingleton(identityCleanupSettings);
+builder.Services.AddScoped<BookingIdentityCleanupRepository>();
+builder.Services.AddScoped<IBookingIdentityCleanupRepository>(sp => sp.GetRequiredService<BookingIdentityCleanupRepository>());
+builder.Services.AddScoped<IBookingIdentityCleanupQueue>(sp => sp.GetRequiredService<BookingIdentityCleanupRepository>());
+builder.Services.AddScoped<BookingIdentityCleanupService>();
+builder.Services.AddScoped<IContractIdentityRepository, ContractIdentityRepository>();
+builder.Services.AddScoped<ContractIdentityService>();
+builder.Services.AddHostedService<PRN232.Api.Workers.BookingIdentityCleanupWorker>();
 builder.Services.AddScoped<IBookingRefundRepository, BookingRefundRepository>();
 builder.Services.AddScoped<IBookingRefundService, BookingRefundService>();
 builder.Services.AddScoped<IBookingRefundReviewService, BookingRefundReviewService>();

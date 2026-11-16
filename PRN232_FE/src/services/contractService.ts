@@ -52,8 +52,9 @@ export function createContract(
     customerRoomSelectionAcknowledged?: boolean
     startDate: string
     endDate: string
-    holderIdentityNumber: string
-    occupants: { fullName: string; identityNumber: string; phoneNumber: string | null }[]
+    bookingApplicationVersion?: string
+    holderIdentityNumber?: string
+    occupants?: { fullName: string; identityNumber: string; phoneNumber: string | null }[]
     registeredVehicleCount: number
     manualSecurityDepositAmount: number
     securityDepositHandoverAcknowledged: boolean

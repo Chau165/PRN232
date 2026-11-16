@@ -1,10 +1,13 @@
+<<<<<<< HEAD
 import { bookingRoomLabel } from "@/utils/bookingDisplay"
+=======
+import BookingIdentityForm from "@/components/customer/BookingIdentityForm"
+>>>>>>> origin/main
 import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router"
-import { ApiError } from "@/api/apiClient"
 import CustomerPageShell from "@/components/customer/CustomerPageShell"
 import { useAuth } from "@/auth/AuthContext"
-import { createBooking, getBooking, createBookingPaymentLink } from "@/services/bookingService"
+import { getBooking, createBookingPaymentLink } from "@/services/bookingService"
 import type { BookingDto } from "@/types/booking"
 import { bookingPaymentError, rememberBookingPayment, recalledBookingPayment } from "@/utils/bookingPayment"
 import { openPayOSCheckout, positiveId, validPayOSCheckout } from "@/utils/invoicePayment"
@@ -24,11 +27,9 @@ import {
   formatMoveInHoldEndDate,
   getVietnamIsoDateOffset,
   isBookingExpired,
-  pendingBookingIdFromError,
 } from "@/utils/bookingDisplay"
 import { publicApiErrorMessage } from "@/utils/publicApiDisplay"
 import { formatVnd } from "@/utils/publicFormatting"
-import { splitValidationErrors } from "@/utils/roomValidation"
 
 
 // Bước 1 (?roomId=): giữ phòng bằng một booking Pending. Bước 2 (?bookingId=): thanh toán cọc
@@ -77,9 +78,7 @@ function HoldRoomStep({ roomId, propertyId, roomTypeId, viewingId }: {
   const [moveInDate, setMoveInDate] = useState<string>(() => getVietnamIsoDateOffset(0))
   const [occupantCount, setOccupantCount] = useState<string>("1")
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<"moveInDate" | "occupantCount", string>>>({})
-  const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
-  const [existingPendingBookingId, setExistingPendingBookingId] = useState<number | null>(null)
 
   if (resource.status === "loading") return <p role="status" className="text-sm text-slate-500">Đang tải thông tin phòng...</p>
   if (resource.status === "error") {
@@ -96,9 +95,9 @@ function HoldRoomStep({ roomId, propertyId, roomTypeId, viewingId }: {
   const maxOccupantsLimit = room.maxOccupants ?? BOOKING_OCCUPANTS_MAX
   const holdEndDateLabel = formatMoveInHoldEndDate(moveInDate)
 
-  const holdRoom = async () => {
-    if (!accessToken || pending) return
+  const validateInputs = () => {
     const nextFieldErrors: Partial<Record<"moveInDate" | "occupantCount", string>> = {}
+<<<<<<< HEAD
     const moveInErr = bookingMoveInDateError(moveInDate)
     if (moveInErr) nextFieldErrors.moveInDate = moveInErr
     const occupantErr = bookingOccupantCountError(occupantCount, { roomCode: room.roomTypeName, maxOccupants: room.maxOccupants })
@@ -146,6 +145,14 @@ function HoldRoomStep({ roomId, propertyId, roomTypeId, viewingId }: {
       setError(bookingErrorMessage(holdError, "Phòng vừa được người khác giữ hoặc không còn trống."))
       setPending(false)
     }
+=======
+    const dateError=bookingMoveInDateError(moveInDate)
+    const countError=bookingOccupantCountError(occupantCount,room)
+    if(dateError)nextFieldErrors.moveInDate=dateError
+    if(countError)nextFieldErrors.occupantCount=countError
+    setFieldErrors(nextFieldErrors)
+    return Object.keys(nextFieldErrors).length===0
+>>>>>>> origin/main
   }
 
   return (
@@ -209,32 +216,11 @@ function HoldRoomStep({ roomId, propertyId, roomTypeId, viewingId }: {
       </div>
 
       <p className="text-sm text-slate-500">Sau khi giữ phòng, bạn có 15 phút để thanh toán tiền cọc.</p>
-      <p className="text-sm text-slate-500">
-        Tiền cọc được giữ làm tiền đảm bảo trong suốt thời gian thuê và hoàn lại khi trả phòng, sau khi trừ tiền phòng còn
-        nợ và hư hỏng thiết bị (nếu có). Tháng đầu tiên bạn đóng đủ tiền phòng.{" "}
-        {holdEndDateLabel
-          ? `Phòng được giữ đến hết ngày ${holdEndDateLabel}.`
-          : "Phòng được giữ đến hết ngày dọn vào + 3 ngày."}{" "}
-        Nếu bạn hủy hoặc không đến nhận phòng trước hạn đó, tiền cọc không được hoàn. Nếu chủ trọ hủy, bạn được hoàn
-        100% (liên hệ trực tiếp quản lý để nhận lại tiền).
-      </p>
-      {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
-      {existingPendingBookingId !== null && (
-        <Link
-          to={`${routes.deposit}?bookingId=${existingPendingBookingId}`}
-          className="inline-block text-sm font-semibold text-[#087775] hover:underline"
-        >
-          Xem đặt phòng đang chờ thanh toán
-        </Link>
-      )}
-      <button
-        type="button"
-        onClick={holdRoom}
-        disabled={pending}
-        className="w-full rounded-lg bg-[#087775] py-3.5 text-sm font-bold text-white hover:bg-[#066a68] disabled:opacity-60"
-      >
-        {pending ? "Đang giữ phòng..." : "Giữ phòng và thanh toán cọc"}
-      </button>
+      <p className="text-sm text-slate-500">Điều khoản tiền cọc sẽ hiển thị trong hồ sơ trước khi giữ phòng. {holdEndDateLabel?`Phòng được giữ đến hết ngày ${holdEndDateLabel} sau khi cọc.`:""}</p>
+      {accessToken && user && <BookingIdentityForm token={accessToken} userId={String(user.id)} roomId={roomId}
+        moveInDate={moveInDate} occupantCount={Number(occupantCount)} viewingId={viewingId}
+        validate={validateInputs} onBusyChange={setPending}
+        onSubmitted={id=>navigate(`${routes.deposit}?bookingId=${id}`,{replace:true})}/>}
     </div>
   )
 }

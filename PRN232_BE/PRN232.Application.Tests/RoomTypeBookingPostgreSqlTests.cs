@@ -91,7 +91,7 @@ public class RoomTypeBookingPostgreSqlTests
     {
         await using var fixture = await ScopeBReviewPostgres.CreateAsync(); await using var db = fixture.Context();
         var migrator = db.GetService<IMigrator>();
-        await migrator.MigrateAsync("20261115160353_ContractOccupantsVehiclesSecurityDeposit");
+        await migrator.MigrateAsync("20261115174143_AddIdentityDocumentReviewNote");
         await db.Database.ExecuteSqlRawAsync("""
             INSERT INTO "Bookings" ("BookingId", "RoomId", "CustomerId", "DepositAmount", "AgreedMonthlyRent", "DepositAppliesToFirstMonth", "Status", "ExpiryDate")
             VALUES (24, 1, 10, 5500000, NULL, true, 'Deposited', CURRENT_TIMESTAMP);
@@ -107,7 +107,7 @@ public class RoomTypeBookingPostgreSqlTests
             .CreateFromBookingAsync(Contract(24, "079201000001"), 7, "Manager"));
         db.Rooms.Add(Room(2)); await db.SaveChangesAsync();
         var unassigned = await Service(db).CreateAsync(Request, 20); Assert.Null(unassigned.RoomId);
-        var error = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => migrator.MigrateAsync("20261115160353_ContractOccupantsVehiclesSecurityDeposit"));
+        var error = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => migrator.MigrateAsync("20261115174143_AddIdentityDocumentReviewNote"));
         Assert.Contains("Cannot downgrade", error.MessageText);
         Assert.Null((await db.Bookings.AsNoTracking().SingleAsync(booking => booking.BookingId == unassigned.BookingId)).RoomId);
         Assert.Equal(5500000m, (await db.Payments.SingleAsync()).Amount);

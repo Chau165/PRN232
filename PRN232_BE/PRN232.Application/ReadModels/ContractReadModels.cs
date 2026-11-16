@@ -64,9 +64,13 @@ public sealed record ContractCreationCommand(
     Contracts Contract,
     IReadOnlyList<ContractOccupants> Occupants,
     IdentityDocuments PendingHolderIdentityDocument,
+<<<<<<< HEAD
     bool OccupantCountChangeConfirmed,
     bool CustomerRoomSelectionAcknowledged = false,
     DateTime? RoomSelectionConfirmedAtUtc = null);
+=======
+    bool OccupantCountChangeConfirmed, Guid? BookingApplicationVersion = null);
+>>>>>>> origin/main
 
 public enum ContractCreationStatus
 {

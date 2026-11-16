@@ -244,11 +244,35 @@ public class ContractRepository : IContractRepository
             return ContractCreationStatus.Conflict;
         }
 
+<<<<<<< HEAD
         var allocationInstant = new DateTimeOffset(DateTime.SpecifyKind(
             creation.RoomSelectionConfirmedAtUtc ?? DateTime.UtcNow, DateTimeKind.Utc));
         if (!await RoomInventoryQueries.CanReserveAsync(_context, bookingFacts.PropertyId, bookingFacts.RoomTypeId,
                 Math.Max(registeredOccupantCount, bookingFacts.OccupantCount ?? 1), contract.RoomId,
                 contract.BookingId, allocationInstant)) return ContractCreationStatus.Conflict;
+=======
+        // Recheck the reviewed source under the same Booking -> Room -> Assignment -> Application locks.
+        var application=await _context.BookingApplications.Where(a=>a.BookingId==contract.BookingId).Select(a=>new {a.BookingApplicationId}).SingleOrDefaultAsync();
+        if(application is not null) {
+            if(_context.Database.IsNpgsql())await _context.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"BookingApplications\" WHERE \"BookingApplicationId\"={application.BookingApplicationId} FOR UPDATE");
+            var fresh=await _context.BookingApplications.AsNoTracking().Include(a=>a.People).ThenInclude(p=>p.Images).SingleAsync(a=>a.BookingApplicationId==application.BookingApplicationId);
+            if(creation.BookingApplicationVersion!=fresh.Version || fresh.CustomerId!=contract.CustomerId || fresh.RoomId!=contract.RoomId ||
+                !PRN232.Application.Policies.BookingApplicationPolicy.ReadyForContract(fresh) || fresh.OccupantCount!=registeredOccupantCount ||
+                fresh.People.Single(p=>p.Position==0).IdentityNumber!=holderDocument.CCCDNumber ||
+                !fresh.People.Where(p=>p.Position>0).OrderBy(p=>p.Position).Select(p=>(p.FullName.Trim(),p.IdentityNumber)).SequenceEqual(creation.Occupants.Select(p=>(p.FullName,p.IdentityNumber))))
+                return ContractCreationStatus.Conflict;
+            var stamp=DateTime.UtcNow;
+            foreach(var person in fresh.People)contract.IdentitySnapshots.Add(new() {
+                SourceApplicationId=fresh.BookingApplicationId,SourceApplicationVersion=fresh.Version,SourcePersonId=person.BookingApplicationPersonId,SourceRevision=person.Revision,
+                Position=person.Position,FullName=person.FullName,IdentityNumber=person.IdentityNumber,
+                FrontObjectPath=person.Images.Single(i=>i.IsCurrent&&i.Side=="Front"&&i.PersonRevision==person.Revision).ObjectPath,
+                BackObjectPath=person.Images.Single(i=>i.IsCurrent&&i.Side=="Back"&&i.PersonRevision==person.Revision).ObjectPath,CreatedAtUtc=stamp
+            });
+            var convertedVersion=Guid.NewGuid();
+            if(await _context.BookingApplications.Where(a=>a.BookingApplicationId==fresh.BookingApplicationId&&a.Version==fresh.Version)
+                .ExecuteUpdateAsync(s=>s.SetProperty(a=>a.Status,"Converted").SetProperty(a=>a.Version,convertedVersion).SetProperty(a=>a.UpdatedAtUtc,stamp))!=1)return ContractCreationStatus.Conflict;
+        } else if(creation.BookingApplicationVersion.HasValue)return ContractCreationStatus.Conflict;
+>>>>>>> origin/main
 
         var existingHolderDocuments = await _context.IdentityDocuments
             .Where(document => document.CustomerId == contract.CustomerId)

@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   getBookings: vi.fn(),
   getBooking: vi.fn(),
   createBooking: vi.fn(),
+  prepareApplication: vi.fn(),
   payBooking: vi.fn(),
   createLink: vi.fn(),
   openCheckout: vi.fn(),
@@ -41,6 +42,17 @@ vi.mock("@/services/bookingService", () => ({
   payBooking: mocks.payBooking,
   cancelBooking: mocks.cancelBooking,
 }))
+vi.mock("@/services/bookingApplicationService", () => ({
+ prepareBookingApplication:mocks.prepareApplication,submitBookingApplication:mocks.createBooking,
+ loadBookingApplication:vi.fn(),updateBookingApplication:vi.fn(),saveBookingPerson:vi.fn(),uploadBookingIdentity:vi.fn(),deleteBookingIdentity:vi.fn(),readBookingIdentity:vi.fn(),
+}))
+async function prepareAndHold(){
+ fireEvent.click(await screen.findByRole("button",{name:"Chuẩn bị hồ sơ CCCD"}))
+ await screen.findByText("Bạn — Người đứng tên dự kiến")
+ const button=screen.getByRole("button",{name:"Giữ phòng và thanh toán cọc"})
+ await waitFor(()=>expect((button as HTMLButtonElement).disabled).toBe(false))
+ fireEvent.click(button)
+}
 vi.mock("@/utils/invoicePayment", async original => ({ ...await original<typeof import("@/utils/invoicePayment")>(), openPayOSCheckout: mocks.openCheckout }))
 vi.mock("@/services/viewingScheduleService", () => ({ getViewingSchedules: mocks.getViewingSchedules }))
 vi.mock("@/services/publicBrowsingService", async (importOriginal) => ({
@@ -79,6 +91,7 @@ function renderAt(path: string) {
 
 beforeEach(() => {
   sessionStorage.clear()
+  mocks.prepareApplication.mockImplementation(async (_token,roomId,moveInDate,occupantCount)=>({bookingApplicationId:101,roomId,moveInDate,occupantCount,bookingId:null,status:"Draft",version:"v1",depositAppliesToFirstMonth:true,people:Array.from({length:occupantCount},(_,position)=>({personId:position+1,position,fullName:position===0?"Customer A":"Roommate",maskedIdentityNumber:"********8901",consentConfirmed:true,status:"Incomplete",hasFront:true,hasBack:true}))}))
   mocks.createLink.mockResolvedValue({ paymentRequestId: 12, bookingId: 7, amount: 3000000, currency: "VND", status: "Pending", checkoutUrl: "https://pay.payos.vn/web/booking-link", expiresAtUtc: "2099-01-01T00:00:00Z", reused: true })
   mocks.listRoomTypes.mockResolvedValue([{ propertyId: 1, propertyName: "Sunrise", roomTypeId: 2, roomTypeName: "Studio", monthlyRent: 3000000, availableRoomCount: 2 }])
   mocks.getRoom.mockResolvedValue(room)
@@ -92,6 +105,7 @@ beforeEach(() => {
 describe("DepositPage", () => {
   it("holds the room and opens a real payOS checkout once without calling the simulated payment API", async () => {
     renderAt("/deposit?roomId=501")
+<<<<<<< HEAD
     await screen.findByText("Studio — Chưa phân phòng cụ thể")
     fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
 
@@ -103,6 +117,14 @@ describe("DepositPage", () => {
       moveInDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       occupantCount: 1,
     })
+=======
+    await screen.findByText("A101 · Studio")
+    await prepareAndHold()
+
+    await screen.findByText("Thanh toán cọc qua payOS")
+    expect(screen.getByText("Hạn thanh toán cọc")).toBeTruthy()
+    expect(mocks.createBooking).toHaveBeenCalledWith("customer-token", expect.objectContaining({ bookingApplicationId:101, occupantCount:1 }), null)
+>>>>>>> origin/main
     expect(mocks.getBooking).toHaveBeenCalledWith("customer-token", 7, expect.any(AbortSignal))
 
     const payButton = screen.getByRole("button", { name: /^Thanh toán/ })
@@ -116,6 +138,7 @@ describe("DepositPage", () => {
     expect(screen.queryByText("payment success page")).toBeNull()
   })
 
+<<<<<<< HEAD
   it("explains before the hold that the deposit is held as security deposit until checkout and holds the room until moveInDate + 3 days, updating dynamically and validating empty moveInDate (C10 items 7 & 9, C13)", async () => {
     renderAt("/deposit?roomId=501")
     await screen.findByText("Studio — Chưa phân phòng cụ thể")
@@ -129,8 +152,17 @@ describe("DepositPage", () => {
 
     fireEvent.change(screen.getByLabelText("Ngày dọn vào"), { target: { value: "" } })
     fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
+=======
+  it("shows the configured deposit terms and validates the date before preparing identity",async()=>{
+    renderAt("/deposit?roomId=501");await screen.findByText("A101 · Studio")
+    fireEvent.change(screen.getByLabelText("Ngày dọn vào"),{target:{value:""}})
+    fireEvent.click(screen.getByRole("button",{name:"Chuẩn bị hồ sơ CCCD"}))
+>>>>>>> origin/main
     expect(await screen.findByText("Vui lòng chọn ngày dọn vào.")).toBeTruthy()
-    expect(mocks.createBooking).not.toHaveBeenCalled()
+    expect(mocks.prepareApplication).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText("Ngày dọn vào"),{target:{value:new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Ho_Chi_Minh"})}})
+    fireEvent.click(screen.getByRole("button",{name:"Chuẩn bị hồ sơ CCCD"}))
+    await screen.findByText(/Cọc được khấu trừ vào tiền phòng/)
   })
 
   it("validates occupantCount against room.maxOccupants and displays move-in summary (C9)", async () => {
@@ -140,12 +172,17 @@ describe("DepositPage", () => {
     await screen.findByText("Studio — Chưa phân phòng cụ thể")
 
     fireEvent.change(screen.getByLabelText("Số người ở"), { target: { value: "3" } })
+<<<<<<< HEAD
     fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
     expect(await screen.findByText("Phòng Studio chỉ được ở tối đa 2 người.")).toBeTruthy()
+=======
+    fireEvent.click(screen.getByRole("button", { name:"Chuẩn bị hồ sơ CCCD" }))
+    expect(await screen.findByText("Phòng A101 chỉ được ở tối đa 2 người.")).toBeTruthy()
+>>>>>>> origin/main
     expect(mocks.createBooking).not.toHaveBeenCalled()
 
     fireEvent.change(screen.getByLabelText("Số người ở"), { target: { value: "2" } })
-    fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
+    await prepareAndHold()
     expect(await screen.findByText("Dọn vào 20/11/2026 · 2 người")).toBeTruthy()
   })
 
@@ -160,9 +197,9 @@ describe("DepositPage", () => {
   it("explains when someone else took the room before the hold", async () => {
     mocks.createBooking.mockRejectedValue(new ApiError("Room is not available for booking.", { status: 409 }))
     renderAt("/deposit?roomId=501")
-    fireEvent.click(await screen.findByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
+    await prepareAndHold()
 
-    expect((await screen.findByRole("alert")).textContent).toBe("Phòng vừa được người khác giữ hoặc không còn trống.")
+    expect((await screen.findByRole("alert")).textContent).toBe("Room is not available for booking.")
     expect(mocks.getBooking).not.toHaveBeenCalled()
   })
 
@@ -173,7 +210,7 @@ describe("DepositPage", () => {
       body: { title: "Pending booking exists", detail: message, pendingBookingId: 42 },
     }))
     renderAt("/deposit?roomId=501")
-    fireEvent.click(await screen.findByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
+    await prepareAndHold()
 
     expect((await screen.findByRole("alert")).textContent).toBe(message)
     const link = screen.getByRole("link", { name: "Xem đặt phòng đang chờ thanh toán" })
@@ -369,10 +406,11 @@ describe("MyBookingsPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Đặt cọc loại phòng này" }))
     await screen.findByText("Studio — Chưa phân phòng cụ thể")
     fireEvent.change(screen.getByLabelText("Số người ở"), { target: { value: "2" } })
-    fireEvent.click(screen.getByRole("button", { name: "Giữ phòng và thanh toán cọc" }))
+    await prepareAndHold()
 
     await screen.findByText("Thanh toán cọc qua payOS")
     expect(screen.getByText("Hạn thanh toán cọc")).toBeTruthy()
+<<<<<<< HEAD
     expect(mocks.createBooking).toHaveBeenCalledWith("customer-token", {
       propertyId: 1,
       roomTypeId: 2,
@@ -380,6 +418,9 @@ describe("MyBookingsPage", () => {
       moveInDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       occupantCount: 2,
     })
+=======
+    expect(mocks.createBooking).toHaveBeenCalledWith("customer-token", expect.objectContaining({bookingApplicationId:101,occupantCount:2}), 3)
+>>>>>>> origin/main
   })
 
   it("retries after a failed load", async () => {

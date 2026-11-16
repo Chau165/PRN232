@@ -1,0 +1,71 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { MemoryRouter } from "react-router"
+import { beforeEach, expect, it, vi } from "vitest"
+import BookingIdentityForm from "@/components/customer/BookingIdentityForm"
+import type { BookingApplication } from "@/services/bookingApplicationService"
+import { ApiError } from "@/api/apiClient"
+const mocks=vi.hoisted(()=>({prepare:vi.fn(),load:vi.fn(),update:vi.fn(),save:vi.fn(),upload:vi.fn(),remove:vi.fn(),read:vi.fn(),submit:vi.fn()}))
+vi.mock("@/services/bookingApplicationService",()=>({prepareBookingApplication:mocks.prepare,loadBookingApplication:mocks.load,updateBookingApplication:mocks.update,
+ saveBookingPerson:mocks.save,uploadBookingIdentity:mocks.upload,deleteBookingIdentity:mocks.remove,readBookingIdentity:mocks.read,submitBookingApplication:mocks.submit}))
+const draft=():BookingApplication=>({bookingApplicationId:1,roomId:5,bookingId:null,status:"Draft",moveInDate:"2026-11-16",occupantCount:1,version:"v1",depositAppliesToFirstMonth:true,
+ people:[{personId:2,position:0,fullName:"Customer A",maskedIdentityNumber:null,consentConfirmed:false,status:"Incomplete",hasFront:false,hasBack:false}]})
+const props=()=>({token:"token",userId:"10",roomId:5,moveInDate:"2026-11-16",occupantCount:1,validate:()=>true,onSubmitted:vi.fn(),onBusyChange:vi.fn()})
+beforeEach(()=>{sessionStorage.clear();Object.values(mocks).forEach(m=>m.mockReset());mocks.prepare.mockResolvedValue(draft());mocks.submit.mockResolvedValue({bookingId:7})
+ mocks.save.mockImplementation(async(_t,a:BookingApplication,_id,name,_number,consent)=>({...a,version:"v2",people:[{...a.people[0],fullName:name,maskedIdentityNumber:"********8901",consentConfirmed:consent}]}))
+ mocks.upload.mockImplementation(async(_t,a:BookingApplication,_id,side)=>({...a,version:a.version+"x",people:[{...a.people[0],hasFront:side==="Front"||a.people[0].hasFront,hasBack:side==="Back"||a.people[0].hasBack}]}))
+})
+it("prepares without holding, saves holder identity, uploads both sides and only then submits",async()=>{
+ const p=props();render(<MemoryRouter><BookingIdentityForm {...p}/></MemoryRouter>)
+ expect(mocks.prepare).not.toHaveBeenCalled();fireEvent.click(screen.getByRole("button",{name:"Chuẩn bị hồ sơ CCCD"}))
+ await screen.findByText("Bạn — Người đứng tên dự kiến")
+ expect(mocks.submit).not.toHaveBeenCalled()
+ const submit=screen.getByRole("button",{name:"Giữ phòng và thanh toán cọc"}) as HTMLButtonElement
+ expect(submit.disabled).toBe(true)
+ fireEvent.change(screen.getByLabelText(/Số CCCD Bạn/),{target:{value:"012345678901"}})
+ fireEvent.click(screen.getByRole("checkbox"));fireEvent.click(screen.getByRole("button",{name:"Lưu thông tin của bạn"}))
+ await waitFor(()=>expect(screen.queryByText("Lưu thông tin trước khi tải ảnh hoặc giữ phòng.")).toBeNull())
+ const file=new File(["test"],"identity.png",{type:"image/png"})
+ fireEvent.change(screen.getByLabelText("Bạn — Người đứng tên dự kiến CCCD mặt trước"),{target:{files:[file]}})
+ await waitFor(()=>expect(mocks.upload).toHaveBeenCalledTimes(1));await screen.findByRole("button",{name:"Xem mặt trước"})
+ expect(submit.disabled).toBe(true)
+ fireEvent.change(screen.getByLabelText("Bạn — Người đứng tên dự kiến CCCD mặt sau"),{target:{files:[file]}})
+ await waitFor(()=>expect(submit.disabled).toBe(false));fireEvent.click(submit)
+ await waitFor(()=>expect(p.onSubmitted).toHaveBeenCalledWith(7))
+ expect(sessionStorage.getItem("booking-application:10:5")).toBe("1")
+ expect(JSON.stringify(sessionStorage)).not.toContain("012345678901")
+})
+it("keeps a failed upload retryable and displays the backend message",async()=>{
+ const a=draft();a.people[0].consentConfirmed=true;a.people[0].maskedIdentityNumber="***8901";mocks.prepare.mockResolvedValue(a)
+ mocks.upload.mockRejectedValue(new ApiError("Dịch vụ lưu trữ CCCD hiện không khả dụng.",{status:502}))
+ render(<MemoryRouter><BookingIdentityForm {...props()}/></MemoryRouter>)
+ fireEvent.click(screen.getByRole("button",{name:"Chuẩn bị hồ sơ CCCD"}));await screen.findByText("Bạn — Người đứng tên dự kiến")
+ fireEvent.change(screen.getByLabelText("Bạn — Người đứng tên dự kiến CCCD mặt trước"),{target:{files:[new File(["x"],"a.png",{type:"image/png"})]}})
+ await screen.findByRole("alert")
+ expect((screen.getByRole("button",{name:"Giữ phòng và thanh toán cọc"}) as HTMLButtonElement).disabled).toBe(true)
+ expect(mocks.submit).not.toHaveBeenCalled()
+})
+it("requires confirmation to remove an entered roommate",async()=>{
+ const a=draft();a.occupantCount=2;a.people.push({...a.people[0],personId:3,position:1,fullName:"Người thứ hai"});mocks.prepare.mockResolvedValue(a)
+ const p={...props(),occupantCount:2};const view=render(<MemoryRouter><BookingIdentityForm {...p}/></MemoryRouter>)
+ fireEvent.click(screen.getByRole("button",{name:"Chuẩn bị hồ sơ CCCD"}));await screen.findByText("Người ở cùng 1")
+ const confirm=vi.spyOn(window,"confirm").mockReturnValue(false)
+ view.rerender(<MemoryRouter><BookingIdentityForm {...p} occupantCount={1}/></MemoryRouter>)
+ fireEvent.click(screen.getByRole("button",{name:"Cập nhật ngày và số người trong hồ sơ"}));expect(confirm).toHaveBeenCalled();expect(mocks.update).not.toHaveBeenCalled()
+})
+it("does not carry identity data across user sessions",async()=>{
+ const p=props();const view=render(<MemoryRouter><BookingIdentityForm {...p}/></MemoryRouter>)
+ fireEvent.click(screen.getByRole("button",{name:"Chuẩn bị hồ sơ CCCD"}));await screen.findByText("Bạn — Người đứng tên dự kiến")
+ view.rerender(<MemoryRouter><BookingIdentityForm {...p} userId="20" token="different-token"/></MemoryRouter>)
+ expect(screen.queryByText("Bạn — Người đứng tên dự kiến")).toBeNull()
+})
+it("preserves unsaved roommate inputs when a reduction is cancelled",async()=>{
+ const a=draft();a.occupantCount=2;a.people.push({...a.people[0],personId:3,position:1,fullName:""});mocks.prepare.mockResolvedValue(a)
+ const p={...props(),occupantCount:2};const view=render(<MemoryRouter><BookingIdentityForm {...p}/></MemoryRouter>)
+ fireEvent.click(screen.getByRole("button",{name:"Chuẩn bị hồ sơ CCCD"}));await screen.findByText("Người ở cùng 1")
+ fireEvent.change(screen.getByLabelText("Họ tên Người ở cùng 1"),{target:{value:"Chưa lưu"}})
+ const confirm=vi.spyOn(window,"confirm").mockReturnValue(false)
+ view.rerender(<MemoryRouter><BookingIdentityForm {...p} occupantCount={1}/></MemoryRouter>)
+ fireEvent.click(screen.getByRole("button",{name:"Cập nhật ngày và số người trong hồ sơ"}))
+ expect(confirm).toHaveBeenCalled();expect(mocks.update).not.toHaveBeenCalled()
+ expect((screen.getByLabelText("Họ tên Người ở cùng 1") as HTMLInputElement).value).toBe("Chưa lưu")
+})
