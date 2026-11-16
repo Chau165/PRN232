@@ -43,6 +43,7 @@ export function serviceRateUnitLabel(
     "m3:usage": "m³",
     "room_month:fixed_room": "phòng/tháng",
     "person_month:occupant": "người/tháng",
+    "person_month:additional_occupant": "người/tháng",
     "vehicle_month:vehicle": "xe/tháng",
   }
 
