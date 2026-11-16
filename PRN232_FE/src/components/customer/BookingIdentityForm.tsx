@@ -100,9 +100,19 @@ export function PersonEditor({person,disabled,onDirty,onSave,onUpload,onDelete,o
   }}>Lưu thông tin {person.position===0?"của bạn":`người ở cùng ${person.position}`}</button>
   {dirty && <p className="text-xs text-amber-800">Thông tin chưa lưu. Khi chọn ảnh, hệ thống sẽ lưu thông tin trước rồi tải ảnh lên.</p>}
   <p className="text-sm text-slate-600">{consent?"Chọn ảnh mặt trước và mặt sau (JPEG, PNG hoặc WebP, tối đa 5 MiB mỗi ảnh). Nếu chưa lưu, thông tin của người này sẽ được lưu tự động trước khi tải ảnh.":"Để bật nút chọn ảnh, hãy tích ô đồng ý cung cấp thông tin và ảnh CCCD ở trên."}</p>
-  {(["Front","Back"] as const).map(side=><div key={side} className="space-y-1 text-sm">
-   <label className="block">CCCD {side==="Front"?"mặt trước":"mặt sau"} · {(side==="Front"?person.hasFront:person.hasBack)?"Đã tải":"Chưa tải"}
-    <input aria-label={`${label} CCCD ${side==="Front"?"mặt trước":"mặt sau"}`} type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled||!consent} onChange={async event=>{
+  <div className="grid grid-cols-1 gap-6 pt-2 sm:grid-cols-2">
+  {(["Front","Back"] as const).map(side=><div key={side} className="min-w-0 space-y-3 text-sm">
+   <h3 className="text-xl font-bold text-slate-900 sm:text-2xl">{side==="Front"?"Mặt trước":"Mặt sau"}</h3>
+   <label className={`relative flex aspect-[8/5] w-full max-w-sm flex-col items-center justify-center gap-2 rounded-2xl border-[3px] border-[#6b8985] bg-white p-5 text-center transition focus-within:ring-4 focus-within:ring-teal-100 ${disabled||!consent?"opacity-50":"hover:border-teal-700 hover:bg-teal-50/40"}`}>
+    {(side==="Front"?person.hasFront:person.hasBack)?<>
+     <svg aria-hidden="true" viewBox="0 0 64 64" className="h-14 w-14 text-teal-700" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"><circle cx="32" cy="32" r="25"/><path d="m20 32 8 8 17-18"/></svg>
+     <span className="font-semibold text-teal-800">Đã tải ảnh</span>
+     <span className="text-xs text-slate-500">Bấm để chọn ảnh thay thế</span>
+    </>:<>
+     <svg aria-hidden="true" viewBox="0 0 80 80" className="h-16 w-16 text-[#b4d394] sm:h-20 sm:w-20" fill="none" stroke="currentColor" strokeWidth="11" strokeLinecap="round"><path d="M40 13v54M13 40h54"/></svg>
+     <span className="text-xs text-slate-500">Bấm để chọn ảnh</span>
+    </>}
+    <input className="absolute inset-0 h-full w-full cursor-pointer rounded-2xl opacity-0 disabled:cursor-not-allowed" aria-label={`${label} CCCD ${side==="Front"?"mặt trước":"mặt sau"}`} type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled||!consent} onChange={async event=>{
      const file=event.target.files?.[0];event.target.value="";if(!file)return
      if(file.size<=0||file.size>5*1024*1024||!["image/jpeg","image/png","image/webp"].includes(file.type)){setError("Chọn ảnh JPEG, PNG hoặc WebP tối đa 5 MiB.");return}
      if(!name.trim() || (!number && !person.maskedIdentityNumber) || (number && !/^\d{12}$/.test(number))){setError("Nhập họ tên và CCCD đủ 12 chữ số trước khi tải ảnh.");return}
@@ -118,6 +128,7 @@ export function PersonEditor({person,disabled,onDirty,onSave,onUpload,onDelete,o
     <button type="button" disabled={disabled||dirty} className="text-rose-700 underline" onClick={async()=>{setPreview(null);await onDelete(side)}}>Xóa {side==="Front"?"mặt trước":"mặt sau"}</button>
    </div>}
   </div>)}
+  </div>
   {preview && <div><img src={preview} referrerPolicy="no-referrer" alt={`Ảnh CCCD ${label}`} className="max-h-64 rounded-lg"/><button type="button" onClick={()=>setPreview(null)}>Đóng ảnh</button></div>}
   {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
  </fieldset>
