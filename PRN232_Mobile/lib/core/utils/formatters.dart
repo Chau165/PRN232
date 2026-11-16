@@ -12,6 +12,13 @@ class Formatters {
   static final DateFormat _dateFormat = DateFormat('dd/MM/yyyy');
   static final DateFormat _dateTimeFormat = DateFormat('HH:mm - dd/MM/yyyy');
   static final DateFormat _monthYearFormat = DateFormat('MM/yyyy');
+  static final DateFormat _timeFormat = DateFormat('HH:mm');
+
+  /// Định dạng giờ: HH:mm
+  static String formatTime(DateTime? dateTime) {
+    if (dateTime == null) return '--:--';
+    return _timeFormat.format(dateTime);
+  }
 
   /// Định dạng tiền tệ đầy đủ: 2.500.000 ₫
   static String formatCurrency(num? amount) {

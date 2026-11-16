@@ -58,19 +58,26 @@ class ViewingService {
     }
   }
 
-  /// Khách đặt lịch hẹn xem phòng
+  /// Khách đặt lịch hẹn xem phòng / xem loại phòng
   Future<CustomerViewingModel> createViewing({
-    required int roomId,
-    required DateTime scheduledAt,
+    int? roomId,
+    int? propertyId,
+    int? roomTypeId,
+    DateTime? scheduledAt,
     String? note,
   }) async {
     try {
+      final payload = <String, dynamic>{};
+      if (roomId != null) payload['roomId'] = roomId;
+      if (propertyId != null) payload['propertyId'] = propertyId;
+      if (roomTypeId != null) payload['roomTypeId'] = roomTypeId;
+      if (scheduledAt != null) {
+        payload['scheduledAt'] = scheduledAt.toUtc().toIso8601String();
+      }
+
       final response = await _dio.post(
         ApiEndpoints.viewingSchedules,
-        data: {
-          'roomId': roomId,
-          'scheduledAt': scheduledAt.toUtc().toIso8601String(),
-        },
+        data: payload,
       );
 
       final data = response.data as Map<String, dynamic>;
@@ -87,16 +94,19 @@ class ViewingService {
       if (!AuthState.isCurrentDemo) {
         rethrow;
       }
+      final date = scheduledAt ?? DateTime.now().add(const Duration(days: 1));
       final newViewing = CustomerViewingModel(
         id: DateTime.now().millisecondsSinceEpoch % 10000,
-        propertyId: 1,
-        propertyName: 'Nhà trọ BlueSky Central',
-        propertyAddress: '123 Nguyễn Thị Minh Khai',
-        roomId: roomId,
-        roomCode: 'P.201',
-        viewingDate: scheduledAt,
-        slotTime: '${scheduledAt.hour.toString().padLeft(2, '0')}:${scheduledAt.minute.toString().padLeft(2, '0')}',
-        note: note,
+        propertyId: propertyId ?? 1,
+        propertyName: 'Saigon Student House',
+        propertyAddress: '02, Sài Gòn, Khu vực Quận 1 TP.HCM',
+        roomId: roomId ?? 1,
+        roomCode: roomId != null ? 'SS-A104' : 'Loại tiêu chuẩn',
+        viewingDate: date,
+        slotTime: scheduledAt != null
+            ? '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}'
+            : 'Admin sắp xếp',
+        note: note ?? (scheduledAt == null ? 'Để Admin phân công lịch' : null),
         status: 'Pending',
       );
       CustomerMockData.viewings.insert(0, newViewing);

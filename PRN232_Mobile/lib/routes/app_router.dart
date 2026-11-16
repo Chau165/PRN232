@@ -124,7 +124,12 @@ final GoRouter appRouter = GoRouter(
         final property = extraMap?['property'] as PropertyItem? ??
             CustomerMockData.properties.first;
         final room = extraMap?['room'] as RoomItem? ?? property.rooms.first;
-        return DepositScreen(property: property, room: room);
+        final booking = extraMap?['booking'] as CustomerBookingModel?;
+        return DepositScreen(
+          property: property,
+          room: room,
+          initialBooking: booking,
+        );
       },
     ),
     GoRoute(

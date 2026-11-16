@@ -11,6 +11,7 @@ import '../../../core/widgets/status_badge.dart';
 import '../../../routes/app_routes.dart';
 import '../data/customer_mock_data.dart';
 import '../models/customer_models.dart';
+import '../widgets/payos_qr_dialog.dart';
 
 class MyBookingsScreen extends StatefulWidget {
   const MyBookingsScreen({super.key});
@@ -109,6 +110,74 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
     );
   }
 
+  void _openPayOS(CustomerBookingModel booking) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: Color(0xFF087775)),
+      ),
+    );
+
+    BookingPaymentLinkModel? link;
+    try {
+      link = await _bookingService.createPaymentLink(booking.id);
+    } catch (_) {}
+
+    if (!mounted) return;
+    Navigator.of(context).pop();
+
+    PayOSQRCodeDialog.show(
+      context,
+      booking: booking,
+      paymentLink: link,
+      onPaymentSuccess: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã nhận xác nhận thanh toán cọc qua payOS!'),
+            backgroundColor: Color(0xFF087775),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        _loadData();
+      },
+    );
+  }
+
+  void _checkTransaction(CustomerBookingModel booking) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: Color(0xFF087775)),
+      ),
+    );
+
+    try {
+      final reqId = booking.latestPaymentRequestId ?? (booking.id * 3 + 7);
+      final status = await _bookingService.getPaymentRequestStatus(reqId);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      final statusStr = status['status']?.toString() ?? 'Pending';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Trạng thái giao dịch #$reqId: $statusStr'),
+          backgroundColor: statusStr == 'Succeeded' ? const Color(0xFF087775) : const Color(0xFFD97706),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Chưa thể lấy thông tin giao dịch.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
   void _cancelBooking(CustomerBookingModel booking) {
     showDialog(
       context: context,
@@ -454,103 +523,235 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
       separatorBuilder: (context, index) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final b = _bookings[index];
-        final isConfirmed = b.isConfirmed;
-        final isExpired = b.isExpired;
-        final hasContract = b.contractId != null;
+        return _buildBookingCard(b);
+      },
+    );
+  }
 
-        // Map status label & tone chuẩn như Web
-        String statusLabel = 'Chờ thanh toán';
-        StatusTone statusTone = StatusTone.amber;
+  Widget _buildBookingCard(CustomerBookingModel b) {
+    final isConfirmed = b.isConfirmed;
+    final isExpired = b.isExpired;
+    final hasContract = b.contractId != null;
 
-        if (hasContract) {
-          statusLabel = 'Đã lập hợp đồng';
-          statusTone = StatusTone.green;
-        } else if (b.status == 'Deposited' || isConfirmed) {
-          statusLabel = 'Đã đặt cọc';
-          statusTone = StatusTone.teal;
-        } else if (b.isCancelled) {
-          statusLabel = 'Đã huỷ';
-          statusTone = StatusTone.rose;
-        } else if (isExpired) {
-          statusLabel = 'Hết hạn thanh toán';
-          statusTone = StatusTone.slate;
-        }
+    // Map status label & tone chuẩn như Web
+    String statusLabel = 'Chờ thanh toán';
+    StatusTone statusTone = StatusTone.amber;
 
-        return AppCard(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    if (hasContract) {
+      statusLabel = 'Đã lập hợp đồng';
+      statusTone = StatusTone.green;
+    } else if (b.status == 'Deposited' || isConfirmed) {
+      statusLabel = 'Đã đặt cọc';
+      statusTone = StatusTone.teal;
+    } else if (b.isCancelled) {
+      statusLabel = 'Đã huỷ';
+      statusTone = StatusTone.rose;
+    } else if (isExpired) {
+      statusLabel = 'Hết hạn thanh toán';
+      statusTone = StatusTone.slate;
+    }
+
+    final expiryDateFormatted = b.expiryDate != null
+        ? Formatters.formatDateTime(b.expiryDate)
+        : '15 phút kể từ lúc đặt';
+
+    final isWaitingPayment = b.status == 'Pending' && !isExpired;
+
+    return Container(
+      key: ValueKey('booking_${b.id}_${b.status}'),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 1. Mã đơn & Trạng thái
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    b.bookingCode.toUpperCase(),
-                    style: AppTypography.labelLarge.copyWith(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  StatusBadge(
-                    label: statusLabel,
-                    tone: statusTone,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(b.propertyName, style: AppTypography.headingSmall),
-              Text('Phòng ${b.roomCode}', style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary)),
-              const Divider(height: 20),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Tiền cọc', style: AppTypography.bodySmall),
-                      const SizedBox(height: 2),
-                      Text(
-                        Formatters.formatCurrency(b.depositAmount),
-                        style: AppTypography.headingSmall.copyWith(color: AppColors.primary),
-                      ),
-                    ],
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        isExpired ? 'Hạn thanh toán cọc' : 'Hạn cọc / Nhận phòng',
-                        style: AppTypography.bodySmall,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        Formatters.formatDateTime(b.moveInDate),
-                        style: AppTypography.labelMedium.copyWith(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-
-              if (b.status == 'Pending' && !isExpired) ...[
-                const Divider(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => _cancelBooking(b),
-                      style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-                      child: const Text('Huỷ giữ phòng'),
-                    ),
-                  ],
+              Text(
+                b.bookingCode.toUpperCase(),
+                style: const TextStyle(
+                  color: Color(0xFF087775),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  letterSpacing: 0.5,
                 ),
-              ],
+              ),
+              StatusBadge(
+                label: statusLabel,
+                tone: statusTone,
+              ),
             ],
           ),
-        );
-      },
+          const SizedBox(height: 8),
+
+          // 2. Tên khu trọ
+          Text(
+            b.propertyName,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 4),
+
+          // 3. Số phòng
+          Text(
+            'Phòng ${b.roomCode}',
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF64748B),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 2),
+
+          // 4. Ngày dọn vào & Số người ở
+          Text(
+            'Dọn vào ${Formatters.formatDate(b.moveInDate)} · ${b.occupantCount} người',
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 14),
+
+          // 5. Tiền cọc & Hạn thanh toán
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Tiền cọc',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    Formatters.formatCurrency(b.depositAmount),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF087775),
+                    ),
+                  ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text(
+                    'Hạn thanh toán cọc',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    expiryDateFormatted,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // 6. Ghi chú chính sách cọc
+          const Text(
+            'Tiền cọc được trừ vào tiền phòng tháng đầu tiên khi lập hợp đồng.',
+            style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4),
+          ),
+
+          // 7. Nhóm nút tác vụ khi trạng thái là Chờ thanh toán và chưa hết hạn
+          if (isWaitingPayment) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () => _openPayOS(b),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF087775),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Text(
+                        'Thanh toán cọc',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: () => _cancelBooking(b),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF1F2),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFFECDD3)),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Text(
+                      'Huỷ giữ phòng',
+                      style: TextStyle(
+                        color: Color(0xFFE11D48),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            InkWell(
+              onTap: () => _checkTransaction(b),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  'Kiểm tra giao dịch cọc #${b.latestPaymentRequestId ?? (b.id * 3 + 7)}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF087775),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

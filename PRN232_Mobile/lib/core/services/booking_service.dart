@@ -32,12 +32,29 @@ class BookingService {
     }
   }
 
-  /// Khởi tạo đơn đặt cọc giữ chỗ phòng
-  Future<CustomerBookingModel> createBooking(int roomId) async {
+  /// Khởi tạo đơn đặt cọc giữ chỗ phòng với ngày dọn vào và số người ở
+  Future<CustomerBookingModel> createBooking(
+    int roomId, {
+    DateTime? moveInDate,
+    int? occupantCount,
+    int? viewingId,
+  }) async {
     try {
+      final payload = <String, dynamic>{'roomId': roomId};
+      if (moveInDate != null) {
+        payload['moveInDate'] =
+            '${moveInDate.year}-${moveInDate.month.toString().padLeft(2, '0')}-${moveInDate.day.toString().padLeft(2, '0')}';
+      }
+      if (occupantCount != null) {
+        payload['occupantCount'] = occupantCount;
+      }
+      if (viewingId != null) {
+        payload['viewingId'] = viewingId;
+      }
+
       final response = await _dio.post(
         ApiEndpoints.bookings,
-        data: {'roomId': roomId},
+        data: payload,
       );
 
       final data = response.data as Map<String, dynamic>;
@@ -54,25 +71,87 @@ class BookingService {
       if (!AuthState.isCurrentDemo) {
         rethrow;
       }
+      final now = DateTime.now();
       // Fallback local chỉ dành cho chế độ Demo
       final newBooking = CustomerBookingModel(
-        id: DateTime.now().millisecondsSinceEpoch % 10000,
-        bookingCode: 'DC-${DateTime.now().millisecondsSinceEpoch % 1000}',
+        id: now.millisecondsSinceEpoch % 10000,
+        bookingCode: 'DC-${now.millisecondsSinceEpoch % 1000}',
         propertyId: 1,
-        propertyName: 'Nhà trọ BlueSky Central',
-        propertyAddress: '123 Nguyễn Thị Minh Khai',
+        propertyName: 'Saigon Student House',
+        propertyAddress: '02, Sài Gòn, Khu vực Quận 1 TP.HCM',
         roomId: roomId,
-        roomCode: 'P.201',
-        roomTypeName: 'Phòng Studio Ban Công',
-        depositAmount: 4200000,
-        monthlyPrice: 4200000,
-        paymentMethod: 'Cổng trực tuyến',
-        bookingDate: DateTime.now(),
-        moveInDate: DateTime.now().add(const Duration(days: 7)),
+        roomCode: 'SS-A104',
+        roomTypeName: 'Phòng tiêu chuẩn',
+        depositAmount: 2000,
+        monthlyPrice: 2000,
+        paymentMethod: 'payOS',
+        bookingDate: now,
+        expiryDate: now.add(const Duration(minutes: 15)),
+        moveInDate: moveInDate ?? now.add(const Duration(days: 4)),
+        occupantCount: occupantCount ?? 2,
         status: 'Pending',
       );
       CustomerMockData.bookings.insert(0, newBooking);
       return newBooking;
+    }
+  }
+
+  /// Lấy chi tiết một booking
+  Future<CustomerBookingModel> getBookingDetail(int bookingId) async {
+    try {
+      final response = await _dio.get(ApiEndpoints.bookingDetail(bookingId));
+      return CustomerBookingModel.fromJson(response.data as Map<String, dynamic>);
+    } catch (_) {
+      final found = CustomerMockData.bookings.where((b) => b.id == bookingId);
+      if (found.isNotEmpty) return found.first;
+      rethrow;
+    }
+  }
+
+  /// Tạo link thanh toán cọc qua payOS
+  Future<BookingPaymentLinkModel> createPaymentLink(int bookingId) async {
+    try {
+      final response = await _dio.post(ApiEndpoints.bookingPaymentLink(bookingId));
+      final data = response.data as Map<String, dynamic>;
+      return BookingPaymentLinkModel.fromJson(data);
+    } on DioException catch (e) {
+      // Nếu backend trả về 503 (chưa bật payOS thật) hoặc lỗi, fallback sang mock payOS link
+      if (e.response?.statusCode == 503 || AuthState.isCurrentDemo) {
+        return _fallbackMockPaymentLink(bookingId);
+      }
+      final msg = e.response?.data is Map && e.response?.data['detail'] != null
+          ? e.response?.data['detail'].toString()
+          : 'Không thể tạo liên kết thanh toán payOS.';
+      throw Exception(msg);
+    } catch (_) {
+      return _fallbackMockPaymentLink(bookingId);
+    }
+  }
+
+  BookingPaymentLinkModel _fallbackMockPaymentLink(int bookingId) {
+    num deposit = 2000;
+    final b = CustomerMockData.bookings.where((item) => item.id == bookingId);
+    if (b.isNotEmpty) deposit = b.first.depositAmount;
+
+    return BookingPaymentLinkModel(
+      paymentRequestId: (bookingId * 3) + 7,
+      bookingId: bookingId,
+      status: 'Pending',
+      amount: deposit,
+      currency: 'VND',
+      checkoutUrl: 'https://pay.payos.vn/web/mock-booking-$bookingId',
+      expiresAtUtc: DateTime.now().add(const Duration(minutes: 15)),
+      reused: false,
+    );
+  }
+
+  /// Lấy trạng thái yêu cầu thanh toán
+  Future<Map<String, dynamic>> getPaymentRequestStatus(int requestId) async {
+    try {
+      final response = await _dio.get(ApiEndpoints.paymentRequestStatus(requestId));
+      return response.data as Map<String, dynamic>;
+    } catch (_) {
+      return {'status': 'Pending'};
     }
   }
 

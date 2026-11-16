@@ -17,8 +17,10 @@ class ApiEndpoints {
   static const String myRentalsHistory = '/me/rentals/history';
   static const String bookings = '/bookings';
   static String bookingDetail(int id) => '/bookings/$id';
+  static String bookingPaymentLink(int id) => '/bookings/$id/payment-link';
   static String payBooking(int id) => '/bookings/$id/pay';
   static String cancelBooking(int id) => '/bookings/$id/cancel';
+  static String paymentRequestStatus(int id) => '/payment-requests/$id';
 
   // Contracts
   static const String contracts = '/contracts';
