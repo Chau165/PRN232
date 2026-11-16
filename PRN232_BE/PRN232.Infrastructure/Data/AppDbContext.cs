@@ -40,6 +40,10 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         }
     }
 
+    public DbSet<BookingApplication> BookingApplications => Set<BookingApplication>();
+    public DbSet<BookingApplicationPerson> BookingApplicationPeople => Set<BookingApplicationPerson>();
+    public DbSet<BookingIdentityImage> BookingIdentityImages => Set<BookingIdentityImage>();
+
     public DbSet<Roles> Roles
     {
         get
@@ -595,6 +599,55 @@ public class AppDbContext : DbContext, IDataProtectionKeyContext
         modelBuilder.Entity<Notifications>()
             .Property(notification => notification.Body)
             .HasColumnType("text");
+        modelBuilder.Entity<BookingApplication>(e =>
+        {
+            e.HasKey(x => x.BookingApplicationId);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasOne<Users>().WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Rooms>().WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Bookings>().WithMany().HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => x.BookingId).IsUnique().HasFilter("\"BookingId\" IS NOT NULL");
+            e.ToTable(t => {
+                t.HasCheckConstraint("CK_BookingApplications_Count", "\"OccupantCount\" >= 1");
+                t.HasCheckConstraint("CK_BookingApplications_Status", "\"Status\" IN ('Draft','Submitted','Cancelled','Converted')");
+            });
+        });
+        modelBuilder.Entity<BookingApplicationPerson>(e =>
+        {
+            e.HasKey(x => x.BookingApplicationPersonId);
+            e.HasOne(x => x.Application).WithMany(x => x.People).HasForeignKey(x => x.BookingApplicationId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => new { x.BookingApplicationId, x.Position }).IsUnique();
+            e.Property(x => x.FullName).HasMaxLength(100);
+            e.Property(x => x.IdentityNumber).HasConversion(CccdProtection.CreateConverter(_dataProtectionProvider));
+            e.Property(x => x.IdentityNumberHash).HasMaxLength(128);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.ReviewNote).HasMaxLength(500);
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasOne<Users>().WithMany().HasForeignKey(x => x.ReviewedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.ToTable(t => {
+                t.HasCheckConstraint("CK_BookingApplicationPeople_Position", "\"Position\" >= 0 AND \"Revision\" >= 1");
+                t.HasCheckConstraint("CK_BookingApplicationPeople_Status", "\"Status\" IN ('Incomplete','PendingReview','Approved','Rejected')");
+                t.HasCheckConstraint("CK_BookingApplicationPeople_Review", "\"Status\" NOT IN ('Approved','Rejected') OR (\"ReviewedByUserId\" IS NOT NULL AND \"ReviewedAtUtc\" IS NOT NULL)");
+                t.HasCheckConstraint("CK_BookingApplicationPeople_Rejection", "\"Status\" <> 'Rejected' OR length(trim(\"ReviewNote\")) > 0 AND \"ReviewNote\" IS NOT NULL");
+            });
+        });
+        modelBuilder.Entity<BookingIdentityImage>(e =>
+        {
+            e.HasKey(x => x.BookingIdentityImageId);
+            e.HasOne(x => x.Person).WithMany(x => x.Images).HasForeignKey(x => x.BookingApplicationPersonId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(x => x.Side).HasMaxLength(5);
+            e.Property(x => x.ContentType).HasMaxLength(20);
+            e.Property(x => x.ObjectPath).HasMaxLength(512);
+            e.HasIndex(x => x.ObjectPath).IsUnique();
+            e.HasIndex(x => new { x.BookingApplicationPersonId, x.Side }).IsUnique().HasFilter("\"IsCurrent\" = TRUE");
+            e.ToTable(t => {
+                t.HasCheckConstraint("CK_BookingIdentityImages_Side", "\"Side\" IN ('Front','Back')");
+                t.HasCheckConstraint("CK_BookingIdentityImages_Size", "\"SizeBytes\" > 0 AND \"SizeBytes\" <= 5242880 AND \"PersonRevision\" >= 1");
+                t.HasCheckConstraint("CK_BookingIdentityImages_Type", "\"ContentType\" IN ('image/jpeg','image/png','image/webp')");
+            });
+        });
+
         modelBuilder.Entity<IdentityDocuments>().HasKey(x => x.IdentityDocumentId);
         modelBuilder.Entity<IdentityDocuments>()
             .Property(document => document.ReviewNote)

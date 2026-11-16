@@ -292,6 +292,8 @@ builder.Services.AddScoped<INotificationRealtimePublisher, NotificationRealtimeP
 builder.Services.AddSignalR();
 builder.Services.AddHttpClient<IMaintenanceReportImageStorage, SupabaseMaintenanceReportImageStorage>();
 builder.Services.AddHttpClient<IPropertyImageStorage, SupabasePropertyImageStorage>();
+builder.Services.AddHttpClient<IBookingIdentityImageStorage, SupabaseBookingIdentityImageStorage>()
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient<IRoomImageStorage, SupabaseRoomImageStorage>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<IPropertyGeocodingService, NominatimPropertyGeocodingService>();
