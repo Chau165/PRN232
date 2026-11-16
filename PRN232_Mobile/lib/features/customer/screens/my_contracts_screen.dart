@@ -68,8 +68,8 @@ class _MyContractsScreenState extends State<MyContractsScreen> {
                     Text(contract.contractCode,
                         style: AppTypography.headingLarge.copyWith(color: AppColors.primary)),
                     StatusBadge(
-                      label: contract.isActive ? 'Đang hiệu lực' : 'Đã thanh lý',
-                      tone: contract.isActive ? StatusTone.green : StatusTone.slate,
+                      label: contract.displayStatusLabel,
+                      tone: contract.displayStatusTone,
                     ),
                   ],
                 ),
@@ -267,8 +267,8 @@ class _MyContractsScreenState extends State<MyContractsScreen> {
                 ],
               ),
               StatusBadge(
-                label: contract.isActive ? 'Đang hiệu lực' : 'Đã thanh lý',
-                tone: contract.isActive ? StatusTone.green : StatusTone.slate,
+                label: contract.displayStatusLabel,
+                tone: contract.displayStatusTone,
               ),
             ],
           ),

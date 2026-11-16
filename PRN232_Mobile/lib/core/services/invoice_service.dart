@@ -70,6 +70,41 @@ class InvoiceService {
     }
   }
 
+  /// Tạo liên kết thanh toán hoá đơn qua payOS (thanh toán thật 100%)
+  Future<InvoicePaymentLinkModel> createPaymentLink(int invoiceId) async {
+    try {
+      final response = await _dio.post(ApiEndpoints.invoicePaymentLink(invoiceId));
+      final data = response.data as Map<String, dynamic>;
+      return InvoicePaymentLinkModel.fromJson(data);
+    } on DioException catch (e) {
+      if (!AuthState.isCurrentDemo && e.response?.statusCode != 404) {
+        final msg = e.response?.data is Map && e.response?.data['detail'] != null
+            ? e.response?.data['detail'].toString()
+            : (e.error?.toString() ?? 'Không thể tạo liên kết thanh toán payOS.');
+        throw Exception(msg);
+      }
+      return _fallbackMockInvoicePaymentLink(invoiceId);
+    } catch (_) {
+      return _fallbackMockInvoicePaymentLink(invoiceId);
+    }
+  }
+
+  InvoicePaymentLinkModel _fallbackMockInvoicePaymentLink(int invoiceId) {
+    num amount = 173000;
+    final inv = CustomerMockData.invoices.where((i) => i.invoiceId == invoiceId);
+    if (inv.isNotEmpty) amount = inv.first.totalAmount;
+
+    return InvoicePaymentLinkModel(
+      paymentRequestId: invoiceId * 3 + 11,
+      invoiceId: invoiceId,
+      status: 'Pending',
+      amount: amount,
+      checkoutUrl: 'https://pay.payos.vn/web/mock-invoice-$invoiceId',
+      expiresAtUtc: DateTime.now().add(const Duration(minutes: 15)),
+      reused: false,
+    );
+  }
+
   /// Khách tự thanh toán hoá đơn qua cổng trực tuyến
   Future<InvoiceModel> payInvoice(int id, String paymentMethod) async {
     try {

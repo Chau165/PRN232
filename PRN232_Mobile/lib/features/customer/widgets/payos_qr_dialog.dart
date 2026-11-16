@@ -123,7 +123,7 @@ class _PayOSQRCodeDialogState extends State<PayOSQRCodeDialog> {
       if (reqId != null) {
         try {
           final reqStatus = await _bookingService.getPaymentRequestStatus(reqId);
-          if (reqStatus['status'] == 'Succeeded') {
+          if (reqStatus.isSuccess) {
             widget.booking.status = 'Deposited';
             _onConfirmed();
             return;

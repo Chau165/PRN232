@@ -15,6 +15,7 @@ import '../features/customer/screens/identity_documents_screen.dart';
 import '../features/customer/screens/my_bookings_screen.dart';
 import '../features/customer/screens/my_contracts_screen.dart';
 import '../features/customer/screens/my_maintenance_requests_screen.dart';
+import '../features/customer/screens/payment_result_screen.dart';
 import '../features/customer/screens/payment_success_screen.dart';
 import '../features/customer/screens/property_detail_screen.dart';
 import '../features/customer/screens/room_detail_screen.dart';
@@ -120,15 +121,42 @@ final GoRouter appRouter = GoRouter(
       path: AppRoutes.deposit,
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) {
-        final extraMap = state.extra as Map<String, dynamic>?;
-        final property = extraMap?['property'] as PropertyItem? ??
-            CustomerMockData.properties.first;
-        final room = extraMap?['room'] as RoomItem? ?? property.rooms.first;
-        final booking = extraMap?['booking'] as CustomerBookingModel?;
+        final extraMap = state.extra is Map ? (state.extra as Map) : null;
+        final property = extraMap?['property'] is PropertyItem
+            ? (extraMap!['property'] as PropertyItem)
+            : CustomerMockData.properties.first;
+        final room = extraMap?['room'] is RoomItem
+            ? (extraMap!['room'] as RoomItem)
+            : property.rooms.first;
+        final booking = extraMap?['booking'] is CustomerBookingModel
+            ? (extraMap!['booking'] as CustomerBookingModel)
+            : null;
         return DepositScreen(
           property: property,
           room: room,
           initialBooking: booking,
+        );
+      },
+    ),
+    GoRoute(
+      path: AppRoutes.paymentResult,
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) {
+        final extraMap = state.extra is Map ? (state.extra as Map) : null;
+        final requestId = extraMap?['requestId'] as int?;
+        final bookingId = extraMap?['bookingId'] as int?;
+        final invoiceId = extraMap?['invoiceId'] as int?;
+        final amount = extraMap?['amount'] as num? ?? 2000;
+        final checkoutUrl = extraMap?['checkoutUrl'] as String?;
+        final isBooking = extraMap?['isBooking'] as bool? ?? true;
+
+        return PaymentResultScreen(
+          requestId: requestId,
+          bookingId: bookingId,
+          invoiceId: invoiceId,
+          amount: amount,
+          checkoutUrl: checkoutUrl,
+          isBooking: isBooking,
         );
       },
     ),

@@ -1,4 +1,5 @@
 import 'package:latlong2/latlong.dart';
+import '../../../core/widgets/status_badge.dart';
 
 class AmenityItem {
   final int id;
@@ -286,6 +287,12 @@ class InvoiceModel {
   final DateTime? paidDate;
   final String? paymentMethod;
   final List<InvoiceDetailLine> details;
+  final int contractId;
+  final String roomCode;
+  final String propertyName;
+  final num remainingPayable;
+  final num netPayable;
+  final String? rawInvoiceMonth;
 
   const InvoiceModel({
     required this.invoiceId,
@@ -297,11 +304,18 @@ class InvoiceModel {
     this.paidDate,
     this.paymentMethod,
     required this.details,
+    this.contractId = 0,
+    this.roomCode = '',
+    this.propertyName = '',
+    this.remainingPayable = 0,
+    this.netPayable = 0,
+    this.rawInvoiceMonth,
   });
 
   // The API reports an unpaid invoice past its due date as 'Overdue' (B5); it is still unpaid.
   bool get isUnpaid => status == 'Unpaid' || status == 'Overdue';
   bool get isPaid => status == 'Paid';
+  num get payableAmount => remainingPayable > 0 ? remainingPayable : (netPayable > 0 ? netPayable : totalAmount);
 
   factory InvoiceModel.fromJson(Map<String, dynamic> json) {
     final lines = (json['lines'] as List?)
@@ -329,6 +343,12 @@ class InvoiceModel {
       paidDate: paid,
       paymentMethod: json['paymentMethod']?.toString(),
       details: lines,
+      contractId: json['contractId'] ?? 0,
+      roomCode: json['roomCode']?.toString() ?? '',
+      propertyName: json['propertyName']?.toString() ?? '',
+      remainingPayable: json['remainingPayable'] ?? 0,
+      netPayable: json['netPayable'] ?? 0,
+      rawInvoiceMonth: monthStr,
     );
   }
 }
@@ -411,6 +431,43 @@ class BookingPaymentLinkModel {
     return BookingPaymentLinkModel(
       paymentRequestId: json['paymentRequestId'] ?? 0,
       bookingId: json['bookingId'] ?? 0,
+      status: json['status'] ?? 'Pending',
+      amount: json['amount'] ?? 0,
+      currency: json['currency'] ?? 'VND',
+      checkoutUrl: json['checkoutUrl']?.toString(),
+      expiresAtUtc: json['expiresAtUtc'] != null
+          ? DateTime.tryParse(json['expiresAtUtc'].toString())?.toLocal()
+          : null,
+      reused: json['reused'] ?? false,
+    );
+  }
+}
+
+class InvoicePaymentLinkModel {
+  final int paymentRequestId;
+  final int invoiceId;
+  final String status;
+  final num amount;
+  final String currency;
+  final String? checkoutUrl;
+  final DateTime? expiresAtUtc;
+  final bool reused;
+
+  const InvoicePaymentLinkModel({
+    required this.paymentRequestId,
+    required this.invoiceId,
+    required this.status,
+    required this.amount,
+    this.currency = 'VND',
+    this.checkoutUrl,
+    this.expiresAtUtc,
+    this.reused = false,
+  });
+
+  factory InvoicePaymentLinkModel.fromJson(Map<String, dynamic> json) {
+    return InvoicePaymentLinkModel(
+      paymentRequestId: json['paymentRequestId'] ?? 0,
+      invoiceId: json['invoiceId'] ?? 0,
       status: json['status'] ?? 'Pending',
       amount: json['amount'] ?? 0,
       currency: json['currency'] ?? 'VND',
@@ -555,6 +612,7 @@ class CustomerContractModel {
   final int paymentCycleMonths;
   final String terms;
   String status; // Active, ExpiringSoon, Terminated, Pending
+  final String? backendDisplayStatus;
   final List<ContractTimelineItem> billingTimeline;
 
   CustomerContractModel({
@@ -576,11 +634,60 @@ class CustomerContractModel {
     this.paymentCycleMonths = 1,
     required this.terms,
     required this.status,
+    this.backendDisplayStatus,
     required this.billingTimeline,
   });
 
-  bool get isActive => status == 'Active' || status == 'ExpiringSoon';
-  bool get isTerminated => status == 'Terminated';
+  bool get isActive => displayStatus == 'Active' || displayStatus == 'Upcoming' || status == 'Active' || status == 'ExpiringSoon';
+  bool get isTerminated => displayStatus == 'Terminated' || status == 'Terminated';
+
+  String get displayStatus {
+    if (backendDisplayStatus != null && backendDisplayStatus!.isNotEmpty) {
+      return backendDisplayStatus!;
+    }
+    if (status == 'Terminated') return 'Terminated';
+    if (status != 'Active' && status != 'ExpiringSoon') return 'Ended';
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final start = DateTime(startDate.year, startDate.month, startDate.day);
+    final end = DateTime(endDate.year, endDate.month, endDate.day);
+
+    if (today.isBefore(start)) {
+      return 'Upcoming';
+    }
+    if (today.isAfter(end)) {
+      return 'ExpiredPendingCheckout';
+    }
+    return 'Active';
+  }
+
+  String get displayStatusLabel {
+    switch (displayStatus) {
+      case 'Upcoming':
+        return 'Sắp có hiệu lực';
+      case 'Active':
+        return 'Đang hiệu lực';
+      case 'ExpiredPendingCheckout':
+        return 'Hết hạn — Chờ trả phòng';
+      case 'Terminated':
+        return 'Đã thanh lý';
+      default:
+        return 'Đã kết thúc';
+    }
+  }
+
+  StatusTone get displayStatusTone {
+    switch (displayStatus) {
+      case 'Active':
+        return StatusTone.green;
+      case 'Upcoming':
+      case 'ExpiredPendingCheckout':
+        return StatusTone.amber;
+      default:
+        return StatusTone.slate;
+    }
+  }
 
   factory CustomerContractModel.fromJson(Map<String, dynamic> json) {
     return CustomerContractModel(
@@ -602,6 +709,7 @@ class CustomerContractModel {
       paymentCycleMonths: 1,
       terms: 'Hợp đồng thuê phòng chính thức',
       status: json['status'] ?? 'Active',
+      backendDisplayStatus: json['displayStatus']?.toString(),
       billingTimeline: const [],
     );
   }
@@ -709,4 +817,208 @@ class CustomerMaintenanceModel {
       completedDate: null,
     );
   }
+}
+
+class ApplicationPersonModel {
+  final int personId;
+  final int position; // 0: Bạn - Người đứng tên dự kiến, 1..n: Người ở cùng
+  String fullName;
+  String? maskedIdentityNumber;
+  bool consentConfirmed;
+  String status; // Incomplete, PendingReview, Approved, Rejected
+  bool hasFront;
+  bool hasBack;
+  String? reviewNote;
+  int revision;
+
+  ApplicationPersonModel({
+    required this.personId,
+    required this.position,
+    required this.fullName,
+    this.maskedIdentityNumber,
+    required this.consentConfirmed,
+    required this.status,
+    required this.hasFront,
+    required this.hasBack,
+    this.reviewNote,
+    this.revision = 1,
+  });
+
+  factory ApplicationPersonModel.fromJson(Map<String, dynamic> json) {
+    return ApplicationPersonModel(
+      personId: json['personId'] ?? 0,
+      position: json['position'] ?? 0,
+      fullName: json['fullName'] ?? '',
+      maskedIdentityNumber: json['maskedIdentityNumber'],
+      consentConfirmed: json['consentConfirmed'] == true,
+      status: json['status'] ?? 'Incomplete',
+      hasFront: json['hasFront'] == true,
+      hasBack: json['hasBack'] == true,
+      reviewNote: json['reviewNote'],
+      revision: json['revision'] ?? 1,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'personId': personId,
+        'position': position,
+        'fullName': fullName,
+        'maskedIdentityNumber': maskedIdentityNumber,
+        'consentConfirmed': consentConfirmed,
+        'status': status,
+        'hasFront': hasFront,
+        'hasBack': hasBack,
+        'reviewNote': reviewNote,
+        'revision': revision,
+      };
+}
+
+class BookingApplicationModel {
+  final int bookingApplicationId;
+  final int roomId;
+  final int? bookingId;
+  final String status;
+  final DateTime moveInDate;
+  final int occupantCount;
+  String version;
+  final List<ApplicationPersonModel> people;
+  final bool depositAppliesToFirstMonth;
+  final String? propertyName;
+  final String? roomCode;
+
+  BookingApplicationModel({
+    required this.bookingApplicationId,
+    required this.roomId,
+    this.bookingId,
+    required this.status,
+    required this.moveInDate,
+    required this.occupantCount,
+    required this.version,
+    required this.people,
+    this.depositAppliesToFirstMonth = true,
+    this.propertyName,
+    this.roomCode,
+  });
+
+  factory BookingApplicationModel.fromJson(Map<String, dynamic> json) {
+    return BookingApplicationModel(
+      bookingApplicationId: json['bookingApplicationId'] ?? 0,
+      roomId: json['roomId'] ?? 0,
+      bookingId: json['bookingId'],
+      status: json['status'] ?? 'Draft',
+      moveInDate: json['moveInDate'] != null
+          ? DateTime.tryParse(json['moveInDate'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      occupantCount: json['occupantCount'] ?? 1,
+      version: json['version']?.toString() ?? '',
+      people: json['people'] is List
+          ? (json['people'] as List)
+              .map((p) => ApplicationPersonModel.fromJson(p as Map<String, dynamic>))
+              .toList()
+          : [],
+      depositAppliesToFirstMonth: json['depositAppliesToFirstMonth'] != false,
+      propertyName: json['propertyName'],
+      roomCode: json['roomCode'],
+    );
+  }
+
+  ApplicationPersonModel? get mainTenant {
+    if (people.isEmpty) return null;
+    return people.firstWhere((p) => p.position == 0, orElse: () => people.first);
+  }
+
+  bool get isMainTenantComplete {
+    final m = mainTenant;
+    if (m == null) return false;
+    final hasName = m.fullName.trim().isNotEmpty;
+    final hasId = m.maskedIdentityNumber != null && m.maskedIdentityNumber!.isNotEmpty;
+    return hasName && hasId && m.consentConfirmed && m.hasFront && m.hasBack;
+  }
+}
+
+class PaymentRequestStatusModel {
+  final int paymentRequestId;
+  final int? invoiceId;
+  final int? bookingId;
+  final int customerId;
+  final int propertyId;
+  final String status;
+  final String? invoiceStatus;
+  final String? bookingStatus;
+  final num amount;
+  final String currency;
+  final DateTime createdAtUtc;
+  final DateTime updatedAtUtc;
+  final DateTime? expiresAtUtc;
+  final DateTime? confirmedAtUtc;
+  final int? paymentId;
+  final DateTime? paidAtUtc;
+  final bool isExpired;
+  final bool canOpenCheckout;
+  final String? checkoutUrl;
+
+  const PaymentRequestStatusModel({
+    required this.paymentRequestId,
+    this.invoiceId,
+    this.bookingId,
+    required this.customerId,
+    required this.propertyId,
+    required this.status,
+    this.invoiceStatus,
+    this.bookingStatus,
+    required this.amount,
+    this.currency = 'VND',
+    required this.createdAtUtc,
+    required this.updatedAtUtc,
+    this.expiresAtUtc,
+    this.confirmedAtUtc,
+    this.paymentId,
+    this.paidAtUtc,
+    this.isExpired = false,
+    this.canOpenCheckout = true,
+    this.checkoutUrl,
+  });
+
+  factory PaymentRequestStatusModel.fromJson(Map<String, dynamic> json) {
+    return PaymentRequestStatusModel(
+      paymentRequestId: json['paymentRequestId'] ?? 0,
+      invoiceId: json['invoiceId'],
+      bookingId: json['bookingId'],
+      customerId: json['customerId'] ?? 0,
+      propertyId: json['propertyId'] ?? 0,
+      status: json['status'] ?? 'Pending',
+      invoiceStatus: json['invoiceStatus'],
+      bookingStatus: json['bookingStatus'],
+      amount: json['amount'] ?? 0,
+      currency: json['currency'] ?? 'VND',
+      createdAtUtc: json['createdAtUtc'] != null
+          ? DateTime.tryParse(json['createdAtUtc'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      updatedAtUtc: json['updatedAtUtc'] != null
+          ? DateTime.tryParse(json['updatedAtUtc'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      expiresAtUtc: json['expiresAtUtc'] != null
+          ? DateTime.tryParse(json['expiresAtUtc'].toString())
+          : null,
+      confirmedAtUtc: json['confirmedAtUtc'] != null
+          ? DateTime.tryParse(json['confirmedAtUtc'].toString())
+          : null,
+      paymentId: json['paymentId'],
+      paidAtUtc: json['paidAtUtc'] != null
+          ? DateTime.tryParse(json['paidAtUtc'].toString())
+          : null,
+      isExpired: json['isExpired'] ?? false,
+      canOpenCheckout: json['canOpenCheckout'] ?? true,
+      checkoutUrl: json['checkoutUrl'],
+    );
+  }
+
+  bool get isSuccess =>
+      status == 'Succeeded' ||
+      bookingStatus == 'Deposited' ||
+      invoiceStatus == 'Paid';
+
+  bool get isClosed =>
+      ['Cancelled', 'Expired', 'Create-failed'].contains(status) ||
+      bookingStatus == 'Cancelled';
 }
