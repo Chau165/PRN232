@@ -156,14 +156,14 @@ public class ViewingSchedulesController : ControllerBase
     }
 
     [HttpPost("{id:int}/approve")]
-    [Authorize(Roles = RoleNames.Admin)]
+    [Authorize(Roles = RoleNames.Manager)]
     public Task<ActionResult<ViewingScheduleDto>> Approve(int id, ApproveViewingScheduleDto dto)
     {
         return HandleAsync((userId, role) => _viewingService.ApproveAsync(id, dto, userId, role));
     }
 
     [HttpPost("{id:int}/reject")]
-    [Authorize(Roles = RoleNames.Admin)]
+    [Authorize(Roles = RoleNames.Manager)]
     public Task<ActionResult<ViewingScheduleDto>> Reject(int id, RejectViewingScheduleDto dto)
     {
         return HandleAsync((userId, role) => _viewingService.RejectAsync(id, dto, userId, role));

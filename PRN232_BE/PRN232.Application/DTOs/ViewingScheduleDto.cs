@@ -32,6 +32,6 @@ public record SelectViewingRoomDto(int RoomId);
 
 public record ViewingAvailableRoomDto(int RoomId, string RoomCode, decimal AreaSqm, string Status);
 
-public record ApproveViewingScheduleDto(DateTimeOffset? ScheduledAt, int? AssignedTo, string? ManagerNote);
+public record ApproveViewingScheduleDto(DateTimeOffset? ScheduledAt, string? ManagerNote);
 
 public record RejectViewingScheduleDto(string? Reason);

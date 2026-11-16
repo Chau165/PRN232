@@ -19,7 +19,7 @@ export default function ViewingRequestPage() {
   const roomTypeId = parsePositiveRouteId(params.get("roomTypeId") ?? undefined)
 
   return (
-    <CustomerPageShell centerHeader title="Đặt lịch xem phòng" description="Chọn giờ bạn muốn đến xem, hoặc để Admin phân công Manager và xác nhận lịch.">
+    <CustomerPageShell centerHeader title="Đặt lịch xem phòng" description="Chọn giờ bạn muốn đến xem, hoặc để Manager của khu trọ sắp xếp và xác nhận lịch.">
       <div className="w-full rounded-2xl bg-white p-5 shadow-[0_5px_24px_rgba(16,65,67,.08)] sm:p-8">
         {propertyId && roomTypeId ? (
           <PropertyRoomTypeViewingRequestForm propertyId={propertyId} roomTypeId={roomTypeId} />
@@ -50,7 +50,7 @@ function PropertyRoomTypeViewingRequestForm({ propertyId, roomTypeId }: { proper
   const roomType = resource.data.find((item) => item.roomTypeId === roomTypeId)
   if (!roomType) return <Notice message="Loại phòng này hiện không được cung cấp tại khu trọ." />
   if (created) {
-    return <Notice message={`Đã gửi yêu cầu xem ${roomType.roomTypeName} tại khu trọ (${viewingTimeLabel(created)}). Chưa có phòng cụ thể được giữ; Admin sẽ phân công Manager.`} />
+    return <Notice message={`Đã gửi yêu cầu xem ${roomType.roomTypeName} tại khu trọ (${viewingTimeLabel(created)}). Chưa có phòng cụ thể được giữ; Manager của khu trọ sẽ xem xét và xác nhận lịch.`} />
   }
 
   const submit = async (event: React.FormEvent) => {
@@ -91,7 +91,7 @@ function PropertyRoomTypeViewingRequestForm({ propertyId, roomTypeId }: { proper
         {!ownerDecides && <input type="datetime-local" aria-label="Ngày giờ xem phòng" min={toLocalInput()} value={localTime} onChange={(event) => setLocalTime(event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm" />}
         <label className="flex items-center gap-2 text-sm text-slate-600">
           <input type="radio" name="timeChoice" checked={ownerDecides} onChange={() => setOwnerDecides(true)} />
-          Để Admin phân công lịch
+          Để Manager khu trọ sắp xếp thời gian
         </label>
       </fieldset>
       {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
@@ -120,7 +120,7 @@ function ViewingRequestForm({ roomId }: { roomId: number }) {
     )
   }
   if (created) {
-    return <Notice message={`Đã gửi yêu cầu xem phòng ${created.roomCode} (${viewingTimeLabel(created)}). Admin sẽ phân công Manager và xác nhận lịch hẹn.`} />
+    return <Notice message={`Đã gửi yêu cầu xem phòng ${created.roomCode} (${viewingTimeLabel(created)}). Manager của khu trọ sẽ xem xét và xác nhận lịch.`} />
   }
 
   const room = resource.data
@@ -174,7 +174,7 @@ function ViewingRequestForm({ roomId }: { roomId: number }) {
         )}
         <label className="flex items-center gap-2 text-sm text-slate-600">
           <input type="radio" name="timeChoice" checked={ownerDecides} onChange={() => setOwnerDecides(true)} />
-          Để Admin phân công lịch
+          Để Manager khu trọ sắp xếp thời gian
         </label>
       </fieldset>
       {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}

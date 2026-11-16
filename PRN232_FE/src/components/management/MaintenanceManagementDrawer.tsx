@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import type { MaintenanceLogDto, MaintenanceReportDto, MaintenanceRequestDto } from "@/types/maintenance"
-import type { BackendUserDto } from "@/types/auth"
+import type { PropertyManagerAssignmentDto } from "@/types/propertyManagerAssignment"
 import ManagementDetailDrawer from "@/components/management/ManagementDetailDrawer"
 import StatusBadge from "@/components/customer/StatusBadge"
 
@@ -11,8 +11,10 @@ type Props = {
   propertyName: string | null
   detailLoading: boolean
   onClose: () => void
-  managers: BackendUserDto[]
-  managerRoleLoading: boolean
+  managers: PropertyManagerAssignmentDto[]
+  managerLoading: boolean
+  managerLoadError: string
+  assignmentManager: string
   canAssign: boolean
   canComplete: boolean
   submitting: boolean
@@ -54,7 +56,9 @@ export default function MaintenanceManagementDrawer({
   detailLoading,
   onClose,
   managers,
-  managerRoleLoading,
+  managerLoading,
+  managerLoadError,
+  assignmentManager,
   canAssign,
   canComplete,
   submitting,
@@ -173,11 +177,55 @@ export default function MaintenanceManagementDrawer({
         <section className="mt-6 border-t border-slate-100 pt-5">
           <h2 className="text-sm font-bold text-slate-800">Phân công Manager</h2>
           <label htmlFor="maintenance-manager" className="mt-3 block text-xs font-semibold text-slate-600">Manager phụ trách</label>
-          <select id="maintenance-manager" onChange={(event) => onManagerChange(event.target.value)} defaultValue="" disabled={submitting || managerRoleLoading} className="mt-1 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">{managerRoleLoading ? "Đang tải Manager..." : "Chọn Manager đang hoạt động"}</option>{managers.filter((manager) => manager.isActive).map((manager) => <option key={manager.userId} value={manager.userId}>{manager.fullName}</option>)}</select>
+          <select
+            id="maintenance-manager"
+            value={assignmentManager}
+            onChange={(event) => onManagerChange(event.target.value)}
+            disabled={submitting || managerLoading || Boolean(managerLoadError) || managers.length === 0}
+            className="mt-1 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"
+          >
+            <option value="">
+              {managerLoading
+                ? "Đang tải Manager..."
+                : managerLoadError
+                  ? "Không thể tải danh sách Manager"
+                  : managers.length === 0
+                    ? "Không có Manager đang hoạt động"
+                    : "Chọn Manager đang hoạt động"}
+            </option>
+            {managers.map((manager) => (
+              <option key={manager.managerId} value={manager.managerId}>
+                {manager.managerName}
+              </option>
+            ))}
+          </select>
+          {!managerLoading && !managerLoadError && managers.length === 0 && (
+            <p role="status" className="mt-2 text-xs text-slate-500">
+              Khu trọ này chưa có Manager đang hoạt động được phân công.
+            </p>
+          )}
+          {managerLoadError && (
+            <p role="alert" className="mt-2 text-xs text-rose-600">
+              {managerLoadError}
+            </p>
+          )}
           <label htmlFor="maintenance-assignment-note" className="mt-4 block text-xs font-semibold text-slate-600">Ghi chú phân công</label>
           <textarea id="maintenance-assignment-note" value={assignmentNote} onChange={(event) => onAssignmentNoteChange(event.target.value)} maxLength={1000} rows={3} disabled={submitting} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Hướng dẫn công việc cho Manager" />
           <p className="mt-1 text-right text-[11px] text-slate-400">{assignmentNote.length}/1.000</p>
-          <button onClick={onAssign} disabled={submitting || managerRoleLoading || managers.every((manager) => !manager.isActive)} className="mt-3 w-full rounded-lg bg-[#087775] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{submitting ? "Đang phân công..." : "Phân công Manager"}</button>
+          <button
+            onClick={onAssign}
+            disabled={
+              submitting ||
+              managerLoading ||
+              Boolean(managerLoadError) ||
+              !managers.some(
+                (manager) => String(manager.managerId) === assignmentManager,
+              )
+            }
+            className="mt-3 w-full rounded-lg bg-[#087775] px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
+          >
+            {submitting ? "Đang phân công..." : "Phân công Manager"}
+          </button>
         </section>
       )}
       {request.status === "Approved" && canComplete && (

@@ -11,7 +11,7 @@ namespace PRN232.Application.Tests;
 public class ScopeBEndToEndReviewTests
 {
     [Fact]
-    public async Task User_directory_includes_active_manager_who_cannot_handle_this_property_viewing()
+    public async Task Viewing_decisions_are_manager_only_and_require_a_current_property_assignment()
     {
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
@@ -22,7 +22,7 @@ public class ScopeBEndToEndReviewTests
         }, HttpStatusCode.Created);
         var viewingId = viewing.GetProperty("viewingId").GetInt32();
         await BookingsApiTests.LoginAsync(client, "admin@example.test");
-        // This is the directory endpoint used to populate the FE's viewing-manager picker.
+        // An unrelated active Manager remains in the user directory but cannot decide this request.
         var users = await client.GetFromJsonAsync<JsonElement>("/api/users?roleId=2");
         Assert.Contains(users.GetProperty("items").EnumerateArray(), row => row.GetProperty("userId").GetInt32() == 8
             && row.GetProperty("isActive").GetBoolean());
@@ -30,9 +30,14 @@ public class ScopeBEndToEndReviewTests
         {
             assignedTo = 8, scheduledAt = DateTimeOffset.UtcNow.AddDays(1)
         });
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Contains("assignment", problem.GetProperty("detail").GetString());
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+
+        await BookingsApiTests.LoginAsync(client, "manager-b@example.test");
+        using var unrelatedManagerResponse = await client.PostAsJsonAsync($"/api/viewing-schedules/{viewingId}/approve", new
+        {
+            scheduledAt = DateTimeOffset.UtcNow.AddDays(1)
+        });
+        Assert.Equal(HttpStatusCode.Forbidden, unrelatedManagerResponse.StatusCode);
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Equal("Pending", (await context.ViewingSchedules.SingleAsync()).Status);
@@ -40,7 +45,7 @@ public class ScopeBEndToEndReviewTests
     }
 
     [Fact]
-    public async Task Customer_deposit_admin_assigns_manager_contract_billing_complaint_and_checkout_are_consistent()
+    public async Task Customer_deposit_manager_approval_contract_billing_complaint_and_checkout_are_consistent()
     {
         using var factory = new BookingsApiFactory();
         using var client = factory.CreateClient();
@@ -61,13 +66,14 @@ public class ScopeBEndToEndReviewTests
 
         await BookingsApiTests.LoginAsync(client, "admin@example.test");
         await PostAsync(client, "/api/properties/1/managers", new { managerId = 8 }, HttpStatusCode.Created);
+        await BookingsApiTests.LoginAsync(client, "manager-b@example.test");
+        var managerAuthorization = client.DefaultRequestHeaders.Authorization;
         var approved = await PostAsync(client, $"/api/viewing-schedules/{viewingId}/approve", new
         {
-            assignedTo = 8, scheduledAt = DateTimeOffset.UtcNow.AddDays(1), managerNote = "End-to-end review"
+            scheduledAt = DateTimeOffset.UtcNow.AddDays(1), managerNote = "End-to-end review"
         });
         Assert.Equal("Approved", approved.GetProperty("status").GetString());
 
-        await BookingsApiTests.LoginAsync(client, "manager-b@example.test");
         var contract = await PostAsync(client, "/api/contracts", new
         {
             bookingId, startDate = today, endDate = today.AddYears(1),
@@ -104,7 +110,7 @@ public class ScopeBEndToEndReviewTests
         }, HttpStatusCode.Created);
         var complaintId = complaint.GetProperty("complaintId").GetInt32();
 
-        await BookingsApiTests.LoginAsync(client, "manager-b@example.test");
+        client.DefaultRequestHeaders.Authorization = managerAuthorization;
         using var resolved = await client.PatchAsJsonAsync($"/api/invoice-complaints/{complaintId}", new { status = "Resolved" });
         Assert.Equal(HttpStatusCode.OK, resolved.StatusCode);
         var terminated = await PostAsync(client, $"/api/contracts/{contractId}/terminate", new
@@ -128,7 +134,7 @@ public class ScopeBEndToEndReviewTests
         Assert.Equal(3_000_000m, (await context.Payments.SingleAsync(row => row.BookingId == bookingId)).Amount);
         Assert.Equal(355_000m, (await context.Payments.SingleAsync(row => row.InvoiceId == invoiceId)).Amount);
         Assert.Equal(-3_000_000m, (await context.InvoiceDetails.SingleAsync(row => row.ItemType == "PrepaidRentCredit")).Amount);
-        Assert.True(await context.Notifications.AnyAsync(row => row.UserId == 8 && row.Type == "Viewing"));
+        Assert.True(await context.Notifications.AnyAsync(row => row.UserId == 7 && row.Type == "Viewing"));
     }
 
     private static async Task<JsonElement> PostAsync(HttpClient client, string path, object body,

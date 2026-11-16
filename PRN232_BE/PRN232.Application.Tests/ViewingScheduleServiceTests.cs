@@ -13,7 +13,7 @@ public class ViewingScheduleServiceTests
     private static readonly DateTimeOffset Now = new(2026, 10, 28, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task CreateAsync_stores_pending_request_in_utc_and_notifies_active_admins()
+    public async Task CreateAsync_stores_pending_request_in_utc_and_notifies_active_property_managers()
     {
         var repository = new FakeViewingRepository();
         var vietnamTime = new DateTimeOffset(2026, 10, 29, 16, 0, 0, TimeSpan.FromHours(7));
@@ -24,13 +24,26 @@ public class ViewingScheduleServiceTests
         Assert.Equal((5, 42, ViewingStatuses.Pending), (viewing.RoomId, viewing.CustomerId, viewing.Status));
         Assert.Equal(new DateTime(2026, 10, 29, 9, 0, 0, DateTimeKind.Utc), viewing.ScheduledAt);
         Assert.Equal(DateTimeKind.Utc, viewing.ScheduledAt!.Value.Kind);
-        Assert.Equal(new[] { 9, 11 }, notifications.Select(notification => notification.UserId).Order().ToArray());
+        Assert.Equal(new[] { 7 }, notifications.Select(notification => notification.UserId).Order().ToArray());
         Assert.All(notifications, notification =>
         {
             Assert.Equal((NotificationTypes.Viewing, false, 1), (notification.Type, notification.IsRead, notification.RelatedEntityId));
-            Assert.Contains("A-101", notification.Title);
+            Assert.Contains("Sunrise", notification.Title);
+            Assert.Contains("Customer", notification.Body);
         });
         Assert.Equal(ViewingStatuses.Pending, created.Status);
+    }
+
+    [Fact]
+    public async Task CreateAsync_rejects_a_property_without_an_active_manager_assignment()
+    {
+        var repository = new FakeViewingRepository { ActiveManagerIds = [] };
+
+        await Assert.ThrowsAsync<ViewingBusinessRuleException>(() => CreateService(repository).CreateAsync(
+            new CreateViewingScheduleDto(null, Now.AddDays(1), 1, 3),
+            42));
+
+        Assert.Empty(repository.Added);
     }
 
     [Fact]
@@ -57,7 +70,8 @@ public class ViewingScheduleServiceTests
         Assert.Equal((1, 3, ViewingStatuses.Pending), (added.PropertyId, added.RoomTypeId, added.Status));
         Assert.Null(created.RoomId);
         Assert.Contains(repository.Added.Single().Notifications,
-            notification => notification.Body?.Contains("Sunrise", StringComparison.Ordinal) == true);
+            notification => notification.Title.Contains("Sunrise", StringComparison.Ordinal) &&
+                notification.Body?.Contains("Premium", StringComparison.Ordinal) == true);
     }
 
     [Fact]
@@ -119,13 +133,13 @@ public class ViewingScheduleServiceTests
     [InlineData(RoleNames.Manager, ViewingStatuses.Pending, null, 42)]
     [InlineData(RoleNames.Admin, ViewingStatuses.Approved, null, null)]
     public async Task GetAllAsync_scopes_list_by_role_and_passes_status(
-        string role, string? status, int? expectedCustomerId, int? expectedOwnerId)
+        string role, string? status, int? expectedCustomerId, int? expectedManagerId)
     {
         var repository = new FakeViewingRepository();
 
         await CreateService(repository).GetAllAsync(42, role, status);
 
-        Assert.Equal((expectedCustomerId, expectedOwnerId), repository.LastScope);
+        Assert.Equal((expectedCustomerId, expectedManagerId), repository.LastScope);
         Assert.Equal(status, repository.LastStatus);
     }
 
@@ -158,12 +172,12 @@ public class ViewingScheduleServiceTests
         };
 
         var approved = await CreateService(repository)
-            .ApproveAsync(1, new ApproveViewingScheduleDto(Now.AddDays(1), 7, "Use the side entrance."), 42, RoleNames.Admin);
+            .ApproveAsync(1, new ApproveViewingScheduleDto(Now.AddDays(1), "Use the side entrance."), 7, RoleNames.Manager);
 
         var decision = Assert.Single(repository.Decisions);
         Assert.Equal((1, ViewingStatuses.Approved, (int?)7, "Use the side entrance.", (DateTime?)Now.AddDays(1).UtcDateTime),
             (decision.ViewingId, decision.Status, decision.AssignedTo, decision.ManagerNote, decision.ScheduledAtUtc));
-        Assert.Equal(new[] { 7, 10 }, decision.Notifications.Select(notification => notification.UserId).Order().ToArray());
+        Assert.Equal(new[] { 10 }, decision.Notifications.Select(notification => notification.UserId).Order().ToArray());
         Assert.All(decision.Notifications, notification => Assert.Equal(1, notification.RelatedEntityId));
         Assert.Contains("chấp thuận", Assert.Single(decision.Notifications, notification => notification.UserId == 10).Title);
         Assert.Equal(ViewingStatuses.Approved, approved.Status);
@@ -179,7 +193,7 @@ public class ViewingScheduleServiceTests
 
         // 12:00 UTC on 29/10 is 19:00 in Vietnam (UTC+7).
         await CreateService(repository)
-            .ApproveAsync(1, new ApproveViewingScheduleDto(Now.AddDays(1), 7, null), 42, RoleNames.Admin);
+            .ApproveAsync(1, new ApproveViewingScheduleDto(Now.AddDays(1), null), 7, RoleNames.Manager);
 
         Assert.All(Assert.Single(repository.Decisions).Notifications, notification =>
         {
@@ -197,8 +211,8 @@ public class ViewingScheduleServiceTests
             ManagerHasActivePropertyAssignment = false
         };
 
-        await Assert.ThrowsAsync<ViewingBusinessRuleException>(() => CreateService(repository)
-            .ApproveAsync(1, new ApproveViewingScheduleDto(Now.AddDays(1), 7, null), 42, RoleNames.Admin));
+        await Assert.ThrowsAsync<ViewingAuthorizationException>(() => CreateService(repository)
+            .ApproveAsync(1, new ApproveViewingScheduleDto(Now.AddDays(1), null), 7, RoleNames.Manager));
 
         Assert.Empty(repository.Decisions);
     }
@@ -210,7 +224,7 @@ public class ViewingScheduleServiceTests
         var repository = new FakeViewingRepository { Viewing = SampleViewing(customerId: 10) with { ScheduledAt = customerTime } };
 
         var approved = await CreateService(repository)
-            .ApproveAsync(1, new ApproveViewingScheduleDto(null, 7, null), 42, RoleNames.Admin);
+            .ApproveAsync(1, new ApproveViewingScheduleDto(null, null), 7, RoleNames.Manager);
 
         Assert.Equal(customerTime, Assert.Single(repository.Decisions).ScheduledAtUtc);
         Assert.Null(Assert.Single(repository.Decisions).ManagerNote);
@@ -225,9 +239,9 @@ public class ViewingScheduleServiceTests
 
         await CreateService(repository).ApproveAsync(
             1,
-            new ApproveViewingScheduleDto(Now.AddDays(1), 7, $"  {note}  "),
-            42,
-            RoleNames.Admin);
+            new ApproveViewingScheduleDto(Now.AddDays(1), $"  {note}  "),
+            7,
+            RoleNames.Manager);
 
         Assert.Equal(note, Assert.Single(repository.Decisions).ManagerNote);
     }
@@ -239,9 +253,9 @@ public class ViewingScheduleServiceTests
 
         await Assert.ThrowsAsync<ViewingBusinessRuleException>(() => CreateService(repository).ApproveAsync(
             1,
-            new ApproveViewingScheduleDto(Now.AddDays(1), 7, new string('x', 501)),
-            42,
-            RoleNames.Admin));
+            new ApproveViewingScheduleDto(Now.AddDays(1), new string('x', 501)),
+            7,
+            RoleNames.Manager));
 
         Assert.Empty(repository.Decisions);
     }
@@ -255,7 +269,7 @@ public class ViewingScheduleServiceTests
         var repository = new FakeViewingRepository { Viewing = SampleViewing(customerId: 10) with { ScheduledAt = customerTime } };
 
         await Assert.ThrowsAsync<ViewingBusinessRuleException>(() => CreateService(repository)
-            .ApproveAsync(1, new ApproveViewingScheduleDto(null, 7, null), 42, RoleNames.Admin));
+            .ApproveAsync(1, new ApproveViewingScheduleDto(null, null), 7, RoleNames.Manager));
         Assert.Empty(repository.Decisions);
     }
 
@@ -264,7 +278,7 @@ public class ViewingScheduleServiceTests
     {
         var repository = new FakeViewingRepository { Viewing = SampleViewing(customerId: 10) };
 
-        var rejected = await CreateService(repository).RejectAsync(1, new RejectViewingScheduleDto("Room unavailable."), 42, RoleNames.Admin);
+        var rejected = await CreateService(repository).RejectAsync(1, new RejectViewingScheduleDto("Room unavailable."), 7, RoleNames.Manager);
 
         var decision = Assert.Single(repository.Decisions);
         Assert.Equal((ViewingStatuses.Rejected, (DateTime?)null, "Room unavailable."),
@@ -281,7 +295,7 @@ public class ViewingScheduleServiceTests
         var repository = new FakeViewingRepository { Viewing = SampleViewing(customerId: 10, status: status) };
 
         await Assert.ThrowsAsync<ViewingConflictException>(() => CreateService(repository)
-            .RejectAsync(1, new RejectViewingScheduleDto("Not available."), 42, RoleNames.Admin));
+            .RejectAsync(1, new RejectViewingScheduleDto("Not available."), 7, RoleNames.Manager));
         Assert.Empty(repository.Decisions);
     }
 
@@ -294,6 +308,8 @@ public class ViewingScheduleServiceTests
             CreateService(repository).RejectAsync(1, new RejectViewingScheduleDto("Reason"), 42, RoleNames.Customer));
         await Assert.ThrowsAsync<ViewingAuthorizationException>(() =>
             CreateService(repository).RejectAsync(1, new RejectViewingScheduleDto("Reason"), 8, RoleNames.Manager));
+        await Assert.ThrowsAsync<ViewingAuthorizationException>(() =>
+            CreateService(repository).RejectAsync(1, new RejectViewingScheduleDto("Reason"), 42, RoleNames.Admin));
         Assert.Empty(repository.Decisions);
     }
 
@@ -303,11 +319,11 @@ public class ViewingScheduleServiceTests
         var repository = new FakeViewingRepository { Viewing = SampleViewing(customerId: 10), DecideSucceeds = false };
 
         await Assert.ThrowsAsync<ViewingConflictException>(() => CreateService(repository)
-            .RejectAsync(1, new RejectViewingScheduleDto("Reason"), 42, RoleNames.Admin));
+            .RejectAsync(1, new RejectViewingScheduleDto("Reason"), 7, RoleNames.Manager));
     }
 
     private static ViewingScheduleService CreateService(FakeViewingRepository repository) =>
-        new(repository, new FixedTimeProvider(Now), new FakeNotificationService());
+        new(repository, new FixedTimeProvider(Now));
 
     private static ViewingScheduleDto SampleViewing(int customerId, string status = ViewingStatuses.Pending) =>
         new(1, 5, "A-101", 1, "Sunrise", 3, "Premium", 3_000_000m, customerId, "Customer", "0900000000",
@@ -315,8 +331,7 @@ public class ViewingScheduleServiceTests
 
     private sealed class FakeViewingRepository : IViewingScheduleRepository
     {
-        public ViewingRoomReadModel? Room { get; init; } = new(5, "A-101", 1, 3, 7);
-        public ViewingManagerReadModel? Manager { get; init; } = new(7, "Manager A", "0911000000", RoleNames.Manager, true);
+        public ViewingRoomReadModel? Room { get; init; } = new(5, "A-101", 1, 3, "Sunrise", "Premium");
         public bool RoomIsRentable { get; init; } = true;
         public bool HasOpenRequest
         {
@@ -324,6 +339,7 @@ public class ViewingScheduleServiceTests
         }
         public bool DecideSucceeds { get; init; } = true;
         public bool ManagerHasActivePropertyAssignment { get; init; } = true;
+        public IReadOnlyCollection<int> ActiveManagerIds { get; init; } = [7];
         public ViewingScheduleDto? Viewing
         {
             get; set;
@@ -349,13 +365,12 @@ public class ViewingScheduleServiceTests
         public Task<ViewingRoomReadModel?> GetRoomAsync(int roomId) =>
             Task.FromResult(Room?.RoomId == roomId ? Room : null);
 
+        public Task<string?> GetCustomerNameAsync(int customerId) => Task.FromResult<string?>(customerId == 42 ? "Customer" : null);
+
         public Task<ViewingPropertyRoomTypeReadModel?> GetActivePropertyRoomTypeAsync(int propertyId, int roomTypeId) =>
             Task.FromResult(propertyId == 1 && roomTypeId == 3
                 ? new ViewingPropertyRoomTypeReadModel(1, "Sunrise", 3, "Premium", 3_000_000m)
                 : null);
-
-        public Task<ViewingManagerReadModel?> GetManagerAsync(int userId) =>
-            Task.FromResult(Manager?.UserId == userId ? Manager : null);
 
         public Task<bool> HasActiveManagerAssignmentAsync(int propertyId, int managerId) =>
             Task.FromResult(ManagerHasActivePropertyAssignment && propertyId == 1 && managerId == 7);
@@ -381,15 +396,21 @@ public class ViewingScheduleServiceTests
             return Task.FromResult(true);
         }
 
-        public Task AddAsync(ViewingSchedules viewing, Func<int, IReadOnlyCollection<Notifications>> notificationFactory)
+        public Task<bool> AddAsync(
+            ViewingSchedules viewing,
+            Func<int, IReadOnlyCollection<int>, IReadOnlyCollection<Notifications>> notificationFactory)
         {
+            if (ActiveManagerIds.Count == 0)
+            {
+                return Task.FromResult(false);
+            }
             viewing.ViewingId = 1;
-            var notifications = notificationFactory(viewing.ViewingId);
+            var notifications = notificationFactory(viewing.ViewingId, ActiveManagerIds);
             Added.Add((viewing, notifications));
             Viewing = new ViewingScheduleDto(1, viewing.RoomId, Room?.RoomCode, 1, "Sunrise", 3, "Premium", 3_000_000m,
                 viewing.CustomerId, "Customer", "0900000000", viewing.ScheduledAt, viewing.Status,
                 null, null, null, null, null, null);
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
 
         public Task<List<ViewingScheduleReadModel>> GetAllAsync(int? customerId, int? assignedTo, string? status)
@@ -398,7 +419,7 @@ public class ViewingScheduleServiceTests
             LastStatus = status;
             var visible = Viewing is not null &&
                 (customerId is null || Viewing.CustomerId == customerId) &&
-                (assignedTo is null || Viewing.AssignedTo == assignedTo) &&
+                (assignedTo is null || ManagerHasActivePropertyAssignment && assignedTo == 7 && Viewing.PropertyId == 1) &&
                 (status is null || Viewing.Status == status);
             return Task.FromResult(visible ? new List<ViewingScheduleReadModel> { ViewingReadModel! } : []);
         }
@@ -407,7 +428,7 @@ public class ViewingScheduleServiceTests
         {
             var visible = Viewing is not null && Viewing.ViewingId == viewingId &&
                 (customerId is null || Viewing.CustomerId == customerId) &&
-                (assignedTo is null || Viewing.AssignedTo == assignedTo);
+                (assignedTo is null || ManagerHasActivePropertyAssignment && assignedTo == 7 && Viewing.PropertyId == 1);
             return Task.FromResult(visible ? ViewingReadModel : null);
         }
 
@@ -416,9 +437,8 @@ public class ViewingScheduleServiceTests
         public Task<bool> DecideAsync(
             int viewingId,
             string status,
-            int? assignedTo,
+            int managerId,
             string? managerNote,
-            int respondedBy,
             DateTime respondedAtUtc,
             DateTime? scheduledAtUtc,
             IReadOnlyCollection<Notifications> notifications)
@@ -428,28 +448,21 @@ public class ViewingScheduleServiceTests
                 return Task.FromResult(false);
             }
 
-            Decisions.Add((viewingId, status, assignedTo, managerNote, respondedBy, respondedAtUtc, scheduledAtUtc, notifications));
+            var assignedTo = status == ViewingStatuses.Approved ? managerId : (int?)null;
+            Decisions.Add((viewingId, status, assignedTo, managerNote, managerId, respondedAtUtc, scheduledAtUtc, notifications));
             Viewing = Viewing! with
             {
                 Status = status,
                 ScheduledAt = scheduledAtUtc ?? Viewing.ScheduledAt,
                 AssignedTo = assignedTo,
-                AssignedManagerName = assignedTo is null ? null : Manager?.FullName,
-                AssignedManagerPhone = assignedTo is null ? null : Manager?.PhoneNumber,
+                AssignedManagerName = assignedTo is null ? null : "Manager A",
+                AssignedManagerPhone = assignedTo is null ? null : "0911000000",
                 ManagerNote = managerNote,
-                RespondedBy = respondedBy,
+                RespondedBy = managerId,
                 RespondedAt = respondedAtUtc
             };
             return Task.FromResult(true);
         }
-    }
-
-    private sealed class FakeNotificationService : INotificationService
-    {
-        public Task<List<NotificationDto>> GetAllAsync(int userId, bool? isRead, string? type) => throw new NotImplementedException();
-        public Task UpdateReadStateAsync(int id, int userId, bool? isRead) => throw new NotImplementedException();
-        public Task<List<int>> GetActiveAdminUserIdsAsync() => Task.FromResult(new List<int> { 9, 11 });
-        public IReadOnlyList<Notifications> BuildMaintenanceNotifications(IEnumerable<int> userIds, string title) => throw new NotImplementedException();
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider

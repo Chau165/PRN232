@@ -229,11 +229,11 @@ export default function ManagementRoomsPage() {
 
   return (
     <ManagementPage
-      title="Phòng"
+      title={scopedProperty ? `Phòng của ${scopedProperty.propertyName}` : "Phòng"}
       description={
-        scopedProperty
-          ? `Quản lý phòng của ${scopedProperty.propertyName}`
-          : "Theo dõi và quản lý cấu hình phòng bằng dữ liệu Backend theo phạm vi được cấp quyền."
+        scopedPropertyId === null
+          ? "Theo dõi và quản lý cấu hình phòng bằng dữ liệu Backend theo phạm vi được cấp quyền."
+          : undefined
       }
       breadcrumbs={
         scopedPropertyId !== null

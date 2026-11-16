@@ -14,7 +14,7 @@ export function bookingStatusDisplay(booking: BookingTiming & { contractId?: num
   if (booking.status === "Deposited") return { label: "Đã đặt cọc", tone: "teal" as const }
   if (booking.status === "Cancelled") return { label: "Đã huỷ", tone: "rose" as const }
   return isBookingExpired(booking, now)
-    ? { label: "Hết hạn thanh toán", tone: "slate" as const }
+    ? { label: "Hết hạn thanh toán", tone: "expired" as const }
     : { label: "Chờ thanh toán", tone: "amber" as const }
 }
 

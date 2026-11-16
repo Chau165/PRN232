@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router"
 import { useAuth } from "@/auth/AuthContext"
 import { ApiError } from "@/api/apiClient"
@@ -20,6 +20,8 @@ import {
 import {
   createProperty,
   deleteProperty,
+  getAdministrativeProvinces,
+  getAdministrativeWards,
   getProperties as getManagementProperties,
   getProperty,
   updateProperty,
@@ -27,9 +29,18 @@ import {
 } from "@/services/propertyService"
 import { managementPropertyRoomTypesPath, managementPropertyRoomsPath } from "@/constants/routes"
 import type { PropertyManagerAssignmentDto } from "@/types/propertyManagerAssignment"
+import type {
+  AdministrativeProvinceOption,
+  AdministrativeWardOption,
+} from "@/types/administrativeDivision"
+import { DEFAULT_PAGE_SIZE } from "@/types/pagination"
 import type { PropertyDto } from "@/types/user"
 import { getPropertyManagerAssignmentError } from "@/utils/propertyManagerAssignmentErrors"
 import { formatAddress } from "@/utils/publicFormatting"
+
+function normalizeForSearch(value: string) {
+  return value.trim().toLocaleLowerCase("vi")
+}
 
 export default function ManagementPropertiesPage() {
   const { accessToken, user } = useAuth()
@@ -52,6 +63,17 @@ export default function ManagementPropertiesPage() {
   const [deletingPropertyId, setDeletingPropertyId] = useState<number | null>(
     null,
   )
+  const [propertySearch, setPropertySearch] = useState("")
+  const [selectedProvinceCode, setSelectedProvinceCode] = useState("")
+  const [selectedWardCode, setSelectedWardCode] = useState("")
+  const [provinceOptions, setProvinceOptions] = useState<
+    AdministrativeProvinceOption[]
+  >([])
+  const [wardOptions, setWardOptions] = useState<AdministrativeWardOption[]>([])
+  const [provinceLoading, setProvinceLoading] = useState(false)
+  const [wardLoading, setWardLoading] = useState(false)
+  const [locationError, setLocationError] = useState("")
+  const [page, setPage] = useState(1)
 
   const loadData = useCallback(
     async (signal: AbortSignal) => {
@@ -65,6 +87,7 @@ export default function ManagementPropertiesPage() {
             : await getMyManagedProperties(accessToken, signal)
         if (signal.aborted) return
         setProperties(propertyRows)
+        setPage(1)
 
         if (user?.role !== "ADMIN") {
           setAssignmentsByProperty({})
@@ -92,6 +115,63 @@ export default function ManagementPropertiesPage() {
     void loadData(controller.signal)
     return () => controller.abort()
   }, [loadData, reload])
+
+  useEffect(() => {
+    if (!accessToken) return
+    const controller = new AbortController()
+    setProvinceLoading(true)
+    setLocationError("")
+    void getAdministrativeProvinces(accessToken, controller.signal)
+      .then((options) => {
+        if (!controller.signal.aborted) setProvinceOptions(options)
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setLocationError(
+            cause instanceof Error
+              ? cause.message
+              : "Không thể tải danh mục tỉnh/thành phố.",
+          )
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setProvinceLoading(false)
+      })
+    return () => controller.abort()
+  }, [accessToken])
+
+  useEffect(() => {
+    if (!accessToken || !selectedProvinceCode) {
+      setWardOptions([])
+      setWardLoading(false)
+      return
+    }
+    const controller = new AbortController()
+    setWardOptions([])
+    setWardLoading(true)
+    setLocationError("")
+    void getAdministrativeWards(
+      accessToken,
+      selectedProvinceCode,
+      controller.signal,
+    )
+      .then((options) => {
+        if (!controller.signal.aborted) setWardOptions(options)
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setLocationError(
+            cause instanceof Error
+              ? cause.message
+              : "Không thể tải danh sách phường/xã.",
+          )
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setWardLoading(false)
+      })
+    return () => controller.abort()
+  }, [accessToken, selectedProvinceCode])
 
   function getCrudError(cause: unknown): string {
     if (!(cause instanceof ApiError)) {
@@ -185,6 +265,58 @@ export default function ManagementPropertiesPage() {
   }
 
   const isAdmin = user?.role === "ADMIN"
+  const filteredProperties = useMemo(() => {
+    const query = normalizeForSearch(propertySearch)
+    const selectedProvince = provinceOptions.find(
+      (option) => option.provinceCode === selectedProvinceCode,
+    )
+    const selectedWard = wardOptions.find(
+      (option) => option.wardCode === selectedWardCode,
+    )
+
+    return properties.filter((property) => {
+      if (
+        query &&
+        !normalizeForSearch(property.propertyName).includes(query)
+      ) {
+        return false
+      }
+      const provinceMatches =
+        !selectedProvinceCode ||
+        (property.provinceCode
+          ? property.provinceCode === selectedProvinceCode
+          : selectedProvince !== undefined &&
+            normalizeForSearch(property.city) ===
+              normalizeForSearch(selectedProvince.provinceName))
+      if (!provinceMatches) return false
+
+      const wardMatches =
+        !selectedWardCode ||
+        (property.wardCode
+          ? property.wardCode === selectedWardCode
+          : selectedWard !== undefined &&
+            normalizeForSearch(property.ward) ===
+              normalizeForSearch(selectedWard.wardName))
+      if (!wardMatches) return false
+      return true
+    })
+  }, [
+    properties,
+    propertySearch,
+    provinceOptions,
+    selectedProvinceCode,
+    selectedWardCode,
+    wardOptions,
+  ])
+  const pageCount = Math.max(
+    1,
+    Math.ceil(filteredProperties.length / DEFAULT_PAGE_SIZE),
+  )
+  const currentPage = Math.min(page, pageCount)
+  const pageProperties = filteredProperties.slice(
+    (currentPage - 1) * DEFAULT_PAGE_SIZE,
+    currentPage * DEFAULT_PAGE_SIZE,
+  )
 
   return (
     <ManagementPage
@@ -218,6 +350,69 @@ export default function ManagementPropertiesPage() {
         />
       )}
       {success && <ManagementSuccessBanner message={success} />}
+
+      <div className="mb-4 grid gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_3px_18px_rgba(16,65,67,.05)] sm:grid-cols-2 lg:grid-cols-3">
+        <label className="block space-y-1.5 text-sm">
+          <span className="font-medium text-slate-700">Tìm theo tên khu trọ</span>
+          <input
+            type="search"
+            value={propertySearch}
+            onChange={(event) => {
+              setPropertySearch(event.target.value)
+              setPage(1)
+            }}
+            placeholder="Nhập tên khu trọ"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+          />
+        </label>
+        <label className="block space-y-1.5 text-sm">
+          <span className="font-medium text-slate-700">Tỉnh/thành phố</span>
+          <select
+            value={selectedProvinceCode}
+            onChange={(event) => {
+              setSelectedProvinceCode(event.target.value)
+              setSelectedWardCode("")
+              setLocationError("")
+              setPage(1)
+            }}
+            disabled={provinceLoading}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-60"
+          >
+            <option value="">{provinceLoading ? "Đang tải tỉnh/thành phố..." : "Tất cả tỉnh/thành phố"}</option>
+            {provinceOptions.map((province) => (
+              <option key={province.provinceCode} value={province.provinceCode}>
+                {province.provinceName}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1.5 text-sm">
+          <span className="font-medium text-slate-700">Phường/xã</span>
+          <select
+            value={selectedWardCode}
+            onChange={(event) => {
+              setSelectedWardCode(event.target.value)
+              setPage(1)
+            }}
+            disabled={!selectedProvinceCode || wardLoading}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-60"
+          >
+            <option value="">
+              {wardLoading
+                ? "Đang tải phường/xã..."
+                : selectedProvinceCode
+                  ? "Tất cả phường/xã"
+                  : "Chọn tỉnh/thành phố trước"}
+            </option>
+            {wardOptions.map((ward) => (
+              <option key={ward.wardCode} value={ward.wardCode}>
+                {ward.wardName}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {locationError && <p role="alert" className="mb-4 text-sm text-rose-600">{locationError}</p>}
 
       <ManagementDataTable
         headers={[
@@ -254,9 +449,14 @@ export default function ManagementPropertiesPage() {
               ) : undefined
             }
           />
+        ) : filteredProperties.length === 0 ? (
+          <ManagementEmptyState
+            icon="building"
+            message="Không tìm thấy khu trọ phù hợp với điều kiện tìm kiếm hoặc bộ lọc."
+          />
         ) : (
           <div className="divide-y divide-slate-100">
-            {properties.map((property) => {
+            {pageProperties.map((property) => {
               const assignmentRows =
                 assignmentsByProperty[String(property.propertyId)] ?? []
 
@@ -365,6 +565,32 @@ export default function ManagementPropertiesPage() {
           </div>
         )}
       </ManagementDataTable>
+      {!loading && filteredProperties.length > 0 && (
+        <nav aria-label="Phân trang khu trọ" className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+          <span>
+            Hiển thị {(currentPage - 1) * DEFAULT_PAGE_SIZE + 1}–{Math.min(currentPage * DEFAULT_PAGE_SIZE, filteredProperties.length)} trong {filteredProperties.length} khu trọ
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => setPage(Math.max(1, currentPage - 1))}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold disabled:opacity-50"
+            >
+              Trang trước
+            </button>
+            <span className="px-2 py-2 text-xs font-semibold">Trang {currentPage}/{pageCount}</span>
+            <button
+              type="button"
+              disabled={currentPage >= pageCount}
+              onClick={() => setPage(Math.min(pageCount, currentPage + 1))}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold disabled:opacity-50"
+            >
+              Trang sau
+            </button>
+          </div>
+        </nav>
+      )}
       {detailProperty && (
         <PropertyDetailDrawer
           property={detailProperty}

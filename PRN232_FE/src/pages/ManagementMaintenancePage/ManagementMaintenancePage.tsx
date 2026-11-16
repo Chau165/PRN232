@@ -9,8 +9,9 @@ import {
   getMaintenanceRequests,
   submitMaintenanceReport,
 } from "@/services/maintenanceService"
-import { getMaintenanceRooms, getRoles, getUsers } from "@/services/userService"
-import type { BackendUserDto } from "@/types/auth"
+import { getMaintenanceRooms } from "@/services/userService"
+import { getPropertyManagerAssignments } from "@/services/propertyManagerAssignmentService"
+import type { PropertyManagerAssignmentDto } from "@/types/propertyManagerAssignment"
 import type { MaintenanceLogDto, MaintenanceReportDto, MaintenanceRequestDto } from "@/types/maintenance"
 import type { MaintenanceRoomDto } from "@/types/user"
 import MaintenanceManagementDrawer from "@/components/management/MaintenanceManagementDrawer"
@@ -54,8 +55,13 @@ export default function ManagementMaintenancePage() {
   const isAdmin = user?.role === "ADMIN"
   const [requests, setRequests] = useState<MaintenanceRequestDto[]>([])
   const [rooms, setRooms] = useState<MaintenanceRoomDto[]>([])
-  const [managers, setManagers] = useState<BackendUserDto[]>([])
-  const [managerRoleId, setManagerRoleId] = useState<number | null>(null)
+  const [roomsLoaded, setRoomsLoaded] = useState(false)
+  const [managerAssignments, setManagerAssignments] = useState<PropertyManagerAssignmentDto[]>([])
+  const [managerAssignmentsPropertyId, setManagerAssignmentsPropertyId] = useState<number | null>(null)
+  const [managerAssignmentsRequestId, setManagerAssignmentsRequestId] = useState<number | null>(null)
+  const [managerAssignmentsLoading, setManagerAssignmentsLoading] = useState(false)
+  const [managerAssignmentsError, setManagerAssignmentsError] = useState<{ requestId: number; message: string } | null>(null)
+  const [managerAssignmentsReload, setManagerAssignmentsReload] = useState(0)
   const [selected, setSelected] = useState<MaintenanceDetail | null>(null)
   const [report, setReport] = useState<MaintenanceReportDto | null>(null)
   const [reportLoading, setReportLoading] = useState(false)
@@ -79,6 +85,8 @@ export default function ManagementMaintenancePage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const requestVersion = useRef(0)
   const detailVersion = useRef(0)
+  const managerAssignmentVersion = useRef(0)
+  const managerAssignmentController = useRef<AbortController | null>(null)
   const detailController = useRef<AbortController | null>(null)
   const actionLock = useRef(false)
   const tokenRef = useRef(accessToken)
@@ -105,8 +113,12 @@ export default function ManagementMaintenancePage() {
     detailController.current = null
     setRequests([])
     setRooms([])
-    setManagers([])
-    setManagerRoleId(null)
+    setRoomsLoaded(false)
+    setManagerAssignments([])
+    setManagerAssignmentsPropertyId(null)
+    setManagerAssignmentsRequestId(null)
+    setManagerAssignmentsLoading(false)
+    setManagerAssignmentsError(null)
     setSelected(null)
     setReport(null)
     setReportError("")
@@ -119,24 +131,16 @@ export default function ManagementMaintenancePage() {
     const controller = new AbortController()
     void refreshRequests(controller.signal)
     void getMaintenanceRooms(accessToken, controller.signal).then((items) => {
-      if (!controller.signal.aborted && tokenRef.current === accessToken) setRooms(items)
+      if (!controller.signal.aborted && tokenRef.current === accessToken) {
+        setRooms(items)
+        setRoomsLoaded(true)
+      }
     }).catch((cause: unknown) => {
-      if (!controller.signal.aborted && tokenRef.current === accessToken) setError(apiFailure(cause))
+      if (!controller.signal.aborted && tokenRef.current === accessToken) {
+        setRoomsLoaded(true)
+        setError(apiFailure(cause))
+      }
     })
-    if (isAdmin) {
-      void getRoles().then(async (roles) => {
-        const managerRole = roles.find((role) => role.roleName.trim().toLowerCase() === "manager")
-        if (!managerRole) throw new Error("Backend chưa khai báo role Manager.")
-        return { roleId: managerRole.roleId, managers: await getUsers(accessToken, managerRole.roleId) }
-      }).then((result) => {
-        if (!controller.signal.aborted && tokenRef.current === accessToken) {
-          setManagerRoleId(result.roleId)
-          setManagers(result.managers)
-        }
-      }).catch((cause: unknown) => {
-        if (!controller.signal.aborted && tokenRef.current === accessToken) setError(apiFailure(cause))
-      })
-    }
     const refreshWhenActive = () => {
       if (document.visibilityState === "visible") void refreshRequests()
     }
@@ -148,6 +152,8 @@ export default function ManagementMaintenancePage() {
     return () => {
       controller.abort()
       detailController.current?.abort()
+      managerAssignmentController.current?.abort()
+      managerAssignmentVersion.current++
       detailVersion.current++
       requestVersion.current++
       window.clearInterval(timer)
@@ -167,6 +173,124 @@ export default function ManagementMaintenancePage() {
     return rooms.filter((room) => requestRoomIds.has(room.roomId) && (filterProperty === "all" || String(room.propertyId) === filterProperty))
   }, [filterProperty, requests, rooms])
   const roomById = useMemo(() => new Map(rooms.map((room) => [room.roomId, room])), [rooms])
+  const selectedPropertyId = selected
+    ? roomById.get(selected.roomId)?.propertyId ?? null
+    : null
+  const managerAssignmentsAreCurrent = Boolean(
+    selected &&
+      managerAssignmentsRequestId === selected.requestId &&
+      managerAssignmentsPropertyId === selectedPropertyId,
+  )
+  const selectedManagerAssignments = managerAssignmentsAreCurrent
+    ? managerAssignments.filter(
+        (assignment) =>
+          assignment.propertyId === selectedPropertyId &&
+          assignment.managerIsActive,
+      )
+    : []
+  const selectedManagerAssignmentError =
+    selected && managerAssignmentsError?.requestId === selected.requestId
+      ? managerAssignmentsError.message
+      : ""
+  const selectedManagerAssignmentsLoading = Boolean(
+    isAdmin &&
+      selected?.status === "Pending" &&
+      (!roomsLoaded ||
+        (selectedPropertyId === null
+          ? !selectedManagerAssignmentError
+          : !managerAssignmentsAreCurrent || managerAssignmentsLoading)),
+  )
+
+  useEffect(() => {
+    const version = ++managerAssignmentVersion.current
+    managerAssignmentController.current?.abort()
+    managerAssignmentController.current = null
+
+    if (!isAdmin || !selected || selected.status !== "Pending") {
+      setManagerAssignments([])
+      setManagerAssignmentsPropertyId(null)
+      setManagerAssignmentsRequestId(null)
+      setManagerAssignmentsLoading(false)
+      setManagerAssignmentsError(null)
+      return
+    }
+
+    setManagerAssignments([])
+    setManagerAssignmentsPropertyId(null)
+    setManagerAssignmentsRequestId(selected.requestId)
+    setManagerAssignmentsError(null)
+    if (!roomsLoaded) {
+      setManagerAssignmentsLoading(true)
+      return
+    }
+
+    const propertyId = roomById.get(selected.roomId)?.propertyId
+    if (propertyId === undefined) {
+      setManagerAssignmentsLoading(false)
+      setManagerAssignmentsError({
+        requestId: selected.requestId,
+        message: "Không xác định được khu trọ của phòng trong yêu cầu.",
+      })
+      return
+    }
+    if (!accessToken) {
+      setManagerAssignmentsLoading(false)
+      setManagerAssignmentsError({
+        requestId: selected.requestId,
+        message: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+      })
+      return
+    }
+
+    const controller = new AbortController()
+    managerAssignmentController.current = controller
+    setManagerAssignmentsPropertyId(propertyId)
+    setManagerAssignmentsLoading(true)
+    void getPropertyManagerAssignments(
+      accessToken,
+      propertyId,
+      controller.signal,
+    )
+      .then((assignments) => {
+        if (controller.signal.aborted || version !== managerAssignmentVersion.current) return
+        setManagerAssignments(
+          assignments.filter(
+            (assignment) =>
+              assignment.propertyId === propertyId &&
+              assignment.managerIsActive,
+          ),
+        )
+      })
+      .catch((cause: unknown) => {
+        if (controller.signal.aborted || version !== managerAssignmentVersion.current) return
+        setManagerAssignments([])
+        setManagerAssignmentsError({
+          requestId: selected.requestId,
+          message: apiFailure(cause),
+        })
+      })
+      .finally(() => {
+        if (!controller.signal.aborted && version === managerAssignmentVersion.current) {
+          setManagerAssignmentsLoading(false)
+          managerAssignmentController.current = null
+        }
+      })
+
+    return () => {
+      controller.abort()
+      if (managerAssignmentController.current === controller) {
+        managerAssignmentController.current = null
+      }
+    }
+  }, [
+    accessToken,
+    isAdmin,
+    managerAssignmentsReload,
+    roomById,
+    roomsLoaded,
+    selected,
+  ])
+
   const filtered = useMemo(() => requests.filter((request) => {
     const room = roomById.get(request.roomId)
     const text = `${request.requestId} ${request.description} ${request.customerName ?? ""} ${request.roomCode ?? ""} ${request.equipmentName ?? ""} ${room?.propertyName ?? ""}`.toLocaleLowerCase()
@@ -180,6 +304,9 @@ export default function ManagementMaintenancePage() {
     if (!accessToken) return
     const version = ++detailVersion.current
     detailController.current?.abort()
+    managerAssignmentController.current?.abort()
+    managerAssignmentVersion.current++
+    managerAssignmentController.current = null
     const controller = new AbortController()
     detailController.current = controller
     setDetailError("")
@@ -191,6 +318,11 @@ export default function ManagementMaintenancePage() {
     setDetailLoading(true)
     setAssignmentManager("")
     setAssignmentNote("")
+    setManagerAssignments([])
+    setManagerAssignmentsPropertyId(null)
+    setManagerAssignmentsRequestId(null)
+    setManagerAssignmentsLoading(false)
+    setManagerAssignmentsError(null)
     setReportDescription("")
     setReportImages([])
     setSelected(null)
@@ -252,8 +384,18 @@ export default function ManagementMaintenancePage() {
   async function assignRequest() {
     if (!accessToken || !selected || selected.status !== "Pending" || actionLock.current) return
     const assignedTo = Number(assignmentManager)
-    if (!Number.isSafeInteger(assignedTo) || !managers.some((manager) => Number(manager.userId) === assignedTo && manager.isActive)) {
-      setActionError("Chọn một Manager đang hoạt động từ danh sách.")
+    if (
+      !Number.isSafeInteger(assignedTo) ||
+      !selectedPropertyId ||
+      !managerAssignmentsAreCurrent ||
+      !selectedManagerAssignments.some(
+        (assignment) =>
+          assignment.propertyId === selectedPropertyId &&
+          assignment.managerId === assignedTo &&
+          assignment.managerIsActive,
+      )
+    ) {
+      setActionError("Chọn Manager đang hoạt động được phân công cho khu trọ này.")
       return
     }
     if (assignmentNote.length > 1000) {
@@ -270,7 +412,17 @@ export default function ManagementMaintenancePage() {
       setToast("Đã phân công Manager thành công.")
       try { await Promise.all([refreshRequests(), reloadSelected(requestId, selectedVersion)]) } catch (cause) { if (detailVersion.current === selectedVersion) setDetailError(apiFailure(cause)) }
     } catch (cause) {
-      setActionError(apiFailure(cause))
+      if (detailVersion.current === selectedVersion) {
+        setActionError(apiFailure(cause))
+        setAssignmentManager("")
+        managerAssignmentController.current?.abort()
+        managerAssignmentController.current = null
+        setManagerAssignments([])
+        setManagerAssignmentsPropertyId(null)
+        setManagerAssignmentsRequestId(null)
+        setManagerAssignmentsError(null)
+        setManagerAssignmentsReload((value) => value + 1)
+      }
     } finally {
       actionLock.current = false
       setSubmitting(false)
@@ -357,9 +509,21 @@ export default function ManagementMaintenancePage() {
         request={selected}
         propertyName={roomById.get(selected.roomId)?.propertyName ?? null}
         detailLoading={detailLoading}
-         onClose={() => { detailVersion.current++; detailController.current?.abort(); setSelected(null); setReport(null) }}
-        managers={isAdmin ? managers : []}
-        managerRoleLoading={isAdmin && managerRoleId === null}
+        onClose={() => {
+          detailVersion.current++
+          managerAssignmentVersion.current++
+          detailController.current?.abort()
+          managerAssignmentController.current?.abort()
+          managerAssignmentController.current = null
+          setSelected(null)
+          setReport(null)
+          setAssignmentManager("")
+          setAssignmentNote("")
+        }}
+        managers={isAdmin ? selectedManagerAssignments : []}
+        managerLoading={selectedManagerAssignmentsLoading}
+        managerLoadError={selectedManagerAssignmentError}
+        assignmentManager={assignmentManager}
         canAssign={isAdmin}
         canComplete={user?.role === "MANAGER" && selected.assignedTo === Number(user.id)}
         submitting={submitting}
@@ -372,12 +536,12 @@ export default function ManagementMaintenancePage() {
         onAssign={() => void assignRequest()}
         onReportDescriptionChange={setReportDescription}
         onReportImagesChange={setReportImages}
-         onComplete={() => void completeRequest()}
-         report={report}
-         reportLoading={reportLoading}
-         reportNotFound={reportNotFound}
-         reportError={reportError}
-         onRetryReport={() => void loadReport(selected.requestId)}
+        onComplete={() => void completeRequest()}
+        report={report}
+        reportLoading={reportLoading}
+        reportNotFound={reportNotFound}
+        reportError={reportError}
+        onRetryReport={() => void loadReport(selected.requestId)}
        />}
       {toast && <Toast message={toast} onClose={() => setToast("")} />}
     </ManagementPage>

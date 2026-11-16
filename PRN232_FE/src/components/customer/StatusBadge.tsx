@@ -1,4 +1,4 @@
-type StatusTone = "teal" | "green" | "amber" | "rose" | "slate"
+type StatusTone = "teal" | "green" | "amber" | "rose" | "slate" | "expired"
 
 type StatusBadgeProps = {
   children: string
@@ -11,6 +11,7 @@ const toneClasses: Record<StatusTone, string> = {
   amber: "bg-amber-50 text-amber-700",
   rose: "bg-rose-50 text-rose-700",
   slate: "bg-slate-100 text-slate-600",
+  expired: "bg-red-700 text-white",
 }
 
 export default function StatusBadge({

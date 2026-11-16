@@ -50,15 +50,18 @@ public sealed class ViewingScheduleRepositoryTests
             });
         context.ViewingSchedules.AddRange(
             new ViewingSchedules { ViewingId = 1, PropertyId = 1, RoomTypeId = 1, RoomId = 1, CustomerId = 10, AssignedTo = 7, Status = ViewingStatuses.Pending },
-            new ViewingSchedules { ViewingId = 2, PropertyId = 2, RoomTypeId = 1, RoomId = 2, CustomerId = 10, Status = ViewingStatuses.Pending });
+            new ViewingSchedules { ViewingId = 2, PropertyId = 2, RoomTypeId = 1, RoomId = 2, CustomerId = 10, Status = ViewingStatuses.Pending },
+            new ViewingSchedules { ViewingId = 3, PropertyId = 1, RoomTypeId = 1, CustomerId = 10, Status = ViewingStatuses.Pending },
+            new ViewingSchedules { ViewingId = 4, PropertyId = 1, RoomTypeId = 1, RoomId = 1, CustomerId = 10, AssignedTo = 7, Status = ViewingStatuses.Approved },
+            new ViewingSchedules { ViewingId = 5, PropertyId = 1, RoomTypeId = 1, CustomerId = 10, Status = ViewingStatuses.Rejected });
         await context.SaveChangesAsync();
 
         var repository = new ViewingScheduleRepository(context);
 
         var managerRows = await repository.GetAllAsync(null, 7, null);
         var otherManagerRows = await repository.GetAllAsync(null, 8, null);
-        Assert.Equal([1], managerRows.Select(viewing => viewing.ViewingId));
-        Assert.Empty(otherManagerRows);
+        Assert.Equal([5, 4, 3, 1], managerRows.Select(viewing => viewing.ViewingId));
+        Assert.Equal([2], otherManagerRows.Select(viewing => viewing.ViewingId));
 
         context.PropertyManagerAssignments.Remove(
             await context.PropertyManagerAssignments.SingleAsync(assignment => assignment.PropertyId == 1));
@@ -69,7 +72,6 @@ public sealed class ViewingScheduleRepositoryTests
             ViewingStatuses.Approved,
             7,
             "Manager note",
-            7,
             DateTime.UtcNow,
             DateTime.UtcNow.AddDays(1),
             []);
@@ -132,7 +134,6 @@ public sealed class ViewingScheduleRepositoryTests
             ViewingStatuses.Approved,
             7,
             "Assignment note",
-            9,
             DateTime.UtcNow,
             DateTime.UtcNow.AddDays(1),
             [invalidNotification]));
@@ -144,6 +145,46 @@ public sealed class ViewingScheduleRepositoryTests
         Assert.Null(viewing.ManagerNote);
         Assert.Null(viewing.RespondedBy);
         Assert.Null(viewing.RespondedAt);
+        Assert.Empty(await context.Notifications.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_rolls_back_viewing_when_manager_notification_insert_fails()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
+        await using var context = new AppDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        context.Roles.AddRange(
+            new Roles { RoleId = 1, RoleName = RoleNames.Customer },
+            new Roles { RoleId = 2, RoleName = RoleNames.Manager },
+            new Roles { RoleId = 3, RoleName = RoleNames.Admin });
+        context.Users.AddRange(User(7, 2, "Manager"), User(9, 3, "Admin"), User(10, 1, "Customer"));
+        context.Properties.Add(new Property { PropertyId = 1, OwnerId = 9, PropertyName = "Sunrise" });
+        context.RoomTypes.Add(new RoomTypes { RoomTypeId = 1, TypeName = "Studio", Price = 100m });
+        context.PropertyRoomTypes.Add(new PropertyRoomTypes { PropertyId = 1, RoomTypeId = 1, MonthlyRent = 100m, IsActive = true });
+        context.PropertyManagerAssignments.Add(new PropertyManagerAssignment { PropertyId = 1, ManagerId = 7 });
+        await context.SaveChangesAsync();
+
+        var repository = new ViewingScheduleRepository(context);
+        await Assert.ThrowsAsync<DbUpdateException>(() => repository.AddAsync(
+            new ViewingSchedules { PropertyId = 1, RoomTypeId = 1, CustomerId = 10, Status = ViewingStatuses.Pending },
+            (viewingId, managerIds) =>
+            {
+                Assert.Equal([7], managerIds);
+                return [new Notifications
+                {
+                    UserId = 999,
+                    Title = "Will violate the notification user FK",
+                    Type = NotificationTypes.Viewing,
+                    RelatedEntityId = viewingId,
+                    IsRead = false
+                }];
+            }));
+
+        context.ChangeTracker.Clear();
+        Assert.Empty(await context.ViewingSchedules.ToListAsync());
         Assert.Empty(await context.Notifications.ToListAsync());
     }
 
