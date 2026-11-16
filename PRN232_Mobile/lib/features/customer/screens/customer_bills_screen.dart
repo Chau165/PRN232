@@ -19,7 +19,7 @@ class CustomerBillsScreen extends StatefulWidget {
   State<CustomerBillsScreen> createState() => _CustomerBillsScreenState();
 }
 
-class _CustomerBillsScreenState extends State<CustomerBillsScreen> {
+class _CustomerBillsScreenState extends State<CustomerBillsScreen> with WidgetsBindingObserver {
   final InvoiceService _invoiceService = InvoiceService();
   List<InvoiceModel> _invoices = [];
   bool _isLoading = false;
@@ -30,12 +30,28 @@ class _CustomerBillsScreenState extends State<CustomerBillsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _invoices = AuthState.isCurrentDemo ? List.from(CustomerMockData.myInvoices) : [];
     _loadInvoices();
   }
 
-  Future<void> _loadInvoices() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadInvoices(isRefresh: true);
+    }
+  }
+
+  Future<void> _loadInvoices({bool isRefresh = false}) async {
+    if (!isRefresh && _invoices.isEmpty) {
+      setState(() => _isLoading = true);
+    }
     try {
       final list = await _invoiceService.getCustomerInvoices();
       if (mounted) {
@@ -66,12 +82,18 @@ class _CustomerBillsScreenState extends State<CustomerBillsScreen> {
     }
   }
 
-  void _openInvoiceDetail(InvoiceModel invoice) {
-    InvoiceDetailBottomSheet.show(context, invoice);
+  void _openInvoiceDetail(InvoiceModel invoice) async {
+    await InvoiceDetailBottomSheet.show(context, invoice);
+    if (mounted) {
+      _loadInvoices(isRefresh: true);
+    }
   }
 
-  void _openQuickPay(InvoiceModel invoice) {
-    PayInvoiceBottomSheet.show(context, invoice);
+  void _openQuickPay(InvoiceModel invoice) async {
+    await PayInvoiceBottomSheet.show(context, invoice);
+    if (mounted) {
+      _loadInvoices(isRefresh: true);
+    }
   }
 
   @override
@@ -83,52 +105,57 @@ class _CustomerBillsScreenState extends State<CustomerBillsScreen> {
       appBar: AppBar(
         title: const Text('Hóa Đơn & Thanh Toán'),
         backgroundColor: Colors.white,
+        foregroundColor: AppColors.textPrimary,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            tooltip: 'Làm mới hóa đơn',
+            onPressed: () => _loadInvoices(isRefresh: true),
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-          : _invoices.isEmpty
-              ? RefreshIndicator(
-                  onRefresh: _loadInvoices,
-                  color: AppColors.primary,
-                  child: Center(
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            width: 80,
-                            height: 80,
-                            decoration: const BoxDecoration(
-                              color: AppColors.primaryLight,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.receipt_long_outlined, size: 40, color: AppColors.primary),
-                          ),
-                          const SizedBox(height: 16),
-                          Text('Bạn chưa có hóa đơn nào',
-                              style: AppTypography.headingMedium, textAlign: TextAlign.center),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Khi bạn thuê phòng và phát sinh kỳ thanh toán tiền phòng hoặc tiền điện nước, các hóa đơn sẽ xuất hiện tại đây.',
-                            style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                )
-              : RefreshIndicator(
-              onRefresh: _loadInvoices,
+          : RefreshIndicator(
+              onRefresh: () => _loadInvoices(isRefresh: true),
               color: AppColors.primary,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+              child: _invoices.isEmpty
+                  ? Center(
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 80,
+                              height: 80,
+                              decoration: const BoxDecoration(
+                                color: AppColors.primaryLight,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.receipt_long_outlined, size: 40, color: AppColors.primary),
+                            ),
+                            const SizedBox(height: 16),
+                            Text('Bạn chưa có hóa đơn nào',
+                                style: AppTypography.headingMedium, textAlign: TextAlign.center),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Khi bạn thuê phòng và phát sinh kỳ thanh toán tiền phòng hoặc tiền điện nước, các hóa đơn sẽ xuất hiện tại đây.',
+                              style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
             // Highlight Pending Bill
             if (pendingInv != null) ...[
               AppCard(
