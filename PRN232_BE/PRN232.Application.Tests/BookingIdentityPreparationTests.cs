@@ -95,6 +95,27 @@ public class BookingIdentityPreparationTests
         Assert.StartsWith("https://example.supabase.co/storage/v1/object/sign/",url);
         Assert.Contains("120",handler.LastBody);
     }
+    [Theory]
+    [InlineData("/object/sign/")]
+    [InlineData("object/sign/")]
+    [InlineData("/storage/v1/object/sign/")]
+    [InlineData("https://example.supabase.co/storage/v1/object/sign/")]
+    public async Task Signing_resolves_supported_storage_urls_identically_on_all_platforms(string prefix)
+    {
+        var handler=new Handler { SignedUrl=prefix+"booking-identities/"+Path+"?token=test" };
+        Assert.Equal("https://example.supabase.co/storage/v1/object/sign/booking-identities/"+Path+"?token=test",
+            await Storage(handler).GetReadUrlAsync(Path));
+    }
+    [Theory]
+    [InlineData("file:///storage/v1/object/sign/booking-identities/")]
+    [InlineData("//evil.test/storage/v1/object/sign/booking-identities/")]
+    [InlineData("http://example.supabase.co/storage/v1/object/sign/booking-identities/")]
+    [InlineData("https://evil.test/storage/v1/object/sign/booking-identities/")]
+    public async Task Signing_rejects_unsafe_schemes_and_foreign_hosts(string prefix)
+    {
+        var handler=new Handler { SignedUrl=prefix+Path+"?token=test" };
+        await Assert.ThrowsAsync<InvalidOperationException>(()=>Storage(handler).GetReadUrlAsync(Path));
+    }
     [Theory][InlineData("../other.png")][InlineData("https://evil.test/file")]
     public async Task Foreign_paths_cannot_be_signed_or_deleted(string path)
     {

@@ -1,6 +1,5 @@
 using PRN232.Domain.Entities;
 using PRN232.Application.ReadModels;
-using PRN232.Application.DTOs;
 namespace PRN232.Application.Interfaces;
 public interface IBookingApplicationRepository
 {

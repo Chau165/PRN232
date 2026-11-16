@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using PRN232.Application.DTOs;
+using PRN232.Application.ReadModels;
 using PRN232.Application.Services;
 using PRN232.Domain.Entities;
 namespace PRN232.Infrastructure.Repositories;

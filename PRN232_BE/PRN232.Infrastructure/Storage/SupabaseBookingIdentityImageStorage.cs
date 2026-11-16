@@ -83,8 +83,17 @@ public sealed class SupabaseBookingIdentityImageStorage(HttpClient client, IConf
         if (!json.RootElement.TryGetProperty("signedURL", out var value) || value.ValueKind != JsonValueKind.String)
             throw new InvalidOperationException("Invalid signed image URL.");
         var raw = value.GetString();
-        var resolved = string.IsNullOrWhiteSpace(raw) ? null : Uri.TryCreate(raw, UriKind.Absolute, out var absolute) ? absolute
-            : new Uri(BaseUri, raw.StartsWith("/storage/v1/", StringComparison.Ordinal) ? raw : "/storage/v1/" + raw.TrimStart('/'));
+        // Resolve known Storage paths first: on Unix, Uri treats /object/... as an absolute file URI.
+        Uri? resolved = null;
+        if (!string.IsNullOrWhiteSpace(raw))
+        {
+            if (raw.StartsWith("/storage/v1/object/sign/", StringComparison.Ordinal))
+                resolved = new Uri(BaseUri, raw);
+            else if (raw.StartsWith("/object/sign/", StringComparison.Ordinal) || raw.StartsWith("object/sign/", StringComparison.Ordinal))
+                resolved = new Uri(BaseUri, "/storage/v1/" + raw.TrimStart('/'));
+            else if (Uri.TryCreate(raw, UriKind.Absolute, out var absolute))
+                resolved = absolute;
+        }
         var expectedPath = $"/storage/v1/object/sign/{Bucket}/{objectPath}";
         if (resolved is null || resolved.Scheme != "https" || resolved.Authority != BaseUri.Authority ||
             !string.IsNullOrEmpty(resolved.UserInfo) || resolved.AbsolutePath != expectedPath ||
