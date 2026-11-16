@@ -9,6 +9,7 @@ public interface IViewingScheduleRepository
     Task<ViewingPropertyRoomTypeReadModel?> GetActivePropertyRoomTypeAsync(int propertyId, int roomTypeId);
     Task<ViewingManagerReadModel?> GetManagerAsync(int userId);
     Task<bool> HasActiveManagerAssignmentAsync(int propertyId, int managerId);
+    Task<List<int>> GetActiveManagerIdsByPropertyAsync(int propertyId);
     Task<bool> IsRoomRentableAsync(int roomId, DateTimeOffset asOfUtc);
     Task<bool> HasOpenRequestAsync(int customerId, int roomId, DateTimeOffset asOfUtc);
     Task<bool> HasOpenRequestForRoomTypeAsync(int customerId, int propertyId, int roomTypeId, DateTimeOffset asOfUtc);

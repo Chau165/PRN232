@@ -3,7 +3,7 @@ import { useAuth } from "@/auth/AuthContext"
 import { getViewingSchedules } from "@/services/viewingScheduleService"
 import type { ViewingScheduleDto } from "@/types/viewingSchedule"
 
-// Giống useBookings: BE tự lọc danh sách theo role của token (khách / chủ trọ / admin).
+// Backend scopes customers to their requests and Managers to properties they actively manage.
 export function useViewingSchedules() {
   const { accessToken } = useAuth()
   const [viewings, setViewings] = useState<ViewingScheduleDto[]>([])

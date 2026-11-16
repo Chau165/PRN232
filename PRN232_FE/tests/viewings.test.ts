@@ -13,7 +13,6 @@ describe("Viewing schedule API client", () => {
     await createViewingSchedule("token", { roomId: 501, scheduledAt: null })
     await approveViewingSchedule("token", 3, {
       scheduledAt: "2030-01-01T02:00:00.000Z",
-      assignedTo: 7,
       managerNote: "Use the side entrance.",
     })
     await rejectViewingSchedule("token", 3, "No available staff.")
@@ -27,7 +26,6 @@ describe("Viewing schedule API client", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ roomId: 501, scheduledAt: null })
     expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual({
       scheduledAt: "2030-01-01T02:00:00.000Z",
-      assignedTo: 7,
       managerNote: "Use the side entrance.",
     })
     expect(JSON.parse(String(fetchMock.mock.calls[3][1]?.body))).toEqual({ reason: "No available staff." })
@@ -40,7 +38,7 @@ describe("Viewing display helpers", () => {
     expect(viewingStatusDisplay({ status: "Pending" }).label).toBe("Chờ xác nhận")
     expect(viewingStatusDisplay({ status: "Approved" }).label).toBe("Đã chấp thuận")
     expect(viewingStatusDisplay({ status: "Rejected" }).label).toBe("Đã từ chối")
-    expect(viewingTimeLabel({ scheduledAt: null })).toBe("Chờ Admin phân lịch")
+    expect(viewingTimeLabel({ scheduledAt: null })).toBe("Chờ Manager khu trọ xác nhận giờ")
   })
 
   it("converts between the local datetime input and UTC without shifting the moment", () => {

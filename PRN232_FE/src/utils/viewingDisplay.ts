@@ -8,7 +8,7 @@ export function viewingStatusDisplay(viewing: Pick<ViewingScheduleDto, "status">
 }
 
 export function viewingTimeLabel(viewing: Pick<ViewingScheduleDto, "scheduledAt">) {
-  return viewing.scheduledAt ? formatDateTime(viewing.scheduledAt) : "Chờ Admin phân lịch"
+  return viewing.scheduledAt ? formatDateTime(viewing.scheduledAt) : "Chờ Manager khu trọ xác nhận giờ"
 }
 
 // Ô datetime-local trả về giờ địa phương không kèm múi giờ ("2026-10-30T16:00");

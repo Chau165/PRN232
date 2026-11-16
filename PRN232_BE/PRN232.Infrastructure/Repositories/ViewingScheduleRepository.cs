@@ -69,6 +69,18 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
             assignment.Manager.Role!.RoleName == RoleNames.Manager);
     }
 
+    public Task<List<int>> GetActiveManagerIdsByPropertyAsync(int propertyId)
+    {
+        return _context.PropertyManagerAssignments
+            .AsNoTracking()
+            .Where(assignment => assignment.PropertyId == propertyId &&
+                assignment.Manager!.IsActive &&
+                assignment.Manager.Role!.RoleName == RoleNames.Manager)
+            .Select(assignment => assignment.ManagerId)
+            .Distinct()
+            .ToListAsync();
+    }
+
     public Task<bool> IsRoomRentableAsync(int roomId, DateTimeOffset asOfUtc)
     {
         return RoomAvailabilityQueries.GetRentableRooms(_context.Rooms, asOfUtc).AnyAsync(room => room.RoomId == roomId);
@@ -223,27 +235,33 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
 
-        if (status == ViewingStatuses.Approved && assignedTo.HasValue)
+        // Lock the viewing before checking the property assignment, matching SelectRoomAsync.
+        // A request can only be decided once, including simultaneous approval/rejection.
+        if (_context.Database.IsNpgsql())
         {
-            var propertyId = await _context.ViewingSchedules
-                .Where(viewing => viewing.ViewingId == viewingId)
-                .Select(viewing => (int?)viewing.PropertyId)
-                .FirstOrDefaultAsync();
-            if (!propertyId.HasValue)
-            {
-                return false;
-            }
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"ViewingSchedules\" WHERE \"ViewingId\" = {viewingId} FOR UPDATE");
+        }
 
-            if (_context.Database.IsNpgsql())
-            {
-                await _context.Database.ExecuteSqlInterpolatedAsync(
-                    $"SELECT assignment.\"PropertyId\" FROM \"PropertyManagerAssignments\" assignment WHERE assignment.\"PropertyId\" = {propertyId.Value} AND assignment.\"ManagerId\" = {assignedTo.Value} FOR SHARE");
-            }
+        var propertyId = await _context.ViewingSchedules
+            .Where(viewing => viewing.ViewingId == viewingId)
+            .Select(viewing => (int?)viewing.PropertyId)
+            .FirstOrDefaultAsync();
+        if (!propertyId.HasValue || (status == ViewingStatuses.Approved && assignedTo != respondedBy))
+        {
+            return false;
+        }
 
-            if (!await HasActiveManagerAssignmentAsync(propertyId.Value, assignedTo.Value))
-            {
-                return false;
-            }
+        if (_context.Database.IsNpgsql())
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT assignment.\"PropertyId\" FROM \"PropertyManagerAssignments\" assignment WHERE assignment.\"PropertyId\" = {propertyId.Value} AND assignment.\"ManagerId\" = {respondedBy} FOR SHARE");
+        }
+
+        // Recheck at write time even if the Manager was revoked after opening the page.
+        if (!await HasActiveManagerAssignmentAsync(propertyId.Value, respondedBy))
+        {
+            return false;
         }
 
         // Điều kiện Pending nằm trong câu UPDATE nên hai quản lý bấm cùng lúc thì chỉ một người xử lý được.
@@ -267,18 +285,17 @@ public class ViewingScheduleRepository : IViewingScheduleRepository
         return true;
     }
 
-    // Lọc dùng chung cho GetById và GetAll; Manager scope luôn là AssignedTo, không phải OwnerId.
+    // Managers can review Pending requests for their own properties; only the approving Manager selects the room.
     private IQueryable<ViewingSchedules> InScope(int? customerId, int? assignedTo)
     {
         return _context.ViewingSchedules
             .AsNoTracking()
             .Where(viewing => customerId == null || viewing.CustomerId == customerId)
             .Where(viewing => assignedTo == null ||
-                (viewing.AssignedTo == assignedTo &&
-                 viewing.Property!.ManagerAssignments.Any(assignment =>
+                viewing.Property!.ManagerAssignments.Any(assignment =>
                      assignment.ManagerId == assignedTo &&
                       assignment.Manager!.IsActive &&
-                     assignment.Manager.Role!.RoleName == RoleNames.Manager)));
+                     assignment.Manager.Role!.RoleName == RoleNames.Manager));
     }
 
     private static readonly Expression<Func<ViewingSchedules, ViewingScheduleReadModel>> ToReadModel =
